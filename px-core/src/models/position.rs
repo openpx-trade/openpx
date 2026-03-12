@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Position {
     pub market_id: String,
     pub outcome: String,
@@ -33,6 +34,7 @@ impl Position {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DeltaInfo {
     pub delta: f64,
     pub max_outcome: Option<String>,
@@ -69,6 +71,7 @@ pub fn calculate_delta(positions: &HashMap<String, f64>) -> DeltaInfo {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PositionBreakdown {
     pub outcome: String,
     pub size: f64,
@@ -77,6 +80,7 @@ pub struct PositionBreakdown {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Nav {
     pub nav: f64,
     pub cash: f64,

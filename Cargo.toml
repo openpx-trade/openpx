@@ -7,6 +7,10 @@ members = [
     "px-exchange-limitless",
     "px-exchange-kalshi",
     "px-exchange-predictfun",
+    "px-schema",
+    "px-sdk",
+    "px-python",
+    "px-node",
 ]
 
 [workspace.package]
@@ -67,6 +71,7 @@ px-exchange-limitless = { version = "0.1.4", path = "px-exchange-limitless" }
 px-exchange-opinion = { version = "0.1.4", path = "px-exchange-opinion" }
 px-exchange-kalshi = { version = "0.1.4", path = "px-exchange-kalshi" }
 px-exchange-predictfun = { version = "0.1.4", path = "px-exchange-predictfun" }
+px-sdk = { version = "0.1.4", path = "px-sdk" }
 
 [profile.release]
 lto = true

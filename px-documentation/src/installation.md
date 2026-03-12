@@ -1,0 +1,38 @@
+# Installation
+
+## Rust
+
+Add OpenPX crates to your `Cargo.toml`:
+
+```toml
+[dependencies]
+px-core = "0.1"
+
+# Individual exchanges
+px-exchange-kalshi = "0.1"
+px-exchange-polymarket = "0.1"
+px-exchange-opinion = "0.1"
+px-exchange-limitless = "0.1"
+px-exchange-predictfun = "0.1"
+
+# Or use the unified SDK facade
+px-sdk = "0.1"
+```
+
+## Python
+
+```bash
+pip install openpx
+```
+
+Requires Python >= 3.9. The package includes a native Rust extension compiled
+with PyO3 — no Rust toolchain needed on the user's machine.
+
+## TypeScript / Node.js
+
+```bash
+npm install @openpx/sdk
+```
+
+Requires Node.js >= 18. The package includes a native Rust addon compiled
+with NAPI-RS.

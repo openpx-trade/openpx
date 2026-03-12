@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 readme = "README.md"
 
+[features]
+default = []
+schema = ["dep:schemars"]
+
 [dependencies]
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -18,6 +22,7 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 metrics = { workspace = true }
 smallvec = { workspace = true }
+schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

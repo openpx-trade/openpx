@@ -1,0 +1,20 @@
+[package]
+name = "px-python"
+description = "Python bindings for OpenPX prediction market SDK"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+px-core = { workspace = true }
+px-sdk = { workspace = true }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+pythonize = "0.23"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

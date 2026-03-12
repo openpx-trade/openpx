@@ -1,0 +1,134 @@
+# Quick Start
+
+## Fetch Markets
+
+### Rust
+
+```rust
+use px_sdk::ExchangeInner;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() {
+    let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
+    let markets = exchange.fetch_markets(None).await.unwrap();
+    for market in &markets[..5] {
+        println!("{}: {}", market.id, market.question);
+    }
+}
+```
+
+### Python
+
+```python
+from openpx import Exchange
+
+exchange = Exchange("kalshi")
+markets = exchange.fetch_markets(limit=5)
+for market in markets:
+    print(f"{market.id}: {market.question}")
+```
+
+### TypeScript
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+const exchange = new Exchange("kalshi", {});
+const markets = await exchange.fetchMarkets(5);
+for (const market of markets) {
+  console.log(`${market.id}: ${market.question}`);
+}
+```
+
+## Create an Order
+
+### Rust
+
+```rust
+use px_sdk::ExchangeInner;
+use px_core::OrderSide;
+use serde_json::json;
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() {
+    let exchange = ExchangeInner::new("kalshi", json!({
+        "api_key_id": "your-key",
+        "private_key_pem": "your-pem"
+    })).unwrap();
+
+    let order = exchange.create_order(
+        "MARKET-ID",
+        "Yes",
+        OrderSide::Buy,
+        0.65,
+        10.0,
+        HashMap::new(),
+    ).await.unwrap();
+
+    println!("Order {}: {:?}", order.id, order.status);
+}
+```
+
+### Python
+
+```python
+from openpx import Exchange
+
+exchange = Exchange("kalshi", {
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem",
+})
+
+order = exchange.create_order(
+    market_id="MARKET-ID",
+    outcome="Yes",
+    side="buy",
+    price=0.65,
+    size=10.0,
+)
+print(f"Order {order.id}: {order.status}")
+```
+
+### TypeScript
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+const exchange = new Exchange("kalshi", {
+  api_key_id: "your-key",
+  private_key_pem: "your-pem",
+});
+
+const order = await exchange.createOrder(
+  "MARKET-ID", "Yes", "buy", 0.65, 10.0
+);
+console.log(`Order ${order.id}: ${order.status}`);
+```
+
+## Fetch Orderbook
+
+### Rust
+
+```rust
+let book = exchange.fetch_orderbook(OrderbookRequest {
+    market_id: "MARKET-ID".into(),
+    ..Default::default()
+}).await.unwrap();
+println!("Best bid: {:?}, Best ask: {:?}", book.best_bid(), book.best_ask());
+```
+
+### Python
+
+```python
+book = exchange.fetch_orderbook("MARKET-ID")
+print(f"Best bid: {book.bids[0].price}, Best ask: {book.asks[0].price}")
+```
+
+### TypeScript
+
+```typescript
+const book = await exchange.fetchOrderbook("MARKET-ID");
+console.log(`Best bid: ${book.bids[0].price}, Best ask: ${book.asks[0].price}`);
+```

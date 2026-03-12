@@ -1,0 +1,46 @@
+# TypeScript SDK
+
+The TypeScript SDK wraps the Rust engine via NAPI-RS, giving you native
+performance with full TypeScript type definitions.
+
+## Installation
+
+```bash
+npm install @openpx/sdk
+```
+
+## Usage
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+// Unauthenticated (market data only)
+const exchange = new Exchange("polymarket", {});
+const markets = await exchange.fetchMarkets(10);
+for (const m of markets) {
+  console.log(`[${m.id}] ${m.question}`);
+}
+
+// Authenticated (trading)
+const authed = new Exchange("kalshi", {
+  api_key_id: "...",
+  private_key_pem: "...",
+});
+const positions = await authed.fetchPositions();
+const balance = await authed.fetchBalance();
+```
+
+## Error Handling
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+try {
+  const exchange = new Exchange("kalshi", { api_key_id: "bad" });
+  await exchange.fetchBalance();
+} catch (e) {
+  console.error(`Error: ${e.message}`);
+}
+```
+
+See the [API Reference](./api.md) for all available types.

@@ -41,6 +41,7 @@ pub struct PublicTrade {
 /// - `price` is normalized to [0.0, 1.0] across all exchanges.
 /// - `timestamp` is the exchange-provided trade timestamp (UTC).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MarketTrade {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -76,6 +77,7 @@ pub struct PricePoint {
 /// Prices are decimals (0.0 to 1.0). Timestamp is the period START (not end).
 /// Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Candlestick {
     /// Period start timestamp (UTC). lightweight-charts expects start-of-period.
     pub timestamp: DateTime<Utc>,
@@ -91,6 +93,7 @@ pub struct Candlestick {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum PriceHistoryInterval {
     #[serde(rename = "1m")]
     OneMinute,

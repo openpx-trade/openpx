@@ -49,6 +49,7 @@ impl ExchangeConfig {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchMarketsParams {
     pub limit: Option<usize>,
     /// Exchange-specific cursor (offset, page number, or cursor string)
@@ -64,11 +65,13 @@ pub struct FetchMarketsResult {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchOrdersParams {
     pub market_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchUserActivityParams {
     pub address: String,
     pub limit: Option<usize>,

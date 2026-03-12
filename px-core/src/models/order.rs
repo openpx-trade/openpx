@@ -10,6 +10,7 @@ use std::str::FromStr;
 /// - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest.
 /// - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum OrderType {
     Gtc,
@@ -43,6 +44,7 @@ impl fmt::Display for OrderType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum OrderSide {
     Buy,
@@ -50,6 +52,7 @@ pub enum OrderSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum LiquidityRole {
     Maker,
@@ -57,6 +60,7 @@ pub enum LiquidityRole {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum OrderStatus {
     Pending,
@@ -68,6 +72,7 @@ pub enum OrderStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 // TODO(order-fees): Add fee fields (e.g. `fee: Option<f64>`, `fee_rate_bps: Option<u32>`).
 // Kalshi returns fees in create_order and fill responses — capture them here.
 // Polymarket fees are protocol-level and can be computed from trade data.
@@ -112,6 +117,7 @@ impl Order {
 
 /// A single fill (trade execution) from a user's order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Fill {
     pub fill_id: String,
     pub order_id: String,

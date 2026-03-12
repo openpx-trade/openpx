@@ -62,12 +62,14 @@ impl AtomicWebSocketState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ActivityEvent {
     Trade(ActivityTrade),
     Fill(ActivityFill),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ActivityTrade {
     pub market_id: String,
     pub asset_id: String,
@@ -82,6 +84,7 @@ pub struct ActivityTrade {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ActivityFill {
     pub market_id: String,
     pub asset_id: String,

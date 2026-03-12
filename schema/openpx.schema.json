@@ -1,0 +1,1382 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ActivityEvent": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "Trade": {
+              "$ref": "#/definitions/ActivityTrade"
+            }
+          },
+          "required": [
+            "Trade"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "Fill": {
+              "$ref": "#/definitions/ActivityFill"
+            }
+          },
+          "required": [
+            "Fill"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "ActivityEvent"
+    },
+    "ActivityFill": {
+      "properties": {
+        "asset_id": {
+          "type": "string"
+        },
+        "fill_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "liquidity_role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LiquidityRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "order_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "source_channel": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "market_id",
+        "price",
+        "size",
+        "source_channel"
+      ],
+      "title": "ActivityFill",
+      "type": "object"
+    },
+    "ActivityTrade": {
+      "properties": {
+        "aggressor_side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "asset_id": {
+          "type": "string"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "source_channel": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trade_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "market_id",
+        "price",
+        "size",
+        "source_channel"
+      ],
+      "title": "ActivityTrade",
+      "type": "object"
+    },
+    "Candlestick": {
+      "description": "OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 1.0). Timestamp is the period START (not end). Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.",
+      "properties": {
+        "close": {
+          "format": "double",
+          "type": "number"
+        },
+        "high": {
+          "format": "double",
+          "type": "number"
+        },
+        "low": {
+          "format": "double",
+          "type": "number"
+        },
+        "open": {
+          "format": "double",
+          "type": "number"
+        },
+        "open_interest": {
+          "description": "Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "description": "Period start timestamp (UTC). lightweight-charts expects start-of-period.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "volume": {
+          "description": "Trade volume in contracts. 0.0 if exchange doesn't provide volume.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "close",
+        "high",
+        "low",
+        "open",
+        "timestamp",
+        "volume"
+      ],
+      "title": "Candlestick",
+      "type": "object"
+    },
+    "DeltaInfo": {
+      "properties": {
+        "delta": {
+          "format": "double",
+          "type": "number"
+        },
+        "max_outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_position": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "delta",
+        "max_position"
+      ],
+      "title": "DeltaInfo",
+      "type": "object"
+    },
+    "ExchangeInfo": {
+      "properties": {
+        "has_approvals": {
+          "type": "boolean"
+        },
+        "has_cancel_order": {
+          "type": "boolean"
+        },
+        "has_create_order": {
+          "type": "boolean"
+        },
+        "has_fetch_balance": {
+          "type": "boolean"
+        },
+        "has_fetch_events": {
+          "type": "boolean"
+        },
+        "has_fetch_fills": {
+          "type": "boolean"
+        },
+        "has_fetch_markets": {
+          "type": "boolean"
+        },
+        "has_fetch_orderbook": {
+          "type": "boolean"
+        },
+        "has_fetch_orderbook_history": {
+          "type": "boolean"
+        },
+        "has_fetch_positions": {
+          "type": "boolean"
+        },
+        "has_fetch_price_history": {
+          "type": "boolean"
+        },
+        "has_fetch_trades": {
+          "type": "boolean"
+        },
+        "has_fetch_user_activity": {
+          "type": "boolean"
+        },
+        "has_refresh_balance": {
+          "type": "boolean"
+        },
+        "has_websocket": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "has_approvals",
+        "has_cancel_order",
+        "has_create_order",
+        "has_fetch_balance",
+        "has_fetch_events",
+        "has_fetch_fills",
+        "has_fetch_markets",
+        "has_fetch_orderbook",
+        "has_fetch_orderbook_history",
+        "has_fetch_positions",
+        "has_fetch_price_history",
+        "has_fetch_trades",
+        "has_fetch_user_activity",
+        "has_refresh_balance",
+        "has_websocket",
+        "id",
+        "name"
+      ],
+      "title": "ExchangeInfo",
+      "type": "object"
+    },
+    "FetchMarketsParams": {
+      "properties": {
+        "cursor": {
+          "default": null,
+          "description": "Exchange-specific cursor (offset, page number, or cursor string)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "FetchMarketsParams",
+      "type": "object"
+    },
+    "FetchOrdersParams": {
+      "properties": {
+        "market_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "FetchOrdersParams",
+      "type": "object"
+    },
+    "FetchUserActivityParams": {
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "address"
+      ],
+      "title": "FetchUserActivityParams",
+      "type": "object"
+    },
+    "Fill": {
+      "description": "A single fill (trade execution) from a user's order.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "fee": {
+          "format": "double",
+          "type": "number"
+        },
+        "fill_id": {
+          "type": "string"
+        },
+        "is_taker": {
+          "type": "boolean"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "order_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "$ref": "#/definitions/OrderSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "created_at",
+        "fee",
+        "fill_id",
+        "is_taker",
+        "market_id",
+        "order_id",
+        "outcome",
+        "price",
+        "side",
+        "size"
+      ],
+      "title": "Fill",
+      "type": "object"
+    },
+    "LiquidityRole": {
+      "enum": [
+        "maker",
+        "taker"
+      ],
+      "type": "string"
+    },
+    "Market": {
+      "description": "A prediction market.\n\n# Price Format\n\nAll prices in the `prices` field are normalized to decimal format (0.0 to 1.0). Exchange-specific conversions are handled during parsing:\n\n- **Kalshi**: Native prices in cents (1-99), converted to decimal by dividing by 100. - **Polymarket, Limitless, Opinion, PredictFun**: Native prices already in decimal (0.0-1.0).",
+      "properties": {
+        "close_time": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "liquidity": {
+          "format": "double",
+          "type": "number"
+        },
+        "metadata": {
+          "default": null
+        },
+        "outcomes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prices": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": "Outcome prices normalized to decimal format (0.0 to 1.0).",
+          "type": "object"
+        },
+        "question": {
+          "type": "string"
+        },
+        "tick_size": {
+          "format": "double",
+          "type": "number"
+        },
+        "volume": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "liquidity",
+        "outcomes",
+        "prices",
+        "question",
+        "tick_size",
+        "volume"
+      ],
+      "title": "Market",
+      "type": "object"
+    },
+    "MarketStatus": {
+      "description": "Normalized market status across all exchanges.",
+      "enum": [
+        "active",
+        "closed",
+        "resolved"
+      ],
+      "title": "MarketStatus",
+      "type": "string"
+    },
+    "MarketTrade": {
+      "description": "Normalized public market trade, suitable for \"tape\" UIs.\n\n- `price` is normalized to [0.0, 1.0] across all exchanges. - `timestamp` is the exchange-provided trade timestamp (UTC).",
+      "properties": {
+        "aggressor_side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "no_price": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "source_channel": {
+          "type": "string"
+        },
+        "taker_address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "tx_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yes_price": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "price",
+        "size",
+        "source_channel",
+        "timestamp"
+      ],
+      "title": "MarketTrade",
+      "type": "object"
+    },
+    "Nav": {
+      "properties": {
+        "cash": {
+          "format": "double",
+          "type": "number"
+        },
+        "nav": {
+          "format": "double",
+          "type": "number"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/definitions/PositionBreakdown"
+          },
+          "type": "array"
+        },
+        "positions_value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cash",
+        "nav",
+        "positions",
+        "positions_value"
+      ],
+      "title": "Nav",
+      "type": "object"
+    },
+    "Order": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "filled": {
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "$ref": "#/definitions/OrderSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/definitions/OrderStatus"
+        },
+        "updated_at": {
+          "default": null,
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "created_at",
+        "filled",
+        "id",
+        "market_id",
+        "outcome",
+        "price",
+        "side",
+        "size",
+        "status"
+      ],
+      "title": "Order",
+      "type": "object"
+    },
+    "OrderSide": {
+      "enum": [
+        "buy",
+        "sell"
+      ],
+      "type": "string"
+    },
+    "OrderStatus": {
+      "enum": [
+        "pending",
+        "open",
+        "filled",
+        "partially_filled",
+        "cancelled",
+        "rejected"
+      ],
+      "title": "OrderStatus",
+      "type": "string"
+    },
+    "OrderType": {
+      "description": "Order time-in-force / execution type.\n\nNormalized across all exchanges: - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest. - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.",
+      "enum": [
+        "gtc",
+        "ioc",
+        "fok"
+      ],
+      "title": "OrderType",
+      "type": "string"
+    },
+    "Orderbook": {
+      "properties": {
+        "asks": {
+          "items": {
+            "$ref": "#/definitions/PriceLevel"
+          },
+          "type": "array"
+        },
+        "asset_id": {
+          "type": "string"
+        },
+        "bids": {
+          "items": {
+            "$ref": "#/definitions/PriceLevel"
+          },
+          "type": "array"
+        },
+        "last_update_id": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "asks",
+        "asset_id",
+        "bids",
+        "market_id"
+      ],
+      "title": "Orderbook",
+      "type": "object"
+    },
+    "OrderbookHistoryRequest": {
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_ts": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "start_ts": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "market_id"
+      ],
+      "title": "OrderbookHistoryRequest",
+      "type": "object"
+    },
+    "OrderbookRequest": {
+      "description": "Request for fetching an L2 orderbook.",
+      "properties": {
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "market_id"
+      ],
+      "title": "OrderbookRequest",
+      "type": "object"
+    },
+    "OrderbookSnapshot": {
+      "description": "A point-in-time L2 orderbook snapshot, used for historical orderbook data.",
+      "properties": {
+        "asks": {
+          "items": {
+            "$ref": "#/definitions/PriceLevel"
+          },
+          "type": "array"
+        },
+        "bids": {
+          "items": {
+            "$ref": "#/definitions/PriceLevel"
+          },
+          "type": "array"
+        },
+        "hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asks",
+        "bids",
+        "timestamp"
+      ],
+      "title": "OrderbookSnapshot",
+      "type": "object"
+    },
+    "OutcomeToken": {
+      "properties": {
+        "outcome": {
+          "type": "string"
+        },
+        "token_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "token_id"
+      ],
+      "title": "OutcomeToken",
+      "type": "object"
+    },
+    "Position": {
+      "properties": {
+        "average_price": {
+          "format": "double",
+          "type": "number"
+        },
+        "current_price": {
+          "format": "double",
+          "type": "number"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "average_price",
+        "current_price",
+        "market_id",
+        "outcome",
+        "size"
+      ],
+      "title": "Position",
+      "type": "object"
+    },
+    "PositionBreakdown": {
+      "properties": {
+        "current_price": {
+          "format": "double",
+          "type": "number"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "current_price",
+        "outcome",
+        "size",
+        "value"
+      ],
+      "title": "PositionBreakdown",
+      "type": "object"
+    },
+    "PriceHistoryInterval": {
+      "enum": [
+        "1m",
+        "1h",
+        "6h",
+        "1d",
+        "1w",
+        "max"
+      ],
+      "type": "string"
+    },
+    "PriceHistoryRequest": {
+      "description": "Request for fetching price history / candlestick data.",
+      "properties": {
+        "condition_id": {
+          "description": "Condition ID for OI enrichment (Polymarket).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_ts": {
+          "description": "Unix seconds",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "interval": {
+          "$ref": "#/definitions/PriceHistoryInterval"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_ts": {
+          "description": "Unix seconds",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "interval",
+        "market_id"
+      ],
+      "title": "PriceHistoryRequest",
+      "type": "object"
+    },
+    "PriceLevel": {
+      "properties": {
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "price",
+        "size"
+      ],
+      "title": "PriceLevel",
+      "type": "object"
+    },
+    "PriceLevelChange": {
+      "description": "A single price level change. Absolute replacement semantics: size > 0 = set level to this size, size == 0 = remove level.",
+      "properties": {
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "$ref": "#/definitions/PriceLevelSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "price",
+        "side",
+        "size"
+      ],
+      "title": "PriceLevelChange",
+      "type": "object"
+    },
+    "PriceLevelSide": {
+      "description": "Bid or ask side. Serializes as \"bid\"/\"ask\" on the wire.",
+      "enum": [
+        "bid",
+        "ask"
+      ],
+      "title": "PriceLevelSide",
+      "type": "string"
+    },
+    "TradesRequest": {
+      "description": "Request for fetching recent public trades (\"tape\") for a market outcome.",
+      "properties": {
+        "cursor": {
+          "description": "Opaque pagination cursor from a previous response.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_ts": {
+          "description": "Unix seconds (inclusive)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Max number of trades to return (exchange-specific caps may apply).",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_id": {
+          "description": "Exchange-native market identifier (as used by `UnifiedMarket.id` / `openpx_id`).",
+          "type": "string"
+        },
+        "market_ref": {
+          "description": "Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_ts": {
+          "description": "Unix seconds (inclusive)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "market_id"
+      ],
+      "title": "TradesRequest",
+      "type": "object"
+    },
+    "UnifiedMarket": {
+      "description": "Unified market model for the Data Product API. Follows strict normalization with explicit nullable fields.",
+      "properties": {
+        "best_ask": {
+          "description": "Best ask price (normalized 0-1)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "best_bid": {
+          "description": "Best bid price (normalized 0-1)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "close_time": {
+          "description": "Market close time",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "condition_id": {
+          "description": "Condition ID for CTF (nullable)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "Full description/rules",
+          "type": "string"
+        },
+        "event_id": {
+          "description": "Canonical OpenPX event ID used for cross-exchange event grouping. SDK users should prefer this over exchange-specific `group_id`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exchange": {
+          "description": "Exchange identifier (kalshi, polymarket, etc.)",
+          "type": "string"
+        },
+        "group_id": {
+          "description": "Source-native event/group ID from the exchange. Keep this raw so advanced users can reason about exchange internals.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon_url": {
+          "description": "Market icon URL",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Native exchange market ID",
+          "type": "string"
+        },
+        "image_url": {
+          "description": "Market image URL",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_trade_price": {
+          "description": "Last trade price (normalized 0-1)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "liquidity": {
+          "description": "Current liquidity (nullable)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_type": {
+          "description": "Market type (binary, categorical, etc.)",
+          "type": "string"
+        },
+        "min_order_size": {
+          "description": "Minimum order size (contracts). Exchange-specific: Polymarket varies per market (e.g. 5, 15); Kalshi defaults to 1.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open_interest": {
+          "description": "Current open interest (contracts/pairs)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open_time": {
+          "description": "Market open time",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "openpx_id": {
+          "description": "Primary key: {exchange}:{native_id}",
+          "type": "string"
+        },
+        "outcome_prices": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": "Outcome prices from the REST API (e.g., {\"Yes\": 0.65, \"No\": 0.35})",
+          "type": "object"
+        },
+        "outcome_tokens": {
+          "default": [],
+          "description": "Outcome-to-token mapping for orderbook subscriptions",
+          "items": {
+            "$ref": "#/definitions/OutcomeToken"
+          },
+          "type": "array"
+        },
+        "outcomes": {
+          "default": [],
+          "description": "Outcome labels (e.g., [\"Yes\", \"No\"] for binary markets)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "price_change_1d": {
+          "description": "24-hour YES price change (decimal, e.g. 0.05 = +5%)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "price_change_1h": {
+          "description": "1-hour YES price change (decimal, e.g. -0.02 = -2%)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "price_change_1mo": {
+          "description": "30-day YES price change (decimal)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "price_change_1wk": {
+          "description": "7-day YES price change (decimal)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "question": {
+          "description": "Market question (nullable, may differ from title)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slug": {
+          "description": "URL-friendly identifier (nullable)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spread": {
+          "description": "Bid-ask spread (decimal)",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/MarketStatus"
+            }
+          ],
+          "description": "Normalized status: Active, Closed, Resolved"
+        },
+        "tick_size": {
+          "description": "Tick size (minimum price increment). Normalized to decimal (e.g. 0.01 = 1 cent).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "Market title",
+          "type": "string"
+        },
+        "token_id_no": {
+          "description": "No outcome token ID (nullable)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_id_yes": {
+          "description": "Yes outcome token ID (nullable)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volume": {
+          "description": "Total volume (integer, coerced from f64/string)",
+          "format": "int64",
+          "type": "integer"
+        },
+        "volume_1mo": {
+          "description": "30-day rolling trading volume (USDC)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "volume_1wk": {
+          "description": "7-day rolling trading volume (USDC)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "volume_24h": {
+          "description": "24-hour trading volume (USDC)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "description",
+        "exchange",
+        "id",
+        "market_type",
+        "openpx_id",
+        "status",
+        "title",
+        "volume"
+      ],
+      "title": "UnifiedMarket",
+      "type": "object"
+    }
+  },
+  "description": "Auto-generated JSON Schema for OpenPX core types",
+  "title": "OpenPX"
+}

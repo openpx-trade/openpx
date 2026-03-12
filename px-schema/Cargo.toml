@@ -1,0 +1,12 @@
+[package]
+name = "px-schema"
+description = "JSON Schema exporter for OpenPX core types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+px-core = { workspace = true, features = ["schema"] }
+schemars = { version = "0.8", features = ["chrono", "smallvec"] }
+serde_json = { workspace = true }

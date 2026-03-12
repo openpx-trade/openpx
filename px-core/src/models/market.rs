@@ -12,6 +12,7 @@ use std::collections::HashMap;
 /// - **Kalshi**: Native prices in cents (1-99), converted to decimal by dividing by 100.
 /// - **Polymarket, Limitless, Opinion, PredictFun**: Native prices already in decimal (0.0-1.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Market {
     pub id: String,
     pub question: String,
@@ -87,6 +88,7 @@ impl Market {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OutcomeToken {
     pub outcome: String,
     pub token_id: String,
@@ -94,6 +96,7 @@ pub struct OutcomeToken {
 
 /// Normalized market status across all exchanges.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum MarketStatus {
     Active,
@@ -127,6 +130,7 @@ impl std::str::FromStr for MarketStatus {
 /// Unified market model for the Data Product API.
 /// Follows strict normalization with explicit nullable fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct UnifiedMarket {
     /// Primary key: {exchange}:{native_id}
     pub openpx_id: String,

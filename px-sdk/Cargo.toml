@@ -1,0 +1,19 @@
+[package]
+name = "px-sdk"
+description = "Unified SDK facade for all OpenPX exchanges"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+px-core = { workspace = true }
+px-exchange-kalshi = { workspace = true }
+px-exchange-polymarket = { workspace = true }
+px-exchange-opinion = { workspace = true }
+px-exchange-limitless = { workspace = true }
+px-exchange-predictfun = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

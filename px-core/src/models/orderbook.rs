@@ -17,6 +17,7 @@ pub const PRICE_EPSILON: f64 = 1e-9;
 
 /// Bid or ask side. Serializes as "bid"/"ask" on the wire.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum PriceLevelSide {
     Bid,
@@ -26,6 +27,7 @@ pub enum PriceLevelSide {
 /// A single price level change. Absolute replacement semantics:
 /// size > 0 = set level to this size, size == 0 = remove level.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevelChange {
     pub side: PriceLevelSide,
     pub price: f64,
@@ -50,6 +52,7 @@ pub enum OrderbookUpdate {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevel {
     pub price: f64,
     pub size: f64,
@@ -62,6 +65,7 @@ impl PriceLevel {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Orderbook {
     pub market_id: String,
     pub asset_id: String,
@@ -153,6 +157,7 @@ impl Orderbook {
 
 /// A point-in-time L2 orderbook snapshot, used for historical orderbook data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookSnapshot {
     pub timestamp: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

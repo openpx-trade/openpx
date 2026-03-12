@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -440,7 +441,8 @@ pub trait Exchange: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExchangeInfo {
     pub id: &'static str,
     pub name: &'static str,
@@ -615,7 +617,8 @@ mod tests {
 }
 
 /// Request for fetching an L2 orderbook.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookRequest {
     pub market_id: String,
     pub outcome: Option<String>,
@@ -623,7 +626,8 @@ pub struct OrderbookRequest {
 }
 
 /// Request for fetching price history / candlestick data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceHistoryRequest {
     pub market_id: String,
     pub outcome: Option<String>,
@@ -638,7 +642,8 @@ pub struct PriceHistoryRequest {
 }
 
 /// Request for fetching recent public trades ("tape") for a market outcome.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TradesRequest {
     /// Exchange-native market identifier (as used by `UnifiedMarket.id` / `openpx_id`).
     pub market_id: String,
@@ -657,7 +662,8 @@ pub struct TradesRequest {
     pub cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookHistoryRequest {
     pub market_id: String,
     pub token_id: Option<String>,

@@ -29,6 +29,8 @@ output/
 !px-mcp/tsconfig.json
 !px-mcp/src/endpoint-manifest.json
 !px-mcp/src/ws-protocol-manifest.json
+!schema/openpx.schema.json
+!px-node/package.json
 
 # Python
 __pycache__
@@ -47,4 +49,3 @@ openapi-ts-error-*.log
 
 # Misc
 Plans
-px-documentation/*

@@ -1,0 +1,19 @@
+{
+  "name": "@openpx/sdk",
+  "version": "0.1.4",
+  "description": "Node.js SDK for OpenPX prediction markets",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "napi build --release",
+    "build:debug": "napi build"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "napi": {
+    "name": "openpx",
+    "triples": {}
+  }
+}

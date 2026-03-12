@@ -1,0 +1,461 @@
+# Rust API Reference
+
+All Rust types auto-generated from `schema/openpx.schema.json`.
+
+## Market Data
+
+### Market
+
+```rust
+pub struct Market {
+    pub close_time: Option<DateTime<Utc>>,
+    pub description: Option<String>,
+    pub id: String,
+    pub liquidity: f64,
+    pub metadata: Option<serde_json::Value>,
+    pub outcomes: Vec<String>,
+    pub prices: HashMap<String, f64>,
+    pub question: String,
+    pub tick_size: f64,
+    pub volume: f64,
+}
+```
+
+### MarketStatus
+
+```rust
+pub enum MarketStatus {
+    Active,
+    Closed,
+    Resolved,
+}
+```
+
+### OutcomeToken
+
+```rust
+pub struct OutcomeToken {
+    pub outcome: String,
+    pub token_id: String,
+}
+```
+
+### UnifiedMarket
+
+```rust
+pub struct UnifiedMarket {
+    pub best_ask: Option<f64>,
+    pub best_bid: Option<f64>,
+    pub close_time: Option<DateTime<Utc>>,
+    pub condition_id: Option<String>,
+    pub description: String,
+    pub event_id: Option<String>,
+    pub exchange: String,
+    pub group_id: Option<String>,
+    pub icon_url: Option<String>,
+    pub id: String,
+    pub image_url: Option<String>,
+    pub last_trade_price: Option<f64>,
+    pub liquidity: Option<i64>,
+    pub market_type: String,
+    pub min_order_size: Option<f64>,
+    pub open_interest: Option<f64>,
+    pub open_time: Option<DateTime<Utc>>,
+    pub openpx_id: String,
+    pub outcome_prices: Option<HashMap<String, f64>>,
+    pub outcome_tokens: Option<Vec<OutcomeToken>>,
+    pub outcomes: Option<Vec<String>>,
+    pub price_change_1d: Option<f64>,
+    pub price_change_1h: Option<f64>,
+    pub price_change_1mo: Option<f64>,
+    pub price_change_1wk: Option<f64>,
+    pub question: Option<String>,
+    pub slug: Option<String>,
+    pub spread: Option<f64>,
+    pub status: serde_json::Value,
+    pub tick_size: Option<f64>,
+    pub title: String,
+    pub token_id_no: Option<String>,
+    pub token_id_yes: Option<String>,
+    pub volume: i64,
+    pub volume_1mo: Option<i64>,
+    pub volume_1wk: Option<i64>,
+    pub volume_24h: Option<i64>,
+}
+```
+
+## Orders & Trading
+
+### Fill
+
+```rust
+pub struct Fill {
+    pub created_at: DateTime<Utc>,
+    pub fee: f64,
+    pub fill_id: String,
+    pub is_taker: bool,
+    pub market_id: String,
+    pub order_id: String,
+    pub outcome: String,
+    pub price: f64,
+    pub side: OrderSide,
+    pub size: f64,
+}
+```
+
+### LiquidityRole
+
+```rust
+pub enum LiquidityRole {
+    Maker,
+    Taker,
+}
+```
+
+### Order
+
+```rust
+pub struct Order {
+    pub created_at: DateTime<Utc>,
+    pub filled: f64,
+    pub id: String,
+    pub market_id: String,
+    pub outcome: String,
+    pub price: f64,
+    pub side: OrderSide,
+    pub size: f64,
+    pub status: OrderStatus,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+```
+
+### OrderSide
+
+```rust
+pub enum OrderSide {
+    Buy,
+    Sell,
+}
+```
+
+### OrderStatus
+
+```rust
+pub enum OrderStatus {
+    Pending,
+    Open,
+    Filled,
+    PartiallyFilled,
+    Cancelled,
+    Rejected,
+}
+```
+
+### OrderType
+
+```rust
+pub enum OrderType {
+    Gtc,
+    Ioc,
+    Fok,
+}
+```
+
+## Account & Positions
+
+### DeltaInfo
+
+```rust
+pub struct DeltaInfo {
+    pub delta: f64,
+    pub max_outcome: Option<String>,
+    pub max_position: f64,
+}
+```
+
+### Nav
+
+```rust
+pub struct Nav {
+    pub cash: f64,
+    pub nav: f64,
+    pub positions: Vec<PositionBreakdown>,
+    pub positions_value: f64,
+}
+```
+
+### Position
+
+```rust
+pub struct Position {
+    pub average_price: f64,
+    pub current_price: f64,
+    pub market_id: String,
+    pub outcome: String,
+    pub size: f64,
+}
+```
+
+### PositionBreakdown
+
+```rust
+pub struct PositionBreakdown {
+    pub current_price: f64,
+    pub outcome: String,
+    pub size: f64,
+    pub value: f64,
+}
+```
+
+## Orderbook
+
+### Orderbook
+
+```rust
+pub struct Orderbook {
+    pub asks: Vec<PriceLevel>,
+    pub asset_id: String,
+    pub bids: Vec<PriceLevel>,
+    pub last_update_id: Option<u64>,
+    pub market_id: String,
+    pub timestamp: Option<DateTime<Utc>>,
+}
+```
+
+### OrderbookSnapshot
+
+```rust
+pub struct OrderbookSnapshot {
+    pub asks: Vec<PriceLevel>,
+    pub bids: Vec<PriceLevel>,
+    pub hash: Option<String>,
+    pub recorded_at: Option<DateTime<Utc>>,
+    pub timestamp: DateTime<Utc>,
+}
+```
+
+### PriceLevel
+
+```rust
+pub struct PriceLevel {
+    pub price: f64,
+    pub size: f64,
+}
+```
+
+### PriceLevelChange
+
+```rust
+pub struct PriceLevelChange {
+    pub price: f64,
+    pub side: PriceLevelSide,
+    pub size: f64,
+}
+```
+
+### PriceLevelSide
+
+```rust
+pub enum PriceLevelSide {
+    Bid,
+    Ask,
+}
+```
+
+## Trades & History
+
+### Candlestick
+
+```rust
+pub struct Candlestick {
+    pub close: f64,
+    pub high: f64,
+    pub low: f64,
+    pub open: f64,
+    pub open_interest: Option<f64>,
+    pub timestamp: DateTime<Utc>,
+    pub volume: f64,
+}
+```
+
+### MarketTrade
+
+```rust
+pub struct MarketTrade {
+    pub aggressor_side: Option<String>,
+    pub id: Option<String>,
+    pub no_price: Option<f64>,
+    pub outcome: Option<String>,
+    pub price: f64,
+    pub side: Option<String>,
+    pub size: f64,
+    pub source_channel: String,
+    pub taker_address: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub tx_hash: Option<String>,
+    pub yes_price: Option<f64>,
+}
+```
+
+### PriceHistoryInterval
+
+```rust
+pub enum PriceHistoryInterval {
+    1m,
+    1h,
+    6h,
+    1d,
+    1w,
+    Max,
+}
+```
+
+## WebSocket & Streaming
+
+### ActivityEvent
+
+```rust
+pub enum ActivityEvent {
+    Trade,
+    Fill,
+}
+```
+
+### ActivityFill
+
+```rust
+pub struct ActivityFill {
+    pub asset_id: String,
+    pub fill_id: Option<String>,
+    pub liquidity_role: Option<LiquidityRole>,
+    pub market_id: String,
+    pub order_id: Option<String>,
+    pub outcome: Option<String>,
+    pub price: f64,
+    pub side: Option<String>,
+    pub size: f64,
+    pub source_channel: String,
+    pub timestamp: Option<DateTime<Utc>>,
+}
+```
+
+### ActivityTrade
+
+```rust
+pub struct ActivityTrade {
+    pub aggressor_side: Option<String>,
+    pub asset_id: String,
+    pub market_id: String,
+    pub outcome: Option<String>,
+    pub price: f64,
+    pub side: Option<String>,
+    pub size: f64,
+    pub source_channel: String,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub trade_id: Option<String>,
+}
+```
+
+## Configuration & Requests
+
+### ExchangeInfo
+
+```rust
+pub struct ExchangeInfo {
+    pub has_approvals: bool,
+    pub has_cancel_order: bool,
+    pub has_create_order: bool,
+    pub has_fetch_balance: bool,
+    pub has_fetch_events: bool,
+    pub has_fetch_fills: bool,
+    pub has_fetch_markets: bool,
+    pub has_fetch_orderbook: bool,
+    pub has_fetch_orderbook_history: bool,
+    pub has_fetch_positions: bool,
+    pub has_fetch_price_history: bool,
+    pub has_fetch_trades: bool,
+    pub has_fetch_user_activity: bool,
+    pub has_refresh_balance: bool,
+    pub has_websocket: bool,
+    pub id: String,
+    pub name: String,
+}
+```
+
+### FetchMarketsParams
+
+```rust
+pub struct FetchMarketsParams {
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+}
+```
+
+### FetchOrdersParams
+
+```rust
+pub struct FetchOrdersParams {
+    pub market_id: Option<String>,
+}
+```
+
+### FetchUserActivityParams
+
+```rust
+pub struct FetchUserActivityParams {
+    pub address: String,
+    pub limit: Option<i64>,
+}
+```
+
+### OrderbookHistoryRequest
+
+```rust
+pub struct OrderbookHistoryRequest {
+    pub cursor: Option<String>,
+    pub end_ts: Option<i64>,
+    pub limit: Option<i64>,
+    pub market_id: String,
+    pub start_ts: Option<i64>,
+    pub token_id: Option<String>,
+}
+```
+
+### OrderbookRequest
+
+```rust
+pub struct OrderbookRequest {
+    pub market_id: String,
+    pub outcome: Option<String>,
+    pub token_id: Option<String>,
+}
+```
+
+### PriceHistoryRequest
+
+```rust
+pub struct PriceHistoryRequest {
+    pub condition_id: Option<String>,
+    pub end_ts: Option<i64>,
+    pub interval: PriceHistoryInterval,
+    pub market_id: String,
+    pub outcome: Option<String>,
+    pub start_ts: Option<i64>,
+    pub token_id: Option<String>,
+}
+```
+
+### TradesRequest
+
+```rust
+pub struct TradesRequest {
+    pub cursor: Option<String>,
+    pub end_ts: Option<i64>,
+    pub limit: Option<i64>,
+    pub market_id: String,
+    pub market_ref: Option<String>,
+    pub outcome: Option<String>,
+    pub start_ts: Option<i64>,
+    pub token_id: Option<String>,
+}
+```
