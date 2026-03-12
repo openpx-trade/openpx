@@ -1,6 +1,27 @@
+<div align="center">
+
 # OpenPX
 
-A unified, open-source Rust SDK for prediction markets. Trade across multiple prediction market exchanges through a single, consistent interface.
+**A unified, open-source Rust SDK for prediction markets.**
+Trade across multiple prediction market exchanges through a single, consistent interface.
+
+[![CI](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/px-core.svg)](https://crates.io/crates/px-core)
+[![Downloads](https://img.shields.io/crates/d/px-core.svg)](https://crates.io/crates/px-core)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Stars](https://img.shields.io/github/stars/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/network/members)
+[![GitHub Watchers](https://img.shields.io/github/watchers/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/watchers)
+
+[![GitHub Issues](https://img.shields.io/github/issues/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/pulls)
+[![GitHub Last Commit](https://img.shields.io/github/last-commit/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/commits/main)
+[![GitHub Contributors](https://img.shields.io/github/contributors/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/graphs/contributors)
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
+
+</div>
+
+---
 
 ## Supported Exchanges
 
@@ -116,6 +137,31 @@ cargo clippy --workspace -- -D warnings
 # Format
 cargo fmt --all
 ```
+
+## Star History
+
+<a href="https://star-history.com/#openpx-ai/openpx&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=openpx-ai/openpx&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=openpx-ai/openpx&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=openpx-ai/openpx&type=Date" />
+ </picture>
+</a>
+
+## Contributors
+
+<a href="https://github.com/openpx-ai/openpx/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=openpx-ai/openpx" />
+</a>
+
+## Community
+
+- [GitHub Issues](https://github.com/openpx-ai/openpx/issues) — Bug reports & feature requests
+- [GitHub Discussions](https://github.com/openpx-ai/openpx/discussions) — Questions & general chat
+- [Contributing Guide](CONTRIBUTING.md) — How to contribute
+- [Code of Conduct](CODE_OF_CONDUCT.md) — Community standards
+- [Security Policy](SECURITY.md) — Reporting vulnerabilities
+- [Changelog](CHANGELOG.md) — Release history
 
 ## License
 
