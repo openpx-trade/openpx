@@ -2,7 +2,7 @@
 // OpenPX Trading Terminal — app.js
 // ============================================================================
 
-const CHART_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a78bfa', '#eab308', '#06b6d4', '#ef4444', '#e91e63'];
+const CHART_COLORS = ['#00ff00', '#6699ff', '#ffcc00', '#ff3333', '#00cccc', '#ff66ff', '#ff9933', '#99ff33'];
 
 // ---------------------------------------------------------------------------
 // State
@@ -303,7 +303,7 @@ async function renderSingleMarketChart(market, marketId) {
     const outcomes = market.outcomes || ['Yes', 'No'];
     for (let i = 0; i < outcomes.length; i++) {
         const outcome = outcomes[i];
-        const color = i === 0 ? '#3b82f6' : '#f97316';
+        const color = i === 0 ? '#00ff00' : '#ff3333';
         const series = state.chart.addLineSeries({ color, lineWidth: 2, priceFormat: { type: 'custom', formatter: p => (p * 100).toFixed(1) + '%' } });
         state.lineSeries.push({ series, outcome, color });
 
@@ -342,10 +342,10 @@ function chartOptions(container) {
     return {
         width: container.clientWidth,
         height: 400,
-        layout: { background: { type: 'solid', color: '#09090b' }, textColor: '#a1a1aa' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
-        timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: true },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
+        layout: { background: { type: 'solid', color: '#000000' }, textColor: '#666666', fontFamily: 'Menlo, SF Mono, Monaco, Consolas, monospace', fontSize: 10 },
+        grid: { vertLines: { color: '#1a1a1a' }, horzLines: { color: '#1a1a1a' } },
+        timeScale: { borderColor: '#333333', timeVisible: true },
+        rightPriceScale: { borderColor: '#333333' },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     };
 }
@@ -877,17 +877,17 @@ function renderPnLChart() {
     state.pnlChart = LightweightCharts.createChart(container, {
         width: container.clientWidth,
         height: 200,
-        layout: { background: { type: 'solid', color: '#09090b' }, textColor: '#a1a1aa' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
-        timeScale: { borderColor: 'rgba(255,255,255,0.08)' },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
+        layout: { background: { type: 'solid', color: '#000000' }, textColor: '#666666', fontFamily: 'Menlo, SF Mono, Monaco, Consolas, monospace', fontSize: 10 },
+        grid: { vertLines: { color: '#1a1a1a' }, horzLines: { color: '#1a1a1a' } },
+        timeScale: { borderColor: '#333333' },
+        rightPriceScale: { borderColor: '#333333' },
     });
 
     const series = state.pnlChart.addAreaSeries({
-        topColor: 'rgba(59, 130, 246, 0.4)',
-        bottomColor: 'rgba(59, 130, 246, 0.0)',
-        lineColor: '#3b82f6',
-        lineWidth: 2,
+        topColor: 'rgba(0, 255, 0, 0.15)',
+        bottomColor: 'rgba(0, 255, 0, 0.0)',
+        lineColor: '#00ff00',
+        lineWidth: 1,
     });
 
     // Placeholder data — in production this would come from fill history aggregation
