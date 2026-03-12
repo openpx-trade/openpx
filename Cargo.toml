@@ -11,6 +11,7 @@ members = [
     "engine/sdk",
     "sdks/python",
     "sdks/typescript",
+    "dashboard",
 ]
 
 [workspace.package]

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenPX Terminal</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-brand">
+            <span class="brand-icon">&#9670;</span>
+            <span>OpenPX</span>
+        </div>
+        <div class="nav-links">
+            <a href="#" data-page="terminal" class="nav-link active">Terminal</a>
+            <a href="#" data-page="portfolio" class="nav-link">Portfolio</a>
+        </div>
+    </nav>
+
+    <!-- Terminal Page -->
+    <div id="page-terminal" class="page active">
+        <div class="terminal-search-container">
+            <div class="search-box">
+                <select id="exchange-select">
+                    <option value="">Select Exchange</option>
+                </select>
+                <input type="text" id="market-input" placeholder="Enter market ID or event/group ID" />
+                <div class="search-type-toggle">
+                    <button id="type-market" class="type-btn active">Market</button>
+                    <button id="type-event" class="type-btn">Event</button>
+                </div>
+                <button id="load-btn" class="btn-primary">Load</button>
+            </div>
+        </div>
+
+        <div id="terminal-content" class="hidden">
+            <!-- Event / Market Header -->
+            <div id="market-header" class="market-header">
+                <div class="market-header-left">
+                    <img id="market-image" class="market-image" src="" alt="" />
+                    <div>
+                        <h1 id="market-title" class="market-title"></h1>
+                        <div id="market-meta" class="market-meta"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-layout">
+                <!-- Left: Chart + Market rows + Orderbook -->
+                <div class="terminal-main">
+                    <!-- Outcome legend -->
+                    <div id="chart-legend" class="chart-legend"></div>
+
+                    <!-- Chart -->
+                    <div id="chart-container" class="chart-container"></div>
+
+                    <!-- Chart controls -->
+                    <div class="chart-controls">
+                        <div id="chart-info" class="chart-info"></div>
+                        <div class="time-range-buttons">
+                            <button data-range="1h" class="range-btn">1H</button>
+                            <button data-range="6h" class="range-btn">6H</button>
+                            <button data-range="1d" class="range-btn">1D</button>
+                            <button data-range="1w" class="range-btn">1W</button>
+                            <button data-range="1m" class="range-btn">1M</button>
+                            <button data-range="max" class="range-btn active">ALL</button>
+                        </div>
+                    </div>
+
+                    <!-- Market rows (for events with multiple markets) -->
+                    <div id="market-rows" class="market-rows"></div>
+
+                    <!-- Orderbook / Trades tabs -->
+                    <div class="bottom-panel">
+                        <div class="bottom-tabs">
+                            <button data-tab="orderbook" class="tab-btn active">Order Book</button>
+                            <button data-tab="trades" class="tab-btn">Recent Trades</button>
+                            <button data-tab="open-orders" class="tab-btn">Open Orders</button>
+                        </div>
+                        <div id="tab-orderbook" class="tab-content active">
+                            <div id="orderbook-content" class="orderbook-content">
+                                <p class="text-muted">Load a market to see the order book</p>
+                            </div>
+                        </div>
+                        <div id="tab-trades" class="tab-content">
+                            <div id="trades-content" class="trades-content">
+                                <p class="text-muted">Load a market to see recent trades</p>
+                            </div>
+                        </div>
+                        <div id="tab-open-orders" class="tab-content">
+                            <div id="open-orders-content" class="open-orders-content">
+                                <p class="text-muted">Load a market to see open orders</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Order Panel -->
+                <div class="terminal-sidebar">
+                    <div id="order-panel" class="order-panel">
+                        <div class="order-panel-header">
+                            <img id="order-market-image" class="order-market-image" src="" alt="" />
+                            <div>
+                                <div id="order-market-name" class="order-market-name">Select a market</div>
+                            </div>
+                        </div>
+
+                        <div class="order-side-tabs">
+                            <button id="side-buy" class="side-tab active">Buy</button>
+                            <button id="side-sell" class="side-tab">Sell</button>
+                            <select id="order-type-select" class="order-type-select">
+                                <option value="limit">Limit</option>
+                                <option value="market">Market</option>
+                            </select>
+                        </div>
+
+                        <div class="outcome-buttons">
+                            <button id="outcome-yes" class="outcome-btn yes active">
+                                Yes <span id="yes-price">--</span>
+                            </button>
+                            <button id="outcome-no" class="outcome-btn no">
+                                No <span id="no-price">--</span>
+                            </button>
+                        </div>
+
+                        <div class="order-amount-section">
+                            <div class="amount-label">
+                                <span>Amount</span>
+                                <span id="balance-display" class="balance-display">Balance --</span>
+                            </div>
+                            <div class="amount-input-wrapper">
+                                <span class="dollar-sign">$</span>
+                                <input type="number" id="amount-input" class="amount-input" value="0" min="0" step="0.01" />
+                            </div>
+                            <div class="quick-amounts">
+                                <button class="quick-btn" data-amount="1">+$1</button>
+                                <button class="quick-btn" data-amount="5">+$5</button>
+                                <button class="quick-btn" data-amount="10">+$10</button>
+                                <button class="quick-btn" data-amount="100">+$100</button>
+                                <button class="quick-btn" data-amount="max">Max</button>
+                            </div>
+                        </div>
+
+                        <div id="limit-price-section" class="limit-price-section">
+                            <div class="amount-label">
+                                <span>Limit Price</span>
+                            </div>
+                            <div class="amount-input-wrapper">
+                                <input type="number" id="limit-price-input" class="amount-input" value="0.50" min="0.01" max="0.99" step="0.01" />
+                            </div>
+                        </div>
+
+                        <div class="order-summary">
+                            <div class="summary-row">
+                                <span>Shares</span>
+                                <span id="shares-display">0</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Avg Price</span>
+                                <span id="avg-price-display">--</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Potential Return</span>
+                                <span id="return-display" class="text-green">$0.00</span>
+                            </div>
+                        </div>
+
+                        <button id="submit-order" class="btn-submit">Place Order</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Portfolio Page -->
+    <div id="page-portfolio" class="page">
+        <!-- Exchange Management -->
+        <section class="section">
+            <h2 class="section-title">Connected Exchanges</h2>
+            <div id="exchange-cards" class="exchange-cards"></div>
+
+            <p class="text-muted" style="margin-top: 12px;">Exchanges are loaded from your <code>.env</code> file. Restart the server to pick up changes.</p>
+        </section>
+
+        <!-- PnL Chart -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Profit / Loss</h2>
+                <div class="pnl-range-buttons">
+                    <button data-pnl-range="1d" class="range-btn">1D</button>
+                    <button data-pnl-range="1w" class="range-btn">1W</button>
+                    <button data-pnl-range="1m" class="range-btn active">1M</button>
+                    <button data-pnl-range="max" class="range-btn">ALL</button>
+                </div>
+            </div>
+            <div class="pnl-header">
+                <div id="pnl-total" class="pnl-total">$0.00</div>
+                <div id="pnl-period" class="pnl-period">Past Month</div>
+            </div>
+            <div id="pnl-chart-container" class="pnl-chart-container"></div>
+        </section>
+
+        <!-- Balances -->
+        <section class="section">
+            <h2 class="section-title">Balances</h2>
+            <div id="balance-cards" class="balance-cards"></div>
+        </section>
+
+        <!-- Positions -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Positions</h2>
+            </div>
+            <div class="positions-controls">
+                <div class="exchange-tabs" id="position-exchange-tabs"></div>
+                <div class="position-filter-tabs">
+                    <button data-filter="active" class="filter-btn active">Active</button>
+                    <button data-filter="closed" class="filter-btn">Closed</button>
+                </div>
+                <input type="text" id="position-search" class="position-search" placeholder="Search positions" />
+            </div>
+            <div class="positions-table-wrapper">
+                <table class="positions-table">
+                    <thead>
+                        <tr>
+                            <th>Exchange</th>
+                            <th>Market</th>
+                            <th>Outcome</th>
+                            <th>Size</th>
+                            <th>Avg Price</th>
+                            <th>Current</th>
+                            <th>Value</th>
+                            <th>PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-body"></tbody>
+                </table>
+                <div id="positions-empty" class="empty-state">
+                    <p>No positions found</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
