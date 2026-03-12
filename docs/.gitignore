@@ -1,1 +1,3 @@
-book/
+dist/
+.astro/
+node_modules/

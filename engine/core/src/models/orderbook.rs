@@ -39,7 +39,7 @@ pub struct PriceLevelChange {
 pub type ChangeVec = SmallVec<[PriceLevelChange; 4]>;
 
 /// Emitted by exchange WS implementations through OrderbookStream.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OrderbookUpdate {
     /// Full orderbook snapshot (initial connect, reconnect).
     Snapshot(Orderbook),

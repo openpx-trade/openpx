@@ -36,13 +36,22 @@ node: node-build
 
 docs: schema
     python3 scripts/generate_sdk_docs.py
-    @echo "Docs generated in docs/src/"
+    @echo "Docs generated in docs/src/content/docs/"
 
 docs-serve: docs
-    cd docs && mdbook serve --open
+    cd docs && npx astro dev --open
 
 docs-build: docs
-    cd docs && mdbook build
+    cd docs && npx astro build
+
+docs-install:
+    cd docs && npm install
 
 check-sync: schema python-models node-models docs
     git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/src/
+
+dashboard:
+    cargo run -p px-dashboard
+
+dashboard-release:
+    cargo run -p px-dashboard --release

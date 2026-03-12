@@ -4,6 +4,8 @@ build/
 dist/
 node_modules/
 Cargo.lock
+docs/.astro/
+docs/dist/
 
 # OS / editor
 .DS_Store

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Generate SDK documentation from openpx.schema.json.
 
-Reads the JSON Schema and produces mdBook-compatible markdown pages showing
+Reads the JSON Schema and produces Starlight-compatible MDX pages showing
 Rust, Python, and TypeScript representations of every exported type.
 
 Usage:
     python3 scripts/generate_sdk_docs.py
 
 Outputs:
-    docs/src/reference/models.md   — full type reference (all languages)
-    docs/src/rust/api.md           — Rust-only reference
-    docs/src/python/api.md         — Python-only reference
-    docs/src/typescript/api.md     — TypeScript-only reference
+    docs/src/content/docs/reference/models.mdx   — full type reference (tabbed)
+    docs/src/content/docs/sdks/rust-api.mdx       — Rust-only reference
+    docs/src/content/docs/sdks/python-api.mdx     — Python-only reference
+    docs/src/content/docs/sdks/typescript-api.mdx — TypeScript-only reference
 """
 
 from __future__ import annotations
@@ -24,7 +24,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "schema" / "openpx.schema.json"
-DOCS_SRC = ROOT / "docs" / "src"
+DOCS_SRC = ROOT / "docs" / "src" / "content" / "docs"
+
+TABS_IMPORT = 'import { Tabs, TabItem } from "@astrojs/starlight/components";'
 
 # JSON Schema type → language type mappings
 RUST_TYPES = {
@@ -314,6 +316,11 @@ def generate_ts_block(name: str, defn: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def escape_mdx(text: str) -> str:
+    """Escape characters that MDX would interpret as JSX expressions."""
+    return text.replace("{", "\\{").replace("}", "\\}")
+
+
 def generate_field_table(defn: dict[str, Any]) -> str:
     """Generate a markdown table of fields."""
     fields = get_fields(defn)
@@ -327,7 +334,7 @@ def generate_field_table(defn: dict[str, Any]) -> str:
     for fname, fschema, required in fields:
         json_type = resolve_type(fschema, TS_TYPES, "typescript")
         req = "Yes" if required else "No"
-        desc = fschema.get("description", "")
+        desc = escape_mdx(fschema.get("description", ""))
         lines.append(f"| `{fname}` | `{json_type}` | {req} | {desc} |")
     return "\n".join(lines)
 
@@ -338,48 +345,75 @@ def write_file(path: Path, content: str) -> None:
     print(f"  wrote {path.relative_to(ROOT)}")
 
 
+def tabs_block(rust_code: str, python_code: str, ts_code: str) -> list[str]:
+    """Generate a <Tabs> block with Rust/Python/TypeScript code."""
+    return [
+        '<Tabs syncKey="lang">',
+        '<TabItem label="Rust">',
+        "",
+        "```rust",
+        rust_code,
+        "```",
+        "",
+        "</TabItem>",
+        '<TabItem label="Python">',
+        "",
+        "```python",
+        python_code,
+        "```",
+        "",
+        "</TabItem>",
+        '<TabItem label="TypeScript">',
+        "",
+        "```typescript",
+        ts_code,
+        "```",
+        "",
+        "</TabItem>",
+        "</Tabs>",
+    ]
+
+
 def generate_models_reference(definitions: dict[str, Any]) -> str:
-    """Generate the full models reference page (all languages)."""
+    """Generate the full models reference page (all languages, tabbed)."""
     categories = categorize_types(definitions)
-    lines = ["# Type Reference", ""]
-    lines.append("All types auto-generated from Rust source via `schema/openpx.schema.json`.")
-    lines.append("Run `just docs` to regenerate.\n")
+    lines = [
+        "---",
+        "title: Type Reference",
+        "---",
+        "",
+        TABS_IMPORT,
+        "",
+        "All types auto-generated from Rust source via `schema/openpx.schema.json`.",
+        "Run `just docs` to regenerate.",
+        "",
+    ]
 
     for category, type_names in categories.items():
-        lines.append(f"## {category}\n")
+        lines.append(f"## {category}")
+        lines.append("")
 
         for name in type_names:
             defn = definitions[name]
-            lines.append(f"### {name}\n")
+            lines.append(f"### {name}")
+            lines.append("")
 
             if is_enum_schema(defn):
                 variants = get_enum_variants(defn)
-                lines.append(f"Enum with variants: {', '.join(f'`{v}`' for v in variants)}\n")
+                lines.append(f"Enum with variants: {', '.join(f'`{v}`' for v in variants)}")
+                lines.append("")
             else:
                 lines.append(generate_field_table(defn))
                 lines.append("")
 
-            # Side-by-side code blocks
-            lines.append("<details>")
-            lines.append(f"<summary>Rust / Python / TypeScript definitions</summary>\n")
-
-            lines.append("**Rust**")
-            lines.append("```rust")
-            lines.append(generate_rust_block(name, defn))
-            lines.append("```\n")
-
-            lines.append("**Python**")
-            lines.append("```python")
-            lines.append(generate_python_block(name, defn))
-            lines.append("```\n")
-
-            lines.append("**TypeScript**")
-            lines.append("```typescript")
-            lines.append(generate_ts_block(name, defn))
-            lines.append("```\n")
-
-            lines.append("</details>\n")
-            lines.append("---\n")
+            lines.extend(tabs_block(
+                generate_rust_block(name, defn),
+                generate_python_block(name, defn),
+                generate_ts_block(name, defn),
+            ))
+            lines.append("")
+            lines.append("---")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -398,51 +432,34 @@ def generate_lang_reference(definitions: dict[str, Any], lang: str) -> str:
     }
     gen = generators[lang]
 
-    lines = [f"# {lang_display} API Reference", ""]
-    lines.append(f"All {lang_display} types auto-generated from `schema/openpx.schema.json`.\n")
+    lines = [
+        "---",
+        f"title: {lang_display} API Reference",
+        "---",
+        "",
+        f"All {lang_display} types auto-generated from `schema/openpx.schema.json`.",
+        "",
+    ]
 
     for category, type_names in categories.items():
-        lines.append(f"## {category}\n")
+        lines.append(f"## {category}")
+        lines.append("")
         for name in type_names:
             defn = definitions[name]
-            lines.append(f"### {name}\n")
+            lines.append(f"### {name}")
+            lines.append("")
             lines.append(f"```{ext}")
             lines.append(gen(name, defn))
-            lines.append("```\n")
+            lines.append("```")
+            lines.append("")
 
     return "\n".join(lines)
 
 
-def generate_summary(categories: dict[str, list[str]]) -> str:
-    """Generate SUMMARY.md for mdBook."""
-    return """# Summary
-
-[Introduction](./introduction.md)
-
-# Getting Started
-
-- [Installation](./installation.md)
-- [Quick Start](./quickstart.md)
-
-# SDK Reference
-
-- [Rust](./rust/README.md)
-  - [API Reference](./rust/api.md)
-- [Python](./python/README.md)
-  - [API Reference](./python/api.md)
-- [TypeScript](./typescript/README.md)
-  - [API Reference](./typescript/api.md)
-
-# Reference
-
-- [All Types](./reference/models.md)
-- [Exchanges](./reference/exchanges.md)
-- [Error Handling](./reference/errors.md)
-"""
-
-
 def generate_introduction() -> str:
-    return """# OpenPX
+    return """---
+title: OpenPX
+---
 
 OpenPX is an open-source, CCXT-style unified SDK for prediction markets.
 Users bring their own exchange credentials and trade directly through a single interface.
@@ -482,9 +499,14 @@ regenerated from Rust types via `just sync-all`.
 
 
 def generate_installation() -> str:
-    return """# Installation
+    return """---
+title: Installation
+---
 
-## Rust
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 Add OpenPX crates to your `Cargo.toml`:
 
@@ -503,7 +525,8 @@ px-exchange-predictfun = "0.1"
 px-sdk = "0.1"
 ```
 
-## Python
+</TabItem>
+<TabItem label="Python">
 
 ```bash
 pip install openpx
@@ -512,7 +535,8 @@ pip install openpx
 Requires Python >= 3.9. The package includes a native Rust extension compiled
 with PyO3 — no Rust toolchain needed on the user's machine.
 
-## TypeScript / Node.js
+</TabItem>
+<TabItem label="TypeScript">
 
 ```bash
 npm install @openpx/sdk
@@ -520,15 +544,23 @@ npm install @openpx/sdk
 
 Requires Node.js >= 18. The package includes a native Rust addon compiled
 with NAPI-RS.
+
+</TabItem>
+</Tabs>
 """
 
 
 def generate_quickstart() -> str:
-    return """# Quick Start
+    return """---
+title: Quick Start
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Fetch Markets
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_sdk::ExchangeInner;
@@ -544,7 +576,8 @@ async fn main() {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange
@@ -555,7 +588,8 @@ for market in markets:
     print(f"{market.id}: {market.question}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 import { Exchange } from "@openpx/sdk";
@@ -567,9 +601,13 @@ for (const market of markets) {
 }
 ```
 
+</TabItem>
+</Tabs>
+
 ## Create an Order
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_sdk::ExchangeInner;
@@ -597,7 +635,8 @@ async fn main() {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange
@@ -617,7 +656,8 @@ order = exchange.create_order(
 print(f"Order {order.id}: {order.status}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 import { Exchange } from "@openpx/sdk";
@@ -633,9 +673,13 @@ const order = await exchange.createOrder(
 console.log(`Order ${order.id}: ${order.status}`);
 ```
 
+</TabItem>
+</Tabs>
+
 ## Fetch Orderbook
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 let book = exchange.fetch_orderbook(OrderbookRequest {
@@ -645,24 +689,31 @@ let book = exchange.fetch_orderbook(OrderbookRequest {
 println!("Best bid: {:?}, Best ask: {:?}", book.best_bid(), book.best_ask());
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 book = exchange.fetch_orderbook("MARKET-ID")
 print(f"Best bid: {book.bids[0].price}, Best ask: {book.asks[0].price}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 const book = await exchange.fetchOrderbook("MARKET-ID");
 console.log(`Best bid: ${book.bids[0].price}, Best ask: ${book.asks[0].price}`);
 ```
+
+</TabItem>
+</Tabs>
 """
 
 
 def generate_rust_readme() -> str:
-    return """# Rust SDK
+    return """---
+title: Rust SDK
+---
 
 The Rust SDK is the source of truth for OpenPX. All types, traits, and
 exchange implementations are written in Rust.
@@ -708,12 +759,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Exchange Trait
 
 Every exchange implements `px_core::Exchange`. See the
-[API Reference](./api.md) for all available types.
+[API Reference](/sdks/rust-api/) for all available types.
 """
 
 
 def generate_python_readme() -> str:
-    return """# Python SDK
+    return """---
+title: Python SDK
+---
 
 The Python SDK wraps the Rust engine via PyO3, giving you native performance
 with Pydantic models for type safety and autocomplete.
@@ -774,12 +827,14 @@ except OpenPxError as e:
     print(f"Error: {e}")
 ```
 
-See the [API Reference](./api.md) for all available types.
+See the [API Reference](/sdks/python-api/) for all available types.
 """
 
 
 def generate_typescript_readme() -> str:
-    return """# TypeScript SDK
+    return """---
+title: TypeScript SDK
+---
 
 The TypeScript SDK wraps the Rust engine via NAPI-RS, giving you native
 performance with full TypeScript type definitions.
@@ -824,12 +879,14 @@ try {
 }
 ```
 
-See the [API Reference](./api.md) for all available types.
+See the [API Reference](/sdks/typescript-api/) for all available types.
 """
 
 
 def generate_exchanges_reference() -> str:
-    return """# Exchanges
+    return """---
+title: Exchanges
+---
 
 ## Supported Exchanges
 
@@ -909,8 +966,1344 @@ All exchanges accept a JSON config object. Pass exchange-specific fields:
 """
 
 
+def generate_api_guide() -> str:
+    return """---
+title: API Methods
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+Every exchange in OpenPX implements the same interface. Pick your language
+once — all examples on this page switch together.
+
+## Constructor
+
+Create an exchange instance. Pass the exchange ID and an optional config
+object with credentials.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_sdk::ExchangeInner;
+use serde_json::json;
+
+// Unauthenticated (market data only)
+let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
+
+// Authenticated (trading)
+let exchange = ExchangeInner::new("kalshi", json!({
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem"
+})).unwrap();
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange
+
+# Unauthenticated (market data only)
+exchange = Exchange("kalshi")
+
+# Authenticated (trading)
+exchange = Exchange("kalshi", {
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem",
+})
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+// Unauthenticated (market data only)
+const exchange = new Exchange("kalshi", {});
+
+// Authenticated (trading)
+const exchange = new Exchange("kalshi", {
+  api_key_id: "your-key",
+  private_key_pem: "your-pem",
+});
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Exchange Info
+
+### id / name
+
+Get the exchange identifier and human-readable name.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let id: &str = exchange.id();     // "kalshi"
+let name: &str = exchange.name(); // "Kalshi"
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+exchange.id    # "kalshi"
+exchange.name  # "Kalshi"
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+exchange.id;   // "kalshi"
+exchange.name; // "Kalshi"
+```
+
+</TabItem>
+</Tabs>
+
+### describe
+
+Returns capability flags for this exchange — which methods are supported.
+
+**Returns:** [`ExchangeInfo`](/reference/models/#exchangeinfo)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let info = exchange.describe();
+println!("Has WebSocket: {}", info.has_websocket);
+println!("Has price history: {}", info.has_fetch_price_history);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+info = exchange.describe()
+print(f"Has WebSocket: {info['has_websocket']}")
+print(f"Has price history: {info['has_fetch_price_history']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const info = exchange.describe();
+console.log(`Has WebSocket: ${info.has_websocket}`);
+console.log(`Has price history: ${info.has_fetch_price_history}`);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Market Data
+
+### fetch_markets
+
+Fetch a paginated list of markets.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int?` | Max markets to return |
+| `cursor` | `string?` | Pagination cursor from a previous response |
+
+**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::FetchMarketsParams;
+
+// All markets (default pagination)
+let markets = exchange.fetch_markets(None).await?;
+
+// With pagination
+let markets = exchange.fetch_markets(Some(FetchMarketsParams {
+    limit: Some(10),
+    cursor: None,
+})).await?;
+
+for m in &markets {
+    println!("[{}] {} — ${:.2}", m.id, m.question, m.prices["Yes"]);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# All markets (default pagination)
+markets = exchange.fetch_markets()
+
+# With limit
+markets = exchange.fetch_markets(limit=10)
+
+for m in markets:
+    print(f"[{m.id}] {m.question}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// All markets (default pagination)
+const markets = await exchange.fetchMarkets();
+
+// With limit
+const markets = await exchange.fetchMarkets(10);
+
+for (const m of markets) {
+  console.log(`[${m.id}] ${m.question}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_market
+
+Fetch a single market by its exchange-native ID.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Exchange-native market ID |
+
+**Returns:** [`Market`](/reference/models/#market)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let market = exchange.fetch_market("KXBTC-25MAR14").await?;
+println!("{}: {}", market.id, market.question);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+market = exchange.fetch_market("KXBTC-25MAR14")
+print(f"{market.id}: {market.question}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const market = await exchange.fetchMarket("KXBTC-25MAR14");
+console.log(`${market.id}: ${market.question}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_all_unified_markets
+
+Fetch all markets with normalized fields across exchanges. Handles pagination
+internally — returns the complete set.
+
+**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let markets = exchange.fetch_all_unified_markets().await?;
+for m in &markets {
+    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+markets = exchange.fetch_all_unified_markets()
+for m in markets:
+    print(f"[{m['openpx_id']}] {m['title']} — {m['exchange']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const markets = await exchange.fetchAllUnifiedMarkets();
+for (const m of markets) {
+  console.log(`[${m.openpx_id}] ${m.title} — ${m.exchange}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Trading
+
+### create_order
+
+Place a limit order on a market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market to trade |
+| `outcome` | `string` | Outcome to buy/sell (e.g. `"Yes"`, `"No"`) |
+| `side` | `OrderSide` | `Buy` or `Sell` |
+| `price` | `float` | Limit price (0.0 – 1.0) |
+| `size` | `float` | Number of contracts |
+| `params` | `map?` | Exchange-specific parameters |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderSide;
+use std::collections::HashMap;
+
+let order = exchange.create_order(
+    "KXBTC-25MAR14",
+    "Yes",
+    OrderSide::Buy,
+    0.65,
+    10.0,
+    HashMap::new(),
+).await?;
+
+println!("Order {}: {:?}", order.id, order.status);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+order = exchange.create_order(
+    market_id="KXBTC-25MAR14",
+    outcome="Yes",
+    side="buy",
+    price=0.65,
+    size=10.0,
+)
+print(f"Order {order.id}: {order.status}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const order = await exchange.createOrder(
+  "KXBTC-25MAR14", "Yes", "buy", 0.65, 10.0
+);
+console.log(`Order ${order.id}: ${order.status}`);
+```
+
+</TabItem>
+</Tabs>
+
+### cancel_order
+
+Cancel an open order.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `order_id` | `string` | Order to cancel |
+| `market_id` | `string?` | Required by some exchanges |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let cancelled = exchange.cancel_order("order-123", None).await?;
+println!("Cancelled: {:?}", cancelled.status);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+cancelled = exchange.cancel_order("order-123")
+print(f"Cancelled: {cancelled.status}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const cancelled = await exchange.cancelOrder("order-123");
+console.log(`Cancelled: ${cancelled.status}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_order
+
+Fetch a single order by ID.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `order_id` | `string` | Order ID |
+| `market_id` | `string?` | Required by some exchanges |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let order = exchange.fetch_order("order-123", None).await?;
+println!("Status: {:?}, Filled: {}", order.status, order.filled);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+order = exchange.fetch_order("order-123")
+print(f"Status: {order.status}, Filled: {order.filled}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const order = await exchange.fetchOrder("order-123");
+console.log(`Status: ${order.status}, Filled: ${order.filled}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_open_orders
+
+Fetch all open orders, optionally filtered by market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+
+**Returns:** `list[Order]`
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::FetchOrdersParams;
+
+// All open orders
+let orders = exchange.fetch_open_orders(None).await?;
+
+// For a specific market
+let orders = exchange.fetch_open_orders(Some(FetchOrdersParams {
+    market_id: Some("KXBTC-25MAR14".into()),
+})).await?;
+
+for o in &orders {
+    println!("{}: {} @ {:.2}", o.id, o.side, o.price);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# All open orders
+orders = exchange.fetch_open_orders()
+
+# For a specific market
+orders = exchange.fetch_open_orders(market_id="KXBTC-25MAR14")
+
+for o in orders:
+    print(f"{o.id}: {o.side} @ {o.price:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// All open orders
+const orders = await exchange.fetchOpenOrders();
+
+// For a specific market
+const orders = await exchange.fetchOpenOrders("KXBTC-25MAR14");
+
+for (const o of orders) {
+  console.log(`${o.id}: ${o.side} @ ${o.price.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Portfolio
+
+### fetch_positions
+
+Fetch current positions, optionally filtered by market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+
+**Returns:** `list[Position]` — see [`Position`](/reference/models/#position)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let positions = exchange.fetch_positions(None).await?;
+for p in &positions {
+    println!("{} {} — size: {}, avg: {:.2}",
+        p.market_id, p.outcome, p.size, p.average_price);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+positions = exchange.fetch_positions()
+for p in positions:
+    print(f"{p.market_id} {p.outcome} — size: {p.size}, avg: {p.average_price:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const positions = await exchange.fetchPositions();
+for (const p of positions) {
+  console.log(`${p.market_id} ${p.outcome} — size: ${p.size}, avg: ${p.average_price.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_balance
+
+Fetch account balance.
+
+**Returns:** `map[string, float]` — asset name to balance (e.g. USDC)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let balance = exchange.fetch_balance().await?;
+for (asset, amount) in &balance {
+    println!("{}: ${:.2}", asset, amount);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+balance = exchange.fetch_balance()
+for asset, amount in balance.items():
+    print(f"{asset}: ${amount:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const balance = await exchange.fetchBalance();
+for (const [asset, amount] of Object.entries(balance)) {
+  console.log(`${asset}: $${amount.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_fills
+
+Fetch trade execution history (fills).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+| `limit` | `int?` | Max fills to return |
+
+**Returns:** `list[Fill]` — see [`Fill`](/reference/models/#fill)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let fills = exchange.fetch_fills(None, Some(20)).await?;
+for f in &fills {
+    println!("{}: {} {} @ {:.2} x {}",
+        f.fill_id, f.side, f.outcome, f.price, f.size);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+fills = exchange.fetch_fills(limit=20)
+for f in fills:
+    print(f"{f.fill_id}: {f.side} {f.outcome} @ {f.price:.2f} x {f.size}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const fills = await exchange.fetchFills(undefined, 20);
+for (const f of fills) {
+  console.log(`${f.fill_id}: ${f.side} ${f.outcome} @ ${f.price.toFixed(2)} x ${f.size}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Orderbook
+
+### fetch_orderbook
+
+Fetch the L2 orderbook for a market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `outcome` | `string?` | Filter by outcome (e.g. `"Yes"`) |
+| `token_id` | `string?` | Filter by token ID |
+
+**Returns:** [`Orderbook`](/reference/models/#orderbook)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderbookRequest;
+
+let book = exchange.fetch_orderbook(OrderbookRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    outcome: None,
+    token_id: None,
+}).await?;
+
+println!("Best bid: {:?}", book.best_bid());
+println!("Best ask: {:?}", book.best_ask());
+println!("Spread: {:?}", book.spread());
+
+for level in &book.bids[..5.min(book.bids.len())] {
+    println!("  BID {:.2} x {}", level.price, level.size);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+book = exchange.fetch_orderbook("KXBTC-25MAR14")
+
+print(f"Best bid: {book['bids'][0]['price']}")
+print(f"Best ask: {book['asks'][0]['price']}")
+
+for level in book["bids"][:5]:
+    print(f"  BID {level['price']:.2f} x {level['size']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const book = await exchange.fetchOrderbook("KXBTC-25MAR14");
+
+console.log(`Best bid: ${book.bids[0].price}`);
+console.log(`Best ask: ${book.asks[0].price}`);
+
+for (const level of book.bids.slice(0, 5)) {
+  console.log(`  BID ${level.price.toFixed(2)} x ${level.size}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_orderbook_history
+
+Fetch historical orderbook snapshots. Not all exchanges support this.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+| `limit` | `int?` | Max snapshots |
+| `cursor` | `string?` | Pagination cursor |
+
+**Returns:** `(list[OrderbookSnapshot], cursor?)` — see [`OrderbookSnapshot`](/reference/models/#orderbooksnapshot)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderbookHistoryRequest;
+
+let (snapshots, next_cursor) = exchange.fetch_orderbook_history(
+    OrderbookHistoryRequest {
+        market_id: "KXBTC-25MAR14".into(),
+        limit: Some(10),
+        ..Default::default()
+    }
+).await?;
+
+for snap in &snapshots {
+    println!("{}: {} bids, {} asks",
+        snap.timestamp, snap.bids.len(), snap.asks.len());
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Price History & Trades
+
+### fetch_price_history
+
+Fetch OHLCV candlestick data.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `interval` | `PriceHistoryInterval` | Candle interval (`1m`, `1h`, `6h`, `1d`, `1w`, `max`) |
+| `outcome` | `string?` | Outcome filter |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+
+**Returns:** `list[Candlestick]` — see [`Candlestick`](/reference/models/#candlestick)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{PriceHistoryRequest, PriceHistoryInterval};
+
+let candles = exchange.fetch_price_history(PriceHistoryRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    interval: PriceHistoryInterval::OneHour,
+    start_ts: None,
+    end_ts: None,
+    outcome: None,
+    token_id: None,
+    condition_id: None,
+}).await?;
+
+for c in &candles {
+    println!("{}: O={:.2} H={:.2} L={:.2} C={:.2} V={}",
+        c.timestamp, c.open, c.high, c.low, c.close, c.volume);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK — use Rust directly
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK — use Rust directly
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_trades
+
+Fetch recent trades for a market. Returns trades and an optional cursor for
+pagination.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `outcome` | `string?` | Outcome filter |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+| `limit` | `int?` | Max trades |
+| `cursor` | `string?` | Pagination cursor |
+
+**Returns:** `(list[MarketTrade], cursor?)` — see [`MarketTrade`](/reference/models/#markettrade)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::TradesRequest;
+
+let (trades, next_cursor) = exchange.fetch_trades(TradesRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    limit: Some(50),
+    ..Default::default()
+}).await?;
+
+for t in &trades {
+    println!("{}: {:.2} x {} ({})",
+        t.timestamp, t.price, t.size, t.source_channel);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK — use Rust directly
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK — use Rust directly
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## WebSocket
+
+Real-time streaming via WebSocket for orderbook updates, trades, and fills.
+
+See the [WebSocket Streaming](/guides/websocket/) guide for full documentation.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderBookWebSocket;
+use futures::StreamExt;
+
+let mut ws = exchange.websocket().unwrap();
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
+while let Some(update) = stream.next().await {
+    match update? {
+        OrderbookUpdate::Snapshot(book) => {
+            println!("Snapshot: {} bids, {} asks", book.bids.len(), book.asks.len());
+        }
+        OrderbookUpdate::Delta { changes, .. } => {
+            for c in &changes {
+                println!("  {:?} {:.2} x {}", c.side, c.price, c.size);
+            }
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws = exchange.websocket()
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for update in ws.orderbook_stream("KXBTC-25MAR14"):
+    if update["type"] == "Snapshot":
+        book = update["Snapshot"]
+        print(f"Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
+    elif update["type"] == "Delta":
+        for c in update["Delta"]["changes"]:
+            print(f"  {c['side']} {c['price']:.2f} x {c['size']}")
+
+ws.disconnect()
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const ws = exchange.websocket();
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+  if (err) { console.error(err); return; }
+  if (update.type === "Snapshot") {
+    console.log(`Snapshot: ${update.Snapshot.bids.length} bids`);
+  } else {
+    for (const c of update.Delta.changes) {
+      console.log(`  ${c.side} ${c.price} x ${c.size}`);
+    }
+  }
+});
+```
+
+</TabItem>
+</Tabs>
+"""
+
+
+def generate_websocket_guide() -> str:
+    return """---
+title: WebSocket Streaming
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+OpenPX provides real-time streaming via WebSocket for orderbook updates,
+trades, and fill events across all supported exchanges.
+
+## Exchange Support
+
+| Exchange | Orderbook | Trades | Fills | Protocol |
+|----------|-----------|--------|-------|----------|
+| Kalshi | Yes | Yes | Yes | Native WS |
+| Polymarket | Yes | Yes | Yes | Native WS (dual connection) |
+| Opinion | Yes | — | — | Native WS |
+| Limitless | Yes | — | — | Socket.IO |
+| Predict.fun | — | — | — | Not supported |
+
+## Connection Lifecycle
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderBookWebSocket;
+
+// 1. Get WebSocket handle from exchange
+let mut ws = exchange.websocket().unwrap();
+
+// 2. Connect
+ws.connect().await?;
+
+// 3. Subscribe to markets
+ws.subscribe("KXBTC-25MAR14").await?;
+ws.subscribe("KXETH-25MAR14").await?;
+
+// 4. Stream data (see sections below)
+// ...
+
+// 5. Unsubscribe when done
+ws.unsubscribe("KXBTC-25MAR14").await?;
+
+// 6. Disconnect
+ws.disconnect().await?;
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange
+
+exchange = Exchange("kalshi", {
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem",
+})
+ws = exchange.websocket()
+
+# 2. Connect
+ws.connect()
+
+# 3. Subscribe to markets
+ws.subscribe("KXBTC-25MAR14")
+ws.subscribe("KXETH-25MAR14")
+
+# 4. Stream data (see sections below)
+# ...
+
+# 5. Unsubscribe when done
+ws.unsubscribe("KXBTC-25MAR14")
+
+# 6. Disconnect
+ws.disconnect()
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+const exchange = new Exchange("kalshi", {
+  api_key_id: "your-key",
+  private_key_pem: "your-pem",
+});
+const ws = exchange.websocket();
+
+// 2. Connect
+await ws.connect();
+
+// 3. Subscribe to markets
+await ws.subscribe("KXBTC-25MAR14");
+await ws.subscribe("KXETH-25MAR14");
+
+// 4. Stream data (see sections below)
+// ...
+
+// 5. Unsubscribe when done
+await ws.unsubscribe("KXBTC-25MAR14");
+
+// 6. Disconnect
+await ws.disconnect();
+```
+
+</TabItem>
+</Tabs>
+
+## Connection State
+
+Check the connection state at any time. Uses lock-free atomics for zero-cost reads.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::WebSocketState;
+
+match ws.state() {
+    WebSocketState::Disconnected => println!("Not connected"),
+    WebSocketState::Connecting => println!("Connecting..."),
+    WebSocketState::Connected => println!("Ready"),
+    WebSocketState::Reconnecting => println!("Reconnecting..."),
+    WebSocketState::Closed => println!("Closed"),
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+state = ws.state  # "Connected", "Disconnected", etc.
+print(f"WebSocket state: {state}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const state = ws.state; // "Connected", "Disconnected", etc.
+console.log(`WebSocket state: ${state}`);
+```
+
+</TabItem>
+</Tabs>
+
+## Orderbook Streaming
+
+Subscribe to a market and receive real-time orderbook updates. The first
+message is always a full `Snapshot`, followed by incremental `Delta` updates.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{OrderBookWebSocket, OrderbookUpdate};
+use futures::StreamExt;
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
+
+while let Some(update) = stream.next().await {
+    match update? {
+        OrderbookUpdate::Snapshot(book) => {
+            println!("Full snapshot:");
+            println!("  Best bid: {:?}", book.bids.first());
+            println!("  Best ask: {:?}", book.asks.first());
+            println!("  {} bids, {} asks", book.bids.len(), book.asks.len());
+        }
+        OrderbookUpdate::Delta { changes, timestamp } => {
+            for change in &changes {
+                let action = if change.size == 0.0 { "REMOVE" } else { "UPDATE" };
+                println!("  {} {:?} {:.2} x {}",
+                    action, change.side, change.price, change.size);
+            }
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for update in ws.orderbook_stream("KXBTC-25MAR14"):
+    if update["type"] == "Snapshot":
+        book = update["Snapshot"]
+        print(f"Full snapshot:")
+        print(f"  Best bid: {book['bids'][0]}")
+        print(f"  Best ask: {book['asks'][0]}")
+        print(f"  {len(book['bids'])} bids, {len(book['asks'])} asks")
+    elif update["type"] == "Delta":
+        delta = update["Delta"]
+        for change in delta["changes"]:
+            action = "REMOVE" if change["size"] == 0 else "UPDATE"
+            print(f"  {action} {change['side']} {change['price']:.2f} x {change['size']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+  if (err) { console.error(err); return; }
+  if (update.type === "Snapshot") {
+    const book = update.Snapshot;
+    console.log(`Full snapshot:`);
+    console.log(`  Best bid: ${JSON.stringify(book.bids[0])}`);
+    console.log(`  Best ask: ${JSON.stringify(book.asks[0])}`);
+    console.log(`  ${book.bids.length} bids, ${book.asks.length} asks`);
+  } else if (update.type === "Delta") {
+    for (const change of update.Delta.changes) {
+      const action = change.size === 0 ? "REMOVE" : "UPDATE";
+      console.log(`  ${action} ${change.side} ${change.price} x ${change.size}`);
+    }
+  }
+});
+```
+
+</TabItem>
+</Tabs>
+
+### Update Types
+
+| Type | Description |
+|------|-------------|
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
+| **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+
+### Orderbook Types
+
+See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
+`PriceLevel`, and `PriceLevelChange` type definitions.
+
+## Activity Streaming
+
+Stream real-time trade and fill events. Trades are public market activity;
+fills are your personal order executions.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{OrderBookWebSocket, ActivityEvent};
+use futures::StreamExt;
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.activity_stream("KXBTC-25MAR14").await?;
+
+while let Some(event) = stream.next().await {
+    match event? {
+        ActivityEvent::Trade(trade) => {
+            println!("TRADE: {} x {} @ {:.2} [{}]",
+                trade.outcome.unwrap_or_default(),
+                trade.size, trade.price,
+                trade.source_channel);
+        }
+        ActivityEvent::Fill(fill) => {
+            println!("FILL: {} x {} @ {:.2} ({})",
+                fill.outcome.unwrap_or_default(),
+                fill.size, fill.price,
+                fill.liquidity_role
+                    .map(|r| format!("{:?}", r))
+                    .unwrap_or_default());
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for event in ws.activity_stream("KXBTC-25MAR14"):
+    if "Trade" in event:
+        t = event["Trade"]
+        print(f"TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
+    elif "Fill" in event:
+        f = event["Fill"]
+        print(f"FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
+  if (err) { console.error(err); return; }
+  if (event.Trade) {
+    const t = event.Trade;
+    console.log(`TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
+  } else if (event.Fill) {
+    const f = event.Fill;
+    console.log(`FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
+  }
+});
+```
+
+</TabItem>
+</Tabs>
+
+### Event Types
+
+See [`ActivityTrade`](/reference/models/#activitytrade) and
+[`ActivityFill`](/reference/models/#activityfill) for field details.
+
+| Event | Description | Exchanges |
+|-------|-------------|-----------|
+| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket |
+
+## Auto-Reconnect
+
+WebSocket connections automatically reconnect on failure with exponential
+backoff. No user intervention required.
+
+| Setting | Value |
+|---------|-------|
+| Ping interval | 20 seconds |
+| Initial reconnect delay | 3 seconds |
+| Max reconnect delay | 60 seconds |
+| Max reconnect attempts | 10 |
+
+After reconnecting, subscriptions are automatically restored and a fresh
+orderbook snapshot is sent.
+
+## Error Handling
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::WebSocketError;
+
+match ws.connect().await {
+    Ok(()) => println!("Connected"),
+    Err(WebSocketError::Connection(msg)) => {
+        // Retryable — auto-reconnect will handle this
+        eprintln!("Connection failed: {msg}");
+    }
+    Err(WebSocketError::Subscription(msg)) => {
+        // Bad market ID or unauthorized
+        eprintln!("Subscription failed: {msg}");
+    }
+    Err(WebSocketError::Protocol(msg)) => {
+        eprintln!("Protocol error: {msg}");
+    }
+    Err(WebSocketError::Closed) => {
+        eprintln!("Connection was closed");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange, OpenPxError
+
+exchange = Exchange("kalshi", {"api_key_id": "...", "private_key_pem": "..."})
+ws = exchange.websocket()
+
+try:
+    ws.connect()
+except OpenPxError as e:
+    print(f"WebSocket error: {e}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const ws = exchange.websocket();
+
+try {
+  await ws.connect();
+} catch (e) {
+  console.error(`WebSocket error: ${e.message}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Performance Notes
+
+The WebSocket implementation is optimized for low-latency trading:
+
+- **Lock-free state reads** — `WebSocketState` uses atomic operations, no mutex contention
+- **Stack-allocated deltas** — up to 4 price level changes per update use `SmallVec` (no heap allocation)
+- **Broadcast channels** — 16K-slot capacity prevents slow consumers from blocking producers
+- **Cached orderbooks** — full book state is maintained per-market so reconnects only need a snapshot diff
+"""
+
+
 def generate_errors_reference() -> str:
-    return """# Error Handling
+    return """---
+title: Error Handling
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Error Hierarchy
 
@@ -946,7 +2339,8 @@ OpenPxError
 
 ## Language Mapping
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_core::{OpenPxError, ExchangeError};
@@ -963,7 +2357,8 @@ match result {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange, OpenPxError, AuthenticationError, NetworkError
@@ -978,7 +2373,8 @@ except OpenPxError as e:
     print(f"Error: {e}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 try {
@@ -987,6 +2383,9 @@ try {
   console.error(e.message);
 }
 ```
+
+</TabItem>
+</Tabs>
 """
 
 
@@ -1001,31 +2400,31 @@ def main():
 
     print(f"Generating SDK docs from {len(definitions)} type definitions...")
 
-    # Auto-generated pages
-    write_file(DOCS_SRC / "reference" / "models.md", generate_models_reference(definitions))
-    write_file(DOCS_SRC / "rust" / "api.md", generate_lang_reference(definitions, "rust"))
-    write_file(DOCS_SRC / "python" / "api.md", generate_lang_reference(definitions, "python"))
-    write_file(DOCS_SRC / "typescript" / "api.md", generate_lang_reference(definitions, "typescript"))
+    # Auto-generated pages (from schema)
+    write_file(DOCS_SRC / "reference" / "models.mdx", generate_models_reference(definitions))
+    write_file(DOCS_SRC / "sdks" / "rust-api.mdx", generate_lang_reference(definitions, "rust"))
+    write_file(DOCS_SRC / "sdks" / "python-api.mdx", generate_lang_reference(definitions, "python"))
+    write_file(DOCS_SRC / "sdks" / "typescript-api.mdx", generate_lang_reference(definitions, "typescript"))
 
-    # Hand-written pages (only write if they don't exist, to allow manual edits)
+    # Static pages (always overwritten — edit the script, not the output)
     static_pages = {
-        DOCS_SRC / "SUMMARY.md": generate_summary(categories),
-        DOCS_SRC / "introduction.md": generate_introduction(),
-        DOCS_SRC / "installation.md": generate_installation(),
-        DOCS_SRC / "quickstart.md": generate_quickstart(),
-        DOCS_SRC / "rust" / "README.md": generate_rust_readme(),
-        DOCS_SRC / "python" / "README.md": generate_python_readme(),
-        DOCS_SRC / "typescript" / "README.md": generate_typescript_readme(),
-        DOCS_SRC / "reference" / "exchanges.md": generate_exchanges_reference(),
-        DOCS_SRC / "reference" / "errors.md": generate_errors_reference(),
+        DOCS_SRC / "index.mdx": generate_introduction(),
+        DOCS_SRC / "getting-started" / "installation.mdx": generate_installation(),
+        DOCS_SRC / "getting-started" / "quickstart.mdx": generate_quickstart(),
+        DOCS_SRC / "guides" / "api.mdx": generate_api_guide(),
+        DOCS_SRC / "guides" / "websocket.mdx": generate_websocket_guide(),
+        DOCS_SRC / "sdks" / "rust.mdx": generate_rust_readme(),
+        DOCS_SRC / "sdks" / "python.mdx": generate_python_readme(),
+        DOCS_SRC / "sdks" / "typescript.mdx": generate_typescript_readme(),
+        DOCS_SRC / "reference" / "exchanges.mdx": generate_exchanges_reference(),
+        DOCS_SRC / "reference" / "errors.mdx": generate_errors_reference(),
     }
 
     for path, content in static_pages.items():
-        # Always overwrite — these are generated too. Users edit the script, not the output.
         write_file(path, content)
 
     print(f"Done. {len(definitions)} types across {len(categories)} categories.")
-    print("Run 'cd docs && mdbook serve' to preview.")
+    print("Run 'cd docs && npm run dev' to preview.")
 
 
 if __name__ == "__main__":

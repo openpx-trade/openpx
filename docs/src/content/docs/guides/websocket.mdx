@@ -1,0 +1,408 @@
+---
+title: WebSocket Streaming
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+OpenPX provides real-time streaming via WebSocket for orderbook updates,
+trades, and fill events across all supported exchanges.
+
+## Exchange Support
+
+| Exchange | Orderbook | Trades | Fills | Protocol |
+|----------|-----------|--------|-------|----------|
+| Kalshi | Yes | Yes | Yes | Native WS |
+| Polymarket | Yes | Yes | Yes | Native WS (dual connection) |
+| Opinion | Yes | — | — | Native WS |
+| Limitless | Yes | — | — | Socket.IO |
+| Predict.fun | — | — | — | Not supported |
+
+## Connection Lifecycle
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderBookWebSocket;
+
+// 1. Get WebSocket handle from exchange
+let mut ws = exchange.websocket().unwrap();
+
+// 2. Connect
+ws.connect().await?;
+
+// 3. Subscribe to markets
+ws.subscribe("KXBTC-25MAR14").await?;
+ws.subscribe("KXETH-25MAR14").await?;
+
+// 4. Stream data (see sections below)
+// ...
+
+// 5. Unsubscribe when done
+ws.unsubscribe("KXBTC-25MAR14").await?;
+
+// 6. Disconnect
+ws.disconnect().await?;
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange
+
+exchange = Exchange("kalshi", {
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem",
+})
+ws = exchange.websocket()
+
+# 2. Connect
+ws.connect()
+
+# 3. Subscribe to markets
+ws.subscribe("KXBTC-25MAR14")
+ws.subscribe("KXETH-25MAR14")
+
+# 4. Stream data (see sections below)
+# ...
+
+# 5. Unsubscribe when done
+ws.unsubscribe("KXBTC-25MAR14")
+
+# 6. Disconnect
+ws.disconnect()
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+const exchange = new Exchange("kalshi", {
+  api_key_id: "your-key",
+  private_key_pem: "your-pem",
+});
+const ws = exchange.websocket();
+
+// 2. Connect
+await ws.connect();
+
+// 3. Subscribe to markets
+await ws.subscribe("KXBTC-25MAR14");
+await ws.subscribe("KXETH-25MAR14");
+
+// 4. Stream data (see sections below)
+// ...
+
+// 5. Unsubscribe when done
+await ws.unsubscribe("KXBTC-25MAR14");
+
+// 6. Disconnect
+await ws.disconnect();
+```
+
+</TabItem>
+</Tabs>
+
+## Connection State
+
+Check the connection state at any time. Uses lock-free atomics for zero-cost reads.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::WebSocketState;
+
+match ws.state() {
+    WebSocketState::Disconnected => println!("Not connected"),
+    WebSocketState::Connecting => println!("Connecting..."),
+    WebSocketState::Connected => println!("Ready"),
+    WebSocketState::Reconnecting => println!("Reconnecting..."),
+    WebSocketState::Closed => println!("Closed"),
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+state = ws.state  # "Connected", "Disconnected", etc.
+print(f"WebSocket state: {state}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const state = ws.state; // "Connected", "Disconnected", etc.
+console.log(`WebSocket state: ${state}`);
+```
+
+</TabItem>
+</Tabs>
+
+## Orderbook Streaming
+
+Subscribe to a market and receive real-time orderbook updates. The first
+message is always a full `Snapshot`, followed by incremental `Delta` updates.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{OrderBookWebSocket, OrderbookUpdate};
+use futures::StreamExt;
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
+
+while let Some(update) = stream.next().await {
+    match update? {
+        OrderbookUpdate::Snapshot(book) => {
+            println!("Full snapshot:");
+            println!("  Best bid: {:?}", book.bids.first());
+            println!("  Best ask: {:?}", book.asks.first());
+            println!("  {} bids, {} asks", book.bids.len(), book.asks.len());
+        }
+        OrderbookUpdate::Delta { changes, timestamp } => {
+            for change in &changes {
+                let action = if change.size == 0.0 { "REMOVE" } else { "UPDATE" };
+                println!("  {} {:?} {:.2} x {}",
+                    action, change.side, change.price, change.size);
+            }
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for update in ws.orderbook_stream("KXBTC-25MAR14"):
+    if update["type"] == "Snapshot":
+        book = update["Snapshot"]
+        print(f"Full snapshot:")
+        print(f"  Best bid: {book['bids'][0]}")
+        print(f"  Best ask: {book['asks'][0]}")
+        print(f"  {len(book['bids'])} bids, {len(book['asks'])} asks")
+    elif update["type"] == "Delta":
+        delta = update["Delta"]
+        for change in delta["changes"]:
+            action = "REMOVE" if change["size"] == 0 else "UPDATE"
+            print(f"  {action} {change['side']} {change['price']:.2f} x {change['size']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+  if (err) { console.error(err); return; }
+  if (update.type === "Snapshot") {
+    const book = update.Snapshot;
+    console.log(`Full snapshot:`);
+    console.log(`  Best bid: ${JSON.stringify(book.bids[0])}`);
+    console.log(`  Best ask: ${JSON.stringify(book.asks[0])}`);
+    console.log(`  ${book.bids.length} bids, ${book.asks.length} asks`);
+  } else if (update.type === "Delta") {
+    for (const change of update.Delta.changes) {
+      const action = change.size === 0 ? "REMOVE" : "UPDATE";
+      console.log(`  ${action} ${change.side} ${change.price} x ${change.size}`);
+    }
+  }
+});
+```
+
+</TabItem>
+</Tabs>
+
+### Update Types
+
+| Type | Description |
+|------|-------------|
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
+| **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+
+### Orderbook Types
+
+See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
+`PriceLevel`, and `PriceLevelChange` type definitions.
+
+## Activity Streaming
+
+Stream real-time trade and fill events. Trades are public market activity;
+fills are your personal order executions.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{OrderBookWebSocket, ActivityEvent};
+use futures::StreamExt;
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.activity_stream("KXBTC-25MAR14").await?;
+
+while let Some(event) = stream.next().await {
+    match event? {
+        ActivityEvent::Trade(trade) => {
+            println!("TRADE: {} x {} @ {:.2} [{}]",
+                trade.outcome.unwrap_or_default(),
+                trade.size, trade.price,
+                trade.source_channel);
+        }
+        ActivityEvent::Fill(fill) => {
+            println!("FILL: {} x {} @ {:.2} ({})",
+                fill.outcome.unwrap_or_default(),
+                fill.size, fill.price,
+                fill.liquidity_role
+                    .map(|r| format!("{:?}", r))
+                    .unwrap_or_default());
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for event in ws.activity_stream("KXBTC-25MAR14"):
+    if "Trade" in event:
+        t = event["Trade"]
+        print(f"TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
+    elif "Fill" in event:
+        f = event["Fill"]
+        print(f"FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
+  if (err) { console.error(err); return; }
+  if (event.Trade) {
+    const t = event.Trade;
+    console.log(`TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
+  } else if (event.Fill) {
+    const f = event.Fill;
+    console.log(`FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
+  }
+});
+```
+
+</TabItem>
+</Tabs>
+
+### Event Types
+
+See [`ActivityTrade`](/reference/models/#activitytrade) and
+[`ActivityFill`](/reference/models/#activityfill) for field details.
+
+| Event | Description | Exchanges |
+|-------|-------------|-----------|
+| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket |
+
+## Auto-Reconnect
+
+WebSocket connections automatically reconnect on failure with exponential
+backoff. No user intervention required.
+
+| Setting | Value |
+|---------|-------|
+| Ping interval | 20 seconds |
+| Initial reconnect delay | 3 seconds |
+| Max reconnect delay | 60 seconds |
+| Max reconnect attempts | 10 |
+
+After reconnecting, subscriptions are automatically restored and a fresh
+orderbook snapshot is sent.
+
+## Error Handling
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::WebSocketError;
+
+match ws.connect().await {
+    Ok(()) => println!("Connected"),
+    Err(WebSocketError::Connection(msg)) => {
+        // Retryable — auto-reconnect will handle this
+        eprintln!("Connection failed: {msg}");
+    }
+    Err(WebSocketError::Subscription(msg)) => {
+        // Bad market ID or unauthorized
+        eprintln!("Subscription failed: {msg}");
+    }
+    Err(WebSocketError::Protocol(msg)) => {
+        eprintln!("Protocol error: {msg}");
+    }
+    Err(WebSocketError::Closed) => {
+        eprintln!("Connection was closed");
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange, OpenPxError
+
+exchange = Exchange("kalshi", {"api_key_id": "...", "private_key_pem": "..."})
+ws = exchange.websocket()
+
+try:
+    ws.connect()
+except OpenPxError as e:
+    print(f"WebSocket error: {e}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const ws = exchange.websocket();
+
+try {
+  await ws.connect();
+} catch (e) {
+  console.error(`WebSocket error: ${e.message}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Performance Notes
+
+The WebSocket implementation is optimized for low-latency trading:
+
+- **Lock-free state reads** — `WebSocketState` uses atomic operations, no mutex contention
+- **Stack-allocated deltas** — up to 4 price level changes per update use `SmallVec` (no heap allocation)
+- **Broadcast channels** — 16K-slot capacity prevents slow consumers from blocking producers
+- **Cached orderbooks** — full book state is maintained per-market so reconnects only need a snapshot diff

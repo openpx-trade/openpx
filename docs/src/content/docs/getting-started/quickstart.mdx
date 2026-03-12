@@ -1,8 +1,13 @@
-# Quick Start
+---
+title: Quick Start
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Fetch Markets
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_sdk::ExchangeInner;
@@ -18,7 +23,8 @@ async fn main() {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange
@@ -29,7 +35,8 @@ for market in markets:
     print(f"{market.id}: {market.question}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 import { Exchange } from "@openpx/sdk";
@@ -41,9 +48,13 @@ for (const market of markets) {
 }
 ```
 
+</TabItem>
+</Tabs>
+
 ## Create an Order
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_sdk::ExchangeInner;
@@ -71,7 +82,8 @@ async fn main() {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange
@@ -91,7 +103,8 @@ order = exchange.create_order(
 print(f"Order {order.id}: {order.status}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 import { Exchange } from "@openpx/sdk";
@@ -107,9 +120,13 @@ const order = await exchange.createOrder(
 console.log(`Order ${order.id}: ${order.status}`);
 ```
 
+</TabItem>
+</Tabs>
+
 ## Fetch Orderbook
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 let book = exchange.fetch_orderbook(OrderbookRequest {
@@ -119,16 +136,21 @@ let book = exchange.fetch_orderbook(OrderbookRequest {
 println!("Best bid: {:?}, Best ask: {:?}", book.best_bid(), book.best_ask());
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 book = exchange.fetch_orderbook("MARKET-ID")
 print(f"Best bid: {book.bids[0].price}, Best ask: {book.asks[0].price}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 const book = await exchange.fetchOrderbook("MARKET-ID");
 console.log(`Best bid: ${book.bids[0].price}, Best ask: ${book.asks[0].price}`);
 ```
+
+</TabItem>
+</Tabs>

@@ -1,6 +1,7 @@
 mod error;
 mod exchange;
 mod stream;
+mod websocket;
 
 use pyo3::prelude::*;
 
@@ -20,7 +21,9 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<exchange::NativeExchange>()?;
-    m.add_class::<stream::OrderbookStream>()?;
+    m.add_class::<websocket::NativeWebSocket>()?;
+    m.add_class::<stream::NativeOrderbookStream>()?;
+    m.add_class::<stream::NativeActivityStream>()?;
     error::register_exceptions(m)?;
     Ok(())
 }

@@ -1,3 +1,6 @@
+mod websocket;
+pub use websocket::WebSocketInner;
+
 use std::collections::HashMap;
 
 use px_core::error::OpenPxError;

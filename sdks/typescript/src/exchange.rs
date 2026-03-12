@@ -5,6 +5,7 @@ use std::sync::Arc;
 use px_sdk::ExchangeInner;
 
 use crate::error::to_napi_err;
+use crate::websocket::WebSocket;
 
 /// Tokio runtime shared across all Exchange instances.
 fn get_runtime() -> &'static tokio::runtime::Runtime {
@@ -18,19 +19,32 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+/// Expose the shared runtime to other modules.
+pub fn get_runtime_ref() -> &'static tokio::runtime::Runtime {
+    get_runtime()
+}
+
 #[napi]
 pub struct Exchange {
     inner: Arc<ExchangeInner>,
+    config: serde_json::Value,
 }
 
 #[napi]
 impl Exchange {
     #[napi(constructor)]
     pub fn new(id: String, config: serde_json::Value) -> Result<Self> {
-        let inner = ExchangeInner::new(&id, config).map_err(to_napi_err)?;
+        let inner = ExchangeInner::new(&id, config.clone()).map_err(to_napi_err)?;
         Ok(Self {
             inner: Arc::new(inner),
+            config,
         })
+    }
+
+    /// Create a WebSocket connection using this exchange's credentials.
+    #[napi]
+    pub fn websocket(&self) -> Result<WebSocket> {
+        WebSocket::new(self.inner.id().to_string(), self.config.clone())
     }
 
     #[napi(getter)]

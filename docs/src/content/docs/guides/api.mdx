@@ -1,0 +1,916 @@
+---
+title: API Methods
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+Every exchange in OpenPX implements the same interface. Pick your language
+once — all examples on this page switch together.
+
+## Constructor
+
+Create an exchange instance. Pass the exchange ID and an optional config
+object with credentials.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_sdk::ExchangeInner;
+use serde_json::json;
+
+// Unauthenticated (market data only)
+let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
+
+// Authenticated (trading)
+let exchange = ExchangeInner::new("kalshi", json!({
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem"
+})).unwrap();
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from openpx import Exchange
+
+# Unauthenticated (market data only)
+exchange = Exchange("kalshi")
+
+# Authenticated (trading)
+exchange = Exchange("kalshi", {
+    "api_key_id": "your-key",
+    "private_key_pem": "your-pem",
+})
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { Exchange } from "@openpx/sdk";
+
+// Unauthenticated (market data only)
+const exchange = new Exchange("kalshi", {});
+
+// Authenticated (trading)
+const exchange = new Exchange("kalshi", {
+  api_key_id: "your-key",
+  private_key_pem: "your-pem",
+});
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Exchange Info
+
+### id / name
+
+Get the exchange identifier and human-readable name.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let id: &str = exchange.id();     // "kalshi"
+let name: &str = exchange.name(); // "Kalshi"
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+exchange.id    # "kalshi"
+exchange.name  # "Kalshi"
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+exchange.id;   // "kalshi"
+exchange.name; // "Kalshi"
+```
+
+</TabItem>
+</Tabs>
+
+### describe
+
+Returns capability flags for this exchange — which methods are supported.
+
+**Returns:** [`ExchangeInfo`](/reference/models/#exchangeinfo)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let info = exchange.describe();
+println!("Has WebSocket: {}", info.has_websocket);
+println!("Has price history: {}", info.has_fetch_price_history);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+info = exchange.describe()
+print(f"Has WebSocket: {info['has_websocket']}")
+print(f"Has price history: {info['has_fetch_price_history']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const info = exchange.describe();
+console.log(`Has WebSocket: ${info.has_websocket}`);
+console.log(`Has price history: ${info.has_fetch_price_history}`);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Market Data
+
+### fetch_markets
+
+Fetch a paginated list of markets.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int?` | Max markets to return |
+| `cursor` | `string?` | Pagination cursor from a previous response |
+
+**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::FetchMarketsParams;
+
+// All markets (default pagination)
+let markets = exchange.fetch_markets(None).await?;
+
+// With pagination
+let markets = exchange.fetch_markets(Some(FetchMarketsParams {
+    limit: Some(10),
+    cursor: None,
+})).await?;
+
+for m in &markets {
+    println!("[{}] {} — ${:.2}", m.id, m.question, m.prices["Yes"]);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# All markets (default pagination)
+markets = exchange.fetch_markets()
+
+# With limit
+markets = exchange.fetch_markets(limit=10)
+
+for m in markets:
+    print(f"[{m.id}] {m.question}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// All markets (default pagination)
+const markets = await exchange.fetchMarkets();
+
+// With limit
+const markets = await exchange.fetchMarkets(10);
+
+for (const m of markets) {
+  console.log(`[${m.id}] ${m.question}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_market
+
+Fetch a single market by its exchange-native ID.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Exchange-native market ID |
+
+**Returns:** [`Market`](/reference/models/#market)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let market = exchange.fetch_market("KXBTC-25MAR14").await?;
+println!("{}: {}", market.id, market.question);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+market = exchange.fetch_market("KXBTC-25MAR14")
+print(f"{market.id}: {market.question}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const market = await exchange.fetchMarket("KXBTC-25MAR14");
+console.log(`${market.id}: ${market.question}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_all_unified_markets
+
+Fetch all markets with normalized fields across exchanges. Handles pagination
+internally — returns the complete set.
+
+**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let markets = exchange.fetch_all_unified_markets().await?;
+for m in &markets {
+    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+markets = exchange.fetch_all_unified_markets()
+for m in markets:
+    print(f"[{m['openpx_id']}] {m['title']} — {m['exchange']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const markets = await exchange.fetchAllUnifiedMarkets();
+for (const m of markets) {
+  console.log(`[${m.openpx_id}] ${m.title} — ${m.exchange}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Trading
+
+### create_order
+
+Place a limit order on a market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market to trade |
+| `outcome` | `string` | Outcome to buy/sell (e.g. `"Yes"`, `"No"`) |
+| `side` | `OrderSide` | `Buy` or `Sell` |
+| `price` | `float` | Limit price (0.0 – 1.0) |
+| `size` | `float` | Number of contracts |
+| `params` | `map?` | Exchange-specific parameters |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderSide;
+use std::collections::HashMap;
+
+let order = exchange.create_order(
+    "KXBTC-25MAR14",
+    "Yes",
+    OrderSide::Buy,
+    0.65,
+    10.0,
+    HashMap::new(),
+).await?;
+
+println!("Order {}: {:?}", order.id, order.status);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+order = exchange.create_order(
+    market_id="KXBTC-25MAR14",
+    outcome="Yes",
+    side="buy",
+    price=0.65,
+    size=10.0,
+)
+print(f"Order {order.id}: {order.status}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const order = await exchange.createOrder(
+  "KXBTC-25MAR14", "Yes", "buy", 0.65, 10.0
+);
+console.log(`Order ${order.id}: ${order.status}`);
+```
+
+</TabItem>
+</Tabs>
+
+### cancel_order
+
+Cancel an open order.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `order_id` | `string` | Order to cancel |
+| `market_id` | `string?` | Required by some exchanges |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let cancelled = exchange.cancel_order("order-123", None).await?;
+println!("Cancelled: {:?}", cancelled.status);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+cancelled = exchange.cancel_order("order-123")
+print(f"Cancelled: {cancelled.status}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const cancelled = await exchange.cancelOrder("order-123");
+console.log(`Cancelled: ${cancelled.status}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_order
+
+Fetch a single order by ID.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `order_id` | `string` | Order ID |
+| `market_id` | `string?` | Required by some exchanges |
+
+**Returns:** [`Order`](/reference/models/#order)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let order = exchange.fetch_order("order-123", None).await?;
+println!("Status: {:?}, Filled: {}", order.status, order.filled);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+order = exchange.fetch_order("order-123")
+print(f"Status: {order.status}, Filled: {order.filled}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const order = await exchange.fetchOrder("order-123");
+console.log(`Status: ${order.status}, Filled: ${order.filled}`);
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_open_orders
+
+Fetch all open orders, optionally filtered by market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+
+**Returns:** `list[Order]`
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::FetchOrdersParams;
+
+// All open orders
+let orders = exchange.fetch_open_orders(None).await?;
+
+// For a specific market
+let orders = exchange.fetch_open_orders(Some(FetchOrdersParams {
+    market_id: Some("KXBTC-25MAR14".into()),
+})).await?;
+
+for o in &orders {
+    println!("{}: {} @ {:.2}", o.id, o.side, o.price);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# All open orders
+orders = exchange.fetch_open_orders()
+
+# For a specific market
+orders = exchange.fetch_open_orders(market_id="KXBTC-25MAR14")
+
+for o in orders:
+    print(f"{o.id}: {o.side} @ {o.price:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// All open orders
+const orders = await exchange.fetchOpenOrders();
+
+// For a specific market
+const orders = await exchange.fetchOpenOrders("KXBTC-25MAR14");
+
+for (const o of orders) {
+  console.log(`${o.id}: ${o.side} @ ${o.price.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Portfolio
+
+### fetch_positions
+
+Fetch current positions, optionally filtered by market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+
+**Returns:** `list[Position]` — see [`Position`](/reference/models/#position)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let positions = exchange.fetch_positions(None).await?;
+for p in &positions {
+    println!("{} {} — size: {}, avg: {:.2}",
+        p.market_id, p.outcome, p.size, p.average_price);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+positions = exchange.fetch_positions()
+for p in positions:
+    print(f"{p.market_id} {p.outcome} — size: {p.size}, avg: {p.average_price:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const positions = await exchange.fetchPositions();
+for (const p of positions) {
+  console.log(`${p.market_id} ${p.outcome} — size: ${p.size}, avg: ${p.average_price.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_balance
+
+Fetch account balance.
+
+**Returns:** `map[string, float]` — asset name to balance (e.g. USDC)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let balance = exchange.fetch_balance().await?;
+for (asset, amount) in &balance {
+    println!("{}: ${:.2}", asset, amount);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+balance = exchange.fetch_balance()
+for asset, amount in balance.items():
+    print(f"{asset}: ${amount:.2f}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const balance = await exchange.fetchBalance();
+for (const [asset, amount] of Object.entries(balance)) {
+  console.log(`${asset}: $${amount.toFixed(2)}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_fills
+
+Fetch trade execution history (fills).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string?` | Filter by market |
+| `limit` | `int?` | Max fills to return |
+
+**Returns:** `list[Fill]` — see [`Fill`](/reference/models/#fill)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let fills = exchange.fetch_fills(None, Some(20)).await?;
+for f in &fills {
+    println!("{}: {} {} @ {:.2} x {}",
+        f.fill_id, f.side, f.outcome, f.price, f.size);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+fills = exchange.fetch_fills(limit=20)
+for f in fills:
+    print(f"{f.fill_id}: {f.side} {f.outcome} @ {f.price:.2f} x {f.size}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const fills = await exchange.fetchFills(undefined, 20);
+for (const f of fills) {
+  console.log(`${f.fill_id}: ${f.side} ${f.outcome} @ ${f.price.toFixed(2)} x ${f.size}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Orderbook
+
+### fetch_orderbook
+
+Fetch the L2 orderbook for a market.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `outcome` | `string?` | Filter by outcome (e.g. `"Yes"`) |
+| `token_id` | `string?` | Filter by token ID |
+
+**Returns:** [`Orderbook`](/reference/models/#orderbook)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderbookRequest;
+
+let book = exchange.fetch_orderbook(OrderbookRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    outcome: None,
+    token_id: None,
+}).await?;
+
+println!("Best bid: {:?}", book.best_bid());
+println!("Best ask: {:?}", book.best_ask());
+println!("Spread: {:?}", book.spread());
+
+for level in &book.bids[..5.min(book.bids.len())] {
+    println!("  BID {:.2} x {}", level.price, level.size);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+book = exchange.fetch_orderbook("KXBTC-25MAR14")
+
+print(f"Best bid: {book['bids'][0]['price']}")
+print(f"Best ask: {book['asks'][0]['price']}")
+
+for level in book["bids"][:5]:
+    print(f"  BID {level['price']:.2f} x {level['size']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const book = await exchange.fetchOrderbook("KXBTC-25MAR14");
+
+console.log(`Best bid: ${book.bids[0].price}`);
+console.log(`Best ask: ${book.asks[0].price}`);
+
+for (const level of book.bids.slice(0, 5)) {
+  console.log(`  BID ${level.price.toFixed(2)} x ${level.size}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_orderbook_history
+
+Fetch historical orderbook snapshots. Not all exchanges support this.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+| `limit` | `int?` | Max snapshots |
+| `cursor` | `string?` | Pagination cursor |
+
+**Returns:** `(list[OrderbookSnapshot], cursor?)` — see [`OrderbookSnapshot`](/reference/models/#orderbooksnapshot)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderbookHistoryRequest;
+
+let (snapshots, next_cursor) = exchange.fetch_orderbook_history(
+    OrderbookHistoryRequest {
+        market_id: "KXBTC-25MAR14".into(),
+        limit: Some(10),
+        ..Default::default()
+    }
+).await?;
+
+for snap in &snapshots {
+    println!("{}: {} bids, {} asks",
+        snap.timestamp, snap.bids.len(), snap.asks.len());
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Price History & Trades
+
+### fetch_price_history
+
+Fetch OHLCV candlestick data.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `interval` | `PriceHistoryInterval` | Candle interval (`1m`, `1h`, `6h`, `1d`, `1w`, `max`) |
+| `outcome` | `string?` | Outcome filter |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+
+**Returns:** `list[Candlestick]` — see [`Candlestick`](/reference/models/#candlestick)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::{PriceHistoryRequest, PriceHistoryInterval};
+
+let candles = exchange.fetch_price_history(PriceHistoryRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    interval: PriceHistoryInterval::OneHour,
+    start_ts: None,
+    end_ts: None,
+    outcome: None,
+    token_id: None,
+    condition_id: None,
+}).await?;
+
+for c in &candles {
+    println!("{}: O={:.2} H={:.2} L={:.2} C={:.2} V={}",
+        c.timestamp, c.open, c.high, c.low, c.close, c.volume);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK — use Rust directly
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK — use Rust directly
+```
+
+</TabItem>
+</Tabs>
+
+### fetch_trades
+
+Fetch recent trades for a market. Returns trades and an optional cursor for
+pagination.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `market_id` | `string` | Market ID |
+| `outcome` | `string?` | Outcome filter |
+| `token_id` | `string?` | Token ID |
+| `start_ts` | `int?` | Start time (Unix seconds) |
+| `end_ts` | `int?` | End time (Unix seconds) |
+| `limit` | `int?` | Max trades |
+| `cursor` | `string?` | Pagination cursor |
+
+**Returns:** `(list[MarketTrade], cursor?)` — see [`MarketTrade`](/reference/models/#markettrade)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::TradesRequest;
+
+let (trades, next_cursor) = exchange.fetch_trades(TradesRequest {
+    market_id: "KXBTC-25MAR14".into(),
+    limit: Some(50),
+    ..Default::default()
+}).await?;
+
+for t in &trades {
+    println!("{}: {:.2} x {} ({})",
+        t.timestamp, t.price, t.size, t.source_channel);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Not yet exposed in Python SDK — use Rust directly
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+// Not yet exposed in TypeScript SDK — use Rust directly
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## WebSocket
+
+Real-time streaming via WebSocket for orderbook updates, trades, and fills.
+
+See the [WebSocket Streaming](/guides/websocket/) guide for full documentation.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use px_core::OrderBookWebSocket;
+use futures::StreamExt;
+
+let mut ws = exchange.websocket().unwrap();
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
+while let Some(update) = stream.next().await {
+    match update? {
+        OrderbookUpdate::Snapshot(book) => {
+            println!("Snapshot: {} bids, {} asks", book.bids.len(), book.asks.len());
+        }
+        OrderbookUpdate::Delta { changes, .. } => {
+            for c in &changes {
+                println!("  {:?} {:.2} x {}", c.side, c.price, c.size);
+            }
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+ws = exchange.websocket()
+ws.connect()
+ws.subscribe("KXBTC-25MAR14")
+
+for update in ws.orderbook_stream("KXBTC-25MAR14"):
+    if update["type"] == "Snapshot":
+        book = update["Snapshot"]
+        print(f"Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
+    elif update["type"] == "Delta":
+        for c in update["Delta"]["changes"]:
+            print(f"  {c['side']} {c['price']:.2f} x {c['size']}")
+
+ws.disconnect()
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const ws = exchange.websocket();
+await ws.connect();
+await ws.subscribe("KXBTC-25MAR14");
+
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+  if (err) { console.error(err); return; }
+  if (update.type === "Snapshot") {
+    console.log(`Snapshot: ${update.Snapshot.bids.length} bids`);
+  } else {
+    for (const c of update.Delta.changes) {
+      console.log(`  ${c.side} ${c.price} x ${c.size}`);
+    }
+  }
+});
+```
+
+</TabItem>
+</Tabs>

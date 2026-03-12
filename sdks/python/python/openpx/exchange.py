@@ -25,7 +25,15 @@ class Exchange:
     """
 
     def __init__(self, exchange_id: str, config: Optional[dict[str, Any]] = None) -> None:
-        self._native = NativeExchange(exchange_id, config or {})
+        self._exchange_id = exchange_id
+        self._config = config or {}
+        self._native = NativeExchange(exchange_id, self._config)
+
+    def websocket(self) -> "WebSocket":
+        """Create a WebSocket connection using this exchange's credentials."""
+        from openpx.websocket import WebSocket
+
+        return WebSocket(self._exchange_id, self._config)
 
     @property
     def id(self) -> str:

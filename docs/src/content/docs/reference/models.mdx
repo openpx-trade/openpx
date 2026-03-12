@@ -1,4 +1,8 @@
-# Type Reference
+---
+title: Type Reference
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 All types auto-generated from Rust source via `schema/openpx.schema.json`.
 Run `just docs` to regenerate.
@@ -20,10 +24,9 @@ Run `just docs` to regenerate.
 | `tick_size` | `number` | Yes |  |
 | `volume` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Market {
     pub close_time: Option<DateTime<Utc>>,
@@ -39,7 +42,9 @@ pub struct Market {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Market(BaseModel):
     close_time: Optional[datetime]
@@ -54,7 +59,9 @@ class Market(BaseModel):
     volume: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Market {
   close_time?: string | null;
@@ -70,7 +77,8 @@ interface Market {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -78,10 +86,9 @@ interface Market {
 
 Enum with variants: `active`, `closed`, `resolved`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum MarketStatus {
     Active,
@@ -90,7 +97,9 @@ pub enum MarketStatus {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class MarketStatus(str, Enum):
     ACTIVE = "active"
@@ -98,12 +107,15 @@ class MarketStatus(str, Enum):
     RESOLVED = "resolved"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type MarketStatus = "active" | "closed" | "resolved";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -114,10 +126,9 @@ type MarketStatus = "active" | "closed" | "resolved";
 | `outcome` | `string` | Yes |  |
 | `token_id` | `string` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct OutcomeToken {
     pub outcome: String,
@@ -125,14 +136,18 @@ pub struct OutcomeToken {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OutcomeToken(BaseModel):
     outcome: str
     token_id: str
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface OutcomeToken {
   outcome: string;
@@ -140,7 +155,8 @@ interface OutcomeToken {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -165,8 +181,8 @@ interface OutcomeToken {
 | `min_order_size` | `number | null` | No | Minimum order size (contracts). Exchange-specific: Polymarket varies per market (e.g. 5, 15); Kalshi defaults to 1. |
 | `open_interest` | `number | null` | No | Current open interest (contracts/pairs) |
 | `open_time` | `string | null` | No | Market open time |
-| `openpx_id` | `string` | Yes | Primary key: {exchange}:{native_id} |
-| `outcome_prices` | `Record<string, number>` | No | Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35}) |
+| `openpx_id` | `string` | Yes | Primary key: \{exchange\}:\{native_id\} |
+| `outcome_prices` | `Record<string, number>` | No | Outcome prices from the REST API (e.g., \{"Yes": 0.65, "No": 0.35\}) |
 | `outcome_tokens` | `OutcomeToken[]` | No | Outcome-to-token mapping for orderbook subscriptions |
 | `outcomes` | `string[]` | No | Outcome labels (e.g., ["Yes", "No"] for binary markets) |
 | `price_change_1d` | `number | null` | No | 24-hour YES price change (decimal, e.g. 0.05 = +5%) |
@@ -186,10 +202,9 @@ interface OutcomeToken {
 | `volume_1wk` | `number | null` | No | 7-day rolling trading volume (USDC) |
 | `volume_24h` | `number | null` | No | 24-hour trading volume (USDC) |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct UnifiedMarket {
     pub best_ask: Option<f64>,
@@ -232,7 +247,9 @@ pub struct UnifiedMarket {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class UnifiedMarket(BaseModel):
     best_ask: Optional[float]
@@ -274,7 +291,9 @@ class UnifiedMarket(BaseModel):
     volume_24h: Optional[int]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface UnifiedMarket {
   best_ask?: number | null;
@@ -317,7 +336,8 @@ interface UnifiedMarket {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -338,10 +358,9 @@ interface UnifiedMarket {
 | `side` | `OrderSide` | Yes |  |
 | `size` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Fill {
     pub created_at: DateTime<Utc>,
@@ -357,7 +376,9 @@ pub struct Fill {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Fill(BaseModel):
     created_at: datetime
@@ -372,7 +393,9 @@ class Fill(BaseModel):
     size: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Fill {
   created_at: string;
@@ -388,7 +411,8 @@ interface Fill {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -396,10 +420,9 @@ interface Fill {
 
 Enum with variants: `maker`, `taker`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum LiquidityRole {
     Maker,
@@ -407,19 +430,24 @@ pub enum LiquidityRole {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class LiquidityRole(str, Enum):
     MAKER = "maker"
     TAKER = "taker"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type LiquidityRole = "maker" | "taker";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -438,10 +466,9 @@ type LiquidityRole = "maker" | "taker";
 | `status` | `OrderStatus` | Yes |  |
 | `updated_at` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Order {
     pub created_at: DateTime<Utc>,
@@ -457,7 +484,9 @@ pub struct Order {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Order(BaseModel):
     created_at: datetime
@@ -472,7 +501,9 @@ class Order(BaseModel):
     updated_at: Optional[datetime]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Order {
   created_at: string;
@@ -488,7 +519,8 @@ interface Order {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -496,10 +528,9 @@ interface Order {
 
 Enum with variants: `buy`, `sell`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum OrderSide {
     Buy,
@@ -507,19 +538,24 @@ pub enum OrderSide {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderSide(str, Enum):
     BUY = "buy"
     SELL = "sell"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type OrderSide = "buy" | "sell";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -527,10 +563,9 @@ type OrderSide = "buy" | "sell";
 
 Enum with variants: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum OrderStatus {
     Pending,
@@ -542,7 +577,9 @@ pub enum OrderStatus {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderStatus(str, Enum):
     PENDING = "pending"
@@ -553,12 +590,15 @@ class OrderStatus(str, Enum):
     REJECTED = "rejected"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancelled" | "rejected";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -566,10 +606,9 @@ type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancell
 
 Enum with variants: `gtc`, `ioc`, `fok`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum OrderType {
     Gtc,
@@ -578,7 +617,9 @@ pub enum OrderType {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderType(str, Enum):
     GTC = "gtc"
@@ -586,12 +627,15 @@ class OrderType(str, Enum):
     FOK = "fok"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type OrderType = "gtc" | "ioc" | "fok";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -605,10 +649,9 @@ type OrderType = "gtc" | "ioc" | "fok";
 | `max_outcome` | `string | null` | No |  |
 | `max_position` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct DeltaInfo {
     pub delta: f64,
@@ -617,7 +660,9 @@ pub struct DeltaInfo {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class DeltaInfo(BaseModel):
     delta: float
@@ -625,7 +670,9 @@ class DeltaInfo(BaseModel):
     max_position: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface DeltaInfo {
   delta: number;
@@ -634,7 +681,8 @@ interface DeltaInfo {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -647,10 +695,9 @@ interface DeltaInfo {
 | `positions` | `PositionBreakdown[]` | Yes |  |
 | `positions_value` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Nav {
     pub cash: f64,
@@ -660,7 +707,9 @@ pub struct Nav {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Nav(BaseModel):
     cash: float
@@ -669,7 +718,9 @@ class Nav(BaseModel):
     positions_value: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Nav {
   cash: number;
@@ -679,7 +730,8 @@ interface Nav {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -693,10 +745,9 @@ interface Nav {
 | `outcome` | `string` | Yes |  |
 | `size` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Position {
     pub average_price: f64,
@@ -707,7 +758,9 @@ pub struct Position {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Position(BaseModel):
     average_price: float
@@ -717,7 +770,9 @@ class Position(BaseModel):
     size: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Position {
   average_price: number;
@@ -728,7 +783,8 @@ interface Position {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -741,10 +797,9 @@ interface Position {
 | `size` | `number` | Yes |  |
 | `value` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct PositionBreakdown {
     pub current_price: f64,
@@ -754,7 +809,9 @@ pub struct PositionBreakdown {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PositionBreakdown(BaseModel):
     current_price: float
@@ -763,7 +820,9 @@ class PositionBreakdown(BaseModel):
     value: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface PositionBreakdown {
   current_price: number;
@@ -773,7 +832,8 @@ interface PositionBreakdown {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -790,10 +850,9 @@ interface PositionBreakdown {
 | `market_id` | `string` | Yes |  |
 | `timestamp` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Orderbook {
     pub asks: Vec<PriceLevel>,
@@ -805,7 +864,9 @@ pub struct Orderbook {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Orderbook(BaseModel):
     asks: list[PriceLevel]
@@ -816,7 +877,9 @@ class Orderbook(BaseModel):
     timestamp: Optional[datetime]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Orderbook {
   asks: PriceLevel[];
@@ -828,7 +891,8 @@ interface Orderbook {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -842,10 +906,9 @@ interface Orderbook {
 | `recorded_at` | `string | null` | No |  |
 | `timestamp` | `string` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct OrderbookSnapshot {
     pub asks: Vec<PriceLevel>,
@@ -856,7 +919,9 @@ pub struct OrderbookSnapshot {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderbookSnapshot(BaseModel):
     asks: list[PriceLevel]
@@ -866,7 +931,9 @@ class OrderbookSnapshot(BaseModel):
     timestamp: datetime
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface OrderbookSnapshot {
   asks: PriceLevel[];
@@ -877,7 +944,8 @@ interface OrderbookSnapshot {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -888,10 +956,9 @@ interface OrderbookSnapshot {
 | `price` | `number` | Yes |  |
 | `size` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct PriceLevel {
     pub price: f64,
@@ -899,14 +966,18 @@ pub struct PriceLevel {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PriceLevel(BaseModel):
     price: float
     size: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface PriceLevel {
   price: number;
@@ -914,7 +985,8 @@ interface PriceLevel {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -926,10 +998,9 @@ interface PriceLevel {
 | `side` | `PriceLevelSide` | Yes |  |
 | `size` | `number` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct PriceLevelChange {
     pub price: f64,
@@ -938,7 +1009,9 @@ pub struct PriceLevelChange {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PriceLevelChange(BaseModel):
     price: float
@@ -946,7 +1019,9 @@ class PriceLevelChange(BaseModel):
     size: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface PriceLevelChange {
   price: number;
@@ -955,7 +1030,8 @@ interface PriceLevelChange {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -963,10 +1039,9 @@ interface PriceLevelChange {
 
 Enum with variants: `bid`, `ask`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum PriceLevelSide {
     Bid,
@@ -974,19 +1049,24 @@ pub enum PriceLevelSide {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PriceLevelSide(str, Enum):
     BID = "bid"
     ASK = "ask"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type PriceLevelSide = "bid" | "ask";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1004,10 +1084,9 @@ type PriceLevelSide = "bid" | "ask";
 | `timestamp` | `string` | Yes | Period start timestamp (UTC). lightweight-charts expects start-of-period. |
 | `volume` | `number` | Yes | Trade volume in contracts. 0.0 if exchange doesn't provide volume. |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct Candlestick {
     pub close: f64,
@@ -1020,7 +1099,9 @@ pub struct Candlestick {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class Candlestick(BaseModel):
     close: float
@@ -1032,7 +1113,9 @@ class Candlestick(BaseModel):
     volume: float
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface Candlestick {
   close: number;
@@ -1045,7 +1128,8 @@ interface Candlestick {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1066,10 +1150,9 @@ interface Candlestick {
 | `tx_hash` | `string | null` | No |  |
 | `yes_price` | `number | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct MarketTrade {
     pub aggressor_side: Option<String>,
@@ -1087,7 +1170,9 @@ pub struct MarketTrade {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class MarketTrade(BaseModel):
     aggressor_side: Optional[str]
@@ -1104,7 +1189,9 @@ class MarketTrade(BaseModel):
     yes_price: Optional[float]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface MarketTrade {
   aggressor_side?: string | null;
@@ -1122,7 +1209,8 @@ interface MarketTrade {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1130,10 +1218,9 @@ interface MarketTrade {
 
 Enum with variants: `1m`, `1h`, `6h`, `1d`, `1w`, `max`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum PriceHistoryInterval {
     1m,
@@ -1145,7 +1232,9 @@ pub enum PriceHistoryInterval {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PriceHistoryInterval(str, Enum):
     1M = "1m"
@@ -1156,12 +1245,15 @@ class PriceHistoryInterval(str, Enum):
     MAX = "max"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1171,10 +1263,9 @@ type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
 
 Enum with variants: `Trade`, `Fill`
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub enum ActivityEvent {
     Trade,
@@ -1182,19 +1273,24 @@ pub enum ActivityEvent {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class ActivityEvent(str, Enum):
     TRADE = "Trade"
     FILL = "Fill"
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 type ActivityEvent = "Trade" | "Fill";
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1214,10 +1310,9 @@ type ActivityEvent = "Trade" | "Fill";
 | `source_channel` | `string` | Yes |  |
 | `timestamp` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct ActivityFill {
     pub asset_id: String,
@@ -1234,7 +1329,9 @@ pub struct ActivityFill {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class ActivityFill(BaseModel):
     asset_id: str
@@ -1250,7 +1347,9 @@ class ActivityFill(BaseModel):
     timestamp: Optional[datetime]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface ActivityFill {
   asset_id: string;
@@ -1267,7 +1366,8 @@ interface ActivityFill {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1286,10 +1386,9 @@ interface ActivityFill {
 | `timestamp` | `string | null` | No |  |
 | `trade_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct ActivityTrade {
     pub aggressor_side: Option<String>,
@@ -1305,7 +1404,9 @@ pub struct ActivityTrade {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class ActivityTrade(BaseModel):
     aggressor_side: Optional[str]
@@ -1320,7 +1421,9 @@ class ActivityTrade(BaseModel):
     trade_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface ActivityTrade {
   aggressor_side?: string | null;
@@ -1336,7 +1439,8 @@ interface ActivityTrade {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1364,10 +1468,9 @@ interface ActivityTrade {
 | `id` | `string` | Yes |  |
 | `name` | `string` | Yes |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct ExchangeInfo {
     pub has_approvals: bool,
@@ -1390,7 +1493,9 @@ pub struct ExchangeInfo {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class ExchangeInfo(BaseModel):
     has_approvals: bool
@@ -1412,7 +1517,9 @@ class ExchangeInfo(BaseModel):
     name: str
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface ExchangeInfo {
   has_approvals: boolean;
@@ -1435,7 +1542,8 @@ interface ExchangeInfo {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1446,10 +1554,9 @@ interface ExchangeInfo {
 | `cursor` | `string | null` | No | Exchange-specific cursor (offset, page number, or cursor string) |
 | `limit` | `number | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct FetchMarketsParams {
     pub cursor: Option<String>,
@@ -1457,14 +1564,18 @@ pub struct FetchMarketsParams {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class FetchMarketsParams(BaseModel):
     cursor: Optional[str]
     limit: Optional[int]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface FetchMarketsParams {
   cursor?: string | null;
@@ -1472,7 +1583,8 @@ interface FetchMarketsParams {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1482,30 +1594,34 @@ interface FetchMarketsParams {
 |-------|------|----------|-------------|
 | `market_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct FetchOrdersParams {
     pub market_id: Option<String>,
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class FetchOrdersParams(BaseModel):
     market_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface FetchOrdersParams {
   market_id?: string | null;
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1516,10 +1632,9 @@ interface FetchOrdersParams {
 | `address` | `string` | Yes |  |
 | `limit` | `number | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct FetchUserActivityParams {
     pub address: String,
@@ -1527,14 +1642,18 @@ pub struct FetchUserActivityParams {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class FetchUserActivityParams(BaseModel):
     address: str
     limit: Optional[int]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface FetchUserActivityParams {
   address: string;
@@ -1542,7 +1661,8 @@ interface FetchUserActivityParams {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1557,10 +1677,9 @@ interface FetchUserActivityParams {
 | `start_ts` | `number | null` | No |  |
 | `token_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct OrderbookHistoryRequest {
     pub cursor: Option<String>,
@@ -1572,7 +1691,9 @@ pub struct OrderbookHistoryRequest {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderbookHistoryRequest(BaseModel):
     cursor: Optional[str]
@@ -1583,7 +1704,9 @@ class OrderbookHistoryRequest(BaseModel):
     token_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface OrderbookHistoryRequest {
   cursor?: string | null;
@@ -1595,7 +1718,8 @@ interface OrderbookHistoryRequest {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1607,10 +1731,9 @@ interface OrderbookHistoryRequest {
 | `outcome` | `string | null` | No |  |
 | `token_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct OrderbookRequest {
     pub market_id: String,
@@ -1619,7 +1742,9 @@ pub struct OrderbookRequest {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class OrderbookRequest(BaseModel):
     market_id: str
@@ -1627,7 +1752,9 @@ class OrderbookRequest(BaseModel):
     token_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface OrderbookRequest {
   market_id: string;
@@ -1636,7 +1763,8 @@ interface OrderbookRequest {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1652,10 +1780,9 @@ interface OrderbookRequest {
 | `start_ts` | `number | null` | No | Unix seconds |
 | `token_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct PriceHistoryRequest {
     pub condition_id: Option<String>,
@@ -1668,7 +1795,9 @@ pub struct PriceHistoryRequest {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class PriceHistoryRequest(BaseModel):
     condition_id: Optional[str]
@@ -1680,7 +1809,9 @@ class PriceHistoryRequest(BaseModel):
     token_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface PriceHistoryRequest {
   condition_id?: string | null;
@@ -1693,7 +1824,8 @@ interface PriceHistoryRequest {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---
 
@@ -1710,10 +1842,9 @@ interface PriceHistoryRequest {
 | `start_ts` | `number | null` | No | Unix seconds (inclusive) |
 | `token_id` | `string | null` | No |  |
 
-<details>
-<summary>Rust / Python / TypeScript definitions</summary>
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
-**Rust**
 ```rust
 pub struct TradesRequest {
     pub cursor: Option<String>,
@@ -1727,7 +1858,9 @@ pub struct TradesRequest {
 }
 ```
 
-**Python**
+</TabItem>
+<TabItem label="Python">
+
 ```python
 class TradesRequest(BaseModel):
     cursor: Optional[str]
@@ -1740,7 +1873,9 @@ class TradesRequest(BaseModel):
     token_id: Optional[str]
 ```
 
-**TypeScript**
+</TabItem>
+<TabItem label="TypeScript">
+
 ```typescript
 interface TradesRequest {
   cursor?: string | null;
@@ -1754,6 +1889,7 @@ interface TradesRequest {
 }
 ```
 
-</details>
+</TabItem>
+</Tabs>
 
 ---

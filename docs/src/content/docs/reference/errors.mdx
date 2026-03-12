@@ -1,4 +1,8 @@
-# Error Handling
+---
+title: Error Handling
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Error Hierarchy
 
@@ -34,7 +38,8 @@ OpenPxError
 
 ## Language Mapping
 
-### Rust
+<Tabs syncKey="lang">
+<TabItem label="Rust">
 
 ```rust
 use px_core::{OpenPxError, ExchangeError};
@@ -51,7 +56,8 @@ match result {
 }
 ```
 
-### Python
+</TabItem>
+<TabItem label="Python">
 
 ```python
 from openpx import Exchange, OpenPxError, AuthenticationError, NetworkError
@@ -66,7 +72,8 @@ except OpenPxError as e:
     print(f"Error: {e}")
 ```
 
-### TypeScript
+</TabItem>
+<TabItem label="TypeScript">
 
 ```typescript
 try {
@@ -75,3 +82,6 @@ try {
   console.error(e.message);
 }
 ```
+
+</TabItem>
+</Tabs>
