@@ -633,7 +633,7 @@ impl LimitlessClobClient {
             return Err(LimitlessError::AuthRequired);
         }
 
-        let mut url = format!("{}/positions", self.host);
+        let mut url = format!("{}/portfolio/positions", self.host);
         if let Some(slug) = market_slug {
             url.push_str(&format!("?marketSlug={slug}"));
         }
