@@ -1,0 +1,1070 @@
+use async_trait::async_trait;
+use futures::StreamExt;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::time::{interval, Duration};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
+};
+
+use px_core::{
+    sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream, ActivityTrade,
+    AtomicWebSocketState, ChangeVec, LiquidityRole, OrderBookWebSocket, Orderbook, OrderbookStream,
+    OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState,
+    PRICE_EPSILON, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
+    WS_RECONNECT_MAX_DELAY,
+};
+
+use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
+
+const WS_PATH: &str = "/trade-api/ws/v2";
+
+type OrderbookSender = broadcast::Sender<Result<OrderbookUpdate, WebSocketError>>;
+type ActivitySender = broadcast::Sender<Result<ActivityEvent, WebSocketError>>;
+
+#[derive(Debug, Deserialize)]
+struct SnapshotPayload {
+    market_ticker: String,
+    #[allow(dead_code)]
+    market_id: String,
+    #[serde(default)]
+    yes: Option<Vec<[i64; 2]>>,
+    #[serde(default)]
+    no: Option<Vec<[i64; 2]>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeltaPayload {
+    market_ticker: String,
+    #[allow(dead_code)]
+    market_id: String,
+    price: i64,
+    delta: i64,
+    side: String,
+    #[serde(default)]
+    ts: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorPayload {
+    code: i64,
+    msg: String,
+}
+
+pub struct KalshiWebSocket {
+    config: KalshiConfig,
+    auth: Option<Arc<KalshiAuth>>,
+    api_key_id: Option<String>,
+    state: Arc<AtomicWebSocketState>,
+    subscriptions: Arc<RwLock<HashMap<String, Option<u64>>>>,
+    pending: Arc<RwLock<HashMap<u64, String>>>,
+    orderbook_senders: Arc<RwLock<HashMap<String, OrderbookSender>>>,
+    activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
+    orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
+    write_tx: Arc<Mutex<Option<futures::channel::mpsc::UnboundedSender<Message>>>>,
+    shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    auto_reconnect: bool,
+    reconnect_attempts: Arc<Mutex<u32>>,
+    command_id: Arc<AtomicU64>,
+    enable_user_fills: bool,
+}
+
+impl KalshiWebSocket {
+    pub fn new(config: KalshiConfig) -> Result<Self, KalshiError> {
+        Self::with_config(config, true, false)
+    }
+
+    pub fn with_user_fills(config: KalshiConfig) -> Result<Self, KalshiError> {
+        Self::with_config(config, true, true)
+    }
+
+    pub fn with_config(
+        config: KalshiConfig,
+        auto_reconnect: bool,
+        enable_user_fills: bool,
+    ) -> Result<Self, KalshiError> {
+        let auth = if config.is_authenticated() {
+            let auth = if let Some(ref path) = config.private_key_path {
+                KalshiAuth::from_file(path)?
+            } else if let Some(ref pem) = config.private_key_pem {
+                KalshiAuth::from_pem(pem)?
+            } else {
+                return Err(KalshiError::AuthRequired);
+            };
+            Some(Arc::new(auth))
+        } else {
+            None
+        };
+
+        Ok(Self {
+            api_key_id: config.api_key_id.clone(),
+            config,
+            auth,
+            state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            pending: Arc::new(RwLock::new(HashMap::new())),
+            orderbook_senders: Arc::new(RwLock::new(HashMap::new())),
+            activity_senders: Arc::new(RwLock::new(HashMap::new())),
+            orderbooks: Arc::new(RwLock::new(HashMap::new())),
+            write_tx: Arc::new(Mutex::new(None)),
+            shutdown_tx: Arc::new(Mutex::new(None)),
+            auto_reconnect,
+            reconnect_attempts: Arc::new(Mutex::new(0)),
+            command_id: Arc::new(AtomicU64::new(0)),
+            enable_user_fills,
+        })
+    }
+
+    fn set_state(&self, new_state: WebSocketState) {
+        self.state.store(new_state);
+    }
+
+    async fn reset_reconnect_attempts(&self) {
+        let mut attempts = self.reconnect_attempts.lock().await;
+        *attempts = 0;
+    }
+
+    fn next_command_id(&self) -> u64 {
+        self.command_id.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    fn ws_url(&self) -> Result<reqwest::Url, WebSocketError> {
+        let api_url = reqwest::Url::parse(&self.config.api_url)
+            .map_err(|e| WebSocketError::Connection(e.to_string()))?;
+        let scheme = if api_url.scheme() == "https" {
+            "wss"
+        } else {
+            "ws"
+        };
+        let host = api_url
+            .host_str()
+            .ok_or_else(|| WebSocketError::Connection("missing host".into()))?;
+        let port = api_url.port().map(|p| format!(":{p}")).unwrap_or_default();
+        let url = format!("{scheme}://{host}{port}{WS_PATH}");
+        reqwest::Url::parse(&url).map_err(|e| WebSocketError::Connection(e.to_string()))
+    }
+
+    fn build_request(
+        &self,
+    ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, WebSocketError> {
+        let api_key_id = self
+            .api_key_id
+            .as_ref()
+            .ok_or_else(|| WebSocketError::Connection("authentication required".into()))?;
+        let auth = self
+            .auth
+            .as_ref()
+            .ok_or_else(|| WebSocketError::Connection("authentication required".into()))?;
+
+        let url = self.ws_url()?;
+        // Build a valid websocket client request so tungstenite populates required
+        // handshake headers (Sec-WebSocket-Key, Upgrade, Connection, etc.).
+        let mut request = url
+            .as_str()
+            .into_client_request()
+            .map_err(|e| WebSocketError::Connection(e.to_string()))?;
+
+        let timestamp_ms = chrono::Utc::now().timestamp_millis();
+        let signature = auth.sign(timestamp_ms, "GET", WS_PATH);
+
+        let headers = request.headers_mut();
+        headers.insert(
+            "KALSHI-ACCESS-KEY",
+            HeaderValue::from_str(api_key_id)
+                .map_err(|e| WebSocketError::Protocol(e.to_string()))?,
+        );
+        headers.insert(
+            "KALSHI-ACCESS-SIGNATURE",
+            HeaderValue::from_str(&signature)
+                .map_err(|e| WebSocketError::Protocol(e.to_string()))?,
+        );
+        headers.insert(
+            "KALSHI-ACCESS-TIMESTAMP",
+            HeaderValue::from_str(&timestamp_ms.to_string())
+                .map_err(|e| WebSocketError::Protocol(e.to_string()))?,
+        );
+        headers.insert("User-Agent", HeaderValue::from_static("openpx/1.0"));
+
+        Ok(request)
+    }
+
+    async fn send_message(&self, msg: &str) -> Result<(), WebSocketError> {
+        let tx = self.write_tx.lock().await;
+        if let Some(ref sender) = *tx {
+            sender
+                .unbounded_send(Message::Text(msg.into()))
+                .map_err(|e| WebSocketError::Connection(format!("send failed: {e}")))?;
+        }
+        Ok(())
+    }
+
+    fn parse_levels(levels: Option<Vec<[i64; 2]>>) -> Vec<PriceLevel> {
+        levels
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|[price_cents, size]| {
+                let price = price_cents as f64 / 100.0;
+                let size = size as f64;
+                if price > 0.0 && size > 0.0 {
+                    Some(PriceLevel::new(price, size))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn update_levels(levels: &mut Vec<PriceLevel>, price: f64, delta: f64, descending: bool) {
+        if let Some(idx) = levels
+            .iter()
+            .position(|l| (l.price - price).abs() < PRICE_EPSILON)
+        {
+            let new_size = levels[idx].size + delta;
+            if new_size <= 0.0 {
+                levels.remove(idx);
+            } else {
+                levels[idx].size = new_size;
+            }
+        } else if delta > 0.0 {
+            levels.push(PriceLevel::new(price, delta));
+        }
+
+        if descending {
+            sort_bids(levels);
+        } else {
+            sort_asks(levels);
+        }
+    }
+
+    async fn handle_message(&self, text: &str) {
+        let value: serde_json::Value = match serde_json::from_str(text) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+
+        let msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        match msg_type {
+            "orderbook_snapshot" => self.handle_snapshot(&value).await,
+            "orderbook_delta" => self.handle_delta(&value).await,
+            "trade" => self.handle_trade(&value).await,
+            "fill" => self.handle_fill(&value).await,
+            "subscribed" => self.handle_subscribed(&value).await,
+            "unsubscribed" => self.handle_unsubscribed(&value).await,
+            "error" => self.handle_error(&value).await,
+            _ => {}
+        }
+    }
+
+    fn value_to_string(value: Option<&serde_json::Value>) -> Option<String> {
+        match value {
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    fn value_to_f64(value: Option<&serde_json::Value>) -> Option<f64> {
+        match value {
+            Some(serde_json::Value::Number(n)) => n.as_f64(),
+            Some(serde_json::Value::String(s)) => s.parse::<f64>().ok(),
+            _ => None,
+        }
+    }
+
+    fn value_to_price(value: Option<&serde_json::Value>) -> Option<f64> {
+        Self::value_to_f64(value).map(|v| if v > 1.0 { v / 100.0 } else { v })
+    }
+
+    fn value_to_timestamp(
+        value: Option<&serde_json::Value>,
+    ) -> Option<chrono::DateTime<chrono::Utc>> {
+        let value = value?;
+        if let Some(s) = value.as_str() {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                return Some(dt.with_timezone(&chrono::Utc));
+            }
+            if let Ok(raw) = s.parse::<i64>() {
+                if let Some(dt) = Self::unix_timestamp_to_datetime(raw) {
+                    return Some(dt);
+                }
+            }
+            return None;
+        }
+
+        if let Some(raw) = value.as_i64() {
+            if let Some(dt) = Self::unix_timestamp_to_datetime(raw) {
+                return Some(dt);
+            }
+        }
+        None
+    }
+
+    fn unix_timestamp_to_datetime(raw: i64) -> Option<chrono::DateTime<chrono::Utc>> {
+        // Kalshi payloads can arrive as seconds, milliseconds, or microseconds.
+        // Normalize to milliseconds before conversion.
+        let abs = raw.unsigned_abs();
+        let ms = if abs >= 10_000_000_000_000 {
+            // microseconds
+            raw / 1_000
+        } else if abs >= 10_000_000_000 {
+            // milliseconds
+            raw
+        } else if abs >= 1_000_000_000 {
+            // seconds
+            raw.saturating_mul(1_000)
+        } else {
+            // fall back to treating small values as milliseconds
+            raw
+        };
+        chrono::DateTime::from_timestamp_millis(ms)
+    }
+
+    async fn handle_snapshot(&self, value: &serde_json::Value) {
+        let payload: SnapshotPayload = match value.get("msg") {
+            Some(msg) => match serde_json::from_value(msg.clone()) {
+                Ok(parsed) => parsed,
+                Err(_) => return,
+            },
+            None => return,
+        };
+
+        let mut bids = Self::parse_levels(payload.yes);
+        let mut asks: Vec<PriceLevel> = Self::parse_levels(payload.no)
+            .into_iter()
+            .map(|level| PriceLevel::new(1.0 - level.price, level.size))
+            .collect();
+
+        sort_bids(&mut bids);
+        sort_asks(&mut asks);
+
+        let orderbook = Orderbook {
+            market_id: payload.market_ticker.clone(),
+            asset_id: payload.market_ticker.clone(),
+            bids,
+            asks,
+            last_update_id: value.get("seq").and_then(|v| v.as_u64()),
+            timestamp: Some(chrono::Utc::now()),
+        };
+
+        {
+            let mut obs = self.orderbooks.write().await;
+            obs.insert(payload.market_ticker.clone(), orderbook.clone());
+        }
+
+        self.broadcast_orderbook(&payload.market_ticker, orderbook)
+            .await;
+    }
+
+    async fn handle_delta(&self, value: &serde_json::Value) {
+        let payload: DeltaPayload = match value.get("msg") {
+            Some(msg) => match serde_json::from_value(msg.clone()) {
+                Ok(parsed) => parsed,
+                Err(_) => return,
+            },
+            None => return,
+        };
+
+        let price = payload.price as f64 / 100.0;
+        let delta = payload.delta as f64;
+        let side = payload.side.to_lowercase();
+
+        let mut obs = self.orderbooks.write().await;
+        if let Some(ob) = obs.get_mut(&payload.market_ticker) {
+            let (plc_side, plc_price) = if side == "yes" {
+                (PriceLevelSide::Bid, price)
+            } else {
+                (PriceLevelSide::Ask, 1.0 - price)
+            };
+
+            // Apply delta (existing logic)
+            if side == "yes" {
+                Self::update_levels(&mut ob.bids, price, delta, true);
+            } else {
+                Self::update_levels(&mut ob.asks, 1.0 - price, delta, false);
+            }
+
+            // Read resulting absolute size for the change record
+            let abs_size = if side == "yes" {
+                ob.bids
+                    .iter()
+                    .find(|l| (l.price - price).abs() < PRICE_EPSILON)
+                    .map(|l| l.size)
+                    .unwrap_or(0.0)
+            } else {
+                let ap = 1.0 - price;
+                ob.asks
+                    .iter()
+                    .find(|l| (l.price - ap).abs() < PRICE_EPSILON)
+                    .map(|l| l.size)
+                    .unwrap_or(0.0)
+            };
+
+            let change = PriceLevelChange {
+                side: plc_side,
+                price: plc_price,
+                size: abs_size,
+            };
+
+            ob.last_update_id = value.get("seq").and_then(|v| v.as_u64());
+            let ts = payload
+                .ts
+                .as_deref()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc));
+            ob.timestamp = ts.or(ob.timestamp);
+            let timestamp = ob.timestamp;
+            drop(obs);
+
+            let mut changes = ChangeVec::new();
+            changes.push(change);
+
+            let senders = self.orderbook_senders.read().await;
+            if let Some(sender) = senders.get(&payload.market_ticker) {
+                let _ = sender.send(Ok(OrderbookUpdate::Delta { changes, timestamp }));
+            }
+        }
+    }
+
+    async fn handle_trade(&self, value: &serde_json::Value) {
+        let msg = value.get("msg").unwrap_or(value);
+
+        let market_ticker = msg
+            .get("market_ticker")
+            .or_else(|| msg.get("ticker"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let Some(market_ticker) = market_ticker else {
+            return;
+        };
+
+        let price = Self::value_to_price(
+            msg.get("yes_price")
+                .or_else(|| msg.get("price"))
+                .or_else(|| msg.get("yes_price_fp")),
+        );
+        let size = Self::value_to_f64(msg.get("count_fp").or_else(|| msg.get("count")));
+        let Some(price) = price else {
+            return;
+        };
+        let Some(size) = size else {
+            return;
+        };
+
+        let side = msg
+            .get("side")
+            .or_else(|| msg.get("maker_side"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let aggressor_side = msg
+            .get("taker_side")
+            .or_else(|| msg.get("aggressor_side"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let trade_id = Self::value_to_string(msg.get("trade_id"));
+        let timestamp = Self::value_to_timestamp(msg.get("ts").or_else(|| msg.get("timestamp")));
+
+        let event = ActivityEvent::Trade(ActivityTrade {
+            market_id: market_ticker.clone(),
+            asset_id: market_ticker.clone(),
+            trade_id,
+            price,
+            size,
+            side,
+            aggressor_side,
+            outcome: None,
+            timestamp,
+            source_channel: "kalshi_public_trade".to_string(),
+        });
+        self.broadcast_activity(&market_ticker, event).await;
+    }
+
+    async fn handle_fill(&self, value: &serde_json::Value) {
+        let msg = value.get("msg").unwrap_or(value);
+        let market_ticker = msg
+            .get("market_ticker")
+            .or_else(|| msg.get("ticker"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let Some(market_ticker) = market_ticker else {
+            return;
+        };
+
+        let price = Self::value_to_price(
+            msg.get("yes_price")
+                .or_else(|| msg.get("price"))
+                .or_else(|| msg.get("yes_price_fp")),
+        )
+        .unwrap_or(0.0);
+        let size = Self::value_to_f64(
+            msg.get("count")
+                .or_else(|| msg.get("count_fp"))
+                .or_else(|| msg.get("filled_count")),
+        )
+        .unwrap_or(0.0);
+        if price <= 0.0 || size <= 0.0 {
+            return;
+        }
+
+        let side = msg
+            .get("action")
+            .or_else(|| msg.get("side"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let outcome = msg.get("side").and_then(|v| v.as_str()).map(str::to_string);
+        let fill_id = Self::value_to_string(msg.get("fill_id").or_else(|| msg.get("id")));
+        let order_id = Self::value_to_string(msg.get("order_id"));
+        let timestamp = Self::value_to_timestamp(msg.get("ts").or_else(|| msg.get("timestamp")));
+
+        let liquidity_role = msg
+            .get("is_taker")
+            .and_then(|v| v.as_bool())
+            .map(|is_taker| {
+                if is_taker {
+                    LiquidityRole::Taker
+                } else {
+                    LiquidityRole::Maker
+                }
+            });
+
+        let event = ActivityEvent::Fill(ActivityFill {
+            market_id: market_ticker.clone(),
+            asset_id: market_ticker.clone(),
+            fill_id,
+            order_id,
+            price,
+            size,
+            side,
+            outcome,
+            timestamp,
+            source_channel: "kalshi_user_fill".to_string(),
+            liquidity_role,
+        });
+        self.broadcast_activity(&market_ticker, event).await;
+    }
+
+    async fn handle_subscribed(&self, value: &serde_json::Value) {
+        let id = value.get("id").and_then(|v| v.as_u64());
+        let sid = value
+            .get("msg")
+            .and_then(|msg| msg.get("sid"))
+            .and_then(|v| v.as_u64());
+
+        if let (Some(id), Some(sid)) = (id, sid) {
+            let market = {
+                let mut pending = self.pending.write().await;
+                pending.remove(&id)
+            };
+
+            if let Some(market) = market {
+                let mut subs = self.subscriptions.write().await;
+                subs.insert(market, Some(sid));
+            }
+        }
+    }
+
+    async fn handle_unsubscribed(&self, value: &serde_json::Value) {
+        let sid = value.get("sid").and_then(|v| v.as_u64());
+        if let Some(sid) = sid {
+            let mut subs = self.subscriptions.write().await;
+            let remove_key = subs.iter().find_map(|(k, v)| {
+                if v == &Some(sid) {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            });
+            if let Some(key) = remove_key {
+                subs.remove(&key);
+            }
+        }
+    }
+
+    async fn handle_error(&self, value: &serde_json::Value) {
+        let id = value.get("id").and_then(|v| v.as_u64());
+        let payload: ErrorPayload = match value.get("msg") {
+            Some(msg) => match serde_json::from_value(msg.clone()) {
+                Ok(parsed) => parsed,
+                Err(_) => return,
+            },
+            None => return,
+        };
+
+        if let Some(id) = id {
+            let market = {
+                let mut pending = self.pending.write().await;
+                pending.remove(&id)
+            };
+            if let Some(market) = market {
+                let err = WebSocketError::Subscription(format!(
+                    "kalshi ws error {}: {}",
+                    payload.code, payload.msg
+                ));
+                self.broadcast_error(&market, err).await;
+            }
+        }
+    }
+
+    async fn broadcast_orderbook(&self, market_ticker: &str, orderbook: Orderbook) {
+        let senders = self.orderbook_senders.read().await;
+        if let Some(sender) = senders.get(market_ticker) {
+            let _ = sender.send(Ok(OrderbookUpdate::Snapshot(orderbook)));
+        }
+    }
+
+    async fn broadcast_activity(&self, market_ticker: &str, activity: ActivityEvent) {
+        let senders = self.activity_senders.read().await;
+        if let Some(sender) = senders.get(market_ticker) {
+            let _ = sender.send(Ok(activity));
+        }
+    }
+
+    async fn broadcast_error(&self, market_ticker: &str, err: WebSocketError) {
+        let senders = self.orderbook_senders.read().await;
+        if let Some(sender) = senders.get(market_ticker) {
+            let _ = sender.send(Err(err));
+        }
+
+        let activity_senders = self.activity_senders.read().await;
+        if let Some(sender) = activity_senders.get(market_ticker) {
+            let _ = sender.send(Err(WebSocketError::Subscription(
+                "activity stream error".to_string(),
+            )));
+        }
+    }
+
+    async fn resubscribe_all(&self) -> Result<(), WebSocketError> {
+        let markets: Vec<String> = {
+            let mut subs = self.subscriptions.write().await;
+            let markets = subs.keys().cloned().collect::<Vec<_>>();
+            for value in subs.values_mut() {
+                *value = None;
+            }
+            markets
+        };
+
+        for market in markets {
+            let _ = self.send_subscribe(&market).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn send_subscribe(&self, market_ticker: &str) -> Result<u64, WebSocketError> {
+        let id = self.next_command_id();
+        let mut channels = vec!["orderbook_delta", "trade"];
+        if self.enable_user_fills {
+            channels.push("fill");
+        }
+        let payload = serde_json::json!({
+            "id": id,
+            "cmd": "subscribe",
+            "params": {
+                "channels": channels,
+                "market_ticker": market_ticker
+            }
+        });
+
+        {
+            let mut pending = self.pending.write().await;
+            pending.insert(id, market_ticker.to_string());
+        }
+
+        let json =
+            serde_json::to_string(&payload).map_err(|e| WebSocketError::Protocol(e.to_string()))?;
+        self.send_message(&json).await?;
+        Ok(id)
+    }
+
+    async fn send_unsubscribe(&self, sid: u64) -> Result<(), WebSocketError> {
+        let id = self.next_command_id();
+        let payload = serde_json::json!({
+            "id": id,
+            "cmd": "unsubscribe",
+            "params": { "sids": [sid] }
+        });
+        let json =
+            serde_json::to_string(&payload).map_err(|e| WebSocketError::Protocol(e.to_string()))?;
+        self.send_message(&json).await?;
+        Ok(())
+    }
+
+    fn calculate_reconnect_delay(attempt: u32) -> Duration {
+        let delay = WS_RECONNECT_BASE_DELAY.as_millis() as f64 * 1.5_f64.powi(attempt as i32);
+        let delay = delay.min(WS_RECONNECT_MAX_DELAY.as_millis() as f64) as u64;
+        Duration::from_millis(delay)
+    }
+}
+
+#[async_trait]
+impl OrderBookWebSocket for KalshiWebSocket {
+    async fn connect(&mut self) -> Result<(), WebSocketError> {
+        if let Some(ref api_key_id) = self.config.api_key_id {
+            self.api_key_id = Some(api_key_id.clone());
+        }
+
+        if self.api_key_id.is_none() || self.auth.is_none() {
+            return Err(WebSocketError::Connection("authentication required".into()));
+        }
+
+        self.set_state(WebSocketState::Connecting);
+
+        let request = self.build_request()?;
+        let (ws_stream, _) = connect_async(request)
+            .await
+            .map_err(|e| WebSocketError::Connection(e.to_string()))?;
+
+        let (write, read) = ws_stream.split();
+        let (tx, rx) = futures::channel::mpsc::unbounded::<Message>();
+
+        {
+            let mut write_tx = self.write_tx.lock().await;
+            *write_tx = Some(tx);
+        }
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        {
+            let mut stx = self.shutdown_tx.lock().await;
+            *stx = Some(shutdown_tx);
+        }
+
+        let state = self.state.clone();
+        let orderbook_senders = self.orderbook_senders.clone();
+        let activity_senders = self.activity_senders.clone();
+        let orderbooks = self.orderbooks.clone();
+        let subscriptions = self.subscriptions.clone();
+        let pending = self.pending.clone();
+        let write_tx_clone = self.write_tx.clone();
+        let reconnect_attempts_clone = self.reconnect_attempts.clone();
+        let auto_reconnect = self.auto_reconnect;
+        let config = self.config.clone();
+        let auth = self.auth.clone();
+        let command_id = self.command_id.clone();
+
+        let ws_self = KalshiWebSocket {
+            config,
+            auth,
+            api_key_id: self.api_key_id.clone(),
+            state: state.clone(),
+            subscriptions: subscriptions.clone(),
+            pending: pending.clone(),
+            orderbook_senders: orderbook_senders.clone(),
+            activity_senders: activity_senders.clone(),
+            orderbooks: orderbooks.clone(),
+            write_tx: write_tx_clone.clone(),
+            shutdown_tx: Arc::new(Mutex::new(None)),
+            auto_reconnect,
+            reconnect_attempts: reconnect_attempts_clone.clone(),
+            command_id,
+            enable_user_fills: self.enable_user_fills,
+        };
+
+        tokio::spawn(async move {
+            let write_future = rx.map(Ok).forward(write);
+            let read_future = async {
+                let mut read = read;
+                while let Some(msg) = read.next().await {
+                    match msg {
+                        Ok(Message::Text(text)) => {
+                            ws_self.handle_message(&text).await;
+                        }
+                        Ok(Message::Ping(data)) => {
+                            if let Some(ref tx) = *ws_self.write_tx.lock().await {
+                                let _ = tx.unbounded_send(Message::Pong(data));
+                            }
+                        }
+                        Ok(Message::Close(_)) => break,
+                        Err(_) => break,
+                        _ => {}
+                    }
+                }
+            };
+
+            let ping_future = async {
+                let mut ping_interval = interval(WS_PING_INTERVAL);
+                loop {
+                    ping_interval.tick().await;
+                    if let Some(ref tx) = *ws_self.write_tx.lock().await {
+                        let _ = tx.unbounded_send(Message::Ping(vec![]));
+                    }
+                }
+            };
+
+            tokio::select! {
+                _ = write_future => {},
+                _ = read_future => {},
+                _ = ping_future => {},
+                _ = shutdown_rx => {},
+            }
+
+            if state.load() == WebSocketState::Closed {
+                return;
+            }
+            state.store(WebSocketState::Disconnected);
+
+            if auto_reconnect {
+                let mut attempt = {
+                    let mut a = reconnect_attempts_clone.lock().await;
+                    *a += 1;
+                    *a
+                };
+
+                while attempt <= WS_MAX_RECONNECT_ATTEMPTS {
+                    state.store(WebSocketState::Reconnecting);
+
+                    let delay = KalshiWebSocket::calculate_reconnect_delay(attempt);
+                    tokio::time::sleep(delay).await;
+
+                    let request = match ws_self.build_request() {
+                        Ok(req) => req,
+                        Err(_) => break,
+                    };
+
+                    match connect_async(request).await {
+                        Ok((new_ws, _)) => {
+                            let (new_write, new_read) = new_ws.split();
+                            let (new_tx, new_rx) = futures::channel::mpsc::unbounded::<Message>();
+
+                            {
+                                let mut wtx = write_tx_clone.lock().await;
+                                *wtx = Some(new_tx);
+                            }
+
+                            state.store(WebSocketState::Connected);
+
+                            {
+                                let mut a = reconnect_attempts_clone.lock().await;
+                                *a = 0;
+                            }
+
+                            let _ = ws_self.resubscribe_all().await;
+
+                            let write_future = new_rx.map(Ok).forward(new_write);
+                            let read_future = async {
+                                let mut read = new_read;
+                                while let Some(msg) = read.next().await {
+                                    match msg {
+                                        Ok(Message::Text(text)) => {
+                                            ws_self.handle_message(&text).await;
+                                        }
+                                        Ok(Message::Ping(data)) => {
+                                            if let Some(ref tx) = *ws_self.write_tx.lock().await {
+                                                let _ = tx.unbounded_send(Message::Pong(data));
+                                            }
+                                        }
+                                        Ok(Message::Close(_)) => break,
+                                        Err(_) => break,
+                                        _ => {}
+                                    }
+                                }
+                            };
+
+                            tokio::select! {
+                                _ = write_future => {},
+                                _ = read_future => {},
+                            }
+
+                            if state.load() == WebSocketState::Closed {
+                                return;
+                            }
+
+                            attempt = {
+                                let mut a = reconnect_attempts_clone.lock().await;
+                                *a += 1;
+                                *a
+                            };
+                        }
+                        Err(_) => {
+                            attempt = {
+                                let mut a = reconnect_attempts_clone.lock().await;
+                                *a += 1;
+                                *a
+                            };
+                        }
+                    }
+                }
+
+                state.store(WebSocketState::Disconnected);
+            }
+        });
+
+        self.set_state(WebSocketState::Connected);
+        self.reset_reconnect_attempts().await;
+        self.resubscribe_all().await?;
+
+        Ok(())
+    }
+
+    async fn disconnect(&mut self) -> Result<(), WebSocketError> {
+        self.set_state(WebSocketState::Closed);
+        if let Some(tx) = self.shutdown_tx.lock().await.take() {
+            let _ = tx.send(());
+        }
+        Ok(())
+    }
+
+    async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
+        let market_ticker = market_id.to_string();
+
+        {
+            let mut subs = self.subscriptions.write().await;
+            subs.entry(market_ticker.clone()).or_insert(None);
+        }
+
+        {
+            let mut senders = self.orderbook_senders.write().await;
+            if !senders.contains_key(&market_ticker) {
+                let (tx, _) = broadcast::channel(16_384);
+                senders.insert(market_ticker.clone(), tx);
+            }
+        }
+
+        {
+            let mut senders = self.activity_senders.write().await;
+            if !senders.contains_key(&market_ticker) {
+                let (tx, _) = broadcast::channel(16_384);
+                senders.insert(market_ticker.clone(), tx);
+            }
+        }
+
+        if self.state.load() == WebSocketState::Connected {
+            let _ = self.send_subscribe(&market_ticker).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
+        let market_ticker = market_id.to_string();
+        let sid = {
+            let mut subs = self.subscriptions.write().await;
+            subs.remove(&market_ticker).and_then(|v| v)
+        };
+
+        if let Some(sid) = sid {
+            let _ = self.send_unsubscribe(sid).await;
+        }
+
+        {
+            let mut senders = self.orderbook_senders.write().await;
+            senders.remove(&market_ticker);
+        }
+
+        {
+            let mut senders = self.activity_senders.write().await;
+            senders.remove(&market_ticker);
+        }
+
+        {
+            let mut obs = self.orderbooks.write().await;
+            obs.remove(&market_ticker);
+        }
+
+        Ok(())
+    }
+
+    fn state(&self) -> WebSocketState {
+        self.state.load()
+    }
+
+    async fn orderbook_stream(
+        &mut self,
+        market_id: &str,
+    ) -> Result<OrderbookStream, WebSocketError> {
+        // Ensure sender exists — may be called before subscribe() to avoid
+        // the race where the initial snapshot is broadcast with no receivers.
+        {
+            let mut senders = self.orderbook_senders.write().await;
+            if !senders.contains_key(market_id) {
+                let (tx, _) = broadcast::channel(16_384);
+                senders.insert(market_id.to_string(), tx);
+            }
+        }
+
+        let senders = self.orderbook_senders.read().await;
+        let sender = senders.get(market_id).ok_or_else(|| {
+            WebSocketError::Subscription(format!("no orderbook sender for market: {market_id}"))
+        })?;
+        let rx = sender.subscribe();
+
+        Ok(Box::pin(
+            tokio_stream::wrappers::BroadcastStream::new(rx)
+                .filter_map(|result| async move { result.ok() }),
+        ))
+    }
+
+    async fn activity_stream(&mut self, market_id: &str) -> Result<ActivityStream, WebSocketError> {
+        {
+            let mut senders = self.activity_senders.write().await;
+            if !senders.contains_key(market_id) {
+                let (tx, _) = broadcast::channel(16_384);
+                senders.insert(market_id.to_string(), tx);
+            }
+        }
+        let senders = self.activity_senders.read().await;
+        let sender = senders.get(market_id).ok_or_else(|| {
+            WebSocketError::Subscription(format!("no activity sender for market: {market_id}"))
+        })?;
+        let rx = sender.subscribe();
+        Ok(Box::pin(
+            tokio_stream::wrappers::BroadcastStream::new(rx)
+                .filter_map(|result| async move { result.ok() }),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KalshiWebSocket;
+    use px_core::LiquidityRole;
+    use serde_json::json;
+
+    #[test]
+    fn value_to_timestamp_normalizes_seconds_epoch() {
+        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!(1_770_241_151_i64)))
+            .expect("timestamp should parse");
+        assert_eq!(ts.timestamp(), 1_770_241_151_i64);
+    }
+
+    #[test]
+    fn value_to_timestamp_normalizes_millis_epoch() {
+        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!(1_770_241_151_000_i64)))
+            .expect("timestamp should parse");
+        assert_eq!(ts.timestamp_millis(), 1_770_241_151_000_i64);
+    }
+
+    /// Mirrors the liquidity_role extraction in handle_fill().
+    fn extract_liquidity_role(msg: &serde_json::Value) -> Option<LiquidityRole> {
+        msg.get("is_taker")
+            .and_then(|v| v.as_bool())
+            .map(|is_taker| {
+                if is_taker {
+                    LiquidityRole::Taker
+                } else {
+                    LiquidityRole::Maker
+                }
+            })
+    }
+
+    #[test]
+    fn fill_is_taker_true_yields_taker() {
+        let msg = json!({ "is_taker": true });
+        assert_eq!(extract_liquidity_role(&msg), Some(LiquidityRole::Taker));
+    }
+
+    #[test]
+    fn fill_is_taker_false_yields_maker() {
+        let msg = json!({ "is_taker": false });
+        assert_eq!(extract_liquidity_role(&msg), Some(LiquidityRole::Maker));
+    }
+
+    #[test]
+    fn fill_is_taker_absent_yields_none() {
+        let msg = json!({ "market_ticker": "SOME-TICKER" });
+        assert_eq!(extract_liquidity_role(&msg), None);
+    }
+}

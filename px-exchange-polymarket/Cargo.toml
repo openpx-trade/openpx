@@ -1,0 +1,36 @@
+[package]
+name = "px-exchange-polymarket"
+description = "Polymarket exchange implementation for OpenPX"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[dependencies]
+metrics = { workspace = true }
+px-core = { workspace = true }
+smallvec = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tokio-stream = { version = "0.1", features = ["sync"] }
+regex = { workspace = true }
+polymarket-client-sdk = { version = "0.4.1", features = ["clob"] }
+k256 = "0.13"
+uuid = "1"
+alloy = { version = "1.5", features = ["providers", "signers", "contract", "network", "sol-types"] }
+base64 = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+wiremock = "0.6"

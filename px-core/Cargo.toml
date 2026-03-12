@@ -1,0 +1,36 @@
+[package]
+name = "px-core"
+description = "Core traits, models, and errors for OpenPX prediction market SDK"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "orderbook"
+harness = false
+
+[[bench]]
+name = "normalizers"
+harness = false
+
+[[bench]]
+name = "price_utils"
+harness = false

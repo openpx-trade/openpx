@@ -1,0 +1,22 @@
+[package]
+name = "px-exchange-opinion"
+description = "Opinion exchange implementation for OpenPX"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[dependencies]
+px-core = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+wiremock = "0.6"

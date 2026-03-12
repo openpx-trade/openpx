@@ -1,0 +1,37 @@
+[package]
+name = "px-exchange-kalshi"
+description = "Kalshi exchange implementation for OpenPX"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["prediction-market", "trading", "kalshi", "api"]
+categories = ["api-bindings", "finance"]
+
+[dependencies]
+metrics = { workspace = true }
+px-core = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-stream = { workspace = true }
+
+# RSA-PSS signing (getrandom enables Signer trait with OsRng)
+rsa = { version = "0.9", features = ["getrandom"] }
+sha2 = "0.10"
+base64 = "0.22"
+pkcs8 = { version = "0.10", features = ["pem"] }
+pkcs1 = { version = "0.7", features = ["pem"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+rand = "0.8"
+wiremock = "0.6"

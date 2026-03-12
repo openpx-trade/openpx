@@ -1,0 +1,50 @@
+# Build artifacts
+target
+build/
+dist/
+node_modules/
+Cargo.lock
+
+# OS / editor
+.DS_Store
+settings.json
+
+# Secrets & credentials
+.env
+*.pem
+.api-keys.local
+.secret-*
+
+# Data artifacts
+*.parquet
+*.json
+*.jsonl
+data/
+output/
+.state/
+
+# Allowed JSON/JSONL files
+!px-mcp/package.json
+!px-mcp/package-lock.json
+!px-mcp/tsconfig.json
+!px-mcp/src/endpoint-manifest.json
+!px-mcp/src/ws-protocol-manifest.json
+
+# Python
+__pycache__
+.venv
+
+# Claude Code
+.claude/agents
+.claude/hooks
+.claude/commands
+.claude/tsc-cache
+
+# Logs
+logs/
+firebase-debug.log
+openapi-ts-error-*.log
+
+# Misc
+Plans
+px-documentation/*
