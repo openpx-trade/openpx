@@ -33,6 +33,7 @@ output/
 !px-mcp/src/ws-protocol-manifest.json
 !schema/openpx.schema.json
 !sdks/typescript/package.json
+!.claude/reference_docs/limitless/openapi.json
 
 # Python
 __pycache__
