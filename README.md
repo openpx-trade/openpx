@@ -7,7 +7,7 @@ Trade across multiple prediction market exchanges through a single, consistent i
 
 [![CI](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust Version](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 [![GitHub Stars](https://img.shields.io/github/stars/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/network/members)
 
