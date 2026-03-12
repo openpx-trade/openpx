@@ -1,0 +1,18 @@
+services:
+  dashboard:
+    build: .
+    container_name: openpx
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Mount PEM keys read-only if needed (e.g. Kalshi)
+      # - ./kalshi-private-key.pem:/app/keys/kalshi.pem:ro
+      - /etc/localtime:/etc/localtime:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
