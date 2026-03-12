@@ -6,18 +6,15 @@
 Trade across multiple prediction market exchanges through a single, consistent interface.
 
 [![CI](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/px-core.svg)](https://crates.io/crates/px-core)
-[![Downloads](https://img.shields.io/crates/d/px-core.svg)](https://crates.io/crates/px-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![GitHub Stars](https://img.shields.io/github/stars/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/network/members)
-[![GitHub Watchers](https://img.shields.io/github/watchers/openpx-ai/openpx?style=social)](https://github.com/openpx-ai/openpx/watchers)
 
 [![GitHub Issues](https://img.shields.io/github/issues/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/pulls)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/commits/main)
 [![GitHub Contributors](https://img.shields.io/github/contributors/openpx-ai/openpx)](https://github.com/openpx-ai/openpx/graphs/contributors)
-[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 
 </div>
 

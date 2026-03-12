@@ -34,9 +34,7 @@ fn bench_best_bid_ask(c: &mut Criterion) {
         b.iter(|| black_box(book.mid_price()))
     });
 
-    c.bench_function("orderbook_spread", |b| {
-        b.iter(|| black_box(book.spread()))
-    });
+    c.bench_function("orderbook_spread", |b| b.iter(|| black_box(book.spread())));
 }
 
 fn bench_sort(c: &mut Criterion) {
@@ -88,5 +86,10 @@ fn bench_changevec_alloc(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_best_bid_ask, bench_sort, bench_changevec_alloc);
+criterion_group!(
+    benches,
+    bench_best_bid_ask,
+    bench_sort,
+    bench_changevec_alloc
+);
 criterion_main!(benches);

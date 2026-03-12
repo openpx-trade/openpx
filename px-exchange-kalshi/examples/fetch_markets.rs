@@ -9,7 +9,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("KALSHI_API_KEY_ID"),
         std::env::var("KALSHI_PRIVATE_KEY_PATH"),
     ) {
-        println!("Authenticated mode (key: {}...)", &key_id[..8.min(key_id.len())]);
+        println!(
+            "Authenticated mode (key: {}...)",
+            &key_id[..8.min(key_id.len())]
+        );
         KalshiConfig::new()
             .with_api_key_id(key_id)
             .with_private_key_path(key_path)
