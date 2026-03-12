@@ -73,4 +73,4 @@ jobs:
       - name: Generate schema and SDK models
         run: just schema python-models node-models
       - name: Check generated files are in sync
-        run: git diff --exit-code schema/ px-python/python/openpx/_models.py px-node/types/models.d.ts
+        run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts

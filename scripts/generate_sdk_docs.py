@@ -8,10 +8,10 @@ Usage:
     python3 scripts/generate_sdk_docs.py
 
 Outputs:
-    px-documentation/src/reference/models.md   — full type reference (all languages)
-    px-documentation/src/rust/api.md           — Rust-only reference
-    px-documentation/src/python/api.md         — Python-only reference
-    px-documentation/src/typescript/api.md     — TypeScript-only reference
+    docs/src/reference/models.md   — full type reference (all languages)
+    docs/src/rust/api.md           — Rust-only reference
+    docs/src/python/api.md         — Python-only reference
+    docs/src/typescript/api.md     — TypeScript-only reference
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "schema" / "openpx.schema.json"
-DOCS_SRC = ROOT / "px-documentation" / "src"
+DOCS_SRC = ROOT / "docs" / "src"
 
 # JSON Schema type → language type mappings
 RUST_TYPES = {
@@ -1025,7 +1025,7 @@ def main():
         write_file(path, content)
 
     print(f"Done. {len(definitions)} types across {len(categories)} categories.")
-    print("Run 'cd px-documentation && mdbook serve' to preview.")
+    print("Run 'cd docs && mdbook serve' to preview.")
 
 
 if __name__ == "__main__":

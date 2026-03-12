@@ -59,16 +59,16 @@ OpenPX ships Rust, Python, and TypeScript SDKs. **All contributions go to Rust o
 ### How It Works
 
 ```
-Rust types (px-core)
-    → px-schema binary → schema/openpx.schema.json
-        → datamodel-codegen     → px-python/_models.py (Pydantic v2)
-        → json-schema-to-typescript → px-node/types/models.d.ts
-        → generate_sdk_docs.py  → px-documentation/src/ (mdBook)
+Rust types (engine/core)
+    → engine/schema binary → schema/openpx.schema.json
+        → datamodel-codegen     → sdks/python/_models.py (Pydantic v2)
+        → json-schema-to-typescript → sdks/typescript/types/models.d.ts
+        → generate_sdk_docs.py  → docs/src/ (mdBook)
 ```
 
 ### Syncing SDKs and Docs
 
-After modifying any Rust types in `px-core`, run:
+After modifying any Rust types in `engine/core`, run:
 
 ```bash
 just sync-all
@@ -105,25 +105,25 @@ just docs-serve
 
 ## Adding a New Exchange
 
-1. Create a new crate: `px-exchange-{name}/`
+1. Create a new crate: `engine/exchanges/{name}/`
 2. Implement the `Exchange` trait from `px-core`
 3. Add exchange-specific config, error types, and auth
 4. Add the crate to the workspace `members` in the root `Cargo.toml`
-5. Add the enum variant to `px-sdk/src/lib.rs` (the `ExchangeInner` enum + `new()` match arm)
+5. Add the enum variant to `engine/sdk/src/lib.rs` (the `ExchangeInner` enum + `new()` match arm)
 6. Add tests
 7. Run `just sync-all` (only needed if core model types changed)
 8. Commit everything
 
-Use `px-exchange-kalshi` as a reference implementation.
+Use `engine/exchanges/kalshi` as a reference implementation.
 
 **Contributors never need to touch Python or TypeScript code.**
 
 ## Adding a New Model Type
 
-If you add a new struct or enum to `px-core/src/models/`:
+If you add a new struct or enum to `engine/core/src/models/`:
 
 1. Add `#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]` to the type
-2. Add a `schema_for!()` call in `px-schema/src/main.rs`
+2. Add a `schema_for!()` call in `engine/schema/src/main.rs`
 3. Run `just sync-all` to regenerate all SDKs and docs
 4. Commit the regenerated files alongside your Rust changes
 
@@ -131,16 +131,23 @@ If you add a new struct or enum to `px-core/src/models/`:
 
 ```
 openpx/
-├── px-core/              # Core types, Exchange trait, errors
-├── px-exchange-*/        # Exchange implementations (Rust only)
-├── px-sdk/               # Unified facade — enum dispatch over all exchanges
-├── px-schema/            # Binary: exports JSON Schema from Rust types
-├── px-python/            # PyO3 bindings + auto-generated Pydantic models
-├── px-node/              # NAPI-RS bindings + auto-generated TS types
-├── px-documentation/     # mdBook docs (auto-generated from schema)
-├── schema/               # openpx.schema.json (checked into git)
-├── scripts/              # Doc generation scripts
-└── justfile              # Single-command SDK sync
+├── engine/                   # Rust core — powers everything
+│   ├── core/                 # Core types, Exchange trait, errors
+│   ├── exchanges/            # Exchange implementations (Rust only)
+│   │   ├── kalshi/
+│   │   ├── polymarket/
+│   │   ├── opinion/
+│   │   ├── limitless/
+│   │   └── predictfun/
+│   ├── sdk/                  # Unified facade — enum dispatch over all exchanges
+│   └── schema/               # Binary: exports JSON Schema from Rust types
+├── sdks/                     # Language SDKs
+│   ├── python/               # PyO3 bindings + auto-generated Pydantic models
+│   └── typescript/           # NAPI-RS bindings + auto-generated TS types
+├── docs/                     # mdBook docs (auto-generated from schema)
+├── schema/                   # openpx.schema.json (checked into git)
+├── scripts/                  # Doc generation scripts
+└── justfile                  # Single-command SDK sync
 ```
 
 ## Pull Request Process

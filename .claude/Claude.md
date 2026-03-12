@@ -25,28 +25,38 @@ unnecessary overhead. Always ask: "is there a faster way to do this?"
 
 ```
 openpx/
-├── px-core/              # Core types, traits, timing, error handling
-│   ├── src/exchange/     # Exchange trait + factory + rate limiting
-│   ├── src/models/       # Market, Order, Position, Orderbook
-│   ├── src/timing.rs     # timed! macro + TimingGuard
-│   └── src/error.rs      # OpenPxError hierarchy
-├── px-exchange-*/        # Exchange implementations
-│   ├── src/exchange.rs   # Exchange struct + impl Exchange
-│   ├── src/config.rs     # ExchangeConfig struct
-│   └── src/error.rs      # Exchange-specific errors
-├── px-mcp/               # MCP server (Node.js)
-└── px-documentation/     # API documentation
+├── engine/                   # Rust core — powers everything
+│   ├── core/                 # Core types, traits, timing, error handling
+│   │   ├── src/exchange/     # Exchange trait + factory + rate limiting
+│   │   ├── src/models/       # Market, Order, Position, Orderbook
+│   │   ├── src/timing.rs     # timed! macro + TimingGuard
+│   │   └── src/error.rs      # OpenPxError hierarchy
+│   ├── exchanges/            # Exchange implementations
+│   │   ├── kalshi/           # src/exchange.rs, config.rs, error.rs
+│   │   ├── polymarket/
+│   │   ├── opinion/
+│   │   ├── limitless/
+│   │   └── predictfun/
+│   ├── sdk/                  # Unified facade (enum dispatch)
+│   └── schema/               # JSON Schema export binary
+├── sdks/                     # Language SDKs
+│   ├── python/               # PyO3 + auto-generated Pydantic models
+│   └── typescript/           # NAPI-RS + auto-generated TS types
+├── docs/                     # mdBook documentation (auto-generated)
+├── schema/                   # openpx.schema.json (generated artifact)
+├── scripts/                  # Build & codegen scripts
+└── justfile                  # Single-command SDK sync
 ```
 
 ## Key Files Reference
 
 | Purpose | File | Notes |
 |---------|------|-------|
-| Exchange trait | `px-core/src/exchange/traits.rs` | All exchanges implement this |
-| Timing macros | `px-core/src/timing.rs` | `timed!` macro for metrics |
-| Error types | `px-core/src/error.rs` | `OpenPxError` hierarchy |
-| Kalshi exchange | `px-exchange-kalshi/src/exchange.rs` | Reference implementation |
-| Market model | `px-core/src/models/market.rs` | Market, UnifiedMarket types |
+| Exchange trait | `engine/core/src/exchange/traits.rs` | All exchanges implement this |
+| Timing macros | `engine/core/src/timing.rs` | `timed!` macro for metrics |
+| Error types | `engine/core/src/error.rs` | `OpenPxError` hierarchy |
+| Kalshi exchange | `engine/exchanges/kalshi/src/exchange.rs` | Reference implementation |
+| Market model | `engine/core/src/models/market.rs` | Market, UnifiedMarket types |
 
 ## Common Patterns
 

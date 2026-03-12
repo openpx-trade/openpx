@@ -34,18 +34,27 @@ Trade across multiple prediction market exchanges through a single, consistent i
 
 ```
 openpx/
-├── px-core/                  # Core types, traits, timing, error handling
-│   ├── src/exchange/         # Exchange trait + factory + rate limiting
-│   ├── src/models/           # Market, Order, Position, Orderbook
-│   ├── src/timing.rs         # timed! macro + TimingGuard
-│   └── src/error.rs          # OpenPxError hierarchy
-├── px-exchange-polymarket/   # Polymarket implementation
-├── px-exchange-kalshi/       # Kalshi implementation
-├── px-exchange-limitless/    # Limitless implementation
-├── px-exchange-opinion/      # Opinion implementation
-├── px-exchange-predictfun/   # Predict.fun implementation
-├── px-mcp/                   # MCP server (Node.js)
-└── px-documentation/         # API documentation
+├── engine/                       # Rust core — powers everything
+│   ├── core/                     # Core types, traits, timing, error handling
+│   │   ├── src/exchange/         # Exchange trait + factory + rate limiting
+│   │   ├── src/models/           # Market, Order, Position, Orderbook
+│   │   ├── src/timing.rs         # timed! macro + TimingGuard
+│   │   └── src/error.rs          # OpenPxError hierarchy
+│   ├── exchanges/                # Exchange implementations
+│   │   ├── kalshi/               # Kalshi
+│   │   ├── polymarket/           # Polymarket
+│   │   ├── opinion/              # Opinion
+│   │   ├── limitless/            # Limitless
+│   │   └── predictfun/           # Predict.fun
+│   ├── sdk/                      # Unified facade (enum dispatch)
+│   └── schema/                   # JSON Schema export binary
+├── sdks/                         # Language SDKs
+│   ├── python/                   # PyO3 + auto-generated Pydantic models
+│   └── typescript/               # NAPI-RS + auto-generated TS types
+├── docs/                         # mdBook documentation (auto-generated)
+├── schema/                       # openpx.schema.json (generated artifact)
+├── scripts/                      # Build & codegen scripts
+└── justfile                      # Single-command SDK sync
 ```
 
 ## Quick Start
