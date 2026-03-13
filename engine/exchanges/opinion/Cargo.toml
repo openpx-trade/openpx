@@ -17,6 +17,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 wiremock = "0.6"

@@ -10,7 +10,8 @@
     "build:debug": "napi build"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.0"
+    "@napi-rs/cli": "^2.18.0",
+    "json-schema-to-typescript": "^15.0.0"
   },
   "napi": {
     "name": "openpx",

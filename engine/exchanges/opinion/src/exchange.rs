@@ -1150,7 +1150,7 @@ impl Exchange for Opinion {
             has_fetch_fills: false,
             has_approvals: false,
             has_refresh_balance: false,
-            has_websocket: false,
+            has_websocket: self.config.is_authenticated(),
             has_fetch_orderbook_history: false,
         }
     }

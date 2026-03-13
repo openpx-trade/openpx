@@ -10,6 +10,9 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = ["pydantic>=2.0"]
 
+[project.optional-dependencies]
+dev = ["datamodel-code-generator>=0.25", "maturin>=1.5,<2.0"]
+
 [tool.maturin]
 python-source = "python"
 module-name = "openpx._native"

@@ -8,6 +8,7 @@ use px_core::ExchangeError;
 
 use px_exchange_kalshi::{KalshiConfig, KalshiWebSocket};
 use px_exchange_limitless::LimitlessWebSocket;
+use px_exchange_opinion::{OpinionConfig, OpinionWebSocket};
 use px_exchange_polymarket::PolymarketWebSocket;
 
 /// Enum dispatch over exchange-specific WebSocket implementations.
@@ -16,6 +17,7 @@ pub enum WebSocketInner {
     Kalshi(KalshiWebSocket),
     Polymarket(PolymarketWebSocket),
     Limitless(LimitlessWebSocket),
+    Opinion(OpinionWebSocket),
 }
 
 impl WebSocketInner {
@@ -70,7 +72,25 @@ impl WebSocketInner {
                 Ok(Self::Polymarket(PolymarketWebSocket::new()))
             }
             "limitless" => Ok(Self::Limitless(LimitlessWebSocket::new())),
-            "opinion" | "predictfun" => Err(OpenPxError::Exchange(ExchangeError::NotSupported(
+            "opinion" => {
+                let mut cfg = OpinionConfig::new();
+                if let Some(obj) = obj {
+                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_key(v);
+                    }
+                    if let Some(v) = obj.get("ws_url").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_ws_url(v);
+                    }
+                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_url(v);
+                    }
+                }
+                Ok(Self::Opinion(
+                    OpinionWebSocket::new(cfg)
+                        .map_err(|e| OpenPxError::Config(e.to_string()))?,
+                ))
+            }
+            "predictfun" => Err(OpenPxError::Exchange(ExchangeError::NotSupported(
                 format!("websocket not supported for {id}"),
             ))),
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
@@ -84,6 +104,7 @@ macro_rules! ws_dispatch {
             WebSocketInner::Kalshi(ws) => ws.$method($($arg),*).await,
             WebSocketInner::Polymarket(ws) => ws.$method($($arg),*).await,
             WebSocketInner::Limitless(ws) => ws.$method($($arg),*).await,
+            WebSocketInner::Opinion(ws) => ws.$method($($arg),*).await,
         }
     };
 }
@@ -111,6 +132,7 @@ impl OrderBookWebSocket for WebSocketInner {
             Self::Kalshi(ws) => ws.state(),
             Self::Polymarket(ws) => ws.state(),
             Self::Limitless(ws) => ws.state(),
+            Self::Opinion(ws) => ws.state(),
         }
     }
 

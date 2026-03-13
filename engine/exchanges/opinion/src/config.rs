@@ -1,12 +1,14 @@
 use px_core::ExchangeConfig;
 
 pub const BASE_URL: &str = "https://openapi.opinion.trade";
+pub const WS_URL: &str = "wss://ws.opinion.trade";
 pub const CHAIN_ID: u64 = 56;
 
 #[derive(Debug, Clone)]
 pub struct OpinionConfig {
     pub base: ExchangeConfig,
     pub api_url: String,
+    pub ws_url: String,
     pub api_key: Option<String>,
     pub private_key: Option<String>,
     pub multi_sig_addr: Option<String>,
@@ -18,6 +20,7 @@ impl Default for OpinionConfig {
         Self {
             base: ExchangeConfig::default(),
             api_url: BASE_URL.into(),
+            ws_url: WS_URL.into(),
             api_key: None,
             private_key: None,
             multi_sig_addr: None,
@@ -48,6 +51,11 @@ impl OpinionConfig {
 
     pub fn with_multi_sig(mut self, addr: impl Into<String>) -> Self {
         self.multi_sig_addr = Some(addr.into());
+        self
+    }
+
+    pub fn with_ws_url(mut self, url: impl Into<String>) -> Self {
+        self.ws_url = url.into();
         self
     }
 
