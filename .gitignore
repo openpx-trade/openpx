@@ -38,6 +38,13 @@ output/
 # Python
 __pycache__
 .venv
+sdks/python/python/openpx/_models.py
+sdks/python/python/openpx/*.so
+
+# TypeScript codegen & native binaries
+sdks/typescript/index.d.ts
+sdks/typescript/*.node
+sdks/typescript/types/models.d.ts
 
 # Claude Code
 .claude/agents
