@@ -198,7 +198,7 @@ async fn test_exchange_info() {
     assert_eq!(info.name, "Predict.fun");
     assert!(info.has_fetch_markets);
     assert!(!info.has_create_order);
-    assert!(!info.has_websocket);
+    assert!(info.has_websocket);
 }
 
 #[tokio::test]

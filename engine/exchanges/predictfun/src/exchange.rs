@@ -1485,7 +1485,7 @@ impl Exchange for PredictFun {
             has_fetch_fills: false,
             has_approvals: true,
             has_refresh_balance: false,
-            has_websocket: false,
+            has_websocket: true,
             has_fetch_orderbook_history: false,
         }
     }
