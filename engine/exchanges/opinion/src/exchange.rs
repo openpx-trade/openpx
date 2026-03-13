@@ -1142,7 +1142,7 @@ impl Exchange for Opinion {
             has_cancel_order: authed,
             has_fetch_positions: true,
             has_fetch_balance: true,
-            has_fetch_orderbook: false,
+            has_fetch_orderbook: true,
             has_fetch_price_history: false,
             has_fetch_trades: false,
             has_fetch_events: false,

@@ -143,7 +143,7 @@ See `.env.example` for the full list of optional fields.
 | Polymarket | Yes | Yes | Yes | Yes |
 | Kalshi | Yes | Yes | Yes | Yes |
 | Limitless | Yes | Yes | Yes | Yes |
-| Opinion | Yes | Yes | No | Yes |
+| Opinion | Yes | Yes | Yes | Yes |
 | Predict.fun | Yes | Yes | Yes | Yes |
 
 ## Development
