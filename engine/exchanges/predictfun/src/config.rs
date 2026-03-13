@@ -2,6 +2,8 @@ use px_core::ExchangeConfig;
 
 pub const BASE_URL: &str = "https://api.predict.fun";
 pub const TESTNET_URL: &str = "https://api-testnet.predict.fun";
+pub const WS_URL: &str = "wss://ws.predict.fun/ws";
+pub const TESTNET_WS_URL: &str = "wss://ws-testnet.predict.fun/ws";
 
 pub const CHAIN_ID: u64 = 56; // BNB Mainnet
 pub const TESTNET_CHAIN_ID: u64 = 97; // BNB Testnet
@@ -28,6 +30,7 @@ pub const PROTOCOL_VERSION: &str = "1";
 pub struct PredictFunConfig {
     pub base: ExchangeConfig,
     pub api_url: String,
+    pub ws_url: String,
     pub api_key: Option<String>,
     pub private_key: Option<String>,
     pub testnet: bool,
@@ -42,6 +45,7 @@ impl Default for PredictFunConfig {
                 ..ExchangeConfig::default()
             },
             api_url: BASE_URL.into(),
+            ws_url: WS_URL.into(),
             api_key: None,
             private_key: None,
             testnet: false,
@@ -58,6 +62,7 @@ impl PredictFunConfig {
     pub fn testnet() -> Self {
         Self {
             api_url: TESTNET_URL.into(),
+            ws_url: TESTNET_WS_URL.into(),
             testnet: true,
             chain_id: TESTNET_CHAIN_ID,
             ..Self::default()
@@ -83,11 +88,18 @@ impl PredictFunConfig {
         self.testnet = testnet;
         if testnet {
             self.api_url = TESTNET_URL.into();
+            self.ws_url = TESTNET_WS_URL.into();
             self.chain_id = TESTNET_CHAIN_ID;
         } else {
             self.api_url = BASE_URL.into();
+            self.ws_url = WS_URL.into();
             self.chain_id = CHAIN_ID;
         }
+        self
+    }
+
+    pub fn with_ws_url(mut self, url: impl Into<String>) -> Self {
+        self.ws_url = url.into();
         self
     }
 

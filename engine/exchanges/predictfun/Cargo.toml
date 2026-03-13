@@ -17,6 +17,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
 ethers = { workspace = true }
 hex = "0.4"
 

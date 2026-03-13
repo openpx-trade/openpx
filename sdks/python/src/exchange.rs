@@ -51,8 +51,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        pyo3::prepare_freethreaded_python();
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             rt.block_on(async {
                 let params = if limit.is_some() || cursor.is_some() {
                     Some(px_core::FetchMarketsParams { limit, cursor })
@@ -70,7 +69,7 @@ impl NativeExchange {
         let inner = self.inner.clone();
         let market_id = market_id.to_string();
         let rt = get_runtime();
-        let result = py.allow_threads(|| rt.block_on(inner.fetch_market(&market_id)));
+        let result = py.detach(|| rt.block_on(inner.fetch_market(&market_id)));
         let market = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &market).map_err(|e| to_py_err(e.to_string()))
     }
@@ -78,7 +77,7 @@ impl NativeExchange {
     fn fetch_all_unified_markets<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.allow_threads(|| rt.block_on(inner.fetch_all_unified_markets()));
+        let result = py.detach(|| rt.block_on(inner.fetch_all_unified_markets()));
         let markets = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &markets).map_err(|e| to_py_err(e.to_string()))
     }
@@ -106,7 +105,7 @@ impl NativeExchange {
             None => std::collections::HashMap::new(),
         };
         let rt = get_runtime();
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             rt.block_on(inner.create_order(&market_id, &outcome, order_side, price, size, extra))
         });
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
@@ -125,7 +124,7 @@ impl NativeExchange {
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
         let result =
-            py.allow_threads(|| rt.block_on(inner.cancel_order(&order_id, market_id.as_deref())));
+            py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_id.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
@@ -142,7 +141,7 @@ impl NativeExchange {
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
         let result =
-            py.allow_threads(|| rt.block_on(inner.fetch_order(&order_id, market_id.as_deref())));
+            py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_id.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
@@ -155,7 +154,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             let params = market_id.map(|mid| px_core::FetchOrdersParams {
                 market_id: Some(mid),
             });
@@ -174,7 +173,7 @@ impl NativeExchange {
         let inner = self.inner.clone();
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
-        let result = py.allow_threads(|| rt.block_on(inner.fetch_positions(market_id.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_positions(market_id.as_deref())));
         let positions = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &positions).map_err(|e| to_py_err(e.to_string()))
     }
@@ -182,7 +181,7 @@ impl NativeExchange {
     fn fetch_balance<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.allow_threads(|| rt.block_on(inner.fetch_balance()));
+        let result = py.detach(|| rt.block_on(inner.fetch_balance()));
         let balance = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &balance).map_err(|e| to_py_err(e.to_string()))
     }
@@ -202,7 +201,7 @@ impl NativeExchange {
             token_id,
         };
         let rt = get_runtime();
-        let result = py.allow_threads(|| rt.block_on(inner.fetch_orderbook(req)));
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbook(req)));
         let book = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &book).map_err(|e| to_py_err(e.to_string()))
     }
@@ -218,7 +217,7 @@ impl NativeExchange {
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
         let result =
-            py.allow_threads(|| rt.block_on(inner.fetch_fills(market_id.as_deref(), limit)));
+            py.detach(|| rt.block_on(inner.fetch_fills(market_id.as_deref(), limit)));
         let fills = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &fills).map_err(|e| to_py_err(e.to_string()))
     }

@@ -32,11 +32,11 @@ impl NativeOrderbookStream {
         slf
     }
 
-    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let rx = self.rx.clone();
         let rt = get_runtime();
 
-        let result = py.allow_threads(|| rt.block_on(async { rx.lock().await.recv().await }));
+        let result = py.detach(|| rt.block_on(async { rx.lock().await.recv().await }));
 
         match result {
             Some(Ok(update)) => {
@@ -78,11 +78,11 @@ impl NativeActivityStream {
         slf
     }
 
-    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let rx = self.rx.clone();
         let rt = get_runtime();
 
-        let result = py.allow_threads(|| rt.block_on(async { rx.lock().await.recv().await }));
+        let result = py.detach(|| rt.block_on(async { rx.lock().await.recv().await }));
 
         match result {
             Some(Ok(event)) => {

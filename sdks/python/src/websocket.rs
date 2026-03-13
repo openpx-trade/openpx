@@ -34,14 +34,14 @@ impl NativeWebSocket {
     fn connect(&self, py: Python<'_>) -> PyResult<()> {
         let ws = self.ws.clone();
         let rt = get_runtime();
-        py.allow_threads(|| rt.block_on(async { ws.lock().await.connect().await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.connect().await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 
     fn disconnect(&self, py: Python<'_>) -> PyResult<()> {
         let ws = self.ws.clone();
         let rt = get_runtime();
-        py.allow_threads(|| rt.block_on(async { ws.lock().await.disconnect().await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.disconnect().await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 
@@ -49,7 +49,7 @@ impl NativeWebSocket {
         let ws = self.ws.clone();
         let market_id = market_id.to_string();
         let rt = get_runtime();
-        py.allow_threads(|| rt.block_on(async { ws.lock().await.subscribe(&market_id).await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.subscribe(&market_id).await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 
@@ -57,7 +57,7 @@ impl NativeWebSocket {
         let ws = self.ws.clone();
         let market_id = market_id.to_string();
         let rt = get_runtime();
-        py.allow_threads(|| rt.block_on(async { ws.lock().await.unsubscribe(&market_id).await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.unsubscribe(&market_id).await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 
@@ -74,10 +74,10 @@ impl NativeWebSocket {
         let rt = get_runtime();
 
         let stream = py
-            .allow_threads(|| {
+            .detach(|| {
                 rt.block_on(async { ws.lock().await.orderbook_stream(&market_id).await })
             })
-            .map_err(|e| to_py_err(e.to_string()))?;
+            .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel(256);
         rt.spawn(async move {
@@ -98,10 +98,10 @@ impl NativeWebSocket {
         let rt = get_runtime();
 
         let stream = py
-            .allow_threads(|| {
+            .detach(|| {
                 rt.block_on(async { ws.lock().await.activity_stream(&market_id).await })
             })
-            .map_err(|e| to_py_err(e.to_string()))?;
+            .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel(256);
         rt.spawn(async move {

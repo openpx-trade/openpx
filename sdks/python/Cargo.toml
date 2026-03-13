@@ -13,8 +13,8 @@ crate-type = ["cdylib"]
 [dependencies]
 px-core = { workspace = true }
 px-sdk = { workspace = true }
-pyo3 = { version = "0.23", features = ["extension-module"] }
-pythonize = "0.23"
+pyo3 = { version = "0.28", features = ["extension-module"] }
+pythonize = "0.28"
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
