@@ -10,11 +10,13 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
 use px_core::{
-    sort_asks, sort_bids, AtomicWebSocketState, OrderBookWebSocket, Orderbook, OrderbookStream,
-    OrderbookUpdate, PriceLevel, WebSocketError, WebSocketState,
+    sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream, AtomicWebSocketState,
+    OrderBookWebSocket, Orderbook, OrderbookStream, OrderbookUpdate, PriceLevel, WebSocketError,
+    WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
-const WS_URL: &str = "wss://ws.limitless.exchange";
+use crate::config::LimitlessConfig;
+
 const NAMESPACE: &str = "/markets";
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,13 +67,35 @@ struct PriceData {
     no: Option<f64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct PositionUpdateData {
+    positions: Option<Vec<PositionEntry>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PositionEntry {
+    #[serde(rename = "marketSlug", alias = "market_slug")]
+    market_slug: Option<String>,
+    #[serde(rename = "tokenId", alias = "token_id")]
+    token_id: Option<String>,
+    outcome: Option<String>,
+    size: Option<f64>,
+    price: Option<f64>,
+    side: Option<String>,
+    #[serde(rename = "fillId", alias = "fill_id")]
+    fill_id: Option<String>,
+    timestamp: Option<String>,
+}
+
 type OrderbookSender = broadcast::Sender<Result<OrderbookUpdate, WebSocketError>>;
+type ActivitySender = broadcast::Sender<Result<ActivityEvent, WebSocketError>>;
 
 struct SharedState {
     subscribed_slugs: Vec<String>,
     subscribed_addresses: Vec<String>,
     orderbook_senders: HashMap<String, OrderbookSender>,
     orderbooks: HashMap<String, Orderbook>,
+    position_subscribed: bool,
 }
 
 impl SharedState {
@@ -81,28 +105,32 @@ impl SharedState {
             subscribed_addresses: Vec::new(),
             orderbook_senders: HashMap::new(),
             orderbooks: HashMap::new(),
+            position_subscribed: false,
         }
     }
 }
 
 pub struct LimitlessWebSocket {
+    config: LimitlessConfig,
     ws_state: Arc<AtomicWebSocketState>,
     shared: Arc<RwLock<SharedState>>,
     client: Arc<RwLock<Option<Client>>>,
-    #[allow(dead_code)]
+    activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
     auto_reconnect: bool,
 }
 
 impl LimitlessWebSocket {
-    pub fn new() -> Self {
-        Self::with_config(true)
+    pub fn new(config: LimitlessConfig) -> Self {
+        Self::with_config(config, true)
     }
 
-    pub fn with_config(auto_reconnect: bool) -> Self {
+    pub fn with_config(config: LimitlessConfig, auto_reconnect: bool) -> Self {
         Self {
+            config,
             ws_state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),
             shared: Arc::new(RwLock::new(SharedState::new())),
             client: Arc::new(RwLock::new(None)),
+            activity_senders: Arc::new(RwLock::new(HashMap::new())),
             auto_reconnect,
         }
     }
@@ -132,6 +160,20 @@ impl LimitlessWebSocket {
 
         client
             .emit("subscribe_market_prices", json)
+            .await
+            .map_err(|e| WebSocketError::Connection(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn send_position_subscription(&self) -> Result<(), WebSocketError> {
+        let client_guard = self.client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| WebSocketError::Connection("not connected".into()))?;
+
+        client
+            .emit("subscribe_positions", serde_json::json!({}))
             .await
             .map_err(|e| WebSocketError::Connection(e.to_string()))?;
 
@@ -247,11 +289,65 @@ impl LimitlessWebSocket {
             let _ = sender.send(Ok(OrderbookUpdate::Snapshot(orderbook)));
         }
     }
+
+    async fn handle_position_update(
+        activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
+        data: PositionUpdateData,
+    ) {
+        let entries = match data.positions {
+            Some(p) => p,
+            None => return,
+        };
+
+        let senders = activity_senders.read().await;
+        for entry in entries {
+            let market_id = entry.market_slug.unwrap_or_default();
+            if market_id.is_empty() {
+                continue;
+            }
+
+            let fill = ActivityFill {
+                market_id: market_id.clone(),
+                asset_id: entry.token_id.unwrap_or_default(),
+                fill_id: entry.fill_id,
+                order_id: None,
+                price: entry.price.unwrap_or(0.0),
+                size: entry.size.unwrap_or(0.0),
+                side: entry.side,
+                outcome: entry.outcome,
+                timestamp: entry.timestamp.and_then(|t| {
+                    chrono::DateTime::parse_from_rfc3339(&t)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                }),
+                source_channel: "limitless_positions".into(),
+                liquidity_role: None,
+            };
+
+            let event = ActivityEvent::Fill(fill);
+            if let Some(sender) = senders.get(&market_id) {
+                let _ = sender.send(Ok(event));
+            }
+        }
+    }
+
+    pub async fn subscribe_positions(&mut self) -> Result<(), WebSocketError> {
+        {
+            let mut shared = self.shared.write().await;
+            shared.position_subscribed = true;
+        }
+
+        if self.ws_state.load() == WebSocketState::Connected {
+            self.send_position_subscription().await?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for LimitlessWebSocket {
     fn default() -> Self {
-        Self::new()
+        Self::new(LimitlessConfig::default())
     }
 }
 
@@ -262,16 +358,54 @@ impl OrderBookWebSocket for LimitlessWebSocket {
 
         let shared_orderbook = self.shared.clone();
         let shared_price = self.shared.clone();
+        let shared_connect = self.shared.clone();
+        let activity_senders_positions = self.activity_senders.clone();
         let state_connect = self.ws_state.clone();
         let state_disconnect = self.ws_state.clone();
 
-        let client = ClientBuilder::new(WS_URL)
-            .namespace(NAMESPACE)
-            .on("connect", move |_, _| {
+        let mut builder = ClientBuilder::new(&self.config.ws_url).namespace(NAMESPACE);
+
+        if let Some(ref api_key) = self.config.api_key {
+            builder = builder.opening_header("X-API-Key", api_key.as_str());
+        }
+
+        if self.auto_reconnect {
+            builder = builder
+                .reconnect(true)
+                .reconnect_on_disconnect(true)
+                .reconnect_delay(
+                    WS_RECONNECT_BASE_DELAY.as_millis() as u64,
+                    WS_RECONNECT_MAX_DELAY.as_millis() as u64,
+                )
+                .max_reconnect_attempts(WS_MAX_RECONNECT_ATTEMPTS as u8);
+        }
+
+        let client = builder
+            .on("connect", move |_, client: Client| {
                 let state = state_connect.clone();
+                let shared = shared_connect.clone();
                 async move {
                     state.store(WebSocketState::Connected);
                     tracing::debug!("Connected to Limitless WebSocket");
+
+                    // Auto-resubscribe on reconnect
+                    let shared = shared.read().await;
+                    if !shared.subscribed_slugs.is_empty()
+                        || !shared.subscribed_addresses.is_empty()
+                    {
+                        let payload = SubscribePayload {
+                            market_slugs: shared.subscribed_slugs.clone(),
+                            market_addresses: shared.subscribed_addresses.clone(),
+                        };
+                        if let Ok(json) = serde_json::to_value(&payload) {
+                            let _ = client.emit("subscribe_market_prices", json).await;
+                        }
+                    }
+                    if shared.position_subscribed {
+                        let _ = client
+                            .emit("subscribe_positions", serde_json::json!({}))
+                            .await;
+                    }
                 }
                 .boxed()
             })
@@ -280,6 +414,12 @@ impl OrderBookWebSocket for LimitlessWebSocket {
                 async move {
                     state.store(WebSocketState::Disconnected);
                     tracing::debug!("Disconnected from Limitless WebSocket");
+                }
+                .boxed()
+            })
+            .on("authenticated", |_, _| {
+                async move {
+                    tracing::info!("Limitless WebSocket authenticated");
                 }
                 .boxed()
             })
@@ -304,6 +444,35 @@ impl OrderBookWebSocket for LimitlessWebSocket {
                             if let Ok(data) = serde_json::from_value::<PriceUpdateData>(value) {
                                 Self::handle_price_update(shared.clone(), data).await;
                             }
+                        }
+                    }
+                }
+                .boxed()
+            })
+            .on("positions", move |payload, _| {
+                let senders = activity_senders_positions.clone();
+                async move {
+                    if let Payload::Text(values) = payload {
+                        for value in values {
+                            if let Ok(data) =
+                                serde_json::from_value::<PositionUpdateData>(value)
+                            {
+                                Self::handle_position_update(senders.clone(), data).await;
+                            }
+                        }
+                    }
+                }
+                .boxed()
+            })
+            .on("system", |payload, _| {
+                async move {
+                    if let Payload::Text(values) = payload {
+                        for value in values {
+                            let message = value
+                                .get("message")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown");
+                            tracing::info!("Limitless system: {}", message);
                         }
                     }
                 }
@@ -401,6 +570,27 @@ impl OrderBookWebSocket for LimitlessWebSocket {
         let shared = self.shared.read().await;
         let sender = shared.orderbook_senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no orderbook sender for market: {market_id}"))
+        })?;
+        let rx = sender.subscribe();
+
+        Ok(Box::pin(
+            tokio_stream::wrappers::BroadcastStream::new(rx)
+                .filter_map(|result| async move { result.ok() }),
+        ))
+    }
+
+    async fn activity_stream(&mut self, market_id: &str) -> Result<ActivityStream, WebSocketError> {
+        {
+            let mut senders = self.activity_senders.write().await;
+            if !senders.contains_key(market_id) {
+                let (tx, _) = broadcast::channel(16_384);
+                senders.insert(market_id.to_string(), tx);
+            }
+        }
+
+        let senders = self.activity_senders.read().await;
+        let sender = senders.get(market_id).ok_or_else(|| {
+            WebSocketError::Subscription(format!("no activity sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();
 

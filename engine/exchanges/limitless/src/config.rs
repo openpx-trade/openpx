@@ -10,6 +10,7 @@ pub struct LimitlessConfig {
     pub api_url: String,
     pub ws_url: String,
     pub private_key: Option<String>,
+    pub api_key: Option<String>,
     pub chain_id: u64,
 }
 
@@ -20,6 +21,7 @@ impl Default for LimitlessConfig {
             api_url: BASE_URL.into(),
             ws_url: WS_URL.into(),
             private_key: None,
+            api_key: None,
             chain_id: CHAIN_ID,
         }
     }
@@ -42,6 +44,11 @@ impl LimitlessConfig {
 
     pub fn with_private_key(mut self, key: impl Into<String>) -> Self {
         self.private_key = Some(key.into());
+        self
+    }
+
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = Some(key.into());
         self
     }
 

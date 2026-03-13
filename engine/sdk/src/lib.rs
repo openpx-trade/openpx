@@ -127,6 +127,9 @@ impl ExchangeInner {
                     if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
                         cfg = cfg.with_private_key(v);
                     }
+                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_key(v);
+                    }
                     if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
                         cfg = cfg.with_api_url(v);
                     }

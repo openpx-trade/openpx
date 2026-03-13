@@ -519,11 +519,11 @@ impl Limitless {
     }
 
     pub fn get_websocket(&self) -> LimitlessWebSocket {
-        LimitlessWebSocket::new()
+        LimitlessWebSocket::new(self.config.clone())
     }
 
     pub fn get_websocket_with_config(&self, auto_reconnect: bool) -> LimitlessWebSocket {
-        LimitlessWebSocket::with_config(auto_reconnect)
+        LimitlessWebSocket::with_config(self.config.clone(), auto_reconnect)
     }
 }
 

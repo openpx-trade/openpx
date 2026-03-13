@@ -5,7 +5,7 @@ use px_core::websocket::{
     ActivityStream, OrderBookWebSocket, OrderbookStream as CoreOrderbookStream, WebSocketState,
 };
 use px_exchange_kalshi::{KalshiConfig, KalshiWebSocket};
-use px_exchange_limitless::LimitlessWebSocket;
+use px_exchange_limitless::{LimitlessConfig, LimitlessWebSocket};
 use px_exchange_opinion::{OpinionConfig, OpinionWebSocket};
 use px_exchange_predictfun::{PredictFunConfig, PredictFunWebSocket};
 use px_exchange_polymarket::PolymarketWebSocket;
@@ -71,7 +71,18 @@ impl WebSocketInner {
                 }
                 Ok(Self::Polymarket(PolymarketWebSocket::new()))
             }
-            "limitless" => Ok(Self::Limitless(LimitlessWebSocket::new())),
+            "limitless" => {
+                let mut cfg = LimitlessConfig::new();
+                if let Some(obj) = obj {
+                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_key(v);
+                    }
+                    if let Some(v) = obj.get("ws_url").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_ws_url(v);
+                    }
+                }
+                Ok(Self::Limitless(LimitlessWebSocket::new(cfg)))
+            }
             "opinion" => {
                 let mut cfg = OpinionConfig::new();
                 if let Some(obj) = obj {
