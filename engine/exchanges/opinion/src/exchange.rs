@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -70,6 +69,8 @@ impl Opinion {
     pub fn new(config: OpinionConfig) -> Result<Self, OpinionError> {
         let client = reqwest::Client::builder()
             .http2_adaptive_window(true)
+            .pool_max_idle_per_host(8)
+            .http2_keep_alive_interval(std::time::Duration::from_secs(15))
             .timeout(config.base.timeout)
             .user_agent("openpx/1.0")
             .no_proxy()
@@ -717,7 +718,6 @@ impl Opinion {
     }
 }
 
-#[async_trait]
 impl Exchange for Opinion {
     fn id(&self) -> &'static str {
         "opinion"

@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures::StreamExt;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -463,7 +462,6 @@ impl OpinionWebSocket {
     }
 }
 
-#[async_trait]
 impl OrderBookWebSocket for OpinionWebSocket {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
         self.set_state(WebSocketState::Connecting);

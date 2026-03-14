@@ -19,6 +19,8 @@ impl HttpClient {
         // HTTP/2 negotiation happens via ALPN during TLS handshake
         let client = Client::builder()
             .http2_adaptive_window(true)
+            .pool_max_idle_per_host(8)
+            .http2_keep_alive_interval(std::time::Duration::from_secs(15))
             .timeout(config.base.timeout)
             .no_proxy()
             .build()?;

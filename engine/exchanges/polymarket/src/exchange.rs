@@ -1,5 +1,4 @@
 use alloy::primitives::{Address, ChainId, Signature as AlloySig, B256};
-use async_trait::async_trait;
 use k256::ecdsa::SigningKey;
 use metrics::{counter, histogram};
 use polymarket_client_sdk::auth::builder::{Builder as SdkBuilder, Config as BuilderConfig};
@@ -45,7 +44,8 @@ struct AddressOnlySigner {
     chain_id: Option<ChainId>,
 }
 
-#[async_trait]
+// Signer trait from alloy uses async_trait internally, so the impl must match.
+#[async_trait::async_trait]
 impl Signer for AddressOnlySigner {
     async fn sign_hash(&self, _hash: &B256) -> alloy::signers::Result<AlloySig> {
         Err(alloy::signers::Error::UnsupportedOperation(
@@ -578,9 +578,9 @@ impl Polymarket {
             _ => OrderStatus::Open, // Handle non-exhaustive enum
         };
 
-        let price = resp.price.to_string().parse().unwrap_or(0.0);
-        let size = resp.original_size.to_string().parse().unwrap_or(0.0);
-        let filled = resp.size_matched.to_string().parse().unwrap_or(0.0);
+        let price = f64::try_from(resp.price).unwrap_or(0.0);
+        let size = f64::try_from(resp.original_size).unwrap_or(0.0);
+        let filled = f64::try_from(resp.size_matched).unwrap_or(0.0);
 
         Order {
             id: resp.id.clone(),
@@ -1689,7 +1689,6 @@ impl Polymarket {
     }
 }
 
-#[async_trait]
 impl Exchange for Polymarket {
     fn id(&self) -> &'static str {
         "polymarket"

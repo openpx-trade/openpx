@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -33,12 +34,16 @@ impl RateLimiter {
 }
 
 /// A concurrent rate limiter that enforces a global rate limit across multiple
-/// concurrent streams. Uses a semaphore for concurrency control and a shared
+/// concurrent streams. Uses a semaphore for concurrency control and an atomic
 /// timestamp to ensure min_interval between ANY two requests globally.
+/// Lock-free: uses AtomicU64 CAS loop instead of a mutex for the timestamp.
 pub struct ConcurrentRateLimiter {
     semaphore: Arc<Semaphore>,
-    next_allowed_at: Arc<tokio::sync::Mutex<Instant>>,
-    min_interval: Duration,
+    /// Nanoseconds since `epoch` when the next request is allowed.
+    next_allowed_nanos: AtomicU64,
+    /// Reference instant for converting between Instant and u64 nanos.
+    epoch: Instant,
+    min_interval_nanos: u64,
 }
 
 impl ConcurrentRateLimiter {
@@ -54,10 +59,13 @@ impl ConcurrentRateLimiter {
             Duration::ZERO
         };
 
+        let epoch = Instant::now();
+
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            next_allowed_at: Arc::new(tokio::sync::Mutex::new(Instant::now() - min_interval)),
-            min_interval,
+            next_allowed_nanos: AtomicU64::new(0),
+            epoch,
+            min_interval_nanos: min_interval.as_nanos() as u64,
         }
     }
 
@@ -75,22 +83,30 @@ impl ConcurrentRateLimiter {
             .await
             .expect("ConcurrentRateLimiter semaphore unexpectedly closed");
 
-        // Reserve the next globally-allowed send slot while holding the mutex,
-        // then sleep outside the lock to avoid serializing concurrent waiters.
-        let wait_time = {
-            let mut next_allowed = self.next_allowed_at.lock().await;
-            let now = Instant::now();
-            let scheduled = if now >= *next_allowed {
-                now
+        // Reserve the next globally-allowed send slot via atomic CAS loop,
+        // then sleep outside the atomic to avoid serializing concurrent waiters.
+        let wait_nanos = loop {
+            let now_nanos = self.epoch.elapsed().as_nanos() as u64;
+            let current = self.next_allowed_nanos.load(Ordering::Acquire);
+            let scheduled = if now_nanos >= current {
+                now_nanos
             } else {
-                *next_allowed
+                current
             };
-            let wait = scheduled.saturating_duration_since(now);
-            *next_allowed = scheduled + self.min_interval;
-            wait
+            let next = scheduled + self.min_interval_nanos;
+            match self.next_allowed_nanos.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break scheduled.saturating_sub(now_nanos),
+                Err(_) => continue, // Another thread won the CAS, retry
+            }
         };
-        if !wait_time.is_zero() {
-            sleep(wait_time).await;
+
+        if wait_nanos > 0 {
+            sleep(Duration::from_nanos(wait_nanos)).await;
         }
 
         permit
@@ -112,7 +128,17 @@ where
         match f().await {
             Ok(result) => return Ok(result),
             Err(_) if attempt + 1 < max_attempts => {
-                sleep(delay).await;
+                // Simple jitter: vary delay ±50% using cheap pseudo-random
+                let jitter_factor = {
+                    let seed = (std::time::SystemTime::UNIX_EPOCH
+                        .elapsed()
+                        .unwrap_or_default()
+                        .subsec_nanos() as u64)
+                        .wrapping_mul(attempt as u64 + 1);
+                    0.5 + (seed % 1000) as f64 / 1000.0 // range [0.5, 1.5)
+                };
+                let jittered = Duration::from_secs_f64(delay.as_secs_f64() * jitter_factor);
+                sleep(jittered).await;
                 delay *= 2;
                 continue;
             }

@@ -12,18 +12,22 @@ pub struct Position {
 }
 
 impl Position {
+    #[inline]
     pub fn cost_basis(&self) -> f64 {
         self.size * self.average_price
     }
 
+    #[inline]
     pub fn current_value(&self) -> f64 {
         self.size * self.current_price
     }
 
+    #[inline]
     pub fn unrealized_pnl(&self) -> f64 {
         self.current_value() - self.cost_basis()
     }
 
+    #[inline]
     pub fn unrealized_pnl_percent(&self) -> f64 {
         let cost = self.cost_basis();
         if cost == 0.0 {
@@ -57,8 +61,10 @@ pub fn calculate_delta(positions: &HashMap<String, f64>) -> DeltaInfo {
     }
 
     let delta = if positions.len() == 2 {
-        let values: Vec<f64> = positions.values().copied().collect();
-        (values[0] - values[1]).abs()
+        let mut iter = positions.values().copied();
+        let a = iter.next().unwrap_or(0.0);
+        let b = iter.next().unwrap_or(0.0);
+        (a - b).abs()
     } else {
         max_position
     };

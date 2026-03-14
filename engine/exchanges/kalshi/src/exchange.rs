@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use metrics::{counter, histogram};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -768,7 +767,6 @@ fn configured_fetch_all_page_cap() -> Option<usize> {
     parse_positive_usize_env(std::env::var("KALSHI_FETCH_ALL_MAX_PAGES").ok().as_deref())
 }
 
-#[async_trait]
 impl Exchange for Kalshi {
     fn id(&self) -> &'static str {
         "kalshi"

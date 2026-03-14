@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -100,7 +99,7 @@ pub struct ActivityFill {
     pub liquidity_role: Option<LiquidityRole>,
 }
 
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait OrderBookWebSocket: Send + Sync {
     async fn connect(&mut self) -> Result<(), WebSocketError>;
 

@@ -4,6 +4,8 @@
 /// - Exchanges expose different event/group identifiers for the same real-world event.
 /// - OpenPX keeps source-native `group_id` for transparency.
 /// - OpenPX also exposes canonical `event_id` so SDK users can query events uniformly.
+use std::borrow::Cow;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EventAlias {
     pub exchange: &'static str,
@@ -38,8 +40,13 @@ const CANONICAL_EVENT_REGISTRY: &[CanonicalEventEntry] = &[CanonicalEventEntry {
     }],
 }];
 
-fn normalize_exchange(exchange: &str) -> String {
-    exchange.trim().to_ascii_lowercase()
+fn normalize_exchange(exchange: &str) -> Cow<'_, str> {
+    let trimmed = exchange.trim();
+    if trimmed.bytes().all(|b| !b.is_ascii_uppercase()) {
+        Cow::Borrowed(trimmed)
+    } else {
+        Cow::Owned(trimmed.to_ascii_lowercase())
+    }
 }
 
 /// Stable fallback when no explicit registry mapping exists.
@@ -106,11 +113,11 @@ pub fn aliases_for_event_id(event_id: &str) -> Vec<EventAliasOwned> {
     };
 
     if let Some((exchange, group_id)) = raw.split_once(':') {
-        let exchange = exchange.trim().to_ascii_lowercase();
+        let exchange = normalize_exchange(exchange);
         let group_id = group_id.trim();
         if !exchange.is_empty() && !group_id.is_empty() {
             return vec![EventAliasOwned {
-                exchange,
+                exchange: exchange.into_owned(),
                 group_id: group_id.to_string(),
             }];
         }

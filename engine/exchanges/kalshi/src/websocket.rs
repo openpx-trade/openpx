@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -698,7 +697,6 @@ impl KalshiWebSocket {
     }
 }
 
-#[async_trait]
 impl OrderBookWebSocket for KalshiWebSocket {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
         if let Some(ref api_key_id) = self.config.api_key_id {

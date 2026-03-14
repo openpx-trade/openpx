@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use px_core::{
     manifests::KALSHI_MANIFEST, CheckpointCallback, ConcurrentRateLimiter, FetchResult,
     MarketFetcher, OpenPxError, RateLimiter,
@@ -73,13 +72,13 @@ impl KalshiMarketFetcher {
         Client::builder()
             .http2_adaptive_window(true)
             .timeout(Duration::from_secs(30))
-            .pool_max_idle_per_host(1)
+            .pool_max_idle_per_host(8)
+            .http2_keep_alive_interval(Duration::from_secs(15))
             .build()
             .map_err(KalshiError::from)
     }
 }
 
-#[async_trait]
 impl MarketFetcher for KalshiMarketFetcher {
     fn exchange_id(&self) -> &'static str {
         "kalshi"
@@ -118,16 +117,16 @@ impl MarketFetcher for KalshiMarketFetcher {
                 return Err(OpenPxError::Exchange(KalshiError::Api(body).into()));
             }
 
-            let body: serde_json::Value = response
+            let mut body: serde_json::Value = response
                 .json()
                 .await
                 .map_err(|e| to_openpx(KalshiError::from(e)))?;
 
-            let markets = body
-                .get("markets")
-                .and_then(|m| m.as_array())
-                .cloned()
-                .unwrap_or_default();
+            // Take ownership of markets array instead of cloning
+            let markets = match body.get_mut("markets").map(serde_json::Value::take) {
+                Some(serde_json::Value::Array(arr)) => arr,
+                _ => Vec::new(),
+            };
 
             let count = markets.len();
             all_markets.extend(markets);
@@ -377,13 +376,13 @@ impl KalshiMarketFetcher {
             };
 
             // Fetch with retry for rate limit errors
-            let body = Self::fetch_with_retry(&client, &url, &status).await?;
+            let mut body = Self::fetch_with_retry(&client, &url, &status).await?;
 
-            let markets = body
-                .get("markets")
-                .and_then(|m| m.as_array())
-                .cloned()
-                .unwrap_or_default();
+            // Take ownership of markets array instead of cloning
+            let markets = match body.get_mut("markets").map(serde_json::Value::take) {
+                Some(serde_json::Value::Array(arr)) => arr,
+                _ => Vec::new(),
+            };
 
             let count = markets.len();
             total_fetched.fetch_add(count, Ordering::SeqCst);

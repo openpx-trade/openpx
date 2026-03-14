@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -28,7 +27,7 @@ pub type CheckpointCallback = Box<
 
 /// Trait for fetching raw market data from exchanges.
 /// Used by the Bronze layer to collect complete API responses.
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait MarketFetcher: Send + Sync {
     /// Exchange identifier (e.g., "kalshi", "polymarket")
     fn exchange_id(&self) -> &'static str;

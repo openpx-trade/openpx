@@ -17,14 +17,14 @@ macro_rules! timed {
     ($metric:expr, $($k:expr => $v:expr),+; $block:expr) => {{
         let __start = std::time::Instant::now();
         let __result = $block;
-        let __us = __start.elapsed().as_secs_f64() * 1_000_000.0;
+        let __us = __start.elapsed().as_micros() as f64;
         metrics::histogram!($metric, $($k => $v),+).record(__us);
         __result
     }};
     ($metric:expr; $block:expr) => {{
         let __start = std::time::Instant::now();
         let __result = $block;
-        let __us = __start.elapsed().as_secs_f64() * 1_000_000.0;
+        let __us = __start.elapsed().as_micros() as f64;
         metrics::histogram!($metric).record(__us);
         __result
     }};
@@ -63,9 +63,9 @@ impl TimingGuard {
 
 impl Drop for TimingGuard {
     fn drop(&mut self) {
-        let elapsed_us = self.start.elapsed().as_secs_f64() * 1_000_000.0;
-        if let (Some(key), Some(ref value)) = (self.label_key, &self.label_value) {
-            histogram!(self.name, key => value.clone()).record(elapsed_us);
+        let elapsed_us = self.start.elapsed().as_micros() as f64;
+        if let (Some(key), Some(value)) = (self.label_key, self.label_value.take()) {
+            histogram!(self.name, key => value).record(elapsed_us);
         } else {
             histogram!(self.name).record(elapsed_us);
         }

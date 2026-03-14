@@ -1,5 +1,3 @@
-use async_trait::async_trait;
-
 use px_core::error::{OpenPxError, WebSocketError};
 use px_core::websocket::{
     ActivityStream, OrderBookWebSocket, OrderbookStream as CoreOrderbookStream, WebSocketState,
@@ -99,7 +97,6 @@ macro_rules! ws_dispatch {
     };
 }
 
-#[async_trait]
 impl OrderBookWebSocket for WebSocketInner {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
         ws_dispatch!(self, connect)

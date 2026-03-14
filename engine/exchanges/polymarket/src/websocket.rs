@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures::StreamExt;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -905,7 +904,6 @@ impl Default for PolymarketWebSocket {
     }
 }
 
-#[async_trait]
 impl OrderBookWebSocket for PolymarketWebSocket {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
         self.set_state(WebSocketState::Connecting);

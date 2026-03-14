@@ -37,11 +37,11 @@ pub struct ExchangeManifest {
 
 impl ExchangeManifest {
     /// Look up the MarketStatus for a given exchange status string.
+    /// Status map entries should be lowercase at definition time for O(n) without allocation.
     pub fn map_status(&self, exchange_status: &str) -> Option<MarketStatus> {
-        let lower = exchange_status.to_lowercase();
         self.status_map
             .iter()
-            .find(|(s, _)| s.to_lowercase() == lower)
+            .find(|(s, _)| s.eq_ignore_ascii_case(exchange_status))
             .map(|(_, status)| *status)
     }
 

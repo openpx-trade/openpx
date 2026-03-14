@@ -20,11 +20,36 @@ use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use px_core::Exchange;
 
 /// Enum dispatch over all supported exchanges.
-/// Both `px-python` and `px-node` depend on this to avoid duplicating exchange construction logic.
+/// Direct match dispatch eliminates vtable indirection and allows the compiler to
+/// monomorphize and inline each exchange method — no heap-allocated `Pin<Box<dyn Future>>`.
 pub enum ExchangeInner {
     Kalshi(Box<Kalshi>),
     Polymarket(Box<Polymarket>),
     Opinion(Opinion),
+}
+
+/// Dispatch macro: calls a trait method on the inner exchange via match + UFCS,
+/// avoiding `&dyn Exchange` vtable overhead while ensuring trait methods are called
+/// (not inherent methods that may shadow them with different signatures).
+macro_rules! dispatch {
+    ($self:expr, $method:ident $(, $arg:expr)*) => {
+        match $self {
+            ExchangeInner::Kalshi(e) => Exchange::$method(e.as_ref(), $($arg),*).await,
+            ExchangeInner::Polymarket(e) => Exchange::$method(e.as_ref(), $($arg),*).await,
+            ExchangeInner::Opinion(e) => Exchange::$method(e, $($arg),*).await,
+        }
+    };
+}
+
+/// Sync dispatch macro for non-async trait methods.
+macro_rules! dispatch_sync {
+    ($self:expr, $method:ident $(, $arg:expr)*) => {
+        match $self {
+            ExchangeInner::Kalshi(e) => Exchange::$method(e.as_ref(), $($arg),*),
+            ExchangeInner::Polymarket(e) => Exchange::$method(e.as_ref(), $($arg),*),
+            ExchangeInner::Opinion(e) => Exchange::$method(e, $($arg),*),
+        }
+    };
 }
 
 impl ExchangeInner {
@@ -121,48 +146,38 @@ impl ExchangeInner {
         }
     }
 
-    /// Returns a trait object reference — ensures we always call the Exchange trait methods
-    /// rather than any inherent methods that may shadow them.
-    fn as_exchange(&self) -> &dyn Exchange {
-        match self {
-            Self::Kalshi(e) => e.as_ref(),
-            Self::Polymarket(e) => e.as_ref(),
-            Self::Opinion(e) => e,
-        }
-    }
-
     pub fn id(&self) -> &'static str {
-        self.as_exchange().id()
+        dispatch_sync!(self, id)
     }
 
     pub fn name(&self) -> &'static str {
-        self.as_exchange().name()
+        dispatch_sync!(self, name)
     }
 
     pub fn describe(&self) -> ExchangeInfo {
-        self.as_exchange().describe()
+        dispatch_sync!(self, describe)
     }
 
     pub async fn fetch_markets(
         &self,
         params: Option<FetchMarketsParams>,
     ) -> Result<Vec<Market>, OpenPxError> {
-        self.as_exchange().fetch_markets(params).await
+        dispatch!(self, fetch_markets, params)
     }
 
     pub async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
-        self.as_exchange().fetch_market(market_id).await
+        dispatch!(self, fetch_market, market_id)
     }
 
     pub async fn fetch_all_unified_markets(&self) -> Result<Vec<UnifiedMarket>, OpenPxError> {
-        self.as_exchange().fetch_all_unified_markets().await
+        dispatch!(self, fetch_all_unified_markets)
     }
 
     pub async fn fetch_event_markets(
         &self,
         group_id: &str,
     ) -> Result<Vec<UnifiedMarket>, OpenPxError> {
-        self.as_exchange().fetch_event_markets(group_id).await
+        dispatch!(self, fetch_event_markets, group_id)
     }
 
     pub async fn create_order(
@@ -174,9 +189,16 @@ impl ExchangeInner {
         size: f64,
         params: HashMap<String, String>,
     ) -> Result<Order, OpenPxError> {
-        self.as_exchange()
-            .create_order(market_id, outcome, side, price, size, params)
-            .await
+        dispatch!(
+            self,
+            create_order,
+            market_id,
+            outcome,
+            side,
+            price,
+            size,
+            params
+        )
     }
 
     pub async fn cancel_order(
@@ -184,7 +206,7 @@ impl ExchangeInner {
         order_id: &str,
         market_id: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        self.as_exchange().cancel_order(order_id, market_id).await
+        dispatch!(self, cancel_order, order_id, market_id)
     }
 
     pub async fn fetch_order(
@@ -192,50 +214,50 @@ impl ExchangeInner {
         order_id: &str,
         market_id: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        self.as_exchange().fetch_order(order_id, market_id).await
+        dispatch!(self, fetch_order, order_id, market_id)
     }
 
     pub async fn fetch_open_orders(
         &self,
         params: Option<FetchOrdersParams>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        self.as_exchange().fetch_open_orders(params).await
+        dispatch!(self, fetch_open_orders, params)
     }
 
     pub async fn fetch_positions(
         &self,
         market_id: Option<&str>,
     ) -> Result<Vec<Position>, OpenPxError> {
-        self.as_exchange().fetch_positions(market_id).await
+        dispatch!(self, fetch_positions, market_id)
     }
 
     pub async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError> {
-        self.as_exchange().fetch_balance().await
+        dispatch!(self, fetch_balance)
     }
 
     pub async fn fetch_orderbook(&self, req: OrderbookRequest) -> Result<Orderbook, OpenPxError> {
-        self.as_exchange().fetch_orderbook(req).await
+        dispatch!(self, fetch_orderbook, req)
     }
 
     pub async fn fetch_price_history(
         &self,
         req: PriceHistoryRequest,
     ) -> Result<Vec<Candlestick>, OpenPxError> {
-        self.as_exchange().fetch_price_history(req).await
+        dispatch!(self, fetch_price_history, req)
     }
 
     pub async fn fetch_trades(
         &self,
         req: TradesRequest,
     ) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError> {
-        self.as_exchange().fetch_trades(req).await
+        dispatch!(self, fetch_trades, req)
     }
 
     pub async fn fetch_orderbook_history(
         &self,
         req: OrderbookHistoryRequest,
     ) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError> {
-        self.as_exchange().fetch_orderbook_history(req).await
+        dispatch!(self, fetch_orderbook_history, req)
     }
 
     pub async fn fetch_fills(
@@ -243,21 +265,21 @@ impl ExchangeInner {
         market_id: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
-        self.as_exchange().fetch_fills(market_id, limit).await
+        dispatch!(self, fetch_fills, market_id, limit)
     }
 
     pub async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
-        self.as_exchange().fetch_balance_raw().await
+        dispatch!(self, fetch_balance_raw)
     }
 
     pub async fn fetch_user_activity(
         &self,
         params: FetchUserActivityParams,
     ) -> Result<serde_json::Value, OpenPxError> {
-        self.as_exchange().fetch_user_activity(params).await
+        dispatch!(self, fetch_user_activity, params)
     }
 
     pub async fn refresh_balance(&self) -> Result<(), OpenPxError> {
-        self.as_exchange().refresh_balance().await
+        dispatch!(self, refresh_balance)
     }
 }

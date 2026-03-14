@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -14,7 +13,7 @@ use super::config::{FetchMarketsParams, FetchOrdersParams, FetchUserActivityPara
 use super::manifest::ExchangeManifest;
 use super::normalizers::extract_string;
 
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
@@ -472,7 +471,6 @@ mod tests {
     /// Minimal Exchange impl for testing `to_unified_market()`.
     struct StubExchange;
 
-    #[async_trait]
     impl Exchange for StubExchange {
         fn id(&self) -> &'static str {
             "stub"

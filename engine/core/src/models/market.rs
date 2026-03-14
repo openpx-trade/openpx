@@ -31,10 +31,12 @@ pub struct Market {
 }
 
 impl Market {
+    #[inline]
     pub fn is_binary(&self) -> bool {
         self.outcomes.len() == 2
     }
 
+    #[inline]
     pub fn is_open(&self) -> bool {
         if let Some(metadata) = self.metadata.as_object() {
             if let Some(closed) = metadata.get("closed").and_then(|v| v.as_bool()) {
@@ -48,17 +50,13 @@ impl Market {
         }
     }
 
+    #[inline]
     pub fn spread(&self) -> Option<f64> {
-        if !self.is_binary() || self.outcomes.len() != 2 {
+        if !self.is_binary() || self.prices.len() != 2 {
             return None;
         }
 
-        let prices: Vec<f64> = self.prices.values().copied().collect();
-        if prices.len() != 2 {
-            return None;
-        }
-
-        Some((1.0 - prices.iter().sum::<f64>()).abs())
+        Some((1.0 - self.prices.values().copied().sum::<f64>()).abs())
     }
 
     pub fn get_token_ids(&self) -> Vec<String> {

@@ -40,8 +40,7 @@ impl NativeOrderbookStream {
 
         match result {
             Some(Ok(update)) => {
-                let val = serde_json::to_value(&update).map_err(|e| to_py_err(e.to_string()))?;
-                let py_val = pythonize(py, &val).map_err(|e| to_py_err(e.to_string()))?;
+                let py_val = pythonize(py, &update).map_err(|e| to_py_err(e.to_string()))?;
                 Ok(Some(py_val.into()))
             }
             Some(Err(e)) => Err(to_py_err(e.to_string())),

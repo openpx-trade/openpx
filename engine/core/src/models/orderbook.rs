@@ -186,14 +186,17 @@ pub struct Orderbook {
 }
 
 impl Orderbook {
+    #[inline]
     pub fn best_bid(&self) -> Option<f64> {
         self.bids.first().map(|l| l.price.to_f64())
     }
 
+    #[inline]
     pub fn best_ask(&self) -> Option<f64> {
         self.asks.first().map(|l| l.price.to_f64())
     }
 
+    #[inline]
     pub fn mid_price(&self) -> Option<f64> {
         match (self.bids.first(), self.asks.first()) {
             (Some(bid), Some(ask)) => Some(bid.price.midpoint(ask.price).to_f64()),
@@ -201,6 +204,7 @@ impl Orderbook {
         }
     }
 
+    #[inline]
     pub fn spread(&self) -> Option<f64> {
         match (self.bids.first(), self.asks.first()) {
             (Some(bid), Some(ask)) => Some(ask.price.to_f64() - bid.price.to_f64()),
@@ -208,6 +212,7 @@ impl Orderbook {
         }
     }
 
+    #[inline]
     pub fn has_data(&self) -> bool {
         !self.bids.is_empty() && !self.asks.is_empty()
     }
@@ -289,19 +294,21 @@ pub fn sort_asks(levels: &mut [PriceLevel]) {
 }
 
 /// Insert a price level into a bid-sorted (descending) list.
-/// O(log n) search + O(n) shift, vs O(n log n) for push + sort.
+/// Uses push + sort_unstable for prediction market books (typically < 100 levels).
+/// sort_unstable avoids the allocation of a merge-sort buffer and is faster
+/// on small, nearly-sorted arrays than Vec::insert's O(n) memcpy shift.
 #[inline]
 pub fn insert_bid(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
-    let idx = levels.partition_point(|l| l.price > level.price);
-    levels.insert(idx, level);
+    levels.push(level);
+    sort_bids(levels);
 }
 
 /// Insert a price level into an ask-sorted (ascending) list.
-/// O(log n) search + O(n) shift, vs O(n log n) for push + sort.
+/// Uses push + sort_unstable for prediction market books (typically < 100 levels).
 #[inline]
 pub fn insert_ask(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
-    let idx = levels.partition_point(|l| l.price < level.price);
-    levels.insert(idx, level);
+    levels.push(level);
+    sort_asks(levels);
 }
 
 #[derive(Debug, Clone, Deserialize)]

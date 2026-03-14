@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
 use px_core::{
     manifests::POLYMARKET_MANIFEST, CheckpointCallback, FetchResult, MarketFetcher, OpenPxError,
@@ -42,6 +41,7 @@ impl PolymarketMarketFetcher {
         Client::builder()
             .pool_max_idle_per_host(CONCURRENCY)
             .http2_adaptive_window(true)
+            .http2_keep_alive_interval(Duration::from_secs(15))
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(PolymarketError::from)
@@ -105,7 +105,6 @@ impl PolymarketMarketFetcher {
     }
 }
 
-#[async_trait]
 impl MarketFetcher for PolymarketMarketFetcher {
     fn exchange_id(&self) -> &'static str {
         "polymarket"
