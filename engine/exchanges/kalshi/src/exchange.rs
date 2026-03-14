@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use metrics::{counter, histogram};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -581,7 +582,7 @@ impl Kalshi {
                 if level.len() >= 2 {
                     let price = level[0] / 100.0; // Convert cents to decimal
                     let size = level[1];
-                    yes.push(PriceLevel { price, size });
+                    yes.push(PriceLevel::new(price, size));
                 }
             }
         }
@@ -592,7 +593,7 @@ impl Kalshi {
                 if level.len() >= 2 {
                     let price = level[0] / 100.0;
                     let size = level[1];
-                    no.push(PriceLevel { price, size });
+                    no.push(PriceLevel::new(price, size));
                 }
             }
         }
@@ -724,10 +725,7 @@ impl Kalshi {
         let mut bids = yes;
         let mut asks: Vec<PriceLevel> = no
             .into_iter()
-            .map(|level| PriceLevel {
-                price: 1.0 - level.price,
-                size: level.size,
-            })
+            .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
             .collect();
 
         sort_bids(&mut bids);
@@ -990,19 +988,13 @@ impl Exchange for Kalshi {
         let (mut bids, mut asks): (Vec<PriceLevel>, Vec<PriceLevel>) = if is_no {
             let asks: Vec<PriceLevel> = yes
                 .into_iter()
-                .map(|level| PriceLevel {
-                    price: 1.0 - level.price,
-                    size: level.size,
-                })
+                .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
                 .collect();
             (no, asks)
         } else {
             let asks: Vec<PriceLevel> = no
                 .into_iter()
-                .map(|level| PriceLevel {
-                    price: 1.0 - level.price,
-                    size: level.size,
-                })
+                .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
                 .collect();
             (yes, asks)
         };
@@ -1209,7 +1201,7 @@ impl Exchange for Kalshi {
                     side: None,
                     aggressor_side,
                     timestamp: t.created_time,
-                    source_channel: "kalshi_rest_trade".to_string(),
+                    source_channel: Cow::Borrowed("kalshi_rest_trade"),
                     tx_hash: None,
                     outcome: t.taker_side.as_deref().and_then(|s| {
                         match s.to_ascii_lowercase().as_str() {

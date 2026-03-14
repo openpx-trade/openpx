@@ -246,7 +246,7 @@ impl Limitless {
                 let size = order.get("size").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
                 if price > 0.0 && size > 0.0 {
-                    let level = px_core::PriceLevel { price, size };
+                    let level = px_core::PriceLevel::new(price, size);
                     if side.to_lowercase() == "buy" {
                         bids.push(level);
                     } else {
@@ -272,7 +272,7 @@ impl Limitless {
                             .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                     })
                     .unwrap_or(0.0);
-                bids.push(px_core::PriceLevel { price, size });
+                bids.push(px_core::PriceLevel::new(price, size));
             }
         }
 
@@ -292,7 +292,7 @@ impl Limitless {
                             .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                     })
                     .unwrap_or(0.0);
-                asks.push(px_core::PriceLevel { price, size });
+                asks.push(px_core::PriceLevel::new(price, size));
             }
         }
 
@@ -302,17 +302,11 @@ impl Limitless {
         if is_no_token {
             let mut inverted_bids: Vec<px_core::PriceLevel> = asks
                 .iter()
-                .map(|a| px_core::PriceLevel {
-                    price: (1.0 - a.price * 1000.0).round() / 1000.0,
-                    size: a.size,
-                })
+                .map(|a| px_core::PriceLevel::with_fixed(a.price.complement(), a.size))
                 .collect();
             let mut inverted_asks: Vec<px_core::PriceLevel> = bids
                 .iter()
-                .map(|b| px_core::PriceLevel {
-                    price: (1.0 - b.price * 1000.0).round() / 1000.0,
-                    size: b.size,
-                })
+                .map(|b| px_core::PriceLevel::with_fixed(b.price.complement(), b.size))
                 .collect();
 
             px_core::sort_bids(&mut inverted_bids);

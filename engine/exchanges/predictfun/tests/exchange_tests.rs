@@ -1,4 +1,4 @@
-use px_core::{Exchange, FetchMarketsParams};
+use px_core::{Exchange, FetchMarketsParams, FixedPrice};
 use px_exchange_predictfun::{PredictFun, PredictFunConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -178,9 +178,9 @@ async fn test_get_orderbook() {
     // then
     assert_eq!(orderbook.bids.len(), 3);
     assert_eq!(orderbook.asks.len(), 3);
-    assert_eq!(orderbook.bids[0].price, 0.45);
+    assert_eq!(orderbook.bids[0].price, FixedPrice::from_f64(0.45));
     assert_eq!(orderbook.bids[0].size, 100.0);
-    assert_eq!(orderbook.asks[0].price, 0.55);
+    assert_eq!(orderbook.asks[0].price, FixedPrice::from_f64(0.55));
     assert_eq!(orderbook.asks[0].size, 100.0);
 }
 

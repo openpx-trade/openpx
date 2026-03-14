@@ -52,7 +52,7 @@ pub struct MarketTrade {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aggressor_side: Option<String>,
     pub timestamp: DateTime<Utc>,
-    pub source_channel: String,
+    pub source_channel: std::borrow::Cow<'static, str>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tx_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

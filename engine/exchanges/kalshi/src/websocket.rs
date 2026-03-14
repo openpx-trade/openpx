@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -12,11 +13,11 @@ use tokio_tungstenite::{
 };
 
 use px_core::{
-    sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream, ActivityTrade,
-    AtomicWebSocketState, ChangeVec, LiquidityRole, OrderBookWebSocket, Orderbook, OrderbookStream,
-    OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState,
-    PRICE_EPSILON, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
-    WS_RECONNECT_MAX_DELAY,
+    insert_ask, insert_bid, sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream,
+    ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, LiquidityRole, OrderBookWebSocket,
+    Orderbook, OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide,
+    WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
+    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
@@ -218,11 +219,8 @@ impl KalshiWebSocket {
             .collect()
     }
 
-    fn update_levels(levels: &mut Vec<PriceLevel>, price: f64, delta: f64, descending: bool) {
-        if let Some(idx) = levels
-            .iter()
-            .position(|l| (l.price - price).abs() < PRICE_EPSILON)
-        {
+    fn update_levels(levels: &mut Vec<PriceLevel>, fp: FixedPrice, delta: f64, descending: bool) {
+        if let Some(idx) = levels.iter().position(|l| l.price == fp) {
             let new_size = levels[idx].size + delta;
             if new_size <= 0.0 {
                 levels.remove(idx);
@@ -230,13 +228,12 @@ impl KalshiWebSocket {
                 levels[idx].size = new_size;
             }
         } else if delta > 0.0 {
-            levels.push(PriceLevel::new(price, delta));
-        }
-
-        if descending {
-            sort_bids(levels);
-        } else {
-            sort_asks(levels);
+            let level = PriceLevel::with_fixed(fp, delta);
+            if descending {
+                insert_bid(levels, level);
+            } else {
+                insert_ask(levels, level);
+            }
         }
     }
 
@@ -336,7 +333,7 @@ impl KalshiWebSocket {
         let mut bids = Self::parse_levels(payload.yes);
         let mut asks: Vec<PriceLevel> = Self::parse_levels(payload.no)
             .into_iter()
-            .map(|level| PriceLevel::new(1.0 - level.price, level.size))
+            .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
             .collect();
 
         sort_bids(&mut bids);
@@ -369,44 +366,45 @@ impl KalshiWebSocket {
             None => return,
         };
 
-        let price = payload.price as f64 / 100.0;
+        // Kalshi prices arrive as cents — convert directly to FixedPrice
+        // (cents * 100 = scale-10000 ticks, no f64 division needed)
+        let fp = FixedPrice::from_raw(payload.price as u64 * 100);
         let delta = payload.delta as f64;
-        let side = payload.side.to_lowercase();
+        let is_yes = payload.side.eq_ignore_ascii_case("yes");
 
         let mut obs = self.orderbooks.write().await;
         if let Some(ob) = obs.get_mut(&payload.market_ticker) {
-            let (plc_side, plc_price) = if side == "yes" {
-                (PriceLevelSide::Bid, price)
+            let (plc_side, plc_fp) = if is_yes {
+                (PriceLevelSide::Bid, fp)
             } else {
-                (PriceLevelSide::Ask, 1.0 - price)
+                (PriceLevelSide::Ask, fp.complement())
             };
 
-            // Apply delta (existing logic)
-            if side == "yes" {
-                Self::update_levels(&mut ob.bids, price, delta, true);
+            if is_yes {
+                Self::update_levels(&mut ob.bids, fp, delta, true);
             } else {
-                Self::update_levels(&mut ob.asks, 1.0 - price, delta, false);
+                Self::update_levels(&mut ob.asks, fp.complement(), delta, false);
             }
 
             // Read resulting absolute size for the change record
-            let abs_size = if side == "yes" {
+            let abs_size = if is_yes {
                 ob.bids
                     .iter()
-                    .find(|l| (l.price - price).abs() < PRICE_EPSILON)
+                    .find(|l| l.price == fp)
                     .map(|l| l.size)
                     .unwrap_or(0.0)
             } else {
-                let ap = 1.0 - price;
+                let ask_fp = fp.complement();
                 ob.asks
                     .iter()
-                    .find(|l| (l.price - ap).abs() < PRICE_EPSILON)
+                    .find(|l| l.price == ask_fp)
                     .map(|l| l.size)
                     .unwrap_or(0.0)
             };
 
             let change = PriceLevelChange {
                 side: plc_side,
-                price: plc_price,
+                price: plc_fp,
                 size: abs_size,
             };
 
@@ -478,7 +476,7 @@ impl KalshiWebSocket {
             aggressor_side,
             outcome: None,
             timestamp,
-            source_channel: "kalshi_public_trade".to_string(),
+            source_channel: Cow::Borrowed("kalshi_public_trade"),
         });
         self.broadcast_activity(&market_ticker, event).await;
     }
@@ -541,7 +539,7 @@ impl KalshiWebSocket {
             side,
             outcome,
             timestamp,
-            source_channel: "kalshi_user_fill".to_string(),
+            source_channel: Cow::Borrowed("kalshi_user_fill"),
             liquidity_role,
         });
         self.broadcast_activity(&market_ticker, event).await;

@@ -62,6 +62,9 @@ smallvec = { version = "1", features = ["serde"] }
 # Byte buffers
 bytes = "1"
 
+# Allocator
+tikv-jemallocator = "0.6"
+
 # Cryptography
 base64 = "0.22"
 

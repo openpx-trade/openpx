@@ -732,14 +732,14 @@ impl PredictFun {
             .bids
             .unwrap_or_default()
             .into_iter()
-            .map(|(price, size)| px_core::PriceLevel { price, size })
+            .map(|(price, size)| px_core::PriceLevel::new(price, size))
             .collect();
 
         let asks: Vec<px_core::PriceLevel> = data
             .asks
             .unwrap_or_default()
             .into_iter()
-            .map(|(price, size)| px_core::PriceLevel { price, size })
+            .map(|(price, size)| px_core::PriceLevel::new(price, size))
             .collect();
 
         Ok(px_core::Orderbook {
@@ -1166,12 +1166,12 @@ impl Exchange for PredictFun {
             let mut bids: Vec<px_core::PriceLevel> = orderbook
                 .asks
                 .iter()
-                .map(|level| px_core::PriceLevel::new(1.0 - level.price, level.size))
+                .map(|level| px_core::PriceLevel::with_fixed(level.price.complement(), level.size))
                 .collect();
             let mut asks: Vec<px_core::PriceLevel> = orderbook
                 .bids
                 .iter()
-                .map(|level| px_core::PriceLevel::new(1.0 - level.price, level.size))
+                .map(|level| px_core::PriceLevel::with_fixed(level.price.complement(), level.size))
                 .collect();
 
             sort_bids(&mut bids);

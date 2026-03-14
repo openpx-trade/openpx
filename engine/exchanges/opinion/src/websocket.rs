@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures::StreamExt;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
@@ -7,7 +8,7 @@ use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use px_core::{
-    ActivityEvent, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
+    ActivityEvent, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice,
     OrderBookWebSocket, OrderbookStream, OrderbookUpdate, PriceLevelChange, PriceLevelSide,
     WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY,
     WS_RECONNECT_MAX_DELAY,
@@ -172,19 +173,20 @@ impl OpinionWebSocket {
         // Map outcome_side + side to PriceLevelSide and adjusted price:
         // outcomeSide 1 (yes): "bids" -> Bid, "asks" -> Ask (price as-is)
         // outcomeSide 2 (no): "bids" -> Ask at 1.0 - price, "asks" -> Bid at 1.0 - price
-        let (plc_side, plc_price) = match outcome_side {
+        let fp = FixedPrice::from_f64(price);
+        let (plc_side, plc_fp) = match outcome_side {
             1 => {
                 if side_str == "bids" {
-                    (PriceLevelSide::Bid, price)
+                    (PriceLevelSide::Bid, fp)
                 } else {
-                    (PriceLevelSide::Ask, price)
+                    (PriceLevelSide::Ask, fp)
                 }
             }
             2 => {
                 if side_str == "bids" {
-                    (PriceLevelSide::Ask, 1.0 - price)
+                    (PriceLevelSide::Ask, fp.complement())
                 } else {
-                    (PriceLevelSide::Bid, 1.0 - price)
+                    (PriceLevelSide::Bid, fp.complement())
                 }
             }
             _ => return,
@@ -192,7 +194,7 @@ impl OpinionWebSocket {
 
         let change = PriceLevelChange {
             side: plc_side,
-            price: plc_price,
+            price: plc_fp,
             size,
         };
 
@@ -265,7 +267,7 @@ impl OpinionWebSocket {
             aggressor_side: None,
             outcome: None,
             timestamp,
-            source_channel: "market.last.trade".to_string(),
+            source_channel: Cow::Borrowed("market.last.trade"),
         });
 
         let senders = self.activity_senders.read().await;
@@ -608,7 +610,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use px_core::{OrderbookUpdate, PriceLevelSide};
+    use px_core::{FixedPrice, OrderbookUpdate, PriceLevelSide};
 
     fn make_ws() -> OpinionWebSocket {
         let config = OpinionConfig::new().with_api_key("test_key");
@@ -662,7 +664,7 @@ mod tests {
             OrderbookUpdate::Delta { changes, .. } => {
                 assert_eq!(changes.len(), 1);
                 assert_eq!(changes[0].side, PriceLevelSide::Bid);
-                assert!((changes[0].price - 0.65).abs() < f64::EPSILON);
+                assert_eq!(changes[0].price, FixedPrice::from_f64(0.65));
                 assert!((changes[0].size - 100.0).abs() < f64::EPSILON);
             }
             _ => panic!("expected Delta"),
@@ -701,7 +703,7 @@ mod tests {
         match update {
             OrderbookUpdate::Delta { changes, .. } => {
                 assert_eq!(changes[0].side, PriceLevelSide::Ask);
-                assert!((changes[0].price - 0.7).abs() < 1e-10);
+                assert_eq!(changes[0].price, FixedPrice::from_f64(0.7));
                 assert!((changes[0].size - 50.0).abs() < f64::EPSILON);
             }
             _ => panic!("expected Delta"),

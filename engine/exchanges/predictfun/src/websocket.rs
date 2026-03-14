@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures::StreamExt;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -317,7 +318,7 @@ impl PredictFunWebSocket {
             side,
             outcome: None,
             timestamp: Some(chrono::Utc::now()),
-            source_channel: "predictfun_wallet_event".to_string(),
+            source_channel: Cow::Borrowed("predictfun_wallet_event"),
             liquidity_role: None,
         });
 

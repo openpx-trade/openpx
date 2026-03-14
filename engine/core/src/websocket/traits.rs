@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
@@ -80,7 +81,7 @@ pub struct ActivityTrade {
     pub aggressor_side: Option<String>,
     pub outcome: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
-    pub source_channel: String,
+    pub source_channel: Cow<'static, str>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +96,7 @@ pub struct ActivityFill {
     pub side: Option<String>,
     pub outcome: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
-    pub source_channel: String,
+    pub source_channel: Cow<'static, str>,
     pub liquidity_role: Option<LiquidityRole>,
 }
 

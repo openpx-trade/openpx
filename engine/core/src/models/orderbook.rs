@@ -1,19 +1,118 @@
-// TODO(zero-alloc-book): Evaluate fixed-point integer price representation for orderbook hot paths.
-// polyfill-rs uses u32 prices (1 tick = 0.0001, scale factor 10,000) and BTreeMap<Price, Qty>
-// with integer arithmetic for spread/midpoint/market-impact calculations (1-5ns per op vs 20-100ns
-// for Decimal). They prove zero heap allocations via #[global_allocator] counting tests. Our
-// Orderbook uses f64 PriceLevel with Vec<PriceLevel> which allocates on every update. For the WS
-// hot path (applying orderbook deltas at high frequency), consider a FastOrderbook variant with
-// stack-allocated SmallVec levels and integer prices. Benchmark first — this matters most if we
-// ever publish a Rust SDK or if WS orderbook throughput becomes a bottleneck.
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-/// Epsilon for floating-point price comparison.
-/// Centralized here to prevent per-crate divergence (f64::EPSILON is too small after arithmetic).
+// ---------------------------------------------------------------------------
+// FixedPrice — integer-backed price for orderbook hot paths
+// ---------------------------------------------------------------------------
+
+/// Fixed-point price representation. 1 tick = 0.0001 (scale factor 10,000).
+/// Eliminates f64 comparison issues (no PRICE_EPSILON), enables `Ord` (no NaN),
+/// and uses integer arithmetic (1-5ns vs 20-100ns for f64 ops).
+///
+/// Serializes as f64 on the wire for JSON backward compatibility.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FixedPrice(u64);
+
+impl FixedPrice {
+    pub const SCALE: u64 = 10_000;
+    pub const ZERO: Self = Self(0);
+    pub const ONE: Self = Self(Self::SCALE);
+
+    #[inline]
+    pub fn from_f64(price: f64) -> Self {
+        Self((price * Self::SCALE as f64).round() as u64)
+    }
+
+    #[inline]
+    pub fn to_f64(self) -> f64 {
+        self.0 as f64 / Self::SCALE as f64
+    }
+
+    #[inline]
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// 1.0 - self, exact in fixed-point. Used for NO-side price inversion.
+    #[inline]
+    pub fn complement(self) -> Self {
+        Self(Self::SCALE.saturating_sub(self.0))
+    }
+
+    #[inline]
+    pub fn midpoint(self, other: Self) -> Self {
+        Self((self.0 + other.0) / 2)
+    }
+}
+
+impl std::fmt::Debug for FixedPrice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FixedPrice({})", self.to_f64())
+    }
+}
+
+impl std::fmt::Display for FixedPrice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_f64())
+    }
+}
+
+impl Default for FixedPrice {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+impl From<f64> for FixedPrice {
+    #[inline]
+    fn from(v: f64) -> Self {
+        Self::from_f64(v)
+    }
+}
+
+impl From<FixedPrice> for f64 {
+    #[inline]
+    fn from(v: FixedPrice) -> Self {
+        v.to_f64()
+    }
+}
+
+impl Serialize for FixedPrice {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.to_f64())
+    }
+}
+
+impl<'de> Deserialize<'de> for FixedPrice {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let v = f64::deserialize(deserializer)?;
+        Ok(Self::from_f64(v))
+    }
+}
+
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for FixedPrice {
+    fn schema_name() -> String {
+        "number".to_string()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        f64::json_schema(gen)
+    }
+}
+
+/// Epsilon for floating-point price comparison (legacy, prefer FixedPrice == for exact match).
 pub const PRICE_EPSILON: f64 = 1e-9;
+
+// ---------------------------------------------------------------------------
+// Orderbook types
+// ---------------------------------------------------------------------------
 
 /// Bid or ask side. Serializes as "bid"/"ask" on the wire.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,7 +129,7 @@ pub enum PriceLevelSide {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevelChange {
     pub side: PriceLevelSide,
-    pub price: f64,
+    pub price: FixedPrice,
     pub size: f64,
 }
 
@@ -54,12 +153,21 @@ pub enum OrderbookUpdate {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevel {
-    pub price: f64,
+    pub price: FixedPrice,
     pub size: f64,
 }
 
 impl PriceLevel {
+    #[inline]
     pub fn new(price: f64, size: f64) -> Self {
+        Self {
+            price: FixedPrice::from_f64(price),
+            size,
+        }
+    }
+
+    #[inline]
+    pub fn with_fixed(price: FixedPrice, size: f64) -> Self {
         Self { price, size }
     }
 }
@@ -79,23 +187,25 @@ pub struct Orderbook {
 
 impl Orderbook {
     pub fn best_bid(&self) -> Option<f64> {
-        self.bids.first().map(|l| l.price)
+        self.bids.first().map(|l| l.price.to_f64())
     }
 
     pub fn best_ask(&self) -> Option<f64> {
-        self.asks.first().map(|l| l.price)
+        self.asks.first().map(|l| l.price.to_f64())
     }
 
     pub fn mid_price(&self) -> Option<f64> {
-        match (self.best_bid(), self.best_ask()) {
-            (Some(bid), Some(ask)) => Some((bid + ask) / 2.0),
+        match (self.bids.first(), self.asks.first()) {
+            (Some(bid), Some(ask)) => Some(bid.price.midpoint(ask.price).to_f64()),
             _ => None,
         }
     }
 
     pub fn spread(&self) -> Option<f64> {
-        match (self.best_bid(), self.best_ask()) {
-            (Some(bid), Some(ask)) => Some(ask - bid),
+        match (self.bids.first(), self.asks.first()) {
+            (Some(bid), Some(ask)) => {
+                Some(ask.price.to_f64() - bid.price.to_f64())
+            }
             _ => None,
         }
     }
@@ -168,22 +278,32 @@ pub struct OrderbookSnapshot {
     pub asks: Vec<PriceLevel>,
 }
 
-/// Sort price levels in descending order (highest price first) -- bid side ordering
+/// Sort price levels in descending order (highest price first) -- bid side ordering.
+/// Uses integer comparison via FixedPrice::Ord (no partial_cmp/NaN handling).
 pub fn sort_bids(levels: &mut [PriceLevel]) {
-    levels.sort_by(|a, b| {
-        b.price
-            .partial_cmp(&a.price)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    levels.sort_unstable_by(|a, b| b.price.cmp(&a.price));
 }
 
-/// Sort price levels in ascending order (lowest price first) -- ask side ordering
+/// Sort price levels in ascending order (lowest price first) -- ask side ordering.
+/// Uses integer comparison via FixedPrice::Ord (no partial_cmp/NaN handling).
 pub fn sort_asks(levels: &mut [PriceLevel]) {
-    levels.sort_by(|a, b| {
-        a.price
-            .partial_cmp(&b.price)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    levels.sort_unstable_by(|a, b| a.price.cmp(&b.price));
+}
+
+/// Insert a price level into a bid-sorted (descending) list.
+/// O(log n) search + O(n) shift, vs O(n log n) for push + sort.
+#[inline]
+pub fn insert_bid(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
+    let idx = levels.partition_point(|l| l.price > level.price);
+    levels.insert(idx, level);
+}
+
+/// Insert a price level into an ask-sorted (ascending) list.
+/// O(log n) search + O(n) shift, vs O(n log n) for push + sort.
+#[inline]
+pub fn insert_ask(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
+    let idx = levels.partition_point(|l| l.price < level.price);
+    levels.insert(idx, level);
 }
 
 #[derive(Debug, Clone, Deserialize)]

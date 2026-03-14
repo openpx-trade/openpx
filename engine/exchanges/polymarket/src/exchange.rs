@@ -11,6 +11,7 @@ use polymarket_client_sdk::clob::{Client as SdkClient, Config as SdkConfig};
 use polymarket_client_sdk::contract_config;
 use polymarket_client_sdk::types::{Decimal, U256};
 use polymarket_client_sdk::POLYGON;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -118,7 +119,7 @@ fn parse_orderbook_snapshots(data: &serde_json::Value) -> Vec<OrderbookSnapshot>
                                     v.as_f64()
                                         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                                 })?;
-                                Some(PriceLevel { price, size })
+                                Some(PriceLevel::new(price, size))
                             })
                             .collect()
                     })
@@ -528,7 +529,7 @@ impl Polymarket {
                                 })
                                 .unwrap_or(0.0);
                             if price > 0.0 && size > 0.0 {
-                                Some(PriceLevel { price, size })
+                                Some(PriceLevel::new(price, size))
                             } else {
                                 None
                             }
@@ -2179,7 +2180,7 @@ impl Exchange for Polymarket {
                     side: (!side_str.is_empty()).then(|| side_str.clone()),
                     aggressor_side: (!side_str.is_empty()).then_some(side_str),
                     timestamp: t.timestamp,
-                    source_channel: "polymarket_rest_trade".to_string(),
+                    source_channel: Cow::Borrowed("polymarket_rest_trade"),
                     tx_hash: t.transaction_hash.clone(),
                     outcome: t.outcome.clone(),
                     yes_price: if is_yes { Some(t.price) } else { None },

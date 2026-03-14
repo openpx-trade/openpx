@@ -5,6 +5,7 @@ use rust_socketio::{
     Payload,
 };
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -320,7 +321,7 @@ impl LimitlessWebSocket {
                         .ok()
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                 }),
-                source_channel: "limitless_positions".into(),
+                source_channel: Cow::Borrowed("limitless_positions"),
                 liquidity_role: None,
             };
 

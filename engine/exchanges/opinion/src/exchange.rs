@@ -492,7 +492,7 @@ impl Opinion {
                                 })
                                 .unwrap_or(0.0);
                             if price > 0.0 && size > 0.0 {
-                                bids.push(PriceLevel { price, size });
+                                bids.push(PriceLevel::new(price, size));
                             }
                         }
                     }
@@ -513,7 +513,7 @@ impl Opinion {
                                 })
                                 .unwrap_or(0.0);
                             if price > 0.0 && size > 0.0 {
-                                asks.push(PriceLevel { price, size });
+                                asks.push(PriceLevel::new(price, size));
                             }
                         }
                     }

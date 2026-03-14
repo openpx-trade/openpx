@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use px_core::{Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide};
+use px_core::{insert_ask, insert_bid, sort_asks, sort_bids, FixedPrice, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide};
 use smallvec::SmallVec;
 
 fn make_orderbook(depth: usize) -> Orderbook {
@@ -63,7 +63,7 @@ fn bench_changevec_alloc(c: &mut Criterion) {
             for i in 0..4 {
                 changes.push(PriceLevelChange {
                     side: PriceLevelSide::Bid,
-                    price: 0.50 + i as f64 * 0.01,
+                    price: FixedPrice::from_f64(0.50 + i as f64 * 0.01),
                     size: 100.0,
                 });
             }
@@ -77,7 +77,7 @@ fn bench_changevec_alloc(c: &mut Criterion) {
             for i in 0..8 {
                 changes.push(PriceLevelChange {
                     side: PriceLevelSide::Ask,
-                    price: 0.50 + i as f64 * 0.01,
+                    price: FixedPrice::from_f64(0.50 + i as f64 * 0.01),
                     size: 100.0,
                 });
             }
@@ -86,10 +86,84 @@ fn bench_changevec_alloc(c: &mut Criterion) {
     });
 }
 
+fn bench_insert_vs_push_sort(c: &mut Criterion) {
+    let mut group = c.benchmark_group("insert_vs_push_sort");
+
+    for depth in [10, 50, 200] {
+        // Benchmark: push + sort (old approach)
+        group.bench_function(format!("push_sort_bid_depth_{depth}"), |b| {
+            b.iter_batched(
+                || {
+                    (0..depth)
+                        .map(|i| PriceLevel::new(0.50 - (i as f64 * 0.01), 100.0))
+                        .collect::<Vec<_>>()
+                },
+                |mut levels| {
+                    levels.push(PriceLevel::new(0.455, 50.0));
+                    sort_bids(&mut levels);
+                    black_box(levels)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+
+        // Benchmark: sorted insertion (new approach)
+        group.bench_function(format!("insert_bid_depth_{depth}"), |b| {
+            b.iter_batched(
+                || {
+                    (0..depth)
+                        .map(|i| PriceLevel::new(0.50 - (i as f64 * 0.01), 100.0))
+                        .collect::<Vec<_>>()
+                },
+                |mut levels| {
+                    insert_bid(&mut levels, PriceLevel::new(0.455, 50.0));
+                    black_box(levels)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+
+        // Ask side
+        group.bench_function(format!("push_sort_ask_depth_{depth}"), |b| {
+            b.iter_batched(
+                || {
+                    (0..depth)
+                        .map(|i| PriceLevel::new(0.51 + (i as f64 * 0.01), 100.0))
+                        .collect::<Vec<_>>()
+                },
+                |mut levels| {
+                    levels.push(PriceLevel::new(0.555, 50.0));
+                    sort_asks(&mut levels);
+                    black_box(levels)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+
+        group.bench_function(format!("insert_ask_depth_{depth}"), |b| {
+            b.iter_batched(
+                || {
+                    (0..depth)
+                        .map(|i| PriceLevel::new(0.51 + (i as f64 * 0.01), 100.0))
+                        .collect::<Vec<_>>()
+                },
+                |mut levels| {
+                    insert_ask(&mut levels, PriceLevel::new(0.555, 50.0));
+                    black_box(levels)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_best_bid_ask,
     bench_sort,
-    bench_changevec_alloc
+    bench_changevec_alloc,
+    bench_insert_vs_push_sort
 );
 criterion_main!(benches);

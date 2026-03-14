@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures::StreamExt;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
@@ -8,10 +9,10 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use chrono::{DateTime, Utc};
 use px_core::{
-    sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream, ActivityTrade,
-    AtomicWebSocketState, ChangeVec, LiquidityRole, OrderBookWebSocket, Orderbook, OrderbookStream,
-    OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState,
-    PRICE_EPSILON, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
+    insert_ask, insert_bid, ActivityEvent, ActivityFill, ActivityStream, ActivityTrade,
+    AtomicWebSocketState, ChangeVec, FixedPrice, LiquidityRole, OrderBookWebSocket, Orderbook,
+    OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide, WebSocketError,
+    WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
     WS_RECONNECT_MAX_DELAY,
 };
 use smallvec::SmallVec;
@@ -402,13 +403,14 @@ impl PolymarketWebSocket {
                     if let (Ok(price), Ok(size)) =
                         (price_str.parse::<f64>(), size_str.parse::<f64>())
                     {
+                        let fp = FixedPrice::from_f64(price);
                         let is_bid = side.eq_ignore_ascii_case("BUY");
                         let levels = if is_bid { &mut ob.bids } else { &mut ob.asks };
 
-                        // Apply to internal book (same logic as before)
+                        // Apply to internal book
                         if let Some(existing) = levels
                             .iter_mut()
-                            .find(|l| (l.price - price).abs() < PRICE_EPSILON)
+                            .find(|l| l.price == fp)
                         {
                             if size > 0.0 {
                                 existing.size = size;
@@ -417,20 +419,16 @@ impl PolymarketWebSocket {
                             }
                         }
                         if size > 0.0 {
-                            if !levels
-                                .iter()
-                                .any(|l| (l.price - price).abs() < PRICE_EPSILON)
-                            {
-                                levels.push(PriceLevel::new(price, size));
-                                // Re-sort: bids descending, asks ascending
+                            if !levels.iter().any(|l| l.price == fp) {
+                                let level = PriceLevel::with_fixed(fp, size);
                                 if is_bid {
-                                    sort_bids(levels);
+                                    insert_bid(levels, level);
                                 } else {
-                                    sort_asks(levels);
+                                    insert_ask(levels, level);
                                 }
                             }
                         } else {
-                            levels.retain(|l| (l.price - price).abs() >= PRICE_EPSILON);
+                            levels.retain(|l| l.price != fp);
                         }
 
                         // Collect the change
@@ -440,7 +438,7 @@ impl PolymarketWebSocket {
                             } else {
                                 PriceLevelSide::Ask
                             },
-                            price,
+                            price: fp,
                             size,
                         };
 
@@ -508,7 +506,7 @@ impl PolymarketWebSocket {
             aggressor_side: msg.side.clone(),
             outcome: None,
             timestamp,
-            source_channel: "polymarket_last_trade_price".to_string(),
+            source_channel: Cow::Borrowed("polymarket_last_trade_price"),
         });
         self.broadcast_activity(&asset_id, event).await;
     }
@@ -580,7 +578,7 @@ impl PolymarketWebSocket {
             side: msg.side.clone(),
             outcome: None,
             timestamp,
-            source_channel: "polymarket_user_trade".to_string(),
+            source_channel: Cow::Borrowed("polymarket_user_trade"),
             liquidity_role,
         });
 
@@ -1485,7 +1483,7 @@ mod tests {
             OrderbookUpdate::Snapshot(ob) => {
                 assert_eq!(ob.bids.len(), 2);
                 assert_eq!(ob.asks.len(), 2);
-                assert!((ob.bids[0].price - 0.55).abs() < 0.001);
+                assert_eq!(ob.bids[0].price, FixedPrice::from_f64(0.55));
             }
             _ => panic!("expected Snapshot, got Delta"),
         }
