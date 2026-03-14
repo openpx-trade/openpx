@@ -8,10 +8,10 @@ use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use px_core::{
-    ActivityEvent, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice,
-    OrderBookWebSocket, OrderbookStream, OrderbookUpdate, PriceLevelChange, PriceLevelSide,
-    WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY,
-    WS_RECONNECT_MAX_DELAY,
+    ActivityEvent, ActivityFill, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
+    FixedPrice, LiquidityRole, OrderBookWebSocket, OrderbookStream, OrderbookUpdate,
+    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState,
+    WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::config::OpinionConfig;
@@ -87,19 +87,20 @@ impl OpinionWebSocket {
             .parse()
             .map_err(|_| WebSocketError::Subscription(format!("invalid market_id: {market_id}")))?;
 
-        let depth_msg = serde_json::json!({
-            "action": "SUBSCRIBE",
-            "channel": "market.depth.diff",
-            "marketId": numeric_id
-        });
-        let trade_msg = serde_json::json!({
-            "action": "SUBSCRIBE",
-            "channel": "market.last.trade",
-            "marketId": numeric_id
-        });
-
-        self.send_message(&depth_msg.to_string()).await?;
-        self.send_message(&trade_msg.to_string()).await?;
+        let channels = [
+            "market.depth.diff",
+            "market.last.trade",
+            "trade.order.update",
+            "trade.record.new",
+        ];
+        for channel in channels {
+            let msg = serde_json::json!({
+                "action": "SUBSCRIBE",
+                "channel": channel,
+                "marketId": numeric_id
+            });
+            self.send_message(&msg.to_string()).await?;
+        }
         Ok(())
     }
 
@@ -108,19 +109,20 @@ impl OpinionWebSocket {
             .parse()
             .map_err(|_| WebSocketError::Subscription(format!("invalid market_id: {market_id}")))?;
 
-        let depth_msg = serde_json::json!({
-            "action": "UNSUBSCRIBE",
-            "channel": "market.depth.diff",
-            "marketId": numeric_id
-        });
-        let trade_msg = serde_json::json!({
-            "action": "UNSUBSCRIBE",
-            "channel": "market.last.trade",
-            "marketId": numeric_id
-        });
-
-        self.send_message(&depth_msg.to_string()).await?;
-        self.send_message(&trade_msg.to_string()).await?;
+        let channels = [
+            "market.depth.diff",
+            "market.last.trade",
+            "trade.order.update",
+            "trade.record.new",
+        ];
+        for channel in channels {
+            let msg = serde_json::json!({
+                "action": "UNSUBSCRIBE",
+                "channel": channel,
+                "marketId": numeric_id
+            });
+            self.send_message(&msg.to_string()).await?;
+        }
         Ok(())
     }
 
@@ -135,6 +137,8 @@ impl OpinionWebSocket {
         match msg_type {
             "market.depth.diff" => self.handle_depth_diff(&value).await,
             "market.last.trade" => self.handle_last_trade(&value).await,
+            "trade.order.update" => self.handle_order_update(&value).await,
+            "trade.record.new" => self.handle_trade_executed(&value).await,
             _ => {}
         }
     }
@@ -268,6 +272,165 @@ impl OpinionWebSocket {
             outcome: None,
             timestamp,
             source_channel: Cow::Borrowed("market.last.trade"),
+        });
+
+        let senders = self.activity_senders.read().await;
+        if let Some(sender) = senders.get(&market_id) {
+            let _ = sender.send(Ok(event));
+        }
+    }
+
+    /// Handle `trade.order.update` — user order fill notifications.
+    /// Only emits for `orderFill` updates; other types (orderNew, orderCancel, orderConfirm)
+    /// are informational and not mapped to ActivityEvent.
+    async fn handle_order_update(&self, value: &serde_json::Value) {
+        let update_type = value
+            .get("orderUpdateType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if update_type != "orderFill" {
+            return;
+        }
+
+        let market_id = match value
+            .get("marketId")
+            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
+        {
+            Some(id) => id,
+            None => return,
+        };
+
+        let price = match value.get("price").and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        }) {
+            Some(p) => p,
+            None => return,
+        };
+
+        let size = value
+            .get("filledShares")
+            .or_else(|| value.get("shares"))
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or(0.0);
+
+        let side = match value.get("side").and_then(|v| v.as_i64()) {
+            Some(1) => Some("buy".to_string()),
+            Some(2) => Some("sell".to_string()),
+            _ => None,
+        };
+
+        let outcome = match value.get("outcomeSide").and_then(|v| v.as_i64()) {
+            Some(1) => Some("Yes".to_string()),
+            Some(2) => Some("No".to_string()),
+            _ => None,
+        };
+
+        let order_id = value
+            .get("orderId")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let timestamp = value
+            .get("createdAt")
+            .and_then(|v| v.as_i64())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+        let event = ActivityEvent::Fill(ActivityFill {
+            market_id: market_id.clone(),
+            asset_id: String::new(),
+            fill_id: None,
+            order_id,
+            price,
+            size,
+            side,
+            outcome,
+            timestamp,
+            source_channel: Cow::Borrowed("trade.order.update"),
+            liquidity_role: None,
+        });
+
+        let senders = self.activity_senders.read().await;
+        if let Some(sender) = senders.get(&market_id) {
+            let _ = sender.send(Ok(event));
+        }
+    }
+
+    /// Handle `trade.record.new` — confirmed on-chain trade execution.
+    /// Each message is a single fill with final on-chain amounts and fee.
+    async fn handle_trade_executed(&self, value: &serde_json::Value) {
+        let market_id = match value
+            .get("marketId")
+            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
+        {
+            Some(id) => id,
+            None => return,
+        };
+
+        let price = match value.get("price").and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        }) {
+            Some(p) => p,
+            None => return,
+        };
+
+        let size = value
+            .get("shares")
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or(0.0);
+
+        let side_str = value
+            .get("side")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_lowercase());
+
+        // Map Opinion's side field: Buy/Sell are trading, Split/Merge are position operations
+        let liquidity_role = match side_str.as_deref() {
+            Some("buy" | "sell") => Some(LiquidityRole::Taker),
+            _ => None,
+        };
+
+        let outcome = match value.get("outcomeSide").and_then(|v| v.as_i64()) {
+            Some(1) => Some("Yes".to_string()),
+            Some(2) => Some("No".to_string()),
+            _ => None,
+        };
+
+        let order_id = value
+            .get("orderId")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let fill_id = value
+            .get("tradeNo")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let timestamp = value
+            .get("createdAt")
+            .and_then(|v| v.as_i64())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+        let event = ActivityEvent::Fill(ActivityFill {
+            market_id: market_id.clone(),
+            asset_id: String::new(),
+            fill_id,
+            order_id,
+            price,
+            size,
+            side: side_str,
+            outcome,
+            timestamp,
+            source_channel: Cow::Borrowed("trade.record.new"),
+            liquidity_role,
         });
 
         let senders = self.activity_senders.read().await;
@@ -748,6 +911,132 @@ mod tests {
                 assert_eq!(trade.source_channel, "market.last.trade");
             }
             _ => panic!("expected Trade"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_order_update_fill() {
+        let ws = make_ws();
+        let market_id = "111";
+
+        {
+            let mut senders = ws.activity_senders.write().await;
+            let (tx, _) = broadcast::channel(16_384);
+            senders.insert(market_id.to_string(), tx);
+        }
+
+        let mut rx = {
+            let senders = ws.activity_senders.read().await;
+            senders.get(market_id).unwrap().subscribe()
+        };
+
+        let msg = serde_json::json!({
+            "msgType": "trade.order.update",
+            "orderUpdateType": "orderFill",
+            "marketId": 111,
+            "orderId": "order-abc",
+            "side": 1,
+            "outcomeSide": 1,
+            "price": "0.65",
+            "shares": "10",
+            "filledShares": "5",
+            "createdAt": 1700000000_i64
+        });
+
+        ws.handle_order_update(&msg).await;
+
+        let event = rx.try_recv().unwrap().unwrap();
+        match event {
+            ActivityEvent::Fill(fill) => {
+                assert_eq!(fill.market_id, "111");
+                assert_eq!(fill.order_id.as_deref(), Some("order-abc"));
+                assert!((fill.price - 0.65).abs() < f64::EPSILON);
+                assert!((fill.size - 5.0).abs() < f64::EPSILON);
+                assert_eq!(fill.side.as_deref(), Some("buy"));
+                assert_eq!(fill.outcome.as_deref(), Some("Yes"));
+                assert_eq!(fill.source_channel, "trade.order.update");
+            }
+            _ => panic!("expected Fill"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_order_update_ignores_non_fill() {
+        let ws = make_ws();
+        let market_id = "222";
+
+        {
+            let mut senders = ws.activity_senders.write().await;
+            let (tx, _) = broadcast::channel(16_384);
+            senders.insert(market_id.to_string(), tx);
+        }
+
+        let mut rx = {
+            let senders = ws.activity_senders.read().await;
+            senders.get(market_id).unwrap().subscribe()
+        };
+
+        let msg = serde_json::json!({
+            "msgType": "trade.order.update",
+            "orderUpdateType": "orderNew",
+            "marketId": 222,
+            "orderId": "order-xyz",
+            "side": 1,
+            "outcomeSide": 1,
+            "price": "0.50",
+            "shares": "10"
+        });
+
+        ws.handle_order_update(&msg).await;
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_trade_executed() {
+        let ws = make_ws();
+        let market_id = "333";
+
+        {
+            let mut senders = ws.activity_senders.write().await;
+            let (tx, _) = broadcast::channel(16_384);
+            senders.insert(market_id.to_string(), tx);
+        }
+
+        let mut rx = {
+            let senders = ws.activity_senders.read().await;
+            senders.get(market_id).unwrap().subscribe()
+        };
+
+        let msg = serde_json::json!({
+            "msgType": "trade.record.new",
+            "marketId": 333,
+            "orderId": "order-def",
+            "tradeNo": "trade-001",
+            "side": "Buy",
+            "outcomeSide": 2,
+            "price": "0.30",
+            "shares": "9.44",
+            "fee": "0.01",
+            "createdAt": 1700000100_i64
+        });
+
+        ws.handle_trade_executed(&msg).await;
+
+        let event = rx.try_recv().unwrap().unwrap();
+        match event {
+            ActivityEvent::Fill(fill) => {
+                assert_eq!(fill.market_id, "333");
+                assert_eq!(fill.order_id.as_deref(), Some("order-def"));
+                assert_eq!(fill.fill_id.as_deref(), Some("trade-001"));
+                assert!((fill.price - 0.30).abs() < f64::EPSILON);
+                assert!((fill.size - 9.44).abs() < f64::EPSILON);
+                assert_eq!(fill.side.as_deref(), Some("buy"));
+                assert_eq!(fill.outcome.as_deref(), Some("No"));
+                assert_eq!(fill.source_channel, "trade.record.new");
+                assert_eq!(fill.liquidity_role, Some(px_core::LiquidityRole::Taker));
+            }
+            _ => panic!("expected Fill"),
         }
     }
 

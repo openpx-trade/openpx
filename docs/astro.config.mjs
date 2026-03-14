@@ -23,30 +23,7 @@ export default defineConfig({
           items: [
             { label: 'API Methods', link: '/guides/api/' },
             { label: 'WebSocket Streaming', link: '/guides/websocket/' },
-          ],
-        },
-        {
-          label: 'Rust',
-          collapsed: true,
-          items: [
-            { label: 'Overview', link: '/sdks/rust/' },
-            { label: 'API Reference', link: '/sdks/rust-api/' },
-          ],
-        },
-        {
-          label: 'Python',
-          collapsed: true,
-          items: [
-            { label: 'Overview', link: '/sdks/python/' },
-            { label: 'API Reference', link: '/sdks/python-api/' },
-          ],
-        },
-        {
-          label: 'TypeScript',
-          collapsed: true,
-          items: [
-            { label: 'Overview', link: '/sdks/typescript/' },
-            { label: 'API Reference', link: '/sdks/typescript-api/' },
+            { label: 'SDKs', link: '/guides/sdks/' },
           ],
         },
         {

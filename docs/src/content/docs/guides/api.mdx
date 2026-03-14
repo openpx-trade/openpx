@@ -297,14 +297,13 @@ for (const m of markets) {
 Fetch all markets belonging to an event or group. Falls back to scanning all
 markets if the exchange has no native group endpoint.
 
+> **Rust only** — not yet exposed in Python or TypeScript SDKs.
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `group_id` | `string` | **Yes** | Exchange event or group ID |
 
 **Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
 
 ```rust
 let markets = exchange.fetch_event_markets("group-abc").await?;
@@ -312,28 +311,6 @@ for m in &markets {
     println!("[{}] {}", m.openpx_id, m.title);
 }
 ```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-markets = exchange.fetch_event_markets("group-abc")
-for m in markets:
-    print(f"[{m['openpx_id']}] {m['title']}")
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-const markets = await exchange.fetchEventMarkets("group-abc");
-for (const m of markets) {
-  console.log(`[${m.openpx_id}] ${m.title}`);
-}
-```
-
-</TabItem>
-</Tabs>
 
 ---
 
@@ -775,14 +752,30 @@ for snap in &snapshots {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK
+result = exchange.fetch_orderbook_history("KXBTC-25MAR14", limit=10)
+
+for snap in result["snapshots"]:
+    print(f"{snap.timestamp}: {len(snap.bids)} bids, {len(snap.asks)} asks")
+
+# Paginate
+if result["cursor"]:
+    next_page = exchange.fetch_orderbook_history("KXBTC-25MAR14", cursor=result["cursor"])
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK
+const result = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, 10);
+
+for (const snap of result.snapshots) {
+  console.log(`${snap.timestamp}: ${snap.bids.length} bids, ${snap.asks.length} asks`);
+}
+
+// Paginate
+if (result.cursor) {
+  const nextPage = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, undefined, result.cursor);
+}
 ```
 
 </TabItem>
@@ -834,14 +827,21 @@ for c in &candles {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK — use Rust directly
+candles = exchange.fetch_price_history("KXBTC-25MAR14", "1h")
+
+for c in candles:
+    print(f"{c.timestamp}: O={c.open:.2f} H={c.high:.2f} L={c.low:.2f} C={c.close:.2f} V={c.volume}")
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK — use Rust directly
+const candles = await exchange.fetchPriceHistory("KXBTC-25MAR14", "1h");
+
+for (const c of candles) {
+  console.log(`${c.timestamp}: O=${c.open} H=${c.high} L=${c.low} C=${c.close} V=${c.volume}`);
+}
 ```
 
 </TabItem>
@@ -888,14 +888,30 @@ for t in &trades {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK — use Rust directly
+result = exchange.fetch_trades("KXBTC-25MAR14", limit=50)
+
+for t in result["trades"]:
+    print(f"{t.timestamp}: {t.price:.2f} x {t.size} ({t.source_channel})")
+
+# Paginate
+if result["cursor"]:
+    next_page = exchange.fetch_trades("KXBTC-25MAR14", cursor=result["cursor"])
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK — use Rust directly
+const result = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, 50);
+
+for (const t of result.trades) {
+  console.log(`${t.timestamp}: ${t.price} x ${t.size} (${t.source_channel})`);
+}
+
+// Paginate
+if (result.cursor) {
+  const nextPage = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, undefined, result.cursor);
+}
 ```
 
 </TabItem>

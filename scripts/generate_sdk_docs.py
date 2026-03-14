@@ -9,9 +9,6 @@ Usage:
 
 Outputs:
     docs/src/content/docs/reference/models.mdx   — full type reference (tabbed)
-    docs/src/content/docs/sdks/rust-api.mdx       — Rust-only reference
-    docs/src/content/docs/sdks/python-api.mdx     — Python-only reference
-    docs/src/content/docs/sdks/typescript-api.mdx — TypeScript-only reference
 """
 
 from __future__ import annotations
@@ -418,44 +415,6 @@ def generate_models_reference(definitions: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def generate_lang_reference(definitions: dict[str, Any], lang: str) -> str:
-    """Generate a single-language API reference page."""
-    categories = categorize_types(definitions)
-    lang_names = {"rust": "Rust", "python": "Python", "typescript": "TypeScript"}
-    lang_display = lang_names[lang]
-    ext = {"rust": "rust", "python": "python", "typescript": "typescript"}[lang]
-
-    generators = {
-        "rust": generate_rust_block,
-        "python": generate_python_block,
-        "typescript": generate_ts_block,
-    }
-    gen = generators[lang]
-
-    lines = [
-        "---",
-        f"title: {lang_display} API Reference",
-        "---",
-        "",
-        f"All {lang_display} types auto-generated from `schema/openpx.schema.json`.",
-        "",
-    ]
-
-    for category, type_names in categories.items():
-        lines.append(f"## {category}")
-        lines.append("")
-        for name in type_names:
-            defn = definitions[name]
-            lines.append(f"### {name}")
-            lines.append("")
-            lines.append(f"```{ext}")
-            lines.append(gen(name, defn))
-            lines.append("```")
-            lines.append("")
-
-    return "\n".join(lines)
-
-
 def generate_introduction() -> str:
     return """---
 title: OpenPX
@@ -472,7 +431,7 @@ Users bring their own exchange credentials and trade directly through a single i
 | Polymarket | Yes | Yes | Yes |
 | Opinion | Yes | Yes | Yes |
 | Limitless | Yes | Yes | Yes |
-| Predict.fun | Yes | Yes | No |
+| Predict.fun | Yes | Yes | Yes |
 
 ## Architecture
 
@@ -710,179 +669,6 @@ console.log(`Best bid: ${book.bids[0].price}, Best ask: ${book.asks[0].price}`);
 """
 
 
-def generate_rust_readme() -> str:
-    return """---
-title: Rust SDK
----
-
-The Rust SDK is the source of truth for OpenPX. All types, traits, and
-exchange implementations are written in Rust.
-
-## Crate Structure
-
-| Crate | Description |
-|-------|-------------|
-| `px-core` | Core types, Exchange trait, error handling, timing |
-| `px-sdk` | Unified facade — enum dispatch over all exchanges |
-| `px-exchange-kalshi` | Kalshi exchange implementation |
-| `px-exchange-polymarket` | Polymarket exchange implementation |
-| `px-exchange-opinion` | Opinion exchange implementation |
-| `px-exchange-limitless` | Limitless exchange implementation |
-| `px-exchange-predictfun` | Predict.fun exchange implementation |
-
-## Usage
-
-```rust
-use px_sdk::ExchangeInner;
-use px_core::{Exchange, FetchMarketsParams};
-use serde_json::json;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create an exchange (unauthenticated — market data only)
-    let exchange = ExchangeInner::new("polymarket", json!({}))?;
-
-    // Fetch markets with pagination
-    let markets = exchange.fetch_markets(Some(FetchMarketsParams {
-        limit: Some(10),
-        cursor: None,
-    })).await?;
-
-    for m in &markets {
-        println!("[{}] {} — prices: {:?}", m.id, m.question, m.prices);
-    }
-
-    Ok(())
-}
-```
-
-## Exchange Trait
-
-Every exchange implements `px_core::Exchange`. See the
-[API Reference](/sdks/rust-api/) for all available types.
-"""
-
-
-def generate_python_readme() -> str:
-    return """---
-title: Python SDK
----
-
-The Python SDK wraps the Rust engine via PyO3, giving you native performance
-with Pydantic models for type safety and autocomplete.
-
-## Installation
-
-```bash
-pip install openpx
-```
-
-## Usage
-
-```python
-from openpx import Exchange
-
-# Unauthenticated (market data only)
-exchange = Exchange("polymarket")
-markets = exchange.fetch_markets(limit=10)
-for m in markets:
-    print(f"[{m.id}] {m.question}")
-
-# Authenticated (trading)
-exchange = Exchange("kalshi", {
-    "api_key_id": "...",
-    "private_key_pem": "...",
-})
-positions = exchange.fetch_positions()
-balance = exchange.fetch_balance()
-```
-
-## How It Works
-
-```
-User calls exchange.fetch_markets(limit=5)
-         |
-exchange.py  (pure Python wrapper)
-         |  calls _native.NativeExchange.fetch_markets()
-         |
-lib.rs  (PyO3 → Rust, returns Python dict via pythonize)
-         |
-exchange.py  receives list[dict]
-         |  wraps: [Market(**d) for d in raw_dicts]
-         |
-User receives list[Market]  (Pydantic models with autocomplete)
-```
-
-## Error Handling
-
-```python
-from openpx import Exchange, OpenPxError, AuthenticationError
-
-try:
-    exchange = Exchange("kalshi", {"api_key_id": "bad"})
-    exchange.fetch_balance()
-except AuthenticationError as e:
-    print(f"Auth failed: {e}")
-except OpenPxError as e:
-    print(f"Error: {e}")
-```
-
-See the [API Reference](/sdks/python-api/) for all available types.
-"""
-
-
-def generate_typescript_readme() -> str:
-    return """---
-title: TypeScript SDK
----
-
-The TypeScript SDK wraps the Rust engine via NAPI-RS, giving you native
-performance with full TypeScript type definitions.
-
-## Installation
-
-```bash
-npm install @openpx/sdk
-```
-
-## Usage
-
-```typescript
-import { Exchange } from "@openpx/sdk";
-
-// Unauthenticated (market data only)
-const exchange = new Exchange("polymarket", {});
-const markets = await exchange.fetchMarkets(10);
-for (const m of markets) {
-  console.log(`[${m.id}] ${m.question}`);
-}
-
-// Authenticated (trading)
-const authed = new Exchange("kalshi", {
-  api_key_id: "...",
-  private_key_pem: "...",
-});
-const positions = await authed.fetchPositions();
-const balance = await authed.fetchBalance();
-```
-
-## Error Handling
-
-```typescript
-import { Exchange } from "@openpx/sdk";
-
-try {
-  const exchange = new Exchange("kalshi", { api_key_id: "bad" });
-  await exchange.fetchBalance();
-} catch (e) {
-  console.error(`Error: ${e.message}`);
-}
-```
-
-See the [API Reference](/sdks/typescript-api/) for all available types.
-"""
-
-
 def generate_exchanges_reference() -> str:
     return """---
 title: Exchanges
@@ -920,7 +706,7 @@ title: Exchanges
 - **Website:** [limitless.exchange](https://limitless.exchange)
 - **API Docs:** [api.limitless.exchange](https://api.limitless.exchange/api-v1)
 - **Auth:** Private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, Trades, WebSocket
+- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
 
 ### Predict.fun
 
@@ -928,7 +714,7 @@ title: Exchanges
 - **Website:** [predict.fun](https://predict.fun)
 - **API Docs:** [dev.predict.fun](https://dev.predict.fun/)
 - **Auth:** API key + private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades
+- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
 
 ## Configuration
 
@@ -1266,14 +1052,13 @@ for (const m of markets) {
 Fetch all markets belonging to an event or group. Falls back to scanning all
 markets if the exchange has no native group endpoint.
 
+> **Rust only** — not yet exposed in Python or TypeScript SDKs.
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `group_id` | `string` | **Yes** | Exchange event or group ID |
 
 **Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
 
 ```rust
 let markets = exchange.fetch_event_markets("group-abc").await?;
@@ -1281,28 +1066,6 @@ for m in &markets {
     println!("[{}] {}", m.openpx_id, m.title);
 }
 ```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-markets = exchange.fetch_event_markets("group-abc")
-for m in markets:
-    print(f"[{m['openpx_id']}] {m['title']}")
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-const markets = await exchange.fetchEventMarkets("group-abc");
-for (const m of markets) {
-  console.log(`[${m.openpx_id}] ${m.title}`);
-}
-```
-
-</TabItem>
-</Tabs>
 
 ---
 
@@ -1744,14 +1507,30 @@ for snap in &snapshots {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK
+result = exchange.fetch_orderbook_history("KXBTC-25MAR14", limit=10)
+
+for snap in result["snapshots"]:
+    print(f"{snap.timestamp}: {len(snap.bids)} bids, {len(snap.asks)} asks")
+
+# Paginate
+if result["cursor"]:
+    next_page = exchange.fetch_orderbook_history("KXBTC-25MAR14", cursor=result["cursor"])
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK
+const result = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, 10);
+
+for (const snap of result.snapshots) {
+  console.log(`${snap.timestamp}: ${snap.bids.length} bids, ${snap.asks.length} asks`);
+}
+
+// Paginate
+if (result.cursor) {
+  const nextPage = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, undefined, result.cursor);
+}
 ```
 
 </TabItem>
@@ -1803,14 +1582,21 @@ for c in &candles {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK — use Rust directly
+candles = exchange.fetch_price_history("KXBTC-25MAR14", "1h")
+
+for c in candles:
+    print(f"{c.timestamp}: O={c.open:.2f} H={c.high:.2f} L={c.low:.2f} C={c.close:.2f} V={c.volume}")
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK — use Rust directly
+const candles = await exchange.fetchPriceHistory("KXBTC-25MAR14", "1h");
+
+for (const c of candles) {
+  console.log(`${c.timestamp}: O=${c.open} H=${c.high} L=${c.low} C=${c.close} V=${c.volume}`);
+}
 ```
 
 </TabItem>
@@ -1857,14 +1643,30 @@ for t in &trades {
 <TabItem label="Python">
 
 ```python
-# Not yet exposed in Python SDK — use Rust directly
+result = exchange.fetch_trades("KXBTC-25MAR14", limit=50)
+
+for t in result["trades"]:
+    print(f"{t.timestamp}: {t.price:.2f} x {t.size} ({t.source_channel})")
+
+# Paginate
+if result["cursor"]:
+    next_page = exchange.fetch_trades("KXBTC-25MAR14", cursor=result["cursor"])
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// Not yet exposed in TypeScript SDK — use Rust directly
+const result = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, 50);
+
+for (const t of result.trades) {
+  console.log(`${t.timestamp}: ${t.price} x ${t.size} (${t.source_channel})`);
+}
+
+// Paginate
+if (result.cursor) {
+  const nextPage = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, undefined, result.cursor);
+}
 ```
 
 </TabItem>
@@ -1965,9 +1767,9 @@ trades, and fill events across all supported exchanges.
 |----------|-----------|--------|-------|----------|
 | Kalshi | Yes | Yes | Yes | Native WS |
 | Polymarket | Yes | Yes | Yes | Native WS (dual connection) |
-| Opinion | Yes | — | — | Native WS |
-| Limitless | Yes | — | — | Socket.IO |
-| Predict.fun | — | — | — | Not supported |
+| Opinion | Yes | Yes | Yes | Native WS |
+| Limitless | Yes | — | Yes | Socket.IO |
+| Predict.fun | Yes | — | Yes | Native WS |
 
 ## Connection Lifecycle
 
@@ -2329,8 +2131,8 @@ See [`ActivityTrade`](/reference/models/#activitytrade) and
 
 | Event | Description | Exchanges |
 |-------|-------------|-----------|
-| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket |
-| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket |
+| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket, Opinion |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion, Limitless, Predict.fun |
 
 ## Auto-Reconnect
 
@@ -2520,9 +2322,6 @@ def main():
 
     # Auto-generated pages (from schema)
     write_file(DOCS_SRC / "reference" / "models.mdx", generate_models_reference(definitions))
-    write_file(DOCS_SRC / "sdks" / "rust-api.mdx", generate_lang_reference(definitions, "rust"))
-    write_file(DOCS_SRC / "sdks" / "python-api.mdx", generate_lang_reference(definitions, "python"))
-    write_file(DOCS_SRC / "sdks" / "typescript-api.mdx", generate_lang_reference(definitions, "typescript"))
 
     # Static pages (always overwritten — edit the script, not the output)
     static_pages = {
@@ -2531,9 +2330,6 @@ def main():
         DOCS_SRC / "getting-started" / "quickstart.mdx": generate_quickstart(),
         DOCS_SRC / "guides" / "api.mdx": generate_api_guide(),
         DOCS_SRC / "guides" / "websocket.mdx": generate_websocket_guide(),
-        DOCS_SRC / "sdks" / "rust.mdx": generate_rust_readme(),
-        DOCS_SRC / "sdks" / "python.mdx": generate_python_readme(),
-        DOCS_SRC / "sdks" / "typescript.mdx": generate_typescript_readme(),
         DOCS_SRC / "reference" / "exchanges.mdx": generate_exchanges_reference(),
         DOCS_SRC / "reference" / "errors.mdx": generate_errors_reference(),
     }
