@@ -10,8 +10,8 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use px_core::{
     ActivityEvent, ActivityFill, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
     FixedPrice, LiquidityRole, OrderBookWebSocket, OrderbookStream, OrderbookUpdate,
-    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState,
-    WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
+    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS,
+    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::config::OpinionConfig;
@@ -144,19 +144,20 @@ impl OpinionWebSocket {
     }
 
     async fn handle_depth_diff(&self, value: &serde_json::Value) {
-        let market_id = match value
-            .get("marketId")
-            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
-        {
+        let market_id = match value.get("marketId").and_then(|v| {
+            v.as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| v.as_str().map(String::from))
+        }) {
             Some(id) => id,
             None => return,
         };
 
-        let outcome_side = value.get("outcomeSide").and_then(|v| v.as_i64()).unwrap_or(0);
-        let side_str = value
-            .get("side")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let outcome_side = value
+            .get("outcomeSide")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let side_str = value.get("side").and_then(|v| v.as_str()).unwrap_or("");
 
         let price = match value.get("price").and_then(|v| {
             v.as_f64()
@@ -218,10 +219,11 @@ impl OpinionWebSocket {
     }
 
     async fn handle_last_trade(&self, value: &serde_json::Value) {
-        let market_id = match value
-            .get("marketId")
-            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
-        {
+        let market_id = match value.get("marketId").and_then(|v| {
+            v.as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| v.as_str().map(String::from))
+        }) {
             Some(id) => id,
             None => return,
         };
@@ -293,10 +295,11 @@ impl OpinionWebSocket {
             return;
         }
 
-        let market_id = match value
-            .get("marketId")
-            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
-        {
+        let market_id = match value.get("marketId").and_then(|v| {
+            v.as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| v.as_str().map(String::from))
+        }) {
             Some(id) => id,
             None => return,
         };
@@ -363,10 +366,11 @@ impl OpinionWebSocket {
     /// Handle `trade.record.new` — confirmed on-chain trade execution.
     /// Each message is a single fill with final on-chain amounts and fee.
     async fn handle_trade_executed(&self, value: &serde_json::Value) {
-        let market_id = match value
-            .get("marketId")
-            .and_then(|v| v.as_i64().map(|n| n.to_string()).or_else(|| v.as_str().map(String::from)))
-        {
+        let market_id = match value.get("marketId").and_then(|v| {
+            v.as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| v.as_str().map(String::from))
+        }) {
             Some(id) => id,
             None => return,
         };
@@ -595,9 +599,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                             ws_handle.handle_message(&text).await;
                                         }
                                         Ok(Message::Ping(data)) => {
-                                            if let Some(ref tx) =
-                                                *ws_handle.write_tx.lock().await
-                                            {
+                                            if let Some(ref tx) = *ws_handle.write_tx.lock().await {
                                                 let _ = tx.unbounded_send(Message::Pong(data));
                                             }
                                         }

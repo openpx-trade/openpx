@@ -161,19 +161,8 @@ pub struct KalshiCredentials {
 }
 
 #[derive(Debug, Clone)]
-pub struct LimitlessCredentials {
-    pub private_key: String,
-}
-
-#[derive(Debug, Clone)]
 pub struct OpinionCredentials {
     pub api_key: String,
     pub private_key: String,
     pub multi_sig_addr: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct PredictFunCredentials {
-    pub api_key: String,
-    pub private_key: String,
 }

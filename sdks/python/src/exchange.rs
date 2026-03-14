@@ -123,8 +123,7 @@ impl NativeExchange {
         let order_id = order_id.to_string();
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_id.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_id.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
@@ -140,8 +139,7 @@ impl NativeExchange {
         let order_id = order_id.to_string();
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_id.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_id.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
@@ -216,8 +214,7 @@ impl NativeExchange {
         let inner = self.inner.clone();
         let market_id = market_id.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.fetch_fills(market_id.as_deref(), limit)));
+        let result = py.detach(|| rt.block_on(inner.fetch_fills(market_id.as_deref(), limit)));
         let fills = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &fills).map_err(|e| to_py_err(e.to_string()))
     }

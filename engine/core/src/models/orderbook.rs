@@ -203,9 +203,7 @@ impl Orderbook {
 
     pub fn spread(&self) -> Option<f64> {
         match (self.bids.first(), self.asks.first()) {
-            (Some(bid), Some(ask)) => {
-                Some(ask.price.to_f64() - bid.price.to_f64())
-            }
+            (Some(bid), Some(ask)) => Some(ask.price.to_f64() - bid.price.to_f64()),
             _ => None,
         }
     }

@@ -34,9 +34,7 @@ openpx/
 │   ├── exchanges/            # Exchange implementations
 │   │   ├── kalshi/           # src/exchange.rs, config.rs, error.rs
 │   │   ├── polymarket/
-│   │   ├── opinion/
-│   │   ├── limitless/
-│   │   └── predictfun/
+│   │   └── opinion/
 │   ├── sdk/                  # Unified facade (enum dispatch)
 │   └── schema/               # JSON Schema export binary
 ├── sdks/                     # Language SDKs
@@ -118,5 +116,3 @@ Always refer to the official documentation for each prediction market when imple
 - Polymarket: https://docs.polymarket.com/developers/
 - Kalshi: https://docs.kalshi.com/
 - Opinion: https://docs.opinion.trade/developer-guide/opinion-open-api
-- Limitless: https://api.limitless.exchange/api-v1
-- Predictfun: https://dev.predict.fun/

@@ -136,9 +136,7 @@ openpx/
 │   ├── exchanges/            # Exchange implementations (Rust only)
 │   │   ├── kalshi/
 │   │   ├── polymarket/
-│   │   ├── opinion/
-│   │   ├── limitless/
-│   │   └── predictfun/
+│   │   └── opinion/
 │   ├── sdk/                  # Unified facade — enum dispatch over all exchanges
 │   └── schema/               # Binary: exports JSON Schema from Rust types
 ├── sdks/                     # Language SDKs

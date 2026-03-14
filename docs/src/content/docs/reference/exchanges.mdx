@@ -28,22 +28,6 @@ title: Exchanges
 - **Auth:** API key + private key + multi-sig address
 - **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
 
-### Limitless
-
-- **ID:** `limitless`
-- **Website:** [limitless.exchange](https://limitless.exchange)
-- **API Docs:** [api.limitless.exchange](https://api.limitless.exchange/api-v1)
-- **Auth:** Private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
-
-### Predict.fun
-
-- **ID:** `predictfun`
-- **Website:** [predict.fun](https://predict.fun)
-- **API Docs:** [dev.predict.fun](https://dev.predict.fun/)
-- **Auth:** API key + private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
-
 ## Configuration
 
 All exchanges accept a JSON config object. Pass exchange-specific fields:
@@ -66,14 +50,6 @@ All exchanges accept a JSON config object. Pass exchange-specific fields:
     "api_key": "...",
     "private_key": "0x...",
     "multi_sig_addr": "0x..."
-  },
-  "limitless": {
-    "private_key": "0x..."
-  },
-  "predictfun": {
-    "api_key": "...",
-    "private_key": "0x...",
-    "testnet": false
   }
 }
 ```

@@ -9,5 +9,3 @@ If you can't find relevant information there, proceed to search for it on the UR
 Polymarket: https://docs.polymarket.com/developers/
 Kalshi: https://docs.kalshi.com/
 Opinion: https://docs.opinion.trade/developer-guide/opinion-open-api
-Limitless: https://api.limitless.exchange/api-v1
-Predictfun: https://dev.predict.fun/

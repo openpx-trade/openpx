@@ -408,10 +408,7 @@ impl PolymarketWebSocket {
                         let levels = if is_bid { &mut ob.bids } else { &mut ob.asks };
 
                         // Apply to internal book
-                        if let Some(existing) = levels
-                            .iter_mut()
-                            .find(|l| l.price == fp)
-                        {
+                        if let Some(existing) = levels.iter_mut().find(|l| l.price == fp) {
                             if size > 0.0 {
                                 existing.size = size;
                             } else {

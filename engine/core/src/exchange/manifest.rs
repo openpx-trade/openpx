@@ -67,13 +67,13 @@ pub struct PaginationConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaginationStyle {
-    /// Cursor-based pagination (Kalshi, PredictFun)
+    /// Cursor-based pagination (Kalshi)
     Cursor,
     /// Offset-based pagination (Polymarket)
     Offset,
     /// Page-number pagination (Opinion, 1-indexed)
     PageNumber,
-    /// No pagination supported - endpoint returns all data in single call (Limitless)
+    /// No pagination supported - endpoint returns all data in single call
     None,
 }
 

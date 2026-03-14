@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// Exchange-specific conversions are handled during parsing:
 ///
 /// - **Kalshi**: Native prices in cents (1-99), converted to decimal by dividing by 100.
-/// - **Polymarket, Limitless, Opinion, PredictFun**: Native prices already in decimal (0.0-1.0).
+/// - **Polymarket, Opinion**: Native prices already in decimal (0.0-1.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Market {

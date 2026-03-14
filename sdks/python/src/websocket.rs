@@ -74,9 +74,7 @@ impl NativeWebSocket {
         let rt = get_runtime();
 
         let stream = py
-            .detach(|| {
-                rt.block_on(async { ws.lock().await.orderbook_stream(&market_id).await })
-            })
+            .detach(|| rt.block_on(async { ws.lock().await.orderbook_stream(&market_id).await }))
             .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel(256);
@@ -98,9 +96,7 @@ impl NativeWebSocket {
         let rt = get_runtime();
 
         let stream = py
-            .detach(|| {
-                rt.block_on(async { ws.lock().await.activity_stream(&market_id).await })
-            })
+            .detach(|| rt.block_on(async { ws.lock().await.activity_stream(&market_id).await }))
             .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel(256);

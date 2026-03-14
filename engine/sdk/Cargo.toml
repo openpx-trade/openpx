@@ -11,9 +11,12 @@ px-core = { workspace = true }
 px-exchange-kalshi = { workspace = true }
 px-exchange-polymarket = { workspace = true }
 px-exchange-opinion = { workspace = true }
-px-exchange-limitless = { workspace = true }
-px-exchange-predictfun = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+futures = { workspace = true }
+rustls = { version = "0.23", features = ["ring"] }

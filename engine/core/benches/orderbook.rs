@@ -1,5 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use px_core::{insert_ask, insert_bid, sort_asks, sort_bids, FixedPrice, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide};
+use px_core::{
+    insert_ask, insert_bid, sort_asks, sort_bids, FixedPrice, Orderbook, PriceLevel,
+    PriceLevelChange, PriceLevelSide,
+};
 use smallvec::SmallVec;
 
 fn make_orderbook(depth: usize) -> Orderbook {

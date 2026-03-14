@@ -14,21 +14,17 @@ use px_core::{
 };
 
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
-use px_exchange_limitless::{Limitless, LimitlessConfig};
 use px_exchange_opinion::{Opinion, OpinionConfig};
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
-use px_exchange_predictfun::{PredictFun, PredictFunConfig};
 
 use px_core::Exchange;
 
 /// Enum dispatch over all supported exchanges.
 /// Both `px-python` and `px-node` depend on this to avoid duplicating exchange construction logic.
 pub enum ExchangeInner {
-    Kalshi(Kalshi),
+    Kalshi(Box<Kalshi>),
     Polymarket(Box<Polymarket>),
     Opinion(Opinion),
-    Limitless(Limitless),
-    PredictFun(PredictFun),
 }
 
 impl ExchangeInner {
@@ -63,9 +59,9 @@ impl ExchangeInner {
                         cfg = cfg.with_verbose(v);
                     }
                 }
-                Ok(Self::Kalshi(
+                Ok(Self::Kalshi(Box::new(
                     Kalshi::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                ))
+                )))
             }
             "polymarket" => {
                 let mut cfg = PolymarketConfig::new();
@@ -121,53 +117,6 @@ impl ExchangeInner {
                     Opinion::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
                 ))
             }
-            "limitless" => {
-                let mut cfg = LimitlessConfig::new();
-                if let Some(obj) = config.as_object() {
-                    if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key(v);
-                    }
-                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
-                        cfg = cfg.with_verbose(v);
-                    }
-                }
-                Ok(Self::Limitless(
-                    Limitless::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                ))
-            }
-            "predictfun" => {
-                let mut cfg = PredictFunConfig::new();
-                if let Some(obj) = config.as_object() {
-                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key(v);
-                    }
-                    if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                    if obj
-                        .get("testnet")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                    {
-                        cfg = cfg.with_testnet(true);
-                    }
-                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
-                        cfg = cfg.with_verbose(v);
-                    }
-                }
-                Ok(Self::PredictFun(
-                    PredictFun::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                ))
-            }
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
     }
@@ -176,11 +125,9 @@ impl ExchangeInner {
     /// rather than any inherent methods that may shadow them.
     fn as_exchange(&self) -> &dyn Exchange {
         match self {
-            Self::Kalshi(e) => e,
+            Self::Kalshi(e) => e.as_ref(),
             Self::Polymarket(e) => e.as_ref(),
             Self::Opinion(e) => e,
-            Self::Limitless(e) => e,
-            Self::PredictFun(e) => e,
         }
     }
 

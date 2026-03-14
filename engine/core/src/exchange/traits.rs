@@ -686,7 +686,7 @@ pub struct OrderbookHistoryRequest {
 // Would need: Exchange trait methods, relay protocol additions, API handlers, SDK regeneration.
 
 // TODO(more-exchanges): Add support for more prediction market exchanges.
-// Current (full): Kalshi, Polymarket. Partial: Opinion, Limitless, Predictfun.
+// Current (full): Kalshi, Polymarket, Opinion.
 // Candidates: Manifold Markets, Metaculus, PredictIt, Probable, Myriad.
 // See pmxt (github.com/pmxt-dev/pmxt) for reference implementations and data format conventions.
 

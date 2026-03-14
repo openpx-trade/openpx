@@ -57,17 +57,10 @@ docs-install:
 check-sync: schema python-models node-models docs
     git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/src/
 
-terminal:
-    cargo run -p px-terminal
-
-terminal-release:
-    cargo run -p px-terminal --release
-
-terminal-ui-install:
-    cd terminal/ui && npm install
-
-terminal-ui-build:
-    cd terminal/ui && npm run build
-
-terminal-ui-dev:
-    cd terminal/ui && npm run dev
+# Run live integration tests against real exchange APIs
+# Usage: just live-test [exchange]
+# Examples:
+#   just live-test              # all exchanges
+#   just live-test kalshi       # single exchange
+live-test *FILTER:
+    OPENPX_LIVE_TESTS=1 cargo test -p px-sdk --test live {{FILTER}} -- --nocapture
