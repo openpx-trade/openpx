@@ -20,14 +20,6 @@ title: Exchanges
 - **Auth:** Private key + optional CLOB API credentials
 - **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades, WebSocket
 
-### Opinion
-
-- **ID:** `opinion`
-- **Website:** [opinion.trade](https://opinion.trade)
-- **API Docs:** [docs.opinion.trade](https://docs.opinion.trade/developer-guide/opinion-open-api)
-- **Auth:** API key + private key + multi-sig address
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
-
 ## Configuration
 
 All exchanges accept a JSON config object. Pass exchange-specific fields:
@@ -45,11 +37,6 @@ All exchanges accept a JSON config object. Pass exchange-specific fields:
     "api_key": "...",
     "api_secret": "...",
     "api_passphrase": "..."
-  },
-  "opinion": {
-    "api_key": "...",
-    "private_key": "0x...",
-    "multi_sig_addr": "0x..."
   }
 }
 ```

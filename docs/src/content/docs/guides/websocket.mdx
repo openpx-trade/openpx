@@ -13,7 +13,6 @@ trades, and fill events across all supported exchanges.
 |----------|-----------|--------|-------|----------|
 | Kalshi | Yes | Yes | Yes | Native WS |
 | Polymarket | Yes | Yes | Yes | Native WS (dual connection) |
-| Opinion | Yes | Yes | Yes | Native WS |
 
 ## Connection Lifecycle
 
@@ -375,8 +374,8 @@ See [`ActivityTrade`](/reference/models/#activitytrade) and
 
 | Event | Description | Exchanges |
 |-------|-------------|-----------|
-| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket, Opinion |
-| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion |
+| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket |
 
 ## Auto-Reconnect
 

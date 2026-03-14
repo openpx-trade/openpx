@@ -71,7 +71,7 @@ pub enum PaginationStyle {
     Cursor,
     /// Offset-based pagination (Polymarket)
     Offset,
-    /// Page-number pagination (Opinion, 1-indexed)
+    /// Page-number pagination (1-indexed)
     PageNumber,
     /// No pagination supported - endpoint returns all data in single call
     None,
