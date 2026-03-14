@@ -1,7 +1,7 @@
-# pc-exchange-polymarket
+# px-exchange-polymarket
 
-[![Crates.io](https://img.shields.io/crates/v/pc-exchange-polymarket.svg)](https://crates.io/crates/pc-exchange-polymarket)
-[![Documentation](https://docs.rs/pc-exchange-polymarket/badge.svg)](https://docs.rs/pc-exchange-polymarket)
+[![Crates.io](https://img.shields.io/crates/v/px-exchange-polymarket.svg)](https://crates.io/crates/px-exchange-polymarket)
+[![Documentation](https://docs.rs/px-exchange-polymarket/badge.svg)](https://docs.rs/px-exchange-polymarket)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Polymarket](https://polymarket.com) exchange implementation for OpenPX.
@@ -19,14 +19,14 @@ This crate provides a complete Polymarket integration including:
 
 ```toml
 [dependencies]
-pc-exchange-polymarket = "0.1"
+px-exchange-polymarket = "0.1"
 ```
 
 ## Quick Start
 
 ```rust
-use pc_core::Exchange;
-use pc_exchange_polymarket::{Polymarket, PolymarketConfig};
+use px_core::Exchange;
+use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 For trading operations, you need to provide your Ethereum private key:
 
 ```rust
-use pc_exchange_polymarket::{Polymarket, PolymarketConfig};
+use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 
 let config = PolymarketConfig::new()
     .with_private_key("0x...")
@@ -63,8 +63,8 @@ exchange.init_trading().await?;
 ## WebSocket Streaming
 
 ```rust
-use pc_exchange_polymarket::PolymarketWebSocket;
-use pc_core::WebSocketClient;
+use px_exchange_polymarket::PolymarketWebSocket;
+use px_core::WebSocketClient;
 
 let ws = PolymarketWebSocket::new();
 let mut stream = ws.subscribe_orderbook("token_id").await?;

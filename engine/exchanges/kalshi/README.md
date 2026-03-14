@@ -1,7 +1,7 @@
-# pc-exchange-kalshi
+# px-exchange-kalshi
 
-[![Crates.io](https://img.shields.io/crates/v/pc-exchange-kalshi.svg)](https://crates.io/crates/pc-exchange-kalshi)
-[![Documentation](https://docs.rs/pc-exchange-kalshi/badge.svg)](https://docs.rs/pc-exchange-kalshi)
+[![Crates.io](https://img.shields.io/crates/v/px-exchange-kalshi.svg)](https://crates.io/crates/px-exchange-kalshi)
+[![Documentation](https://docs.rs/px-exchange-kalshi/badge.svg)](https://docs.rs/px-exchange-kalshi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Kalshi](https://kalshi.com) exchange implementation for OpenPX.
@@ -17,14 +17,14 @@ This crate provides a complete Kalshi integration including:
 
 ```toml
 [dependencies]
-pc-exchange-kalshi = "0.1"
+px-exchange-kalshi = "0.1"
 ```
 
 ## Quick Start
 
 ```rust
-use pc_core::Exchange;
-use pc_exchange_kalshi::{Kalshi, KalshiConfig};
+use px_core::Exchange;
+use px_exchange_kalshi::{Kalshi, KalshiConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -60,7 +60,7 @@ openssl rsa -pubout -in kalshi_private_key.pem -out kalshi_public_key.pem
 ### Configuration
 
 ```rust
-use pc_exchange_kalshi::{Kalshi, KalshiConfig};
+use px_exchange_kalshi::{Kalshi, KalshiConfig};
 
 // From file path
 let config = KalshiConfig::new()
@@ -80,7 +80,7 @@ let exchange = Kalshi::new(config)?;
 ### Demo Environment
 
 ```rust
-use pc_exchange_kalshi::{Kalshi, KalshiConfig};
+use px_exchange_kalshi::{Kalshi, KalshiConfig};
 
 let config = KalshiConfig::demo()
     .with_api_key_id("demo-api-key-id")
@@ -117,7 +117,7 @@ Kalshi uses `ticker` strings as market identifiers (e.g., `"INXD-24DEC31-B5000"`
 ### Orders
 
 ```rust
-use pc_core::{Exchange, OrderSide};
+use px_core::{Exchange, OrderSide};
 use std::collections::HashMap;
 
 // Create a limit order to buy Yes at $0.55
