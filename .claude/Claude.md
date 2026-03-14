@@ -27,12 +27,15 @@ unnecessary overhead. Always ask: "is there a faster way to do this?"
 openpx/
 ├── engine/                   # Rust core — powers everything
 │   ├── core/                 # Core types, traits, timing, error handling
-│   │   ├── src/exchange/     # Exchange trait + factory + rate limiting
-│   │   ├── src/models/       # Market, Order, Position, Orderbook
+│   │   ├── src/exchange/     # Exchange trait, manifests, normalizers, rate limiting
+│   │   ├── src/models/       # Market, Order, Position, Orderbook, Trade, RawMarket
+│   │   ├── src/events.rs     # Canonical event ID handling
 │   │   ├── src/timing.rs     # timed! macro + TimingGuard
-│   │   └── src/error.rs      # OpenPxError hierarchy
+│   │   ├── src/error.rs      # OpenPxError hierarchy + define_exchange_error! macro
+│   │   ├── src/utils/        # Utility helpers (price conversion)
+│   │   └── src/websocket/    # WebSocket traits
 │   ├── exchanges/            # Exchange implementations
-│   │   ├── kalshi/           # src/exchange.rs, config.rs, error.rs
+│   │   ├── kalshi/           # auth, config, error, exchange, fetcher, normalize, websocket
 │   │   ├── polymarket/
 │   │   └── opinion/
 │   ├── sdk/                  # Unified facade (enum dispatch)
@@ -40,7 +43,7 @@ openpx/
 ├── sdks/                     # Language SDKs
 │   ├── python/               # PyO3 + auto-generated Pydantic models
 │   └── typescript/           # NAPI-RS + auto-generated TS types
-├── docs/                     # mdBook documentation (auto-generated)
+├── docs/                     # Astro-based documentation site
 ├── schema/                   # openpx.schema.json (generated artifact)
 ├── scripts/                  # Build & codegen scripts
 └── justfile                  # Single-command SDK sync
@@ -51,8 +54,11 @@ openpx/
 | Purpose | File | Notes |
 |---------|------|-------|
 | Exchange trait | `engine/core/src/exchange/traits.rs` | All exchanges implement this |
-| Timing macros | `engine/core/src/timing.rs` | `timed!` macro for metrics |
-| Error types | `engine/core/src/error.rs` | `OpenPxError` hierarchy |
+| Exchange manifests | `engine/core/src/exchange/manifest.rs` | Connection + pagination config per exchange |
+| Timing macros | `engine/core/src/timing.rs` | `timed!` macro + metric name constants |
+| Error types | `engine/core/src/error.rs` | `OpenPxError` hierarchy + `define_exchange_error!` macro |
+| Event IDs | `engine/core/src/events.rs` | Canonical cross-exchange event grouping |
+| WebSocket traits | `engine/core/src/websocket/traits.rs` | WebSocket connection interface |
 | Kalshi exchange | `engine/exchanges/kalshi/src/exchange.rs` | Reference implementation |
 | Market model | `engine/core/src/models/market.rs` | Market, UnifiedMarket types |
 
@@ -64,7 +70,7 @@ openpx/
 use px_core::timed;
 
 let result = timed!(
-    "openpx.exchange.http_send_us",
+    "openpx.exchange.http_request_us",
     "exchange" => self.id(),
     "operation" => "create_order";
     client.post(&url).send().await
@@ -73,15 +79,27 @@ let result = timed!(
 
 ### Error Handling
 
-```rust
-use px_core::{OpenPxError, ExchangeError};
+Each exchange defines its error type using the `define_exchange_error!` macro, then maps to `ExchangeError`:
 
-// Map exchange-specific errors
-impl From<KalshiError> for ExchangeError {
+```rust
+use px_core::define_exchange_error;
+
+// Define exchange-specific error (auto-includes Http, Api, RateLimited, AuthRequired, MarketNotFound)
+define_exchange_error!(KalshiError {
+    #[error("authentication failed: {0}")]
+    AuthFailed(String),
+    #[error("insufficient balance: {0}")]
+    InsufficientBalance(String),
+});
+
+// Map exchange-specific errors to unified ExchangeError
+impl From<KalshiError> for px_core::ExchangeError {
     fn from(err: KalshiError) -> Self {
         match err {
-            KalshiError::AuthFailed(msg) => Self::Authentication(msg),
-            _ => Self::Api(err.to_string()),
+            KalshiError::MarketNotFound(id) => px_core::ExchangeError::MarketNotFound(id),
+            KalshiError::AuthFailed(msg) => px_core::ExchangeError::Authentication(msg),
+            KalshiError::InsufficientBalance(msg) => px_core::ExchangeError::InsufficientFunds(msg),
+            other => px_core::ExchangeError::Api(other.to_string()),
         }
     }
 }
