@@ -961,7 +961,7 @@ interface OrderbookSnapshot {
 
 ```rust
 pub struct PriceLevel {
-    pub price: f64,
+    pub price: number,
     pub size: f64,
 }
 ```
@@ -971,7 +971,7 @@ pub struct PriceLevel {
 
 ```python
 class PriceLevel(BaseModel):
-    price: float
+    price: number
     size: float
 ```
 
@@ -1003,7 +1003,7 @@ interface PriceLevel {
 
 ```rust
 pub struct PriceLevelChange {
-    pub price: f64,
+    pub price: number,
     pub side: PriceLevelSide,
     pub size: f64,
 }
@@ -1014,7 +1014,7 @@ pub struct PriceLevelChange {
 
 ```python
 class PriceLevelChange(BaseModel):
-    price: float
+    price: number
     side: PriceLevelSide
     size: float
 ```
@@ -1887,6 +1887,38 @@ interface TradesRequest {
   start_ts?: number | null;
   token_id?: string | null;
 }
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+### number
+
+*No fields*
+
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub struct number {}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+class number(BaseModel):
+    pass
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+interface number {}
 ```
 
 </TabItem>

@@ -981,6 +981,11 @@ once — all examples on this page switch together.
 Create an exchange instance. Pass the exchange ID and an optional config
 object with credentials.
 
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `exchange_id` | `string` | Yes | Exchange identifier (`"kalshi"`, `"polymarket"`, `"opinion"`, `"limitless"`, `"predictfun"`) |
+| `config` | `object` | No | Credentials object — omit for unauthenticated (market data only) access |
+
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
@@ -1041,6 +1046,10 @@ const exchange = new Exchange("kalshi", {
 
 Get the exchange identifier and human-readable name.
 
+No parameters.
+
+**Returns:** `string`
+
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
@@ -1071,6 +1080,8 @@ exchange.name; // "Kalshi"
 ### describe
 
 Returns capability flags for this exchange — which methods are supported.
+
+No parameters.
 
 **Returns:** [`ExchangeInfo`](/reference/models/#exchangeinfo)
 
@@ -1110,12 +1121,13 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 
 ### fetch_markets
 
-Fetch a paginated list of markets.
+Fetch a paginated list of markets. All parameters are optional — call with no
+arguments to use exchange defaults.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `limit` | `int?` | Max markets to return |
-| `cursor` | `string?` | Pagination cursor from a previous response |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | `int` | No | Max markets to return per page |
+| `cursor` | `string` | No | Pagination cursor from a previous response |
 
 **Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
 
@@ -1175,9 +1187,9 @@ for (const m of markets) {
 
 Fetch a single market by its exchange-native ID.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Exchange-native market ID |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Exchange-native market ID |
 
 **Returns:** [`Market`](/reference/models/#market)
 
@@ -1213,6 +1225,8 @@ console.log(`${market.id}: ${market.question}`);
 Fetch all markets with normalized fields across exchanges. Handles pagination
 internally — returns the complete set.
 
+No parameters.
+
 **Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
 
 <Tabs syncKey="lang">
@@ -1247,6 +1261,49 @@ for (const m of markets) {
 </TabItem>
 </Tabs>
 
+### fetch_event_markets
+
+Fetch all markets belonging to an event or group. Falls back to scanning all
+markets if the exchange has no native group endpoint.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | `string` | **Yes** | Exchange event or group ID |
+
+**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+let markets = exchange.fetch_event_markets("group-abc").await?;
+for m in &markets {
+    println!("[{}] {}", m.openpx_id, m.title);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+markets = exchange.fetch_event_markets("group-abc")
+for m in markets:
+    print(f"[{m['openpx_id']}] {m['title']}")
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+const markets = await exchange.fetchEventMarkets("group-abc");
+for (const m of markets) {
+  console.log(`[${m.openpx_id}] ${m.title}`);
+}
+```
+
+</TabItem>
+</Tabs>
+
 ---
 
 ## Trading
@@ -1255,14 +1312,14 @@ for (const m of markets) {
 
 Place a limit order on a market.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Market to trade |
-| `outcome` | `string` | Outcome to buy/sell (e.g. `"Yes"`, `"No"`) |
-| `side` | `OrderSide` | `Buy` or `Sell` |
-| `price` | `float` | Limit price (0.0 – 1.0) |
-| `size` | `float` | Number of contracts |
-| `params` | `map?` | Exchange-specific parameters |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to trade |
+| `outcome` | `string` | **Yes** | Outcome to buy/sell (e.g. `"Yes"`, `"No"`) |
+| `side` | `OrderSide` | **Yes** | `Buy` or `Sell` |
+| `price` | `float` | **Yes** | Limit price (0.0 – 1.0) |
+| `size` | `float` | **Yes** | Number of contracts |
+| `params` | `map[string, string]` | No | Exchange-specific parameters (e.g. order type, time-in-force) |
 
 **Returns:** [`Order`](/reference/models/#order)
 
@@ -1316,10 +1373,10 @@ console.log(`Order ${order.id}: ${order.status}`);
 
 Cancel an open order.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `order_id` | `string` | Order to cancel |
-| `market_id` | `string?` | Required by some exchanges |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `order_id` | `string` | **Yes** | Order to cancel |
+| `market_id` | `string` | No | Market ID — required by some exchanges for faster lookup |
 
 **Returns:** [`Order`](/reference/models/#order)
 
@@ -1354,10 +1411,10 @@ console.log(`Cancelled: ${cancelled.status}`);
 
 Fetch a single order by ID.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `order_id` | `string` | Order ID |
-| `market_id` | `string?` | Required by some exchanges |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `order_id` | `string` | **Yes** | Order ID |
+| `market_id` | `string` | No | Market ID — required by some exchanges for faster lookup |
 
 **Returns:** [`Order`](/reference/models/#order)
 
@@ -1392,11 +1449,11 @@ console.log(`Status: ${order.status}, Filled: ${order.filled}`);
 
 Fetch all open orders, optionally filtered by market.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string?` | Filter by market |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | No | Filter to a specific market |
 
-**Returns:** `list[Order]`
+**Returns:** `list[Order]` — see [`Order`](/reference/models/#order)
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1457,9 +1514,9 @@ for (const o of orders) {
 
 Fetch current positions, optionally filtered by market.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string?` | Filter by market |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | No | Filter to a specific market |
 
 **Returns:** `list[Position]` — see [`Position`](/reference/models/#position)
 
@@ -1500,7 +1557,9 @@ for (const p of positions) {
 
 Fetch account balance.
 
-**Returns:** `map[string, float]` — asset name to balance (e.g. USDC)
+No parameters.
+
+**Returns:** `map[string, float]` — asset name to balance (e.g. `{"USDC": 1250.00}`)
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1538,10 +1597,10 @@ for (const [asset, amount] of Object.entries(balance)) {
 
 Fetch trade execution history (fills).
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string?` | Filter by market |
-| `limit` | `int?` | Max fills to return |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | No | Filter to a specific market |
+| `limit` | `int` | No | Max fills to return |
 
 **Returns:** `list[Fill]` — see [`Fill`](/reference/models/#fill)
 
@@ -1586,11 +1645,11 @@ for (const f of fills) {
 
 Fetch the L2 orderbook for a market.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Market ID |
-| `outcome` | `string?` | Filter by outcome (e.g. `"Yes"`) |
-| `token_id` | `string?` | Filter by token ID |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market ID |
+| `outcome` | `string` | No | Filter by outcome (e.g. `"Yes"`) |
+| `token_id` | `string` | No | Filter by CTF token ID (Polymarket) |
 
 **Returns:** [`Orderbook`](/reference/models/#orderbook)
 
@@ -1649,16 +1708,17 @@ for (const level of book.bids.slice(0, 5)) {
 
 Fetch historical orderbook snapshots. Not all exchanges support this.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Market ID |
-| `token_id` | `string?` | Token ID |
-| `start_ts` | `int?` | Start time (Unix seconds) |
-| `end_ts` | `int?` | End time (Unix seconds) |
-| `limit` | `int?` | Max snapshots |
-| `cursor` | `string?` | Pagination cursor |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market ID |
+| `token_id` | `string` | No | Token ID |
+| `start_ts` | `int` | No | Start time (Unix seconds, inclusive) |
+| `end_ts` | `int` | No | End time (Unix seconds, inclusive) |
+| `limit` | `int` | No | Max snapshots per page |
+| `cursor` | `string` | No | Pagination cursor from a previous response |
 
-**Returns:** `(list[OrderbookSnapshot], cursor?)` — see [`OrderbookSnapshot`](/reference/models/#orderbooksnapshot)
+**Returns:** `(list[OrderbookSnapshot], cursor?)` — see [`OrderbookSnapshot`](/reference/models/#orderbooksnapshot).
+The cursor is `null` when there are no more pages.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1705,14 +1765,15 @@ for snap in &snapshots {
 
 Fetch OHLCV candlestick data.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Market ID |
-| `interval` | `PriceHistoryInterval` | Candle interval (`1m`, `1h`, `6h`, `1d`, `1w`, `max`) |
-| `outcome` | `string?` | Outcome filter |
-| `token_id` | `string?` | Token ID |
-| `start_ts` | `int?` | Start time (Unix seconds) |
-| `end_ts` | `int?` | End time (Unix seconds) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market ID |
+| `interval` | `PriceHistoryInterval` | **Yes** | Candle interval: `1m`, `1h`, `6h`, `1d`, `1w`, or `max` |
+| `outcome` | `string` | No | Filter by outcome name |
+| `token_id` | `string` | No | Filter by token ID |
+| `condition_id` | `string` | No | CTF condition ID (Polymarket) |
+| `start_ts` | `int` | No | Start time (Unix seconds, inclusive) |
+| `end_ts` | `int` | No | End time (Unix seconds, inclusive) |
 
 **Returns:** `list[Candlestick]` — see [`Candlestick`](/reference/models/#candlestick)
 
@@ -1760,17 +1821,19 @@ for c in &candles {
 Fetch recent trades for a market. Returns trades and an optional cursor for
 pagination.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `market_id` | `string` | Market ID |
-| `outcome` | `string?` | Outcome filter |
-| `token_id` | `string?` | Token ID |
-| `start_ts` | `int?` | Start time (Unix seconds) |
-| `end_ts` | `int?` | End time (Unix seconds) |
-| `limit` | `int?` | Max trades |
-| `cursor` | `string?` | Pagination cursor |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market ID |
+| `market_ref` | `string` | No | Alternate market reference (e.g. Polymarket `conditionId`) |
+| `outcome` | `string` | No | Filter by outcome name |
+| `token_id` | `string` | No | Filter by token ID |
+| `start_ts` | `int` | No | Start time (Unix seconds, inclusive) |
+| `end_ts` | `int` | No | End time (Unix seconds, inclusive) |
+| `limit` | `int` | No | Max trades per page |
+| `cursor` | `string` | No | Pagination cursor from a previous response |
 
-**Returns:** `(list[MarketTrade], cursor?)` — see [`MarketTrade`](/reference/models/#markettrade)
+**Returns:** `(list[MarketTrade], cursor?)` — see [`MarketTrade`](/reference/models/#markettrade).
+The cursor is `null` when there are no more pages.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1995,9 +2058,52 @@ await ws.disconnect();
 </TabItem>
 </Tabs>
 
-## Connection State
+## Method Reference
 
-Check the connection state at any time. Uses lock-free atomics for zero-cost reads.
+### connect
+
+Open the WebSocket connection. Must be called before subscribing or streaming.
+
+No parameters.
+
+**Returns:** `void` — throws on connection failure.
+
+### disconnect
+
+Close the WebSocket connection and clean up resources.
+
+No parameters.
+
+**Returns:** `void`
+
+### subscribe
+
+Subscribe to a market to begin receiving updates. You can subscribe to
+multiple markets on the same connection.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to subscribe to |
+
+**Returns:** `void` — throws if the market ID is invalid or the connection is not open.
+
+### unsubscribe
+
+Stop receiving updates for a market.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to unsubscribe from |
+
+**Returns:** `void`
+
+### state
+
+Check the connection state. Uses lock-free atomics for zero-cost reads.
+
+No parameters.
+
+**Returns:** `WebSocketState` — one of `Disconnected`, `Connecting`, `Connected`, `Reconnecting`, or `Closed`.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -2033,10 +2139,17 @@ console.log(`WebSocket state: ${state}`);
 </TabItem>
 </Tabs>
 
-## Orderbook Streaming
+### orderbook_stream
 
-Subscribe to a market and receive real-time orderbook updates. The first
-message is always a full `Snapshot`, followed by incremental `Delta` updates.
+Open a stream of real-time orderbook updates for a subscribed market. The
+first message is always a full `Snapshot`, followed by incremental `Delta`
+updates. You must call `subscribe` before opening a stream.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
+
+**Returns:** `Stream[OrderbookUpdate]` — yields `Snapshot` or `Delta` events.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -2117,22 +2230,27 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
 </TabItem>
 </Tabs>
 
-### Update Types
+#### Update Types
 
 | Type | Description |
 |------|-------------|
 | **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
 | **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
 
-### Orderbook Types
-
 See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
 `PriceLevel`, and `PriceLevelChange` type definitions.
 
-## Activity Streaming
+### activity_stream
 
-Stream real-time trade and fill events. Trades are public market activity;
-fills are your personal order executions.
+Open a stream of real-time trade and fill events for a subscribed market.
+Trades are public market activity; fills are your personal order executions.
+You must call `subscribe` before opening a stream.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
+
+**Returns:** `Stream[ActivityEvent]` — yields `Trade` or `Fill` events.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -2204,7 +2322,7 @@ await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
 </TabItem>
 </Tabs>
 
-### Event Types
+#### Event Types
 
 See [`ActivityTrade`](/reference/models/#activitytrade) and
 [`ActivityFill`](/reference/models/#activityfill) for field details.

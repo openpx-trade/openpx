@@ -987,8 +987,7 @@
     "PriceLevel": {
       "properties": {
         "price": {
-          "format": "double",
-          "type": "number"
+          "$ref": "#/definitions/number"
         },
         "size": {
           "format": "double",
@@ -1006,8 +1005,7 @@
       "description": "A single price level change. Absolute replacement semantics: size > 0 = set level to this size, size == 0 = remove level.",
       "properties": {
         "price": {
-          "format": "double",
-          "type": "number"
+          "$ref": "#/definitions/number"
         },
         "side": {
           "$ref": "#/definitions/PriceLevelSide"
@@ -1375,6 +1373,10 @@
       ],
       "title": "UnifiedMarket",
       "type": "object"
+    },
+    "number": {
+      "format": "double",
+      "type": "number"
     }
   },
   "description": "Auto-generated JSON Schema for OpenPX core types",

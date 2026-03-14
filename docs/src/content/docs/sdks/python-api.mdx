@@ -224,7 +224,7 @@ class OrderbookSnapshot(BaseModel):
 
 ```python
 class PriceLevel(BaseModel):
-    price: float
+    price: number
     size: float
 ```
 
@@ -232,7 +232,7 @@ class PriceLevel(BaseModel):
 
 ```python
 class PriceLevelChange(BaseModel):
-    price: float
+    price: number
     side: PriceLevelSide
     size: float
 ```
@@ -427,4 +427,11 @@ class TradesRequest(BaseModel):
     outcome: Optional[str]
     start_ts: Optional[int]
     token_id: Optional[str]
+```
+
+### number
+
+```python
+class number(BaseModel):
+    pass
 ```

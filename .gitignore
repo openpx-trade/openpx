@@ -6,6 +6,8 @@ node_modules/
 Cargo.lock
 docs/.astro/
 docs/dist/
+terminal/ui/dist/
+terminal/ui/node_modules/
 
 # OS / editor
 .DS_Store

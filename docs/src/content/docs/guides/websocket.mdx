@@ -106,9 +106,52 @@ await ws.disconnect();
 </TabItem>
 </Tabs>
 
-## Connection State
+## Method Reference
 
-Check the connection state at any time. Uses lock-free atomics for zero-cost reads.
+### connect
+
+Open the WebSocket connection. Must be called before subscribing or streaming.
+
+No parameters.
+
+**Returns:** `void` — throws on connection failure.
+
+### disconnect
+
+Close the WebSocket connection and clean up resources.
+
+No parameters.
+
+**Returns:** `void`
+
+### subscribe
+
+Subscribe to a market to begin receiving updates. You can subscribe to
+multiple markets on the same connection.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to subscribe to |
+
+**Returns:** `void` — throws if the market ID is invalid or the connection is not open.
+
+### unsubscribe
+
+Stop receiving updates for a market.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to unsubscribe from |
+
+**Returns:** `void`
+
+### state
+
+Check the connection state. Uses lock-free atomics for zero-cost reads.
+
+No parameters.
+
+**Returns:** `WebSocketState` — one of `Disconnected`, `Connecting`, `Connected`, `Reconnecting`, or `Closed`.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -144,10 +187,17 @@ console.log(`WebSocket state: ${state}`);
 </TabItem>
 </Tabs>
 
-## Orderbook Streaming
+### orderbook_stream
 
-Subscribe to a market and receive real-time orderbook updates. The first
-message is always a full `Snapshot`, followed by incremental `Delta` updates.
+Open a stream of real-time orderbook updates for a subscribed market. The
+first message is always a full `Snapshot`, followed by incremental `Delta`
+updates. You must call `subscribe` before opening a stream.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
+
+**Returns:** `Stream[OrderbookUpdate]` — yields `Snapshot` or `Delta` events.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -228,22 +278,27 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
 </TabItem>
 </Tabs>
 
-### Update Types
+#### Update Types
 
 | Type | Description |
 |------|-------------|
 | **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
 | **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
 
-### Orderbook Types
-
 See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
 `PriceLevel`, and `PriceLevelChange` type definitions.
 
-## Activity Streaming
+### activity_stream
 
-Stream real-time trade and fill events. Trades are public market activity;
-fills are your personal order executions.
+Open a stream of real-time trade and fill events for a subscribed market.
+Trades are public market activity; fills are your personal order executions.
+You must call `subscribe` before opening a stream.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
+
+**Returns:** `Stream[ActivityEvent]` — yields `Trade` or `Fill` events.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -315,7 +370,7 @@ await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
 </TabItem>
 </Tabs>
 
-### Event Types
+#### Event Types
 
 See [`ActivityTrade`](/reference/models/#activitytrade) and
 [`ActivityFill`](/reference/models/#activityfill) for field details.

@@ -240,7 +240,7 @@ pub struct OrderbookSnapshot {
 
 ```rust
 pub struct PriceLevel {
-    pub price: f64,
+    pub price: number,
     pub size: f64,
 }
 ```
@@ -249,7 +249,7 @@ pub struct PriceLevel {
 
 ```rust
 pub struct PriceLevelChange {
-    pub price: f64,
+    pub price: number,
     pub side: PriceLevelSide,
     pub size: f64,
 }
@@ -460,4 +460,10 @@ pub struct TradesRequest {
     pub start_ts: Option<i64>,
     pub token_id: Option<String>,
 }
+```
+
+### number
+
+```rust
+pub struct number {}
 ```
