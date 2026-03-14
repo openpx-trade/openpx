@@ -47,6 +47,11 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
             ("POLYMARKET_API_SECRET", "api_secret"),
             ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
         ],
+        "opinion" => &[
+            ("OPINION_API_KEY", "api_key"),
+            ("OPINION_PRIVATE_KEY", "private_key"),
+            ("OPINION_MULTI_SIG_ADDR", "multi_sig_addr"),
+        ],
         _ => &[],
     };
     for (env_key, config_key) in vars {
@@ -505,3 +510,4 @@ macro_rules! exchange_tests {
 
 exchange_tests!(kalshi);
 exchange_tests!(polymarket);
+exchange_tests!(opinion);

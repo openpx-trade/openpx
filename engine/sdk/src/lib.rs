@@ -14,6 +14,7 @@ use px_core::{
 };
 
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
+use px_exchange_opinion::{Opinion, OpinionConfig};
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 
 use px_core::Exchange;
@@ -23,6 +24,7 @@ use px_core::Exchange;
 pub enum ExchangeInner {
     Kalshi(Box<Kalshi>),
     Polymarket(Box<Polymarket>),
+    Opinion(Opinion),
 }
 
 impl ExchangeInner {
@@ -92,6 +94,29 @@ impl ExchangeInner {
                     Polymarket::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
                 )))
             }
+            "opinion" => {
+                let mut cfg = OpinionConfig::new();
+                if let Some(obj) = config.as_object() {
+                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_key(v);
+                    }
+                    if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_private_key(v);
+                    }
+                    if let Some(v) = obj.get("multi_sig_addr").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_multi_sig(v);
+                    }
+                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
+                        cfg = cfg.with_api_url(v);
+                    }
+                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
+                        cfg = cfg.with_verbose(v);
+                    }
+                }
+                Ok(Self::Opinion(
+                    Opinion::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
+                ))
+            }
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
     }
@@ -102,6 +127,7 @@ impl ExchangeInner {
         match self {
             Self::Kalshi(e) => e.as_ref(),
             Self::Polymarket(e) => e.as_ref(),
+            Self::Opinion(e) => e,
         }
     }
 

@@ -33,7 +33,8 @@ openpx/
 │   │   └── src/error.rs      # OpenPxError hierarchy
 │   ├── exchanges/            # Exchange implementations
 │   │   ├── kalshi/           # src/exchange.rs, config.rs, error.rs
-│   │   └── polymarket/
+│   │   ├── polymarket/
+│   │   └── opinion/
 │   ├── sdk/                  # Unified facade (enum dispatch)
 │   └── schema/               # JSON Schema export binary
 ├── sdks/                     # Language SDKs
@@ -114,3 +115,4 @@ cargo build --release --workspace
 Always refer to the official documentation for each prediction market when implementing solutions:
 - Polymarket: https://docs.polymarket.com/developers/
 - Kalshi: https://docs.kalshi.com/
+- Opinion: https://docs.opinion.trade/developer-guide/opinion-open-api

@@ -159,3 +159,10 @@ pub struct KalshiCredentials {
     pub api_key_id: String,
     pub private_key: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct OpinionCredentials {
+    pub api_key: String,
+    pub private_key: String,
+    pub multi_sig_addr: String,
+}

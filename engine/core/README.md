@@ -25,7 +25,7 @@ px-core = "0.1"
 
 ## Usage
 
-This crate is typically used as a dependency by exchange implementations (`px-exchange-polymarket`, `px-exchange-kalshi`).
+This crate is typically used as a dependency by exchange implementations (`px-exchange-polymarket`, `px-exchange-kalshi`, `px-exchange-opinion`).
 
 ```rust
 use px_core::{Exchange, Market, Order, OrderSide, OpenPxError};

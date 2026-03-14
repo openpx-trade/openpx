@@ -4,7 +4,7 @@
 
 **Unified, open-source prediction market SDK.**
 
-One interface to trade across Polymarket and Kalshi.
+One interface to trade across Polymarket, Kalshi, and Opinion.
 Rust engine with Python & TypeScript SDKs.
 
 [![CI](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml)
@@ -12,7 +12,8 @@ Rust engine with Python & TypeScript SDKs.
 [![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
 <a href="https://polymarket.com"><img src="https://img.logo.dev/polymarket.com?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Polymarket" /></a>&nbsp;&nbsp;
-<a href="https://kalshi.com"><img src="https://img.logo.dev/kalshi.com?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Kalshi" /></a>
+<a href="https://kalshi.com"><img src="https://img.logo.dev/kalshi.com?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Kalshi" /></a>&nbsp;&nbsp;
+<a href="https://opinion.trade"><img src="https://img.logo.dev/opinion.trade?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Opinion" /></a>
 
 </div>
 
@@ -127,6 +128,7 @@ Edit `.env` with your keys. Each exchange is optional — only configure what yo
 |----------|--------------|------|
 | Polymarket | `POLYMARKET_PRIVATE_KEY` | [docs](https://docs.polymarket.com/developers/) |
 | Kalshi | `KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH` | [docs](https://docs.kalshi.com/) |
+| Opinion | `OPINION_API_KEY`, `OPINION_PRIVATE_KEY`, `OPINION_MULTI_SIG_ADDR` | [docs](https://docs.opinion.trade/developer-guide/opinion-open-api) |
 
 See `.env.example` for the full list of optional fields.
 
@@ -136,6 +138,7 @@ See `.env.example` for the full list of optional fields.
 |----------|---------|---------|-----------|-----------|
 | Polymarket | Yes | Yes | Yes | Yes |
 | Kalshi | Yes | Yes | Yes | Yes |
+| Opinion | Yes | Yes | Yes | Yes |
 
 ## Development
 

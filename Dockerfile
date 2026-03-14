@@ -10,6 +10,7 @@ COPY engine/sdk/Cargo.toml engine/sdk/Cargo.toml
 COPY engine/schema/Cargo.toml engine/schema/Cargo.toml
 COPY engine/exchanges/kalshi/Cargo.toml engine/exchanges/kalshi/Cargo.toml
 COPY engine/exchanges/polymarket/Cargo.toml engine/exchanges/polymarket/Cargo.toml
+COPY engine/exchanges/opinion/Cargo.toml engine/exchanges/opinion/Cargo.toml
 COPY dashboard/Cargo.toml dashboard/Cargo.toml
 COPY sdks/python/Cargo.toml sdks/python/Cargo.toml
 COPY sdks/typescript/Cargo.toml sdks/typescript/Cargo.toml
@@ -20,6 +21,7 @@ RUN mkdir -p engine/core/src && echo "" > engine/core/src/lib.rs && \
     mkdir -p engine/schema/src && echo "fn main() {}" > engine/schema/src/main.rs && \
     mkdir -p engine/exchanges/kalshi/src && echo "" > engine/exchanges/kalshi/src/lib.rs && \
     mkdir -p engine/exchanges/polymarket/src && echo "" > engine/exchanges/polymarket/src/lib.rs && \
+    mkdir -p engine/exchanges/opinion/src && echo "" > engine/exchanges/opinion/src/lib.rs && \
     mkdir -p dashboard/src && echo "fn main() {}" > dashboard/src/main.rs && \
     mkdir -p sdks/python/src && echo "" > sdks/python/src/lib.rs && \
     mkdir -p sdks/typescript/src && echo "" > sdks/typescript/src/lib.rs

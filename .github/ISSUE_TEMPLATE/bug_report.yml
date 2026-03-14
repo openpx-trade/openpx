@@ -49,6 +49,7 @@ body:
       options:
         - Kalshi
         - Polymarket
+        - Opinion
         - px-core
         - Multiple / Unknown
     validations:
