@@ -16,9 +16,9 @@ use serde_json::json;
 #[tokio::main]
 async fn main() {
     let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
     for market in &markets[..5] {
-        println!("{}: {}", market.id, market.question);
+        println!("{}: {}", market.id, market.title);
     }
 }
 ```
@@ -30,9 +30,9 @@ async fn main() {
 from openpx import Exchange
 
 exchange = Exchange("kalshi")
-markets = exchange.fetch_markets(limit=5)
+markets = exchange.fetch_markets()
 for market in markets:
-    print(f"{market.id}: {market.question}")
+    print(f"{market.id}: {market.title}")
 ```
 
 </TabItem>
@@ -42,9 +42,9 @@ for market in markets:
 import { Exchange } from "@openpx/sdk";
 
 const exchange = new Exchange("kalshi", {});
-const markets = await exchange.fetchMarkets(5);
+const markets = await exchange.fetchMarkets();
 for (const market of markets) {
-  console.log(`${market.id}: ${market.question}`);
+  console.log(`${market.id}: ${market.title}`);
 }
 ```
 

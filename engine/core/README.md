@@ -31,12 +31,11 @@ This crate is typically used as a dependency by exchange implementations (`px-ex
 use px_core::{Exchange, Market, Order, OrderSide, OpenPxError};
 
 // The Exchange trait defines the unified API
-#[async_trait]
 pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
-    
-    async fn fetch_markets(&self, params: Option<FetchMarketsParams>) -> Result<Vec<Market>, OpenPxError>;
+
+    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError>;
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError>;
     async fn create_order(&self, ...) -> Result<Order, OpenPxError>;
     // ... more methods

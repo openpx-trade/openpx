@@ -19,7 +19,7 @@ class Exchange:
         from openpx import Exchange
 
         exchange = Exchange("kalshi", {"api_key_id": "...", "private_key_pem": "..."})
-        markets = exchange.fetch_markets(limit=5)
+        markets = exchange.fetch_markets()
         for m in markets:
             print(m)  # Pydantic Market model with autocomplete
     """
@@ -46,14 +46,9 @@ class Exchange:
     def describe(self) -> dict[str, Any]:
         return self._native.describe()
 
-    def fetch_markets(
-        self,
-        *,
-        limit: Optional[int] = None,
-        cursor: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
-        """Fetch markets. Returns list of Market dicts (Pydantic wrapping in _models.py)."""
-        raw = self._native.fetch_markets(limit, cursor)
+    def fetch_markets(self) -> list[dict[str, Any]]:
+        """Fetch all markets from the exchange (auto-paginates)."""
+        raw = self._native.fetch_markets()
         try:
             from openpx._models import Market
             return [Market(**m) for m in raw]
@@ -61,18 +56,11 @@ class Exchange:
             return raw
 
     def fetch_market(self, market_id: str) -> Any:
+        """Fetch a single market by ID."""
         raw = self._native.fetch_market(market_id)
         try:
             from openpx._models import Market
             return Market(**raw)
-        except (ImportError, Exception):
-            return raw
-
-    def fetch_all_unified_markets(self) -> list[Any]:
-        raw = self._native.fetch_all_unified_markets()
-        try:
-            from openpx._models import UnifiedMarket
-            return [UnifiedMarket(**m) for m in raw]
         except (ImportError, Exception):
             return raw
 

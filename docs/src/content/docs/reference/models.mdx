@@ -7,38 +7,128 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
 All types auto-generated from Rust source via `schema/openpx.schema.json`.
 Run `just docs` to regenerate.
 
+**Exchange key:** K = Kalshi, P = Polymarket, O = Opinion
+
 ## Market Data
 
 ### Market
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `close_time` | `string | null` | No |  |
-| `description` | `string` | No |  |
-| `id` | `string` | Yes |  |
-| `liquidity` | `number` | Yes |  |
-| `metadata` | `unknown` | No |  |
-| `outcomes` | `string[]` | Yes |  |
-| `prices` | `Record<string, number>` | Yes | Outcome prices normalized to decimal format (0.0 to 1.0). |
-| `question` | `string` | Yes |  |
-| `tick_size` | `number` | Yes |  |
-| `volume` | `number` | Yes |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `accepting_orders` | `boolean` | Yes | K P O | Whether the market is currently accepting new orders |
+| `best_ask` | `number \| null` | No | K P | Lowest ask price on the Yes outcome orderbook, normalized 0-1 |
+| `best_bid` | `number \| null` | No | K P | Highest bid price on the Yes outcome orderbook, normalized 0-1 |
+| `can_close_early` | `boolean \| null` | No | K | Whether the exchange can close the market before the scheduled close time |
+| `chain_id` | `string \| null` | No | O | Blockchain chain ID for on-chain settlement |
+| `close_time` | `string \| null` | No | K P O | Scheduled market close time (ISO 8601). No new orders accepted after this time |
+| `condition_id` | `string \| null` | No | P O | CTF (Conditional Token Framework) condition ID for on-chain settlement |
+| `created_at` | `string \| null` | No | K P O | When the market was first created on the exchange (ISO 8601) |
+| `denomination_token` | `string \| null` | No | P O | Address of the settlement token (e.g., USDC contract address) |
+| `description` | `string` | Yes | K P O | Human-readable market description. Kalshi uses subtitle or rules; Polymarket and Opinion use description |
+| `event_id` | `string \| null` | No | K P O | Canonical OpenPX event ID for cross-exchange grouping (derived from `group_id` via hash) |
+| `exchange` | `string` | Yes | K P O | Exchange identifier: `"kalshi"`, `"polymarket"`, or `"opinion"` |
+| `group_id` | `string \| null` | No | K P O | Native event/group ID from the exchange (e.g., Kalshi `event_ticker`, Polymarket event ID) |
+| `icon_url` | `string \| null` | No | P | URL to the market's icon image |
+| `id` | `string` | Yes | K P O | Native market ID on the exchange (e.g., Kalshi ticker, Polymarket market ID) |
+| `image_url` | `string \| null` | No | P | URL to the market's banner image |
+| `last_trade_price` | `number \| null` | No | K P | Most recent trade price for the Yes outcome, normalized 0-1 |
+| `liquidity` | `number \| null` | No | P O | Total liquidity available in the market orderbook (USD) |
+| `maker_fee_bps` | `number \| null` | No | P | Base maker fee rate in basis points (1 bps = 0.01%) |
+| `market_type` | `MarketType` | Yes | K P O | `binary` (Yes/No), `categorical` (multiple outcomes), or `scalar` (numeric range) |
+| `min_order_size` | `number \| null` | No | P | Minimum order size in contracts |
+| `neg_risk` | `boolean \| null` | No | P | Whether this is a neg-risk market (Polymarket multi-outcome markets using the NegRisk adapter) |
+| `neg_risk_market_id` | `string \| null` | No | P | Neg-risk market ID for multi-outcome Polymarket markets |
+| `notional_value` | `number \| null` | No | K | Dollar value per contract at expiry |
+| `open_interest` | `number \| null` | No | K O | Total number of outstanding contracts |
+| `open_time` | `string \| null` | No | K P | When the market opened for trading (ISO 8601) |
+| `openpx_id` | `string` | Yes | K P O | Primary key in `{exchange}:{native_id}` format (e.g., `kalshi:TICKER-123`) |
+| `outcome_prices` | `Record<string, number>` | No | K P | Map of outcome label to current price, normalized 0-1 (e.g., `{"Yes": 0.65, "No": 0.35}`). Omitted when empty |
+| `outcome_tokens` | `OutcomeToken[]` | Yes | P O | Maps each outcome to its on-chain token ID for orderbook subscriptions and trading. Empty array for Kalshi |
+| `outcomes` | `string[]` | Yes | K P O | Ordered list of outcome labels (e.g., `["Yes", "No"]` for binary markets) |
+| `previous_price` | `number \| null` | No | K | Previous settlement period's Yes price, normalized 0-1 |
+| `price_change_1d` | `number \| null` | No | P | 24-hour price change as a decimal (e.g., 0.05 = +5%) |
+| `price_change_1h` | `number \| null` | No | P | 1-hour price change as a decimal (e.g., 0.05 = +5%) |
+| `price_change_1mo` | `number \| null` | No | P | 30-day price change as a decimal |
+| `price_change_1wk` | `number \| null` | No | P | 7-day price change as a decimal |
+| `price_level_structure` | `string \| null` | No | K | Sub-penny pricing tier structure identifier |
+| `question` | `string \| null` | No | P O | Full market question text, may differ from `title` |
+| `question_id` | `string \| null` | No | P O | Exchange-specific question identifier |
+| `result` | `string \| null` | No | K | Resolution result after market settles (e.g., `"yes"`, `"no"`) |
+| `rules` | `string \| null` | No | K O | Resolution criteria describing how the market outcome will be determined |
+| `settlement_time` | `string \| null` | No | K O | When the market was or will be settled/resolved (ISO 8601) |
+| `settlement_value` | `number \| null` | No | K | Final settlement price, normalized 0-1 |
+| `slug` | `string \| null` | No | P | URL-friendly market identifier |
+| `spread` | `number \| null` | No | K P | Bid-ask spread on the Yes outcome (`best_ask - best_bid`) |
+| `status` | `MarketStatus` | Yes | K P O | Normalized lifecycle state: `active` (trading), `closed` (no trading), or `resolved` (settled) |
+| `taker_fee_bps` | `number \| null` | No | P | Base taker fee rate in basis points (1 bps = 0.01%) |
+| `tick_size` | `number \| null` | No | K P O | Minimum price increment as a decimal (e.g., 0.01 = 1 cent). Kalshi/Polymarket default 0.01, Opinion 0.001 |
+| `title` | `string` | Yes | K P O | Market headline text |
+| `token_id_no` | `string \| null` | No | P O | Token ID for the No outcome, used in CLOB order placement |
+| `token_id_yes` | `string \| null` | No | P O | Token ID for the Yes outcome, used in CLOB order placement |
+| `volume` | `number` | Yes | K P O | All-time total trading volume in USD |
+| `volume_1mo` | `number \| null` | No | P | Rolling 30-day trading volume in USD |
+| `volume_1wk` | `number \| null` | No | P O | Rolling 7-day trading volume in USD |
+| `volume_24h` | `number \| null` | No | P O | Rolling 24-hour trading volume in USD |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Market {
-    pub close_time: Option<DateTime<Utc>>,
-    pub description: Option<String>,
+    pub openpx_id: String,
+    pub exchange: String,
     pub id: String,
-    pub liquidity: f64,
-    pub metadata: Option<serde_json::Value>,
+    pub group_id: Option<String>,
+    pub event_id: Option<String>,
+    pub title: String,
+    pub question: Option<String>,
+    pub description: String,
+    pub slug: Option<String>,
+    pub rules: Option<String>,
+    pub status: MarketStatus,
+    pub market_type: MarketType,
+    pub accepting_orders: bool,
     pub outcomes: Vec<String>,
-    pub prices: HashMap<String, f64>,
-    pub question: String,
-    pub tick_size: f64,
+    pub outcome_tokens: Vec<OutcomeToken>,
+    pub outcome_prices: HashMap<String, f64>,
+    pub token_id_yes: Option<String>,
+    pub token_id_no: Option<String>,
+    pub condition_id: Option<String>,
+    pub question_id: Option<String>,
     pub volume: f64,
+    pub volume_24h: Option<f64>,
+    pub volume_1wk: Option<f64>,
+    pub volume_1mo: Option<f64>,
+    pub liquidity: Option<f64>,
+    pub open_interest: Option<f64>,
+    pub last_trade_price: Option<f64>,
+    pub best_bid: Option<f64>,
+    pub best_ask: Option<f64>,
+    pub spread: Option<f64>,
+    pub price_change_1d: Option<f64>,
+    pub price_change_1h: Option<f64>,
+    pub price_change_1wk: Option<f64>,
+    pub price_change_1mo: Option<f64>,
+    pub tick_size: Option<f64>,
+    pub min_order_size: Option<f64>,
+    pub close_time: Option<DateTime<Utc>>,
+    pub open_time: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub settlement_time: Option<DateTime<Utc>>,
+    pub image_url: Option<String>,
+    pub icon_url: Option<String>,
+    pub neg_risk: Option<bool>,
+    pub neg_risk_market_id: Option<String>,
+    pub maker_fee_bps: Option<f64>,
+    pub taker_fee_bps: Option<f64>,
+    pub denomination_token: Option<String>,
+    pub chain_id: Option<String>,
+    pub notional_value: Option<f64>,
+    pub price_level_structure: Option<String>,
+    pub settlement_value: Option<f64>,
+    pub previous_price: Option<f64>,
+    pub can_close_early: Option<bool>,
+    pub result: Option<String>,
 }
 ```
 
@@ -47,16 +137,60 @@ pub struct Market {
 
 ```python
 class Market(BaseModel):
-    close_time: Optional[datetime]
-    description: Optional[str] = None
+    openpx_id: str
+    exchange: str
     id: str
-    liquidity: float
-    metadata: Optional[Any] = None
+    group_id: Optional[str]
+    event_id: Optional[str]
+    title: str
+    question: Optional[str]
+    description: str
+    slug: Optional[str]
+    rules: Optional[str]
+    status: MarketStatus
+    market_type: MarketType
+    accepting_orders: bool
     outcomes: list[str]
-    prices: dict[str, float]
-    question: str
-    tick_size: float
+    outcome_tokens: list[OutcomeToken]
+    outcome_prices: Optional[dict[str, float]] = None
+    token_id_yes: Optional[str]
+    token_id_no: Optional[str]
+    condition_id: Optional[str]
+    question_id: Optional[str]
     volume: float
+    volume_24h: Optional[float]
+    volume_1wk: Optional[float]
+    volume_1mo: Optional[float]
+    liquidity: Optional[float]
+    open_interest: Optional[float]
+    last_trade_price: Optional[float]
+    best_bid: Optional[float]
+    best_ask: Optional[float]
+    spread: Optional[float]
+    price_change_1d: Optional[float]
+    price_change_1h: Optional[float]
+    price_change_1wk: Optional[float]
+    price_change_1mo: Optional[float]
+    tick_size: Optional[float]
+    min_order_size: Optional[float]
+    close_time: Optional[datetime]
+    open_time: Optional[datetime]
+    created_at: Optional[datetime]
+    settlement_time: Optional[datetime]
+    image_url: Optional[str]
+    icon_url: Optional[str]
+    neg_risk: Optional[bool]
+    neg_risk_market_id: Optional[str]
+    maker_fee_bps: Optional[float]
+    taker_fee_bps: Optional[float]
+    denomination_token: Optional[str]
+    chain_id: Optional[str]
+    notional_value: Optional[float]
+    price_level_structure: Optional[str]
+    settlement_value: Optional[float]
+    previous_price: Optional[float]
+    can_close_early: Optional[bool]
+    result: Optional[str]
 ```
 
 </TabItem>
@@ -64,16 +198,60 @@ class Market(BaseModel):
 
 ```typescript
 interface Market {
-  close_time?: string | null;
-  description?: string;
+  openpx_id: string;
+  exchange: string;
   id: string;
-  liquidity: number;
-  metadata?: unknown;
+  group_id?: string | null;
+  event_id?: string | null;
+  title: string;
+  question?: string | null;
+  description: string;
+  slug?: string | null;
+  rules?: string | null;
+  status: MarketStatus;
+  market_type: MarketType;
+  accepting_orders: boolean;
   outcomes: string[];
-  prices: Record<string, number>;
-  question: string;
-  tick_size: number;
+  outcome_tokens: OutcomeToken[];
+  outcome_prices?: Record<string, number>;
+  token_id_yes?: string | null;
+  token_id_no?: string | null;
+  condition_id?: string | null;
+  question_id?: string | null;
   volume: number;
+  volume_24h?: number | null;
+  volume_1wk?: number | null;
+  volume_1mo?: number | null;
+  liquidity?: number | null;
+  open_interest?: number | null;
+  last_trade_price?: number | null;
+  best_bid?: number | null;
+  best_ask?: number | null;
+  spread?: number | null;
+  price_change_1d?: number | null;
+  price_change_1h?: number | null;
+  price_change_1wk?: number | null;
+  price_change_1mo?: number | null;
+  tick_size?: number | null;
+  min_order_size?: number | null;
+  close_time?: string | null;
+  open_time?: string | null;
+  created_at?: string | null;
+  settlement_time?: string | null;
+  image_url?: string | null;
+  icon_url?: string | null;
+  neg_risk?: boolean | null;
+  neg_risk_market_id?: string | null;
+  maker_fee_bps?: number | null;
+  taker_fee_bps?: number | null;
+  denomination_token?: string | null;
+  chain_id?: string | null;
+  notional_value?: number | null;
+  price_level_structure?: string | null;
+  settlement_value?: number | null;
+  previous_price?: number | null;
+  can_close_early?: boolean | null;
+  result?: string | null;
 }
 ```
 
@@ -119,12 +297,49 @@ type MarketStatus = "active" | "closed" | "resolved";
 
 ---
 
+### MarketType
+
+Enum with variants: `binary`, `categorical`, `scalar`
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub enum MarketType {
+    Binary,
+    Categorical,
+    Scalar,
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+class MarketType(str, Enum):
+    BINARY = "binary"
+    CATEGORICAL = "categorical"
+    SCALAR = "scalar"
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+type MarketType = "binary" | "categorical" | "scalar";
+```
+
+</TabItem>
+</Tabs>
+
+---
+
 ### OutcomeToken
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `outcome` | `string` | Yes |  |
-| `token_id` | `string` | Yes |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `outcome` | `string` | Yes | P O | Outcome label (e.g., `"Yes"`, `"No"`, or a named outcome for categorical markets) |
+| `token_id` | `string` | Yes | P O | On-chain token identifier used for orderbook subscriptions and CLOB trading |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -160,219 +375,38 @@ interface OutcomeToken {
 
 ---
 
-### UnifiedMarket
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `best_ask` | `number | null` | No | Best ask price (normalized 0-1) |
-| `best_bid` | `number | null` | No | Best bid price (normalized 0-1) |
-| `close_time` | `string | null` | No | Market close time |
-| `condition_id` | `string | null` | No | Condition ID for CTF (nullable) |
-| `description` | `string` | Yes | Full description/rules |
-| `event_id` | `string | null` | No | Canonical OpenPX event ID used for cross-exchange event grouping. SDK users should prefer this over exchange-specific `group_id`. |
-| `exchange` | `string` | Yes | Exchange identifier (kalshi, polymarket, etc.) |
-| `group_id` | `string | null` | No | Source-native event/group ID from the exchange. Keep this raw so advanced users can reason about exchange internals. |
-| `icon_url` | `string | null` | No | Market icon URL |
-| `id` | `string` | Yes | Native exchange market ID |
-| `image_url` | `string | null` | No | Market image URL |
-| `last_trade_price` | `number | null` | No | Last trade price (normalized 0-1) |
-| `liquidity` | `number | null` | No | Current liquidity (nullable) |
-| `market_type` | `string` | Yes | Market type (binary, categorical, etc.) |
-| `min_order_size` | `number | null` | No | Minimum order size (contracts). Exchange-specific: Polymarket varies per market (e.g. 5, 15); Kalshi defaults to 1. |
-| `open_interest` | `number | null` | No | Current open interest (contracts/pairs) |
-| `open_time` | `string | null` | No | Market open time |
-| `openpx_id` | `string` | Yes | Primary key: \{exchange\}:\{native_id\} |
-| `outcome_prices` | `Record<string, number>` | No | Outcome prices from the REST API (e.g., \{"Yes": 0.65, "No": 0.35\}) |
-| `outcome_tokens` | `OutcomeToken[]` | No | Outcome-to-token mapping for orderbook subscriptions |
-| `outcomes` | `string[]` | No | Outcome labels (e.g., ["Yes", "No"] for binary markets) |
-| `price_change_1d` | `number | null` | No | 24-hour YES price change (decimal, e.g. 0.05 = +5%) |
-| `price_change_1h` | `number | null` | No | 1-hour YES price change (decimal, e.g. -0.02 = -2%) |
-| `price_change_1mo` | `number | null` | No | 30-day YES price change (decimal) |
-| `price_change_1wk` | `number | null` | No | 7-day YES price change (decimal) |
-| `question` | `string | null` | No | Market question (nullable, may differ from title) |
-| `slug` | `string | null` | No | URL-friendly identifier (nullable) |
-| `spread` | `number | null` | No | Bid-ask spread (decimal) |
-| `status` | `unknown` | Yes | Normalized status: Active, Closed, Resolved |
-| `tick_size` | `number | null` | No | Tick size (minimum price increment). Normalized to decimal (e.g. 0.01 = 1 cent). |
-| `title` | `string` | Yes | Market title |
-| `token_id_no` | `string | null` | No | No outcome token ID (nullable) |
-| `token_id_yes` | `string | null` | No | Yes outcome token ID (nullable) |
-| `volume` | `number` | Yes | Total volume (integer, coerced from f64/string) |
-| `volume_1mo` | `number | null` | No | 30-day rolling trading volume (USDC) |
-| `volume_1wk` | `number | null` | No | 7-day rolling trading volume (USDC) |
-| `volume_24h` | `number | null` | No | 24-hour trading volume (USDC) |
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct UnifiedMarket {
-    pub best_ask: Option<f64>,
-    pub best_bid: Option<f64>,
-    pub close_time: Option<DateTime<Utc>>,
-    pub condition_id: Option<String>,
-    pub description: String,
-    pub event_id: Option<String>,
-    pub exchange: String,
-    pub group_id: Option<String>,
-    pub icon_url: Option<String>,
-    pub id: String,
-    pub image_url: Option<String>,
-    pub last_trade_price: Option<f64>,
-    pub liquidity: Option<i64>,
-    pub market_type: String,
-    pub min_order_size: Option<f64>,
-    pub open_interest: Option<f64>,
-    pub open_time: Option<DateTime<Utc>>,
-    pub openpx_id: String,
-    pub outcome_prices: Option<HashMap<String, f64>>,
-    pub outcome_tokens: Option<Vec<OutcomeToken>>,
-    pub outcomes: Option<Vec<String>>,
-    pub price_change_1d: Option<f64>,
-    pub price_change_1h: Option<f64>,
-    pub price_change_1mo: Option<f64>,
-    pub price_change_1wk: Option<f64>,
-    pub question: Option<String>,
-    pub slug: Option<String>,
-    pub spread: Option<f64>,
-    pub status: serde_json::Value,
-    pub tick_size: Option<f64>,
-    pub title: String,
-    pub token_id_no: Option<String>,
-    pub token_id_yes: Option<String>,
-    pub volume: i64,
-    pub volume_1mo: Option<i64>,
-    pub volume_1wk: Option<i64>,
-    pub volume_24h: Option<i64>,
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class UnifiedMarket(BaseModel):
-    best_ask: Optional[float]
-    best_bid: Optional[float]
-    close_time: Optional[datetime]
-    condition_id: Optional[str]
-    description: str
-    event_id: Optional[str]
-    exchange: str
-    group_id: Optional[str]
-    icon_url: Optional[str]
-    id: str
-    image_url: Optional[str]
-    last_trade_price: Optional[float]
-    liquidity: Optional[int]
-    market_type: str
-    min_order_size: Optional[float]
-    open_interest: Optional[float]
-    open_time: Optional[datetime]
-    openpx_id: str
-    outcome_prices: Optional[dict[str, float]] = None
-    outcome_tokens: Optional[list[OutcomeToken]] = None
-    outcomes: Optional[list[str]] = None
-    price_change_1d: Optional[float]
-    price_change_1h: Optional[float]
-    price_change_1mo: Optional[float]
-    price_change_1wk: Optional[float]
-    question: Optional[str]
-    slug: Optional[str]
-    spread: Optional[float]
-    status: Any
-    tick_size: Optional[float]
-    title: str
-    token_id_no: Optional[str]
-    token_id_yes: Optional[str]
-    volume: int
-    volume_1mo: Optional[int]
-    volume_1wk: Optional[int]
-    volume_24h: Optional[int]
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface UnifiedMarket {
-  best_ask?: number | null;
-  best_bid?: number | null;
-  close_time?: string | null;
-  condition_id?: string | null;
-  description: string;
-  event_id?: string | null;
-  exchange: string;
-  group_id?: string | null;
-  icon_url?: string | null;
-  id: string;
-  image_url?: string | null;
-  last_trade_price?: number | null;
-  liquidity?: number | null;
-  market_type: string;
-  min_order_size?: number | null;
-  open_interest?: number | null;
-  open_time?: string | null;
-  openpx_id: string;
-  outcome_prices?: Record<string, number>;
-  outcome_tokens?: OutcomeToken[];
-  outcomes?: string[];
-  price_change_1d?: number | null;
-  price_change_1h?: number | null;
-  price_change_1mo?: number | null;
-  price_change_1wk?: number | null;
-  question?: string | null;
-  slug?: string | null;
-  spread?: number | null;
-  status: unknown;
-  tick_size?: number | null;
-  title: string;
-  token_id_no?: string | null;
-  token_id_yes?: string | null;
-  volume: number;
-  volume_1mo?: number | null;
-  volume_1wk?: number | null;
-  volume_24h?: number | null;
-}
-```
-
-</TabItem>
-</Tabs>
-
----
-
 ## Orders & Trading
 
 ### Fill
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `created_at` | `string` | Yes |  |
-| `fee` | `number` | Yes |  |
-| `fill_id` | `string` | Yes |  |
-| `is_taker` | `boolean` | Yes |  |
-| `market_id` | `string` | Yes |  |
-| `order_id` | `string` | Yes |  |
-| `outcome` | `string` | Yes |  |
-| `price` | `number` | Yes |  |
-| `side` | `OrderSide` | Yes |  |
-| `size` | `number` | Yes |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `created_at` | `string` | Yes | K P | Fill execution timestamp (ISO 8601) |
+| `fee` | `number` | Yes | K | Fee charged for this fill in USD. Polymarket: always `0.0` via REST |
+| `fill_id` | `string` | Yes | K P | Unique fill identifier |
+| `is_taker` | `boolean` | Yes | K | Whether this fill was on the taker side. Polymarket: always `false` via REST |
+| `market_id` | `string` | Yes | K P | Native market ID the fill occurred on |
+| `order_id` | `string` | Yes | K | Parent order ID that generated this fill. Polymarket: empty string via REST |
+| `outcome` | `string` | Yes | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
+| `side` | `OrderSide` | Yes | K P | Whether the order was a `buy` or `sell` |
+| `size` | `number` | Yes | K P | Number of contracts filled |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Fill {
-    pub created_at: DateTime<Utc>,
-    pub fee: f64,
     pub fill_id: String,
-    pub is_taker: bool,
-    pub market_id: String,
     pub order_id: String,
+    pub market_id: String,
     pub outcome: String,
-    pub price: f64,
     pub side: OrderSide,
+    pub price: f64,
     pub size: f64,
+    pub is_taker: bool,
+    pub fee: f64,
+    pub created_at: DateTime<Utc>,
 }
 ```
 
@@ -381,16 +415,16 @@ pub struct Fill {
 
 ```python
 class Fill(BaseModel):
-    created_at: datetime
-    fee: float
     fill_id: str
-    is_taker: bool
-    market_id: str
     order_id: str
+    market_id: str
     outcome: str
-    price: float
     side: OrderSide
+    price: float
     size: float
+    is_taker: bool
+    fee: float
+    created_at: datetime
 ```
 
 </TabItem>
@@ -398,16 +432,16 @@ class Fill(BaseModel):
 
 ```typescript
 interface Fill {
-  created_at: string;
-  fee: number;
   fill_id: string;
-  is_taker: boolean;
-  market_id: string;
   order_id: string;
+  market_id: string;
   outcome: string;
-  price: number;
   side: OrderSide;
+  price: number;
   size: number;
+  is_taker: boolean;
+  fee: number;
+  created_at: string;
 }
 ```
 
@@ -453,33 +487,33 @@ type LiquidityRole = "maker" | "taker";
 
 ### Order
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `created_at` | `string` | Yes |  |
-| `filled` | `number` | Yes |  |
-| `id` | `string` | Yes |  |
-| `market_id` | `string` | Yes |  |
-| `outcome` | `string` | Yes |  |
-| `price` | `number` | Yes |  |
-| `side` | `OrderSide` | Yes |  |
-| `size` | `number` | Yes |  |
-| `status` | `OrderStatus` | Yes |  |
-| `updated_at` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `created_at` | `string` | Yes | K P O | When the order was placed (ISO 8601) |
+| `filled` | `number` | Yes | K P O | Number of contracts filled so far |
+| `id` | `string` | Yes | K P O | Exchange-assigned order identifier |
+| `market_id` | `string` | Yes | K P O | Native market ID this order belongs to |
+| `outcome` | `string` | Yes | K P O | Outcome being traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P O | Limit price, normalized 0-1 |
+| `side` | `OrderSide` | Yes | K P O | Whether the order is a `buy` or `sell` |
+| `size` | `number` | Yes | K P O | Total order size in contracts |
+| `status` | `OrderStatus` | Yes | K P O | Current lifecycle state of the order |
+| `updated_at` | `string \| null` | No | K | When the order was last modified (ISO 8601) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Order {
-    pub created_at: DateTime<Utc>,
-    pub filled: f64,
     pub id: String,
     pub market_id: String,
     pub outcome: String,
-    pub price: f64,
     pub side: OrderSide,
+    pub price: f64,
     pub size: f64,
+    pub filled: f64,
     pub status: OrderStatus,
+    pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 ```
@@ -489,15 +523,15 @@ pub struct Order {
 
 ```python
 class Order(BaseModel):
-    created_at: datetime
-    filled: float
     id: str
     market_id: str
     outcome: str
-    price: float
     side: OrderSide
+    price: float
     size: float
+    filled: float
     status: OrderStatus
+    created_at: datetime
     updated_at: Optional[datetime]
 ```
 
@@ -506,15 +540,15 @@ class Order(BaseModel):
 
 ```typescript
 interface Order {
-  created_at: string;
-  filled: number;
   id: string;
   market_id: string;
   outcome: string;
-  price: number;
   side: OrderSide;
+  price: number;
   size: number;
+  filled: number;
   status: OrderStatus;
+  created_at: string;
   updated_at?: string | null;
 }
 ```
@@ -606,6 +640,10 @@ type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancell
 
 Enum with variants: `gtc`, `ioc`, `fok`
 
+- **GTC** (good-til-cancelled) — rests on the book until filled or cancelled
+- **IOC** (immediate-or-cancel) — fills what it can immediately, cancels the rest
+- **FOK** (fill-or-kill) — must fill entirely in one shot or is cancelled
+
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
@@ -641,120 +679,26 @@ type OrderType = "gtc" | "ioc" | "fok";
 
 ## Account & Positions
 
-### DeltaInfo
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `delta` | `number` | Yes |  |
-| `max_outcome` | `string | null` | No |  |
-| `max_position` | `number` | Yes |  |
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct DeltaInfo {
-    pub delta: f64,
-    pub max_outcome: Option<String>,
-    pub max_position: f64,
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class DeltaInfo(BaseModel):
-    delta: float
-    max_outcome: Optional[str]
-    max_position: float
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface DeltaInfo {
-  delta: number;
-  max_outcome?: string | null;
-  max_position: number;
-}
-```
-
-</TabItem>
-</Tabs>
-
----
-
-### Nav
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `cash` | `number` | Yes |  |
-| `nav` | `number` | Yes |  |
-| `positions` | `PositionBreakdown[]` | Yes |  |
-| `positions_value` | `number` | Yes |  |
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct Nav {
-    pub cash: f64,
-    pub nav: f64,
-    pub positions: Vec<PositionBreakdown>,
-    pub positions_value: f64,
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class Nav(BaseModel):
-    cash: float
-    nav: float
-    positions: list[PositionBreakdown]
-    positions_value: float
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface Nav {
-  cash: number;
-  nav: number;
-  positions: PositionBreakdown[];
-  positions_value: number;
-}
-```
-
-</TabItem>
-</Tabs>
-
----
-
 ### Position
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `average_price` | `number` | Yes |  |
-| `current_price` | `number` | Yes |  |
-| `market_id` | `string` | Yes |  |
-| `outcome` | `string` | Yes |  |
-| `size` | `number` | Yes |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `average_price` | `number` | Yes | K P O | Volume-weighted average entry price, normalized 0-1 |
+| `current_price` | `number` | Yes | K P O | Current market price for this outcome, normalized 0-1 |
+| `market_id` | `string` | Yes | K P O | Native market ID this position belongs to |
+| `outcome` | `string` | Yes | K P O | Outcome held (e.g., `"Yes"`, `"No"`) |
+| `size` | `number` | Yes | K P O | Number of contracts held |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Position {
-    pub average_price: f64,
-    pub current_price: f64,
     pub market_id: String,
     pub outcome: String,
     pub size: f64,
+    pub average_price: f64,
+    pub current_price: f64,
 }
 ```
 
@@ -763,11 +707,11 @@ pub struct Position {
 
 ```python
 class Position(BaseModel):
-    average_price: float
-    current_price: float
     market_id: str
     outcome: str
     size: float
+    average_price: float
+    current_price: float
 ```
 
 </TabItem>
@@ -775,60 +719,11 @@ class Position(BaseModel):
 
 ```typescript
 interface Position {
-  average_price: number;
-  current_price: number;
   market_id: string;
   outcome: string;
   size: number;
-}
-```
-
-</TabItem>
-</Tabs>
-
----
-
-### PositionBreakdown
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `current_price` | `number` | Yes |  |
-| `outcome` | `string` | Yes |  |
-| `size` | `number` | Yes |  |
-| `value` | `number` | Yes |  |
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct PositionBreakdown {
-    pub current_price: f64,
-    pub outcome: String,
-    pub size: f64,
-    pub value: f64,
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class PositionBreakdown(BaseModel):
-    current_price: float
-    outcome: str
-    size: float
-    value: float
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface PositionBreakdown {
+  average_price: number;
   current_price: number;
-  outcome: string;
-  size: number;
-  value: number;
 }
 ```
 
@@ -841,25 +736,25 @@ interface PositionBreakdown {
 
 ### Orderbook
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `asks` | `PriceLevel[]` | Yes |  |
-| `asset_id` | `string` | Yes |  |
-| `bids` | `PriceLevel[]` | Yes |  |
-| `last_update_id` | `number | null` | No |  |
-| `market_id` | `string` | Yes |  |
-| `timestamp` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `asks` | `PriceLevel[]` | Yes | K P O | Ask-side price levels, sorted ascending by price (lowest first) |
+| `asset_id` | `string` | Yes | K P O | Token ID this orderbook represents |
+| `bids` | `PriceLevel[]` | Yes | K P O | Bid-side price levels, sorted descending by price (highest first) |
+| `last_update_id` | `number \| null` | No | — | Sequence number for delta ordering (not currently populated) |
+| `market_id` | `string` | Yes | K | Native market ID. Polymarket and Opinion set this to the `market_id` from the request |
+| `timestamp` | `string \| null` | No | K P O | When this snapshot was captured (ISO 8601) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Orderbook {
-    pub asks: Vec<PriceLevel>,
+    pub market_id: String,
     pub asset_id: String,
     pub bids: Vec<PriceLevel>,
+    pub asks: Vec<PriceLevel>,
     pub last_update_id: Option<u64>,
-    pub market_id: String,
     pub timestamp: Option<DateTime<Utc>>,
 }
 ```
@@ -869,11 +764,11 @@ pub struct Orderbook {
 
 ```python
 class Orderbook(BaseModel):
-    asks: list[PriceLevel]
+    market_id: str
     asset_id: str
     bids: list[PriceLevel]
+    asks: list[PriceLevel]
     last_update_id: Optional[int]
-    market_id: str
     timestamp: Optional[datetime]
 ```
 
@@ -882,11 +777,11 @@ class Orderbook(BaseModel):
 
 ```typescript
 interface Orderbook {
-  asks: PriceLevel[];
+  market_id: string;
   asset_id: string;
   bids: PriceLevel[];
+  asks: PriceLevel[];
   last_update_id?: number | null;
-  market_id: string;
   timestamp?: string | null;
 }
 ```
@@ -898,24 +793,26 @@ interface Orderbook {
 
 ### OrderbookSnapshot
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `asks` | `PriceLevel[]` | Yes |  |
-| `bids` | `PriceLevel[]` | Yes |  |
-| `hash` | `string | null` | No |  |
-| `recorded_at` | `string | null` | No |  |
-| `timestamp` | `string` | Yes |  |
+A point-in-time L2 orderbook snapshot, used for historical orderbook data.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `asks` | `PriceLevel[]` | Yes | P | Ask-side price levels |
+| `bids` | `PriceLevel[]` | Yes | P | Bid-side price levels |
+| `hash` | `string \| null` | No | P | Content hash for deduplication |
+| `recorded_at` | `string \| null` | No | P | When this snapshot was recorded by the collector (ISO 8601) |
+| `timestamp` | `string` | Yes | P | Exchange-reported snapshot timestamp (ISO 8601) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct OrderbookSnapshot {
-    pub asks: Vec<PriceLevel>,
-    pub bids: Vec<PriceLevel>,
-    pub hash: Option<String>,
-    pub recorded_at: Option<DateTime<Utc>>,
     pub timestamp: DateTime<Utc>,
+    pub recorded_at: Option<DateTime<Utc>>,
+    pub hash: Option<String>,
+    pub bids: Vec<PriceLevel>,
+    pub asks: Vec<PriceLevel>,
 }
 ```
 
@@ -924,11 +821,11 @@ pub struct OrderbookSnapshot {
 
 ```python
 class OrderbookSnapshot(BaseModel):
-    asks: list[PriceLevel]
-    bids: list[PriceLevel]
-    hash: Optional[str]
-    recorded_at: Optional[datetime]
     timestamp: datetime
+    recorded_at: Optional[datetime]
+    hash: Optional[str]
+    bids: list[PriceLevel]
+    asks: list[PriceLevel]
 ```
 
 </TabItem>
@@ -936,11 +833,11 @@ class OrderbookSnapshot(BaseModel):
 
 ```typescript
 interface OrderbookSnapshot {
-  asks: PriceLevel[];
-  bids: PriceLevel[];
-  hash?: string | null;
-  recorded_at?: string | null;
   timestamp: string;
+  recorded_at?: string | null;
+  hash?: string | null;
+  bids: PriceLevel[];
+  asks: PriceLevel[];
 }
 ```
 
@@ -951,17 +848,19 @@ interface OrderbookSnapshot {
 
 ### PriceLevel
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `price` | `number` | Yes |  |
-| `size` | `number` | Yes |  |
+A single price/size pair in the orderbook. Price uses `FixedPrice` internally (integer-backed, scale factor 10,000) but serializes as a plain `number` on the wire.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `price` | `number` | Yes | K P O | Price level, normalized 0-1 |
+| `size` | `number` | Yes | K P O | Number of contracts available at this price |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct PriceLevel {
-    pub price: number,
+    pub price: FixedPrice, // serializes as f64
     pub size: f64,
 }
 ```
@@ -971,7 +870,7 @@ pub struct PriceLevel {
 
 ```python
 class PriceLevel(BaseModel):
-    price: number
+    price: float
     size: float
 ```
 
@@ -992,19 +891,21 @@ interface PriceLevel {
 
 ### PriceLevelChange
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `price` | `number` | Yes |  |
-| `side` | `PriceLevelSide` | Yes |  |
-| `size` | `number` | Yes |  |
+Incremental orderbook update with absolute replacement semantics: `size > 0` sets the level to this size, `size == 0` removes the level.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `price` | `number` | Yes | K P | Price level being updated, normalized 0-1 |
+| `side` | `PriceLevelSide` | Yes | K P | Whether this change applies to the `bid` or `ask` side |
+| `size` | `number` | Yes | K P | New size at this price level (0 = remove level) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct PriceLevelChange {
-    pub price: number,
     pub side: PriceLevelSide,
+    pub price: FixedPrice, // serializes as f64
     pub size: f64,
 }
 ```
@@ -1014,8 +915,8 @@ pub struct PriceLevelChange {
 
 ```python
 class PriceLevelChange(BaseModel):
-    price: number
     side: PriceLevelSide
+    price: float
     size: float
 ```
 
@@ -1024,8 +925,8 @@ class PriceLevelChange(BaseModel):
 
 ```typescript
 interface PriceLevelChange {
-  price: number;
   side: PriceLevelSide;
+  price: number;
   size: number;
 }
 ```
@@ -1074,28 +975,30 @@ type PriceLevelSide = "bid" | "ask";
 
 ### Candlestick
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `close` | `number` | Yes |  |
-| `high` | `number` | Yes |  |
-| `low` | `number` | Yes |  |
-| `open` | `number` | Yes |  |
-| `open_interest` | `number | null` | No | Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi). |
-| `timestamp` | `string` | Yes | Period start timestamp (UTC). lightweight-charts expects start-of-period. |
-| `volume` | `number` | Yes | Trade volume in contracts. 0.0 if exchange doesn't provide volume. |
+OHLCV candlestick data. All prices are normalized 0-1. Timestamp is the period **start** (not end).
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `close` | `number` | Yes | K P | Closing price for this period, normalized 0-1 |
+| `high` | `number` | Yes | K P | Highest price during this period, normalized 0-1 |
+| `low` | `number` | Yes | K P | Lowest price during this period, normalized 0-1 |
+| `open` | `number` | Yes | K P | Opening price for this period, normalized 0-1 |
+| `open_interest` | `number \| null` | No | K | Open interest at this candle's close. Only available from Kalshi |
+| `timestamp` | `string` | Yes | K P | Period start timestamp (ISO 8601, UTC) |
+| `volume` | `number` | Yes | K | Trade volume in contracts for this period. Polymarket: always `0.0` |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct Candlestick {
-    pub close: f64,
+    pub timestamp: DateTime<Utc>,
+    pub open: f64,
     pub high: f64,
     pub low: f64,
-    pub open: f64,
-    pub open_interest: Option<f64>,
-    pub timestamp: DateTime<Utc>,
+    pub close: f64,
     pub volume: f64,
+    pub open_interest: Option<f64>,
 }
 ```
 
@@ -1104,13 +1007,13 @@ pub struct Candlestick {
 
 ```python
 class Candlestick(BaseModel):
-    close: float
+    timestamp: datetime
+    open: float
     high: float
     low: float
-    open: float
-    open_interest: Optional[float]
-    timestamp: datetime
+    close: float
     volume: float
+    open_interest: Optional[float]
 ```
 
 </TabItem>
@@ -1118,13 +1021,13 @@ class Candlestick(BaseModel):
 
 ```typescript
 interface Candlestick {
-  close: number;
+  timestamp: string;
+  open: number;
   high: number;
   low: number;
-  open: number;
-  open_interest?: number | null;
-  timestamp: string;
+  close: number;
   volume: number;
+  open_interest?: number | null;
 }
 ```
 
@@ -1135,38 +1038,40 @@ interface Candlestick {
 
 ### MarketTrade
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `aggressor_side` | `string | null` | No |  |
-| `id` | `string | null` | No |  |
-| `no_price` | `number | null` | No |  |
-| `outcome` | `string | null` | No |  |
-| `price` | `number` | Yes |  |
-| `side` | `string | null` | No |  |
-| `size` | `number` | Yes |  |
-| `source_channel` | `string` | Yes |  |
-| `taker_address` | `string | null` | No |  |
-| `timestamp` | `string` | Yes |  |
-| `tx_hash` | `string | null` | No |  |
-| `yes_price` | `number | null` | No |  |
+Normalized public market trade, suitable for trade tape UIs. Prices are normalized 0-1.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
+| `id` | `string \| null` | No | K P | Exchange-assigned trade identifier |
+| `no_price` | `number \| null` | No | K P | Implied No outcome price at time of trade, normalized 0-1 |
+| `outcome` | `string \| null` | No | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
+| `side` | `string \| null` | No | P | Trade side label |
+| `size` | `number` | Yes | K P | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"rest"`, `"websocket"`) |
+| `taker_address` | `string \| null` | No | P | Taker's wallet address (on-chain markets only) |
+| `timestamp` | `string` | Yes | K P | Exchange-reported trade timestamp (ISO 8601, UTC) |
+| `tx_hash` | `string \| null` | No | P | On-chain transaction hash |
+| `yes_price` | `number \| null` | No | K P | Implied Yes outcome price at time of trade, normalized 0-1 |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct MarketTrade {
-    pub aggressor_side: Option<String>,
     pub id: Option<String>,
-    pub no_price: Option<f64>,
-    pub outcome: Option<String>,
     pub price: f64,
-    pub side: Option<String>,
     pub size: f64,
-    pub source_channel: String,
-    pub taker_address: Option<String>,
+    pub side: Option<String>,
+    pub aggressor_side: Option<String>,
     pub timestamp: DateTime<Utc>,
+    pub source_channel: Cow<'static, str>,
     pub tx_hash: Option<String>,
+    pub outcome: Option<String>,
     pub yes_price: Option<f64>,
+    pub no_price: Option<f64>,
+    pub taker_address: Option<String>,
 }
 ```
 
@@ -1175,18 +1080,18 @@ pub struct MarketTrade {
 
 ```python
 class MarketTrade(BaseModel):
-    aggressor_side: Optional[str]
     id: Optional[str]
-    no_price: Optional[float]
-    outcome: Optional[str]
     price: float
-    side: Optional[str]
     size: float
-    source_channel: str
-    taker_address: Optional[str]
+    side: Optional[str]
+    aggressor_side: Optional[str]
     timestamp: datetime
+    source_channel: str
     tx_hash: Optional[str]
+    outcome: Optional[str]
     yes_price: Optional[float]
+    no_price: Optional[float]
+    taker_address: Optional[str]
 ```
 
 </TabItem>
@@ -1194,18 +1099,18 @@ class MarketTrade(BaseModel):
 
 ```typescript
 interface MarketTrade {
-  aggressor_side?: string | null;
   id?: string | null;
-  no_price?: number | null;
-  outcome?: string | null;
   price: number;
-  side?: string | null;
   size: number;
-  source_channel: string;
-  taker_address?: string | null;
+  side?: string | null;
+  aggressor_side?: string | null;
   timestamp: string;
+  source_channel: string;
   tx_hash?: string | null;
+  outcome?: string | null;
   yes_price?: number | null;
+  no_price?: number | null;
+  taker_address?: string | null;
 }
 ```
 
@@ -1223,12 +1128,12 @@ Enum with variants: `1m`, `1h`, `6h`, `1d`, `1w`, `max`
 
 ```rust
 pub enum PriceHistoryInterval {
-    1m,
-    1h,
-    6h,
-    1d,
-    1w,
-    Max,
+    #[serde(rename = "1m")] OneMinute,
+    #[serde(rename = "1h")] OneHour,
+    #[serde(rename = "6h")] SixHours,
+    #[serde(rename = "1d")] OneDay,
+    #[serde(rename = "1w")] OneWeek,
+    #[serde(rename = "max")] Max,
 }
 ```
 
@@ -1237,11 +1142,11 @@ pub enum PriceHistoryInterval {
 
 ```python
 class PriceHistoryInterval(str, Enum):
-    1M = "1m"
-    1H = "1h"
-    6H = "6h"
-    1D = "1d"
-    1W = "1w"
+    ONE_MINUTE = "1m"
+    ONE_HOUR = "1h"
+    SIX_HOURS = "6h"
+    ONE_DAY = "1d"
+    ONE_WEEK = "1w"
     MAX = "max"
 ```
 
@@ -1296,19 +1201,21 @@ type ActivityEvent = "Trade" | "Fill";
 
 ### ActivityFill
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `asset_id` | `string` | Yes |  |
-| `fill_id` | `string | null` | No |  |
-| `liquidity_role` | `LiquidityRole | null` | No |  |
-| `market_id` | `string` | Yes |  |
-| `order_id` | `string | null` | No |  |
-| `outcome` | `string | null` | No |  |
-| `price` | `number` | Yes |  |
-| `side` | `string | null` | No |  |
-| `size` | `number` | Yes |  |
-| `source_channel` | `string` | Yes |  |
-| `timestamp` | `string | null` | No |  |
+A fill event received via WebSocket, representing a trade execution on one of your orders.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `asset_id` | `string` | Yes | K P | Token ID that was traded |
+| `fill_id` | `string \| null` | No | K P | Unique fill identifier |
+| `liquidity_role` | `LiquidityRole \| null` | No | K P | Whether you were `maker` or `taker` on this fill |
+| `market_id` | `string` | Yes | K P | Native market ID |
+| `order_id` | `string \| null` | No | K P | Parent order ID |
+| `outcome` | `string \| null` | No | K P | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
+| `side` | `string \| null` | No | K P | `"buy"` or `"sell"` |
+| `size` | `number` | Yes | K P | Number of contracts filled |
+| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"websocket"`) |
+| `timestamp` | `string \| null` | No | K P | Fill timestamp (ISO 8601) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1373,18 +1280,20 @@ interface ActivityFill {
 
 ### ActivityTrade
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `aggressor_side` | `string | null` | No |  |
-| `asset_id` | `string` | Yes |  |
-| `market_id` | `string` | Yes |  |
-| `outcome` | `string | null` | No |  |
-| `price` | `number` | Yes |  |
-| `side` | `string | null` | No |  |
-| `size` | `number` | Yes |  |
-| `source_channel` | `string` | Yes |  |
-| `timestamp` | `string | null` | No |  |
-| `trade_id` | `string | null` | No |  |
+A public trade event received via WebSocket.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
+| `asset_id` | `string` | Yes | K P | Token ID that was traded |
+| `market_id` | `string` | Yes | K P | Native market ID |
+| `outcome` | `string \| null` | No | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P | Trade price, normalized 0-1 |
+| `side` | `string \| null` | No | K P | Trade side label |
+| `size` | `number` | Yes | K P | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"websocket"`) |
+| `timestamp` | `string \| null` | No | K P | Trade timestamp (ISO 8601) |
+| `trade_id` | `string \| null` | No | K P | Exchange-assigned trade identifier |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1448,48 +1357,50 @@ interface ActivityTrade {
 
 ### ExchangeInfo
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `has_approvals` | `boolean` | Yes |  |
-| `has_cancel_order` | `boolean` | Yes |  |
-| `has_create_order` | `boolean` | Yes |  |
-| `has_fetch_balance` | `boolean` | Yes |  |
-| `has_fetch_events` | `boolean` | Yes |  |
-| `has_fetch_fills` | `boolean` | Yes |  |
-| `has_fetch_markets` | `boolean` | Yes |  |
-| `has_fetch_orderbook` | `boolean` | Yes |  |
-| `has_fetch_orderbook_history` | `boolean` | Yes |  |
-| `has_fetch_positions` | `boolean` | Yes |  |
-| `has_fetch_price_history` | `boolean` | Yes |  |
-| `has_fetch_trades` | `boolean` | Yes |  |
-| `has_fetch_user_activity` | `boolean` | Yes |  |
-| `has_refresh_balance` | `boolean` | Yes |  |
-| `has_websocket` | `boolean` | Yes |  |
-| `id` | `string` | Yes |  |
-| `name` | `string` | Yes |  |
+Describes the capabilities of an exchange instance. Boolean fields indicate which operations are available (some depend on authentication).
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `has_approvals` | `boolean` | Yes | P | Whether on-chain token approval management is available |
+| `has_cancel_order` | `boolean` | Yes | K P O | Whether order cancellation is supported |
+| `has_create_order` | `boolean` | Yes | K P O | Whether order placement is supported (requires auth) |
+| `has_fetch_balance` | `boolean` | Yes | K P O | Whether account balance queries are supported |
+| `has_fetch_events` | `boolean` | Yes | K P | Whether fetching event/group market listings is supported |
+| `has_fetch_fills` | `boolean` | Yes | K P | Whether fill/trade history queries are supported |
+| `has_fetch_markets` | `boolean` | Yes | K P O | Whether market listing is supported |
+| `has_fetch_orderbook` | `boolean` | Yes | K P O | Whether L2 orderbook snapshots are available |
+| `has_fetch_orderbook_history` | `boolean` | Yes | — | Whether historical orderbook snapshots are available (not currently supported) |
+| `has_fetch_positions` | `boolean` | Yes | K P O | Whether position queries are supported |
+| `has_fetch_price_history` | `boolean` | Yes | K P | Whether OHLCV candlestick data is available |
+| `has_fetch_trades` | `boolean` | Yes | K P | Whether public trade tape queries are supported |
+| `has_fetch_user_activity` | `boolean` | Yes | P O | Whether user activity feed is available |
+| `has_refresh_balance` | `boolean` | Yes | P | Whether cached balance refresh is available |
+| `has_websocket` | `boolean` | Yes | K P O | Whether real-time WebSocket streaming is supported (may require auth) |
+| `id` | `string` | Yes | K P O | Exchange identifier (e.g., `"kalshi"`, `"polymarket"`, `"opinion"`) |
+| `name` | `string` | Yes | K P O | Human-readable exchange name (e.g., `"Kalshi"`, `"Polymarket"`, `"Opinion"`) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct ExchangeInfo {
-    pub has_approvals: bool,
-    pub has_cancel_order: bool,
-    pub has_create_order: bool,
-    pub has_fetch_balance: bool,
-    pub has_fetch_events: bool,
-    pub has_fetch_fills: bool,
+    pub id: &'static str,
+    pub name: &'static str,
     pub has_fetch_markets: bool,
-    pub has_fetch_orderbook: bool,
-    pub has_fetch_orderbook_history: bool,
+    pub has_create_order: bool,
+    pub has_cancel_order: bool,
     pub has_fetch_positions: bool,
+    pub has_fetch_balance: bool,
+    pub has_fetch_orderbook: bool,
     pub has_fetch_price_history: bool,
     pub has_fetch_trades: bool,
+    pub has_fetch_events: bool,
     pub has_fetch_user_activity: bool,
+    pub has_fetch_fills: bool,
+    pub has_approvals: bool,
     pub has_refresh_balance: bool,
     pub has_websocket: bool,
-    pub id: String,
-    pub name: String,
+    pub has_fetch_orderbook_history: bool,
 }
 ```
 
@@ -1498,23 +1409,23 @@ pub struct ExchangeInfo {
 
 ```python
 class ExchangeInfo(BaseModel):
-    has_approvals: bool
-    has_cancel_order: bool
-    has_create_order: bool
-    has_fetch_balance: bool
-    has_fetch_events: bool
-    has_fetch_fills: bool
-    has_fetch_markets: bool
-    has_fetch_orderbook: bool
-    has_fetch_orderbook_history: bool
-    has_fetch_positions: bool
-    has_fetch_price_history: bool
-    has_fetch_trades: bool
-    has_fetch_user_activity: bool
-    has_refresh_balance: bool
-    has_websocket: bool
     id: str
     name: str
+    has_fetch_markets: bool
+    has_create_order: bool
+    has_cancel_order: bool
+    has_fetch_positions: bool
+    has_fetch_balance: bool
+    has_fetch_orderbook: bool
+    has_fetch_price_history: bool
+    has_fetch_trades: bool
+    has_fetch_events: bool
+    has_fetch_user_activity: bool
+    has_fetch_fills: bool
+    has_approvals: bool
+    has_refresh_balance: bool
+    has_websocket: bool
+    has_fetch_orderbook_history: bool
 ```
 
 </TabItem>
@@ -1522,64 +1433,23 @@ class ExchangeInfo(BaseModel):
 
 ```typescript
 interface ExchangeInfo {
-  has_approvals: boolean;
-  has_cancel_order: boolean;
-  has_create_order: boolean;
-  has_fetch_balance: boolean;
-  has_fetch_events: boolean;
-  has_fetch_fills: boolean;
-  has_fetch_markets: boolean;
-  has_fetch_orderbook: boolean;
-  has_fetch_orderbook_history: boolean;
-  has_fetch_positions: boolean;
-  has_fetch_price_history: boolean;
-  has_fetch_trades: boolean;
-  has_fetch_user_activity: boolean;
-  has_refresh_balance: boolean;
-  has_websocket: boolean;
   id: string;
   name: string;
-}
-```
-
-</TabItem>
-</Tabs>
-
----
-
-### FetchMarketsParams
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `cursor` | `string | null` | No | Exchange-specific cursor (offset, page number, or cursor string) |
-| `limit` | `number | null` | No |  |
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct FetchMarketsParams {
-    pub cursor: Option<String>,
-    pub limit: Option<i64>,
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class FetchMarketsParams(BaseModel):
-    cursor: Optional[str]
-    limit: Optional[int]
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface FetchMarketsParams {
-  cursor?: string | null;
-  limit?: number | null;
+  has_fetch_markets: boolean;
+  has_create_order: boolean;
+  has_cancel_order: boolean;
+  has_fetch_positions: boolean;
+  has_fetch_balance: boolean;
+  has_fetch_orderbook: boolean;
+  has_fetch_price_history: boolean;
+  has_fetch_trades: boolean;
+  has_fetch_events: boolean;
+  has_fetch_user_activity: boolean;
+  has_fetch_fills: boolean;
+  has_approvals: boolean;
+  has_refresh_balance: boolean;
+  has_websocket: boolean;
+  has_fetch_orderbook_history: boolean;
 }
 ```
 
@@ -1590,9 +1460,9 @@ interface FetchMarketsParams {
 
 ### FetchOrdersParams
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `market_id` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `market_id` | `string \| null` | No | K P O | Filter orders to a specific market |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1627,10 +1497,10 @@ interface FetchOrdersParams {
 
 ### FetchUserActivityParams
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `address` | `string` | Yes |  |
-| `limit` | `number | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `address` | `string` | Yes | P O | User wallet address to query activity for |
+| `limit` | `number \| null` | No | P O | Maximum number of results to return |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1668,26 +1538,26 @@ interface FetchUserActivityParams {
 
 ### OrderbookHistoryRequest
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `cursor` | `string | null` | No |  |
-| `end_ts` | `number | null` | No |  |
-| `limit` | `number | null` | No |  |
-| `market_id` | `string` | Yes |  |
-| `start_ts` | `number | null` | No |  |
-| `token_id` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `cursor` | `string \| null` | No | P | Opaque pagination cursor from a previous response |
+| `end_ts` | `number \| null` | No | P | End time filter (Unix seconds) |
+| `limit` | `number \| null` | No | P | Maximum number of snapshots per page |
+| `market_id` | `string` | Yes | P | Native market ID to fetch history for |
+| `start_ts` | `number \| null` | No | P | Start time filter (Unix seconds) |
+| `token_id` | `string \| null` | No | P | Filter to a specific token ID |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct OrderbookHistoryRequest {
-    pub cursor: Option<String>,
+    pub market_id: String,
+    pub token_id: Option<String>,
+    pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
     pub limit: Option<i64>,
-    pub market_id: String,
-    pub start_ts: Option<i64>,
-    pub token_id: Option<String>,
+    pub cursor: Option<String>,
 }
 ```
 
@@ -1696,12 +1566,12 @@ pub struct OrderbookHistoryRequest {
 
 ```python
 class OrderbookHistoryRequest(BaseModel):
-    cursor: Optional[str]
+    market_id: str
+    token_id: Optional[str]
+    start_ts: Optional[int]
     end_ts: Optional[int]
     limit: Optional[int]
-    market_id: str
-    start_ts: Optional[int]
-    token_id: Optional[str]
+    cursor: Optional[str]
 ```
 
 </TabItem>
@@ -1709,12 +1579,12 @@ class OrderbookHistoryRequest(BaseModel):
 
 ```typescript
 interface OrderbookHistoryRequest {
-  cursor?: string | null;
+  market_id: string;
+  token_id?: string | null;
+  start_ts?: number | null;
   end_ts?: number | null;
   limit?: number | null;
-  market_id: string;
-  start_ts?: number | null;
-  token_id?: string | null;
+  cursor?: string | null;
 }
 ```
 
@@ -1725,11 +1595,11 @@ interface OrderbookHistoryRequest {
 
 ### OrderbookRequest
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `market_id` | `string` | Yes |  |
-| `outcome` | `string | null` | No |  |
-| `token_id` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `market_id` | `string` | Yes | K P O | Native market ID to fetch the orderbook for |
+| `outcome` | `string \| null` | No | K O | Filter by outcome name (e.g., `"Yes"`). Required for non-binary Opinion markets |
+| `token_id` | `string \| null` | No | P | Directly specify the token ID to fetch. Bypasses outcome resolution |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1770,28 +1640,28 @@ interface OrderbookRequest {
 
 ### PriceHistoryRequest
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `condition_id` | `string | null` | No | Condition ID for OI enrichment (Polymarket). |
-| `end_ts` | `number | null` | No | Unix seconds |
-| `interval` | `PriceHistoryInterval` | Yes |  |
-| `market_id` | `string` | Yes |  |
-| `outcome` | `string | null` | No |  |
-| `start_ts` | `number | null` | No | Unix seconds |
-| `token_id` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `condition_id` | `string \| null` | No | P | Condition ID for open interest enrichment (Polymarket only) |
+| `end_ts` | `number \| null` | No | K P | End time filter (Unix seconds, inclusive) |
+| `interval` | `PriceHistoryInterval` | Yes | K P | Candle interval (e.g., `"1h"`, `"1d"`) |
+| `market_id` | `string` | Yes | K P | Native market ID to fetch candles for |
+| `outcome` | `string \| null` | No | K | Filter by outcome name (Kalshi only) |
+| `start_ts` | `number \| null` | No | K P | Start time filter (Unix seconds, inclusive) |
+| `token_id` | `string \| null` | No | P | Filter by token ID (Polymarket only) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct PriceHistoryRequest {
-    pub condition_id: Option<String>,
-    pub end_ts: Option<i64>,
-    pub interval: PriceHistoryInterval,
     pub market_id: String,
-    pub outcome: Option<String>,
-    pub start_ts: Option<i64>,
+    pub interval: PriceHistoryInterval,
     pub token_id: Option<String>,
+    pub start_ts: Option<i64>,
+    pub end_ts: Option<i64>,
+    pub outcome: Option<String>,
+    pub condition_id: Option<String>,
 }
 ```
 
@@ -1800,13 +1670,13 @@ pub struct PriceHistoryRequest {
 
 ```python
 class PriceHistoryRequest(BaseModel):
-    condition_id: Optional[str]
-    end_ts: Optional[int]
-    interval: PriceHistoryInterval
     market_id: str
-    outcome: Optional[str]
-    start_ts: Optional[int]
+    interval: PriceHistoryInterval
     token_id: Optional[str]
+    start_ts: Optional[int]
+    end_ts: Optional[int]
+    outcome: Optional[str]
+    condition_id: Optional[str]
 ```
 
 </TabItem>
@@ -1814,13 +1684,13 @@ class PriceHistoryRequest(BaseModel):
 
 ```typescript
 interface PriceHistoryRequest {
-  condition_id?: string | null;
-  end_ts?: number | null;
-  interval: PriceHistoryInterval;
   market_id: string;
-  outcome?: string | null;
-  start_ts?: number | null;
+  interval: PriceHistoryInterval;
   token_id?: string | null;
+  start_ts?: number | null;
+  end_ts?: number | null;
+  outcome?: string | null;
+  condition_id?: string | null;
 }
 ```
 
@@ -1831,30 +1701,30 @@ interface PriceHistoryRequest {
 
 ### TradesRequest
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `cursor` | `string | null` | No | Opaque pagination cursor from a previous response. |
-| `end_ts` | `number | null` | No | Unix seconds (inclusive) |
-| `limit` | `number | null` | No | Max number of trades to return (exchange-specific caps may apply). |
-| `market_id` | `string` | Yes | Exchange-native market identifier (as used by `UnifiedMarket.id` / `openpx_id`). |
-| `market_ref` | `string | null` | No | Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`. |
-| `outcome` | `string | null` | No |  |
-| `start_ts` | `number | null` | No | Unix seconds (inclusive) |
-| `token_id` | `string | null` | No |  |
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `cursor` | `string \| null` | No | K P | Opaque pagination cursor from a previous response |
+| `end_ts` | `number \| null` | No | K P | End time filter (Unix seconds, inclusive) |
+| `limit` | `number \| null` | No | K P | Maximum number of trades to return |
+| `market_id` | `string` | Yes | K P | Native market ID to fetch trades for |
+| `market_ref` | `string \| null` | No | P | Alternate market identifier (e.g., Polymarket `conditionId`) |
+| `outcome` | `string \| null` | No | K | Filter by outcome name (Kalshi only) |
+| `start_ts` | `number \| null` | No | K P | Start time filter (Unix seconds, inclusive) |
+| `token_id` | `string \| null` | No | P | Filter by token ID (Polymarket only) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub struct TradesRequest {
-    pub cursor: Option<String>,
+    pub market_id: String,
+    pub token_id: Option<String>,
+    pub market_ref: Option<String>,
+    pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
     pub limit: Option<i64>,
-    pub market_id: String,
-    pub market_ref: Option<String>,
+    pub cursor: Option<String>,
     pub outcome: Option<String>,
-    pub start_ts: Option<i64>,
-    pub token_id: Option<String>,
 }
 ```
 
@@ -1863,14 +1733,14 @@ pub struct TradesRequest {
 
 ```python
 class TradesRequest(BaseModel):
-    cursor: Optional[str]
+    market_id: str
+    token_id: Optional[str]
+    market_ref: Optional[str]
+    start_ts: Optional[int]
     end_ts: Optional[int]
     limit: Optional[int]
-    market_id: str
-    market_ref: Optional[str]
+    cursor: Optional[str]
     outcome: Optional[str]
-    start_ts: Optional[int]
-    token_id: Optional[str]
 ```
 
 </TabItem>
@@ -1878,47 +1748,15 @@ class TradesRequest(BaseModel):
 
 ```typescript
 interface TradesRequest {
-  cursor?: string | null;
+  market_id: string;
+  token_id?: string | null;
+  market_ref?: string | null;
+  start_ts?: number | null;
   end_ts?: number | null;
   limit?: number | null;
-  market_id: string;
-  market_ref?: string | null;
+  cursor?: string | null;
   outcome?: string | null;
-  start_ts?: number | null;
-  token_id?: string | null;
 }
-```
-
-</TabItem>
-</Tabs>
-
----
-
-### number
-
-*No fields*
-
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-pub struct number {}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-class number(BaseModel):
-    pass
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-interface number {}
 ```
 
 </TabItem>

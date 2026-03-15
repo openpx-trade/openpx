@@ -42,25 +42,10 @@ impl NativeExchange {
         pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (limit=None, cursor=None))]
-    fn fetch_markets<'py>(
-        &self,
-        py: Python<'py>,
-        limit: Option<usize>,
-        cursor: Option<String>,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn fetch_markets<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.detach(|| {
-            rt.block_on(async {
-                let params = if limit.is_some() || cursor.is_some() {
-                    Some(px_core::FetchMarketsParams { limit, cursor })
-                } else {
-                    None
-                };
-                inner.fetch_markets(params).await
-            })
-        });
+        let result = py.detach(|| rt.block_on(inner.fetch_markets()));
         let markets = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &markets).map_err(|e| to_py_err(e.to_string()))
     }
@@ -72,14 +57,6 @@ impl NativeExchange {
         let result = py.detach(|| rt.block_on(inner.fetch_market(&market_id)));
         let market = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &market).map_err(|e| to_py_err(e.to_string()))
-    }
-
-    fn fetch_all_unified_markets<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_all_unified_markets()));
-        let markets = result.map_err(|e| to_py_err(e.to_string()))?;
-        pythonize(py, &markets).map_err(|e| to_py_err(e.to_string()))
     }
 
     #[pyo3(signature = (market_id, outcome, side, price, size, params=None))]

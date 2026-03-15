@@ -18,7 +18,7 @@ body:
       placeholder: |
         ```rust
         let exchange = Kalshi::new(KalshiConfig::new())?;
-        let markets = exchange.fetch_markets(None).await?;
+        let markets = exchange.fetch_markets().await?;
         // Expected: markets list
         // Got: error XYZ
         ```

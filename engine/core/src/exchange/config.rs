@@ -57,13 +57,6 @@ pub struct FetchMarketsParams {
     pub cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FetchMarketsResult {
-    pub markets: Vec<crate::Market>,
-    /// Next cursor for this exchange (None if no more data)
-    pub next_cursor: Option<String>,
-}
-
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchOrdersParams {

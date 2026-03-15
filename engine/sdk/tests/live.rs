@@ -18,9 +18,7 @@
 use std::env;
 use std::time::Duration;
 
-use px_core::{
-    FetchMarketsParams, OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
-};
+use px_core::{OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest};
 use px_sdk::{ExchangeInner, WebSocketInner};
 
 // ---------------------------------------------------------------------------
@@ -39,6 +37,7 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
         "kalshi" => &[
             ("KALSHI_API_KEY_ID", "api_key_id"),
             ("KALSHI_PRIVATE_KEY_PEM", "private_key_pem"),
+            ("KALSHI_PRIVATE_KEY_PATH", "private_key_path"),
         ],
         "polymarket" => &[
             ("POLYMARKET_PRIVATE_KEY", "private_key"),
@@ -73,6 +72,23 @@ fn is_authenticated(exchange: &ExchangeInner) -> bool {
     info.has_create_order
 }
 
+/// Helper: returns true if error message indicates auth failure.
+fn is_auth_error(e: &px_core::error::OpenPxError) -> bool {
+    let msg = format!("{e:?}");
+    msg.contains("uthent") || msg.contains("Unauthorized") || msg.contains("403")
+}
+
+/// Helper: returns true if error indicates API unreachable.
+fn is_network_error(e: &px_core::error::OpenPxError) -> bool {
+    let msg = format!("{e:?}");
+    msg.contains("http error") || msg.contains("timed out") || msg.contains("connection")
+}
+
+/// Helper: returns true if error indicates not-supported.
+fn is_not_supported(e: &px_core::error::OpenPxError) -> bool {
+    format!("{e:?}").contains("NotSupported")
+}
+
 // ---------------------------------------------------------------------------
 // Macros for per-exchange test generation
 // ---------------------------------------------------------------------------
@@ -89,9 +105,9 @@ macro_rules! exchange_tests {
                 make_exchange(stringify!($exchange_id))
             }
 
-            // ------------------------------------------------------------------
-            // Unauthenticated — market data
-            // ------------------------------------------------------------------
+            // ==================================================================
+            // Unauthenticated — Exchange metadata
+            // ==================================================================
 
             #[tokio::test]
             async fn describe() {
@@ -100,27 +116,47 @@ macro_rules! exchange_tests {
                 assert_eq!(info.id, stringify!($exchange_id));
                 assert!(!info.name.is_empty());
                 assert!(info.has_fetch_markets);
+                // All exchanges should support single market fetch
+                assert!(
+                    info.has_fetch_markets,
+                    "all exchanges must support fetch_markets"
+                );
             }
+
+            #[tokio::test]
+            async fn describe_capabilities_consistent() {
+                let Some(ex) = get_exchange() else { return };
+                let info = ex.describe();
+                // If an exchange has create_order, it must also have cancel_order
+                if info.has_create_order {
+                    assert!(
+                        info.has_cancel_order,
+                        "exchange with create_order must support cancel_order"
+                    );
+                }
+                // If an exchange has websocket, it should report so
+                // (just verify the field exists and is a bool — no panic)
+                let _ = info.has_websocket;
+            }
+
+            // ==================================================================
+            // Unauthenticated — Market data
+            // ==================================================================
 
             #[tokio::test]
             async fn fetch_markets() {
                 let Some(ex) = get_exchange() else { return };
-                let result = ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(5),
-                        cursor: None,
-                    }))
-                    .await;
+                let result = ex.fetch_markets().await;
                 let markets = match result {
                     Ok(m) => m,
-                    Err(e) if format!("{e:?}").contains("uthent") => {
+                    Err(e) if is_auth_error(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_markets: requires auth",
                             stringify!($exchange_id)
                         );
                         return;
                     }
-                    Err(e) if format!("{e:?}").contains("http error") => {
+                    Err(e) if is_network_error(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_markets: API unreachable: {e}",
                             stringify!($exchange_id)
@@ -132,24 +168,83 @@ macro_rules! exchange_tests {
                 assert!(!markets.is_empty(), "expected at least 1 market");
                 for m in &markets {
                     assert!(!m.id.is_empty(), "market id should not be empty");
-                    assert!(
-                        !m.question.is_empty(),
-                        "market question should not be empty"
-                    );
+                    assert!(!m.title.is_empty(), "market title should not be empty");
                     assert!(!m.outcomes.is_empty(), "market should have outcomes");
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_markets_field_invariants() {
+                let Some(ex) = get_exchange() else { return };
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                for m in &markets {
+                    // openpx_id must be {exchange}:{native_id}
+                    let expected_openpx = format!("{}:{}", stringify!($exchange_id), m.id);
+                    assert_eq!(
+                        m.openpx_id, expected_openpx,
+                        "openpx_id format mismatch for market {}",
+                        m.id
+                    );
+
+                    // exchange field must match
+                    assert_eq!(
+                        m.exchange,
+                        stringify!($exchange_id),
+                        "exchange field mismatch for market {}",
+                        m.id
+                    );
+
+                    // outcomes should be non-empty
+                    assert!(
+                        !m.outcomes.is_empty(),
+                        "market {} should have outcomes",
+                        m.id
+                    );
+
+                    // binary markets should have exactly 2 outcomes
+                    if m.outcomes.len() == 2 {
+                        assert!(m.is_binary(), "2-outcome market should report is_binary()");
+                    }
+
+                    // volume should be non-negative
+                    assert!(
+                        m.volume >= 0.0,
+                        "market {} volume should be non-negative, got {}",
+                        m.id,
+                        m.volume
+                    );
+
+                    // outcome_prices values should be in [0, 1] range
+                    for (outcome, price) in &m.outcome_prices {
+                        assert!(
+                            *price >= 0.0 && *price <= 1.0,
+                            "market {} outcome '{}' price {} out of [0,1] range",
+                            m.id,
+                            outcome,
+                            price
+                        );
+                    }
+
+                    // tick_size, if present, should be positive and small
+                    if let Some(tick) = m.tick_size {
+                        assert!(
+                            tick > 0.0 && tick <= 0.1,
+                            "market {} tick_size {} out of expected range",
+                            m.id,
+                            tick
+                        );
+                    }
                 }
             }
 
             #[tokio::test]
             async fn fetch_market_single() {
                 let Some(ex) = get_exchange() else { return };
-                let markets = match ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(1),
-                        cursor: None,
-                    }))
-                    .await
-                {
+                let markets = match ex.fetch_markets().await {
                     Ok(m) => m,
                     Err(_) => return, // covered by fetch_markets test
                 };
@@ -164,19 +259,53 @@ macro_rules! exchange_tests {
             }
 
             #[tokio::test]
+            async fn fetch_market_consistency() {
+                let Some(ex) = get_exchange() else { return };
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+                // Pick a market from the list and fetch individually
+                let target = &markets[0];
+                let single = match ex.fetch_market(&target.id).await {
+                    Ok(m) => m,
+                    Err(_) => return,
+                };
+
+                // Core identity fields must match
+                assert_eq!(single.id, target.id, "id mismatch");
+                assert_eq!(single.openpx_id, target.openpx_id, "openpx_id mismatch");
+                assert_eq!(single.exchange, target.exchange, "exchange mismatch");
+                assert_eq!(single.title, target.title, "title mismatch");
+                assert_eq!(single.outcomes, target.outcomes, "outcomes mismatch");
+                assert_eq!(
+                    single.market_type, target.market_type,
+                    "market_type mismatch"
+                );
+            }
+
+            #[tokio::test]
+            async fn fetch_market_invalid_id() {
+                let Some(ex) = get_exchange() else { return };
+                let result = ex.fetch_market("__nonexistent_market_id_12345__").await;
+                // Should return an error, not panic
+                assert!(
+                    result.is_err(),
+                    "fetch_market with invalid id should return error"
+                );
+            }
+
+            // ==================================================================
+            // Unauthenticated — Orderbook
+            // ==================================================================
+
+            #[tokio::test]
             async fn fetch_orderbook() {
                 let Some(ex) = get_exchange() else { return };
                 if !ex.describe().has_fetch_orderbook {
                     return;
                 }
-                // Some exchanges require auth for orderbook
-                let markets = match ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(1),
-                        cursor: None,
-                    }))
-                    .await
-                {
+                let markets = match ex.fetch_markets().await {
                     Ok(m) if !m.is_empty() => m,
                     _ => return,
                 };
@@ -194,7 +323,7 @@ macro_rules! exchange_tests {
                         let _ = &book.bids;
                         let _ = &book.asks;
                     }
-                    Err(e) if format!("{e:?}").contains("uthent") => {
+                    Err(e) if is_auth_error(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_orderbook: requires auth",
                             stringify!($exchange_id)
@@ -211,47 +340,106 @@ macro_rules! exchange_tests {
             }
 
             #[tokio::test]
-            async fn fetch_all_unified_markets() {
+            async fn fetch_orderbook_structure() {
                 let Some(ex) = get_exchange() else { return };
-                // This paginates all markets — give it a timeout so it doesn't hang
-                let result =
-                    tokio::time::timeout(Duration::from_secs(60), ex.fetch_all_unified_markets())
-                        .await;
-                match result {
-                    Ok(Ok(markets)) => {
-                        assert!(!markets.is_empty(), "expected at least 1 unified market");
-                        let sample = &markets[..markets.len().min(5)];
-                        for m in sample {
-                            assert!(!m.openpx_id.is_empty());
-                            assert!(!m.title.is_empty());
-                            assert_eq!(m.exchange, stringify!($exchange_id));
-                        }
-                    }
-                    Ok(Err(e)) if format!("{e:?}").contains("uthent") => {
-                        eprintln!(
-                            "SKIP {}/fetch_all_unified_markets: requires auth",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Ok(Err(e)) if format!("{e:?}").contains("http error") => {
-                        eprintln!(
-                            "SKIP {}/fetch_all_unified_markets: API unreachable",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Ok(Err(e)) => panic!("fetch_all_unified_markets failed: {e:?}"),
-                    Err(_) => {
-                        eprintln!(
-                            "WARN: {}/fetch_all_unified_markets timed out after 60s",
-                            stringify!($exchange_id)
-                        );
-                    }
+                if !ex.describe().has_fetch_orderbook {
+                    return;
                 }
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                // Try a few markets to find one with orderbook data
+                for market in markets.iter().take(5) {
+                    let book = match ex
+                        .fetch_orderbook(OrderbookRequest {
+                            market_id: market.id.clone(),
+                            outcome: None,
+                            token_id: None,
+                        })
+                        .await
+                    {
+                        Ok(b) if b.has_data() => b,
+                        _ => continue,
+                    };
+
+                    // Bids should be sorted descending (highest first)
+                    for window in book.bids.windows(2) {
+                        assert!(
+                            window[0].price >= window[1].price,
+                            "bids should be sorted descending: {} >= {}",
+                            window[0].price,
+                            window[1].price
+                        );
+                    }
+
+                    // Asks should be sorted ascending (lowest first)
+                    for window in book.asks.windows(2) {
+                        assert!(
+                            window[0].price <= window[1].price,
+                            "asks should be sorted ascending: {} <= {}",
+                            window[0].price,
+                            window[1].price
+                        );
+                    }
+
+                    // All prices should be in [0, 1] range
+                    for level in book.bids.iter().chain(book.asks.iter()) {
+                        let price = level.price.to_f64();
+                        assert!(
+                            price >= 0.0 && price <= 1.0,
+                            "orderbook price {} out of [0,1] range",
+                            price
+                        );
+                        assert!(level.size > 0.0, "orderbook level size should be positive");
+                    }
+
+                    // Best bid should be <= best ask (no crossed book)
+                    if let (Some(best_bid), Some(best_ask)) = (book.best_bid(), book.best_ask()) {
+                        assert!(
+                            best_bid <= best_ask,
+                            "crossed book: best_bid {} > best_ask {}",
+                            best_bid,
+                            best_ask
+                        );
+                    }
+
+                    // Spread should be non-negative
+                    if let Some(spread) = book.spread() {
+                        assert!(
+                            spread >= 0.0,
+                            "spread should be non-negative, got {}",
+                            spread
+                        );
+                    }
+
+                    // Mid price should be between bid and ask
+                    if let (Some(best_bid), Some(mid), Some(best_ask)) =
+                        (book.best_bid(), book.mid_price(), book.best_ask())
+                    {
+                        assert!(
+                            mid >= best_bid && mid <= best_ask,
+                            "mid {} not between bid {} and ask {}",
+                            mid,
+                            best_bid,
+                            best_ask
+                        );
+                    }
+
+                    // Found a good book, test passed
+                    return;
+                }
+
+                eprintln!(
+                    "WARN: {}/fetch_orderbook_structure: no market with orderbook data found",
+                    stringify!($exchange_id)
+                );
             }
 
-            // ------------------------------------------------------------------
-            // Historical data (unauthenticated, exchange-dependent)
-            // ------------------------------------------------------------------
+            // ==================================================================
+            // Unauthenticated — Historical data
+            // ==================================================================
 
             #[tokio::test]
             async fn fetch_price_history() {
@@ -259,13 +447,7 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_price_history {
                     return;
                 }
-                let markets = match ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(3),
-                        cursor: None,
-                    }))
-                    .await
-                {
+                let markets = match ex.fetch_markets().await {
                     Ok(m) if !m.is_empty() => m,
                     _ => return,
                 };
@@ -312,18 +494,113 @@ macro_rules! exchange_tests {
             }
 
             #[tokio::test]
+            async fn fetch_price_history_candle_invariants() {
+                let Some(ex) = get_exchange() else { return };
+                if !ex.describe().has_fetch_price_history {
+                    return;
+                }
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                for market in markets.iter().take(10) {
+                    let candles = match ex
+                        .fetch_price_history(PriceHistoryRequest {
+                            market_id: market.id.clone(),
+                            interval: PriceHistoryInterval::OneDay,
+                            outcome: None,
+                            token_id: None,
+                            condition_id: None,
+                            start_ts: None,
+                            end_ts: None,
+                        })
+                        .await
+                    {
+                        Ok(c) if !c.is_empty() => c,
+                        _ => continue,
+                    };
+
+                    for c in &candles {
+                        // OHLC invariants
+                        assert!(c.high >= c.low, "high {} < low {}", c.high, c.low);
+                        assert!(
+                            c.high >= c.open,
+                            "high {} < open {}",
+                            c.high,
+                            c.open
+                        );
+                        assert!(
+                            c.high >= c.close,
+                            "high {} < close {}",
+                            c.high,
+                            c.close
+                        );
+                        assert!(
+                            c.low <= c.open,
+                            "low {} > open {}",
+                            c.low,
+                            c.open
+                        );
+                        assert!(
+                            c.low <= c.close,
+                            "low {} > close {}",
+                            c.low,
+                            c.close
+                        );
+
+                        // Prices should be in [0, 1] range for prediction markets
+                        assert!(
+                            c.open >= 0.0 && c.open <= 1.0,
+                            "open {} out of [0,1]",
+                            c.open
+                        );
+                        assert!(
+                            c.close >= 0.0 && c.close <= 1.0,
+                            "close {} out of [0,1]",
+                            c.close
+                        );
+
+                        // Volume should be non-negative
+                        assert!(
+                            c.volume >= 0.0,
+                            "candle volume should be non-negative, got {}",
+                            c.volume
+                        );
+
+                        // Open interest, if present, should be non-negative
+                        if let Some(oi) = c.open_interest {
+                            assert!(oi >= 0.0, "open_interest should be non-negative, got {}", oi);
+                        }
+                    }
+
+                    // Candles should be in chronological order
+                    for window in candles.windows(2) {
+                        assert!(
+                            window[0].timestamp <= window[1].timestamp,
+                            "candles should be chronological: {} > {}",
+                            window[0].timestamp,
+                            window[1].timestamp
+                        );
+                    }
+
+                    // Found valid candles, test passed
+                    return;
+                }
+
+                eprintln!(
+                    "WARN: {}/fetch_price_history_candle_invariants: no candles found",
+                    stringify!($exchange_id)
+                );
+            }
+
+            #[tokio::test]
             async fn fetch_trades() {
                 let Some(ex) = get_exchange() else { return };
                 if !ex.describe().has_fetch_trades {
                     return;
                 }
-                let markets = match ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(1),
-                        cursor: None,
-                    }))
-                    .await
-                {
+                let markets = match ex.fetch_markets().await {
                     Ok(m) if !m.is_empty() => m,
                     _ => return,
                 };
@@ -351,9 +628,156 @@ macro_rules! exchange_tests {
                 }
             }
 
-            // ------------------------------------------------------------------
-            // Authenticated — read-only account data
-            // ------------------------------------------------------------------
+            #[tokio::test]
+            async fn fetch_trades_with_limit() {
+                let Some(ex) = get_exchange() else { return };
+                if !ex.describe().has_fetch_trades {
+                    return;
+                }
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                // Request a small limit and verify we don't exceed it
+                let limit = 5;
+                match ex
+                    .fetch_trades(TradesRequest {
+                        market_id: markets[0].id.clone(),
+                        limit: Some(limit),
+                        ..Default::default()
+                    })
+                    .await
+                {
+                    Ok((trades, _cursor)) => {
+                        assert!(
+                            trades.len() <= limit,
+                            "got {} trades but limit was {}",
+                            trades.len(),
+                            limit
+                        );
+                    }
+                    Err(_) => {} // Not all markets have trades
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_trades_pagination() {
+                let Some(ex) = get_exchange() else { return };
+                if !ex.describe().has_fetch_trades {
+                    return;
+                }
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                // Fetch first page
+                let (page1, cursor) = match ex
+                    .fetch_trades(TradesRequest {
+                        market_id: markets[0].id.clone(),
+                        limit: Some(5),
+                        ..Default::default()
+                    })
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => return,
+                };
+
+                if page1.is_empty() {
+                    return;
+                }
+
+                // If we got a cursor, fetch the next page
+                if let Some(cursor) = cursor {
+                    match ex
+                        .fetch_trades(TradesRequest {
+                            market_id: markets[0].id.clone(),
+                            limit: Some(5),
+                            cursor: Some(cursor),
+                            ..Default::default()
+                        })
+                        .await
+                    {
+                        Ok((page2, _)) => {
+                            // Pages should not overlap (if both non-empty)
+                            if !page2.is_empty() && page1[0].id.is_some() && page2[0].id.is_some()
+                            {
+                                assert_ne!(
+                                    page1[0].id, page2[0].id,
+                                    "pagination returned same first trade"
+                                );
+                            }
+                        }
+                        Err(_) => {} // Cursor may have expired
+                    }
+                }
+            }
+
+            // ==================================================================
+            // Unauthenticated — Event markets
+            // ==================================================================
+
+            #[tokio::test]
+            async fn fetch_event_markets() {
+                let Some(ex) = get_exchange() else { return };
+                if !ex.describe().has_fetch_events {
+                    return;
+                }
+
+                // Find a market with a group_id to test event fetching
+                let markets = match ex.fetch_markets().await {
+                    Ok(m) if !m.is_empty() => m,
+                    _ => return,
+                };
+
+                let group_id = match markets.iter().find_map(|m| m.group_id.as_deref()) {
+                    Some(gid) => gid.to_string(),
+                    None => {
+                        eprintln!(
+                            "SKIP {}/fetch_event_markets: no markets with group_id",
+                            stringify!($exchange_id)
+                        );
+                        return;
+                    }
+                };
+
+                let event_markets = ex
+                    .fetch_event_markets(&group_id)
+                    .await
+                    .expect("fetch_event_markets failed");
+
+                assert!(
+                    !event_markets.is_empty(),
+                    "event should contain at least 1 market"
+                );
+
+                // All returned markets should belong to this event
+                for m in &event_markets {
+                    assert_eq!(
+                        m.group_id.as_deref(),
+                        Some(group_id.as_str()),
+                        "market {} has wrong group_id",
+                        m.id
+                    );
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_event_markets_empty_group() {
+                let Some(ex) = get_exchange() else { return };
+                // Empty group_id should return empty vec, not error
+                let result = ex.fetch_event_markets("").await;
+                match result {
+                    Ok(markets) => assert!(markets.is_empty(), "empty group_id should return no markets"),
+                    Err(_) => {} // Some exchanges may error on empty input
+                }
+            }
+
+            // ==================================================================
+            // Authenticated — Read-only account data
+            // ==================================================================
 
             #[tokio::test]
             async fn fetch_balance() {
@@ -369,6 +793,67 @@ macro_rules! exchange_tests {
                 for (_asset, amount) in &balance {
                     assert!(*amount >= 0.0, "balance should be non-negative");
                 }
+            }
+
+            #[tokio::test]
+            async fn fetch_balance_raw() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) {
+                    return;
+                }
+                match ex.fetch_balance_raw().await {
+                    Ok(raw) => {
+                        // Raw balance should be a valid JSON value
+                        assert!(
+                            !raw.is_null(),
+                            "raw balance should not be null"
+                        );
+                    }
+                    Err(e) if is_not_supported(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_balance_raw: not supported",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("fetch_balance_raw failed: {e:?}"),
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_balance_consistency() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) || !ex.describe().has_fetch_balance {
+                    return;
+                }
+
+                // Fetch balance twice — values should be consistent (same account)
+                let balance1 = match ex.fetch_balance().await {
+                    Ok(b) => b,
+                    Err(_) => return,
+                };
+                let balance2 = match ex.fetch_balance().await {
+                    Ok(b) => b,
+                    Err(_) => return,
+                };
+
+                // Same keys should be present
+                assert_eq!(
+                    balance1.keys().collect::<std::collections::HashSet<_>>(),
+                    balance2.keys().collect::<std::collections::HashSet<_>>(),
+                    "balance keys should be consistent across calls"
+                );
+            }
+
+            #[tokio::test]
+            async fn refresh_balance() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) || !ex.describe().has_refresh_balance {
+                    return;
+                }
+                // refresh_balance should succeed without error
+                ex.refresh_balance()
+                    .await
+                    .expect("refresh_balance failed");
             }
 
             #[tokio::test]
@@ -390,6 +875,90 @@ macro_rules! exchange_tests {
                         !p.outcome.is_empty(),
                         "position outcome should not be empty"
                     );
+                    assert!(
+                        p.size >= 0.0,
+                        "position size should be non-negative, got {}",
+                        p.size
+                    );
+                    assert!(
+                        p.average_price >= 0.0 && p.average_price <= 1.0,
+                        "position average_price {} out of [0,1] range",
+                        p.average_price
+                    );
+                    assert!(
+                        p.current_price >= 0.0 && p.current_price <= 1.0,
+                        "position current_price {} out of [0,1] range",
+                        p.current_price
+                    );
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_positions_computed_fields() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) || !ex.describe().has_fetch_positions {
+                    return;
+                }
+                let positions = match ex.fetch_positions(None).await {
+                    Ok(p) if !p.is_empty() => p,
+                    _ => return,
+                };
+
+                for p in &positions {
+                    // Verify computed fields are consistent
+                    let expected_cost = p.size * p.average_price;
+                    let expected_value = p.size * p.current_price;
+                    let expected_pnl = expected_value - expected_cost;
+
+                    assert!(
+                        (p.cost_basis() - expected_cost).abs() < 1e-10,
+                        "cost_basis() mismatch"
+                    );
+                    assert!(
+                        (p.current_value() - expected_value).abs() < 1e-10,
+                        "current_value() mismatch"
+                    );
+                    assert!(
+                        (p.unrealized_pnl() - expected_pnl).abs() < 1e-10,
+                        "unrealized_pnl() mismatch"
+                    );
+                }
+            }
+
+            #[tokio::test]
+            async fn fetch_open_orders() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) {
+                    return;
+                }
+                match ex.fetch_open_orders(None).await {
+                    Ok(orders) => {
+                        for o in &orders {
+                            assert!(!o.id.is_empty(), "order id should not be empty");
+                            assert!(
+                                !o.market_id.is_empty(),
+                                "order market_id should not be empty"
+                            );
+                            assert!(
+                                o.price >= 0.0 && o.price <= 1.0,
+                                "order price {} out of [0,1] range",
+                                o.price
+                            );
+                            assert!(o.size > 0.0, "order size should be positive");
+                            assert!(
+                                o.is_active(),
+                                "open order should have active status, got {:?}",
+                                o.status
+                            );
+                        }
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_open_orders: auth failed",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("fetch_open_orders failed: {e:?}"),
                 }
             }
 
@@ -410,12 +979,73 @@ macro_rules! exchange_tests {
                         "fill price should be 0..1"
                     );
                     assert!(f.size > 0.0, "fill size should be positive");
+                    assert!(f.fee >= 0.0, "fill fee should be non-negative");
+                    assert!(
+                        !f.order_id.is_empty(),
+                        "fill order_id should not be empty"
+                    );
+                    assert!(
+                        !f.market_id.is_empty(),
+                        "fill market_id should not be empty"
+                    );
+                    assert!(
+                        !f.outcome.is_empty(),
+                        "fill outcome should not be empty"
+                    );
                 }
             }
 
-            // ------------------------------------------------------------------
+            #[tokio::test]
+            async fn fetch_fills_with_limit() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) || !ex.describe().has_fetch_fills {
+                    return;
+                }
+                let limit = 3;
+                let fills = match ex.fetch_fills(None, Some(limit)).await {
+                    Ok(f) => f,
+                    Err(_) => return,
+                };
+                assert!(
+                    fills.len() <= limit,
+                    "got {} fills but limit was {}",
+                    fills.len(),
+                    limit
+                );
+            }
+
+            #[tokio::test]
+            async fn fetch_user_activity() {
+                let Some(ex) = get_exchange() else { return };
+                if !is_authenticated(&ex) || !ex.describe().has_fetch_user_activity {
+                    return;
+                }
+                match ex
+                    .fetch_user_activity(px_core::FetchUserActivityParams::default())
+                    .await
+                {
+                    Ok(activity) => {
+                        assert!(!activity.is_null(), "user activity should not be null");
+                    }
+                    Err(e) if is_not_supported(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_user_activity: not supported",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_user_activity: auth failed",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("fetch_user_activity failed: {e:?}"),
+                }
+            }
+
+            // ==================================================================
             // WebSocket — connect, subscribe, receive at least one update
-            // ------------------------------------------------------------------
+            // ==================================================================
 
             #[tokio::test]
             async fn websocket_orderbook_stream() {
@@ -431,13 +1061,7 @@ macro_rules! exchange_tests {
                 }
 
                 // Get a market to subscribe to
-                let markets = match ex
-                    .fetch_markets(Some(FetchMarketsParams {
-                        limit: Some(3),
-                        cursor: None,
-                    }))
-                    .await
-                {
+                let markets = match ex.fetch_markets().await {
                     Ok(m) if !m.is_empty() => m,
                     _ => return,
                 };

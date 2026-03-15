@@ -3,10 +3,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use px_core::{
-    manifests::OPINION_MANIFEST, sort_asks, sort_bids, Exchange, ExchangeInfo, ExchangeManifest,
-    FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams, Market, Nav, OpenPxError,
-    Order, OrderSide, OrderStatus, Orderbook, Position, PriceHistoryInterval, PriceLevel,
-    PricePoint, RateLimiter,
+    canonical_event_id, manifests::OPINION_MANIFEST, sort_asks, sort_bids, Exchange, ExchangeInfo,
+    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams, Market,
+    MarketStatus, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OutcomeToken,
+    Position, PriceHistoryInterval, PriceLevel, PricePoint, RateLimiter,
 };
 
 use crate::config::OpinionConfig;
@@ -190,7 +190,7 @@ impl Opinion {
                     .or_else(|| v.as_i64().map(|n| n.to_string()))
             })?;
 
-        let question = obj
+        let title = obj
             .get("marketTitle")
             .or_else(|| obj.get("market_title"))
             .or_else(|| obj.get("title"))
@@ -221,31 +221,44 @@ impl Opinion {
             .unwrap_or("No");
 
         let mut outcomes = Vec::new();
-        let mut token_ids = Vec::new();
+        let mut outcome_tokens = Vec::new();
+        let mut token_id_yes = None;
+        let mut token_id_no = None;
 
         if let (Some(yt), Some(nt)) = (yes_token, no_token) {
             outcomes.push(yes_label.to_string());
             outcomes.push(no_label.to_string());
-            token_ids.push(yt);
-            token_ids.push(nt);
+            outcome_tokens.push(OutcomeToken {
+                outcome: yes_label.to_string(),
+                token_id: yt.clone(),
+            });
+            outcome_tokens.push(OutcomeToken {
+                outcome: no_label.to_string(),
+                token_id: nt.clone(),
+            });
+            token_id_yes = Some(yt);
+            token_id_no = Some(nt);
         } else if let Some(children) = obj
             .get("childMarkets")
             .or_else(|| obj.get("child_markets"))
             .and_then(|v| v.as_array())
         {
             for child in children {
-                if let Some(title) = child
+                if let Some(child_title) = child
                     .get("marketTitle")
                     .or_else(|| child.get("market_title"))
                     .and_then(|t| t.as_str())
                 {
-                    outcomes.push(title.to_string());
+                    outcomes.push(child_title.to_string());
                     if let Some(token) = child
                         .get("yesTokenId")
                         .or_else(|| child.get("yes_token_id"))
                         .and_then(|t| t.as_str())
                     {
-                        token_ids.push(token.to_string());
+                        outcome_tokens.push(OutcomeToken {
+                            outcome: child_title.to_string(),
+                            token_id: token.to_string(),
+                        });
                     }
                 }
             }
@@ -255,6 +268,12 @@ impl Opinion {
             outcomes = vec!["Yes".into(), "No".into()];
         }
 
+        let market_type = if outcomes.len() == 2 {
+            MarketType::Binary
+        } else {
+            MarketType::Categorical
+        };
+
         let volume = obj
             .get("volume")
             .and_then(|v| {
@@ -263,7 +282,25 @@ impl Opinion {
             })
             .unwrap_or(0.0);
 
-        let liquidity = obj.get("liquidity").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let volume_24h = obj.get("volume24h").and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        });
+
+        let volume_1wk = obj.get("volume7d").and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        });
+
+        let liquidity_value = obj.get("liquidity").and_then(|v| v.as_f64());
+
+        let open_interest = obj
+            .get("openInterest")
+            .or_else(|| obj.get("open_interest"))
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            });
 
         let close_time = obj
             .get("cutoffAt")
@@ -273,30 +310,94 @@ impl Opinion {
             .filter(|&t| t > 0)
             .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
 
-        let description = obj
-            .get("rules")
-            .or_else(|| obj.get("description"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let created_at = obj
+            .get("createdAt")
+            .or_else(|| obj.get("created_at"))
+            .and_then(|v| v.as_i64())
+            .filter(|&t| t > 0)
+            .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
 
-        let mut metadata = data.clone();
-        if let Some(m) = metadata.as_object_mut() {
-            m.insert("clobTokenIds".into(), serde_json::json!(token_ids));
-            m.insert("chain_id".into(), serde_json::json!(self.config.chain_id));
-        }
+        let settlement_time = obj
+            .get("resolvedAt")
+            .or_else(|| obj.get("resolved_at"))
+            .and_then(|v| v.as_i64())
+            .filter(|&t| t > 0)
+            .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
+
+        let rules_str = obj.get("rules").and_then(|v| v.as_str()).map(String::from);
+
+        let description = rules_str
+            .clone()
+            .or_else(|| {
+                obj.get("description")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
+            .unwrap_or_default();
+
+        let denomination_token = obj
+            .get("quoteToken")
+            .or_else(|| obj.get("quote_token"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let condition_id = obj
+            .get("conditionId")
+            .or_else(|| obj.get("condition_id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let question_id = obj
+            .get("questionId")
+            .or_else(|| obj.get("question_id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let group_id = obj
+            .get("groupId")
+            .or_else(|| obj.get("group_id"))
+            .and_then(|v| {
+                v.as_str()
+                    .map(String::from)
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+            });
+
+        let event_id = group_id
+            .as_deref()
+            .and_then(|gid| canonical_event_id("opinion", gid));
 
         Some(Market {
+            openpx_id: Market::make_openpx_id("opinion", &id),
+            exchange: "opinion".into(),
             id,
-            question,
-            outcomes,
-            close_time,
-            volume,
-            liquidity,
-            prices: HashMap::new(),
-            metadata,
-            tick_size: 0.001,
+            group_id,
+            event_id,
+            title: title.clone(),
+            question: Some(title),
             description,
+            rules: rules_str,
+            status: MarketStatus::Active,
+            market_type,
+            accepting_orders: true,
+            outcomes,
+            outcome_tokens,
+            outcome_prices: HashMap::new(),
+            token_id_yes,
+            token_id_no,
+            condition_id,
+            question_id,
+            volume,
+            volume_24h,
+            volume_1wk,
+            liquidity: liquidity_value,
+            open_interest,
+            tick_size: Some(0.001),
+            close_time,
+            created_at,
+            settlement_time,
+            denomination_token,
+            chain_id: Some(self.config.chain_id.to_string()),
+            ..Default::default()
         })
     }
 
@@ -600,138 +701,8 @@ impl Opinion {
         Ok(points)
     }
 
-    pub async fn search_markets(
-        &self,
-        query: Option<&str>,
-        min_liquidity: Option<f64>,
-        binary_only: Option<bool>,
-        limit: Option<usize>,
-    ) -> Result<Vec<Market>, OpinionError> {
-        let params = px_core::FetchMarketsParams {
-            limit: Some(limit.unwrap_or(20).min(20)),
-            cursor: None,
-        };
-
-        let markets = self
-            .fetch_markets(Some(params))
-            .await
-            .map_err(|e| OpinionError::Api(format!("{e}")))?;
-
-        let query_lower = query.map(|q| q.to_lowercase());
-        let min_liq = min_liquidity.unwrap_or(0.0);
-        let binary = binary_only.unwrap_or(false);
-
-        let filtered: Vec<Market> = markets
-            .into_iter()
-            .filter(|m| {
-                if binary && !m.is_binary() {
-                    return false;
-                }
-
-                if m.liquidity < min_liq {
-                    return false;
-                }
-
-                if let Some(ref q) = query_lower {
-                    let text = format!(
-                        "{} {}",
-                        m.question.to_lowercase(),
-                        m.description.to_lowercase()
-                    );
-                    if !text.contains(q) {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .take(limit.unwrap_or(20))
-            .collect();
-
-        Ok(filtered)
-    }
-
-    pub async fn fetch_positions_for_market(
-        &self,
-        market: &Market,
-    ) -> Result<Vec<Position>, OpinionError> {
-        self.ensure_auth()?;
-        self.fetch_positions(Some(&market.id))
-            .await
-            .map_err(|e| OpinionError::Api(format!("{e}")))
-    }
-
-    pub async fn fetch_token_ids(&self, market_id: &str) -> Result<Vec<String>, OpinionError> {
-        let market = self
-            .fetch_market(market_id)
-            .await
-            .map_err(|e| OpinionError::Api(format!("{e}")))?;
-
-        let token_ids: Vec<String> = market
-            .metadata
-            .get("clobTokenIds")
-            .and_then(|v| {
-                if let Some(arr) = v.as_array() {
-                    Some(
-                        arr.iter()
-                            .filter_map(|x| x.as_str().map(String::from))
-                            .collect(),
-                    )
-                } else if let Some(s) = v.as_str() {
-                    serde_json::from_str(s).ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
-
-        if token_ids.is_empty() {
-            return Err(OpinionError::Api(format!(
-                "no token IDs found for market {market_id}"
-            )));
-        }
-
-        Ok(token_ids)
-    }
-
-    pub async fn calculate_nav(&self, market: &Market) -> Result<Nav, OpinionError> {
-        let balances = self
-            .fetch_balance()
-            .await
-            .map_err(|e| OpinionError::Api(format!("{e}")))?;
-
-        let cash = balances.get("USDC").copied().unwrap_or(0.0);
-
-        let positions = self.fetch_positions_for_market(market).await?;
-
-        Ok(Nav::calculate(cash, &positions))
-    }
-
-    pub async fn fetch_public_trades(
-        &self,
-        _market: Option<&Market>,
-        _limit: Option<usize>,
-        _page: Option<usize>,
-        _side: Option<&str>,
-    ) -> Result<Vec<serde_json::Value>, OpinionError> {
-        Ok(vec![])
-    }
-}
-
-impl Exchange for Opinion {
-    fn id(&self) -> &'static str {
-        "opinion"
-    }
-
-    fn name(&self) -> &'static str {
-        "Opinion"
-    }
-
-    fn manifest(&self) -> &'static ExchangeManifest {
-        &OPINION_MANIFEST
-    }
-
-    async fn fetch_markets(
+    /// Internal: fetch a single page of markets. Not part of the public API.
+    async fn fetch_markets_page(
         &self,
         params: Option<FetchMarketsParams>,
     ) -> Result<Vec<Market>, OpenPxError> {
@@ -767,6 +738,105 @@ impl Exchange for Opinion {
             .collect();
 
         Ok(markets)
+    }
+
+    pub async fn fetch_positions_for_market(
+        &self,
+        market: &Market,
+    ) -> Result<Vec<Position>, OpinionError> {
+        self.ensure_auth()?;
+        self.fetch_positions(Some(&market.id))
+            .await
+            .map_err(|e| OpinionError::Api(format!("{e}")))
+    }
+
+    pub async fn fetch_token_ids(&self, market_id: &str) -> Result<Vec<String>, OpinionError> {
+        let market = self
+            .fetch_market(market_id)
+            .await
+            .map_err(|e| OpinionError::Api(format!("{e}")))?;
+
+        let token_ids = market.get_token_ids();
+
+        if token_ids.is_empty() {
+            return Err(OpinionError::Api(format!(
+                "no token IDs found for market {market_id}"
+            )));
+        }
+
+        Ok(token_ids)
+    }
+
+    pub async fn fetch_public_trades(
+        &self,
+        _market: Option<&Market>,
+        _limit: Option<usize>,
+        _page: Option<usize>,
+        _side: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>, OpinionError> {
+        Ok(vec![])
+    }
+}
+
+impl Exchange for Opinion {
+    fn id(&self) -> &'static str {
+        "opinion"
+    }
+
+    fn name(&self) -> &'static str {
+        "Opinion"
+    }
+
+    fn manifest(&self) -> &'static ExchangeManifest {
+        &OPINION_MANIFEST
+    }
+
+    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
+        let mut all_markets = Vec::new();
+        let mut cursor: Option<String> = None;
+        let manifest = self.manifest();
+        let page_size = manifest.pagination.max_page_size;
+
+        loop {
+            let sent_cursor = cursor.clone();
+            let params = FetchMarketsParams {
+                limit: Some(page_size),
+                cursor: cursor.clone(),
+            };
+            let batch = self.fetch_markets_page(Some(params)).await?;
+            let count = batch.len();
+
+            if count == 0 {
+                break;
+            }
+
+            all_markets.extend(batch);
+
+            if count < page_size {
+                break;
+            }
+
+            let next_cursor = Some(
+                (cursor
+                    .as_ref()
+                    .and_then(|c| c.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    + count)
+                    .to_string(),
+            );
+
+            if next_cursor == sent_cursor {
+                return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "Pagination stuck at cursor={:?}, collected {} markets for {}",
+                    next_cursor,
+                    all_markets.len(),
+                    self.id()
+                ))));
+            }
+
+            cursor = next_cursor;
+        }
+        Ok(all_markets)
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {

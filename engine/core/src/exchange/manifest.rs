@@ -28,7 +28,7 @@ pub struct ExchangeManifest {
     // ========================================
     // SECTION 2: DATA AUDIT (How do we map it?)
     // ========================================
-    /// Field mappings from raw exchange JSON to UnifiedMarket
+    /// Field mappings from raw exchange JSON to Market
     pub field_mappings: &'static [FieldMapping],
 
     /// Status value mappings (exchange status -> MarketStatus)
@@ -88,7 +88,7 @@ pub struct RateLimitConfig {
 /// Mapping from raw exchange JSON field to unified field.
 #[derive(Debug, Clone)]
 pub struct FieldMapping {
-    /// Target field in UnifiedMarket
+    /// Target field in Market
     pub unified_field: &'static str,
     /// Source path(s) in raw JSON (fallback chain)
     pub source_paths: &'static [&'static str],

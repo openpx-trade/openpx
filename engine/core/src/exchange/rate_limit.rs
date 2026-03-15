@@ -113,42 +113,6 @@ impl ConcurrentRateLimiter {
     }
 }
 
-pub async fn retry_with_backoff<T, E, F, Fut>(
-    max_attempts: u32,
-    initial_delay: Duration,
-    mut f: F,
-) -> Result<T, E>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, E>>,
-{
-    let mut delay = initial_delay;
-
-    for attempt in 0..max_attempts {
-        match f().await {
-            Ok(result) => return Ok(result),
-            Err(_) if attempt + 1 < max_attempts => {
-                // Simple jitter: vary delay ±50% using cheap pseudo-random
-                let jitter_factor = {
-                    let seed = (std::time::SystemTime::UNIX_EPOCH
-                        .elapsed()
-                        .unwrap_or_default()
-                        .subsec_nanos() as u64)
-                        .wrapping_mul(attempt as u64 + 1);
-                    0.5 + (seed % 1000) as f64 / 1000.0 // range [0.5, 1.5)
-                };
-                let jittered = Duration::from_secs_f64(delay.as_secs_f64() * jitter_factor);
-                sleep(jittered).await;
-                delay *= 2;
-                continue;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    unreachable!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

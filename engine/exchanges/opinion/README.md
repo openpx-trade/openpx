@@ -1,7 +1,7 @@
-# pc-exchange-opinion
+# px-exchange-opinion
 
-[![Crates.io](https://img.shields.io/crates/v/pc-exchange-opinion.svg)](https://crates.io/crates/pc-exchange-opinion)
-[![Documentation](https://docs.rs/pc-exchange-opinion/badge.svg)](https://docs.rs/pc-exchange-opinion)
+[![Crates.io](https://img.shields.io/crates/v/px-exchange-opinion.svg)](https://crates.io/crates/px-exchange-opinion)
+[![Documentation](https://docs.rs/px-exchange-opinion/badge.svg)](https://docs.rs/px-exchange-opinion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Opinion](https://opinion.xyz) exchange implementation for OpenPX.
@@ -17,26 +17,26 @@ This crate provides a complete Opinion integration including:
 
 ```toml
 [dependencies]
-pc-exchange-opinion = "0.1"
+px-exchange-opinion = "0.1"
 ```
 
 ## Quick Start
 
 ```rust
-use pc_core::Exchange;
-use pc_exchange_opinion::{Opinion, OpinionConfig};
+use px_core::Exchange;
+use px_exchange_opinion::{Opinion, OpinionConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Public API (no auth required)
     let exchange = Opinion::with_default_config()?;
-    
+
     // Fetch markets
-    let markets = exchange.fetch_markets(None).await?;
+    let markets = exchange.fetch_markets().await?;
     for market in markets.iter().take(5) {
-        println!("{}: {:?}", market.question, market.prices);
+        println!("{}: {:?}", market.title, market.outcome_prices);
     }
-    
+
     Ok(())
 }
 ```
@@ -46,12 +46,12 @@ async fn main() -> anyhow::Result<()> {
 For trading operations, you need to provide your API key and wallet credentials:
 
 ```rust
-use pc_exchange_opinion::{Opinion, OpinionConfig};
+use px_exchange_opinion::{Opinion, OpinionConfig};
 
 let config = OpinionConfig::new()
     .with_api_key("your-api-key")
     .with_private_key("0x...")
-    .with_multi_sig_addr("0x...");
+    .with_multi_sig("0x...");
 
 let exchange = Opinion::new(config)?;
 

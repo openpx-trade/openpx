@@ -6,17 +6,30 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange, ExchangeError,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketTrade, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, Position,
-    PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter, TradesRequest,
-    UnifiedMarket,
+    canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
+    ExchangeError, ExchangeInfo, ExchangeManifest, FetchOrdersParams, Fill, Market, MarketStatus,
+    MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OutcomeToken,
+    Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
 use crate::config::KalshiConfig;
 use crate::error::KalshiError;
 use crate::normalize::normalize_kalshi_trade_price;
+
+/// Parse Kalshi dollar-string fields (e.g. "0.65") to f64.
+fn parse_dollars(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<f64> {
+    obj.get(key)
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+}
+
+/// Parse Kalshi fixed-point string fields (e.g. "15000.5") to f64.
+fn parse_fp(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<f64> {
+    obj.get(key)
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+}
 
 pub(crate) fn to_openpx(e: KalshiError) -> OpenPxError {
     OpenPxError::Exchange(e.into())
@@ -270,43 +283,11 @@ impl Kalshi {
         // Kalshi uses 'ticker' as market ID
         let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
 
-        let question = obj
+        let title = obj
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-
-        // Binary markets: Yes/No outcomes
-        let outcomes = vec!["Yes".to_string(), "No".to_string()];
-
-        // Kalshi prices are in cents (1-99), convert to decimal
-        let yes_price = obj
-            .get("yes_ask")
-            .or_else(|| obj.get("last_price"))
-            .and_then(|v| v.as_f64())
-            .map(|p| p / 100.0)
-            .unwrap_or(0.0);
-
-        let no_price = 1.0 - yes_price;
-
-        let mut prices = HashMap::new();
-        prices.insert("Yes".to_string(), yes_price);
-        prices.insert("No".to_string(), no_price);
-
-        let volume = obj.get("volume").and_then(|v| v.as_f64()).unwrap_or(0.0);
-
-        let liquidity = obj
-            .get("open_interest")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
-        // Parse close time
-        let close_time = obj
-            .get("close_time")
-            .or_else(|| obj.get("expiration_time"))
-            .and_then(|v| v.as_str())
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|dt| dt.with_timezone(&chrono::Utc));
 
         let description = obj
             .get("subtitle")
@@ -315,25 +296,178 @@ impl Kalshi {
             .unwrap_or("")
             .to_string();
 
-        // Kalshi returns tick_size in cents per market (currently 1; sub-penny coming)
+        let rules = obj
+            .get("rules_primary")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Group/event ID
+        let group_id = obj
+            .get("event_ticker")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Canonical cross-exchange event ID
+        let event_id = group_id
+            .as_deref()
+            .and_then(|gid| canonical_event_id("kalshi", gid));
+
+        // Status
+        let status = obj
+            .get("status")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<MarketStatus>().ok())
+            .unwrap_or(MarketStatus::Active);
+
+        // accepting_orders
+        let accepting_orders = obj
+            .get("accepting_orders")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(status == MarketStatus::Active);
+
+        // Binary markets: Yes/No outcomes
+        let outcomes = vec!["Yes".to_string(), "No".to_string()];
+
+        // ── Prices (new dollar-string fields first, legacy int/100 fallback) ──
+
+        let yes_ask = parse_dollars(obj, "yes_ask_dollars").or_else(|| {
+            obj.get("yes_ask")
+                .and_then(|v| v.as_f64())
+                .map(|p| p / 100.0)
+        });
+
+        let yes_bid = parse_dollars(obj, "yes_bid_dollars").or_else(|| {
+            obj.get("yes_bid")
+                .and_then(|v| v.as_f64())
+                .map(|p| p / 100.0)
+        });
+
+        let last_price = parse_dollars(obj, "last_price_dollars").or_else(|| {
+            obj.get("last_price")
+                .and_then(|v| v.as_f64())
+                .map(|p| p / 100.0)
+        });
+
+        let yes_price = yes_ask.or(last_price).unwrap_or(0.0);
+        let no_price = 1.0 - yes_price;
+
+        let mut outcome_prices = HashMap::new();
+        outcome_prices.insert("Yes".to_string(), yes_price);
+        outcome_prices.insert("No".to_string(), no_price);
+
+        // ── Volume / liquidity (fixed-point migration) ──
+
+        let volume = parse_fp(obj, "volume_fp")
+            .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
+            .unwrap_or(0.0);
+
+        let open_interest = parse_fp(obj, "open_interest_fp")
+            .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()));
+
+        // ── Tick size: try price_level_structure, fallback to tick_size in cents ──
+
         let tick_size = obj
             .get("tick_size")
             .and_then(|v| v.as_f64())
             .filter(|&v| v > 0.0)
             .map(|cents| cents / 100.0)
-            .unwrap_or(0.01);
+            .or(Some(0.01));
+
+        let price_level_structure = obj
+            .get("price_level_structure")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // ── Time fields ──
+
+        let close_time = obj
+            .get("close_time")
+            .or_else(|| obj.get("expiration_time"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc));
+
+        let open_time = obj
+            .get("open_time")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc));
+
+        let created_at = obj
+            .get("created_time")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc));
+
+        let settlement_time = obj
+            .get("settlement_ts")
+            .and_then(|v| v.as_i64())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+        // ── Kalshi-specific fields ──
+
+        let notional_value = parse_dollars(obj, "notional_value_dollars")
+            .or_else(|| obj.get("notional_value").and_then(|v| v.as_f64()));
+
+        let previous_price = parse_dollars(obj, "previous_price_dollars").or_else(|| {
+            obj.get("previous_price")
+                .and_then(|v| v.as_f64())
+                .map(|p| p / 100.0)
+        });
+
+        let settlement_value = parse_dollars(obj, "settlement_value_dollars").or_else(|| {
+            obj.get("settlement_value")
+                .and_then(|v| v.as_f64())
+                .map(|p| p / 100.0)
+        });
+
+        let can_close_early = obj.get("can_close_early").and_then(|v| v.as_bool());
+
+        let result = obj
+            .get("result")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Spread from bid/ask
+        let spread = match (yes_bid, yes_ask) {
+            (Some(b), Some(a)) => Some(a - b),
+            _ => None,
+        };
+
+        let openpx_id = Market::make_openpx_id("kalshi", &id);
 
         Some(Market {
+            openpx_id,
+            exchange: "kalshi".into(),
             id,
-            question,
-            outcomes,
-            close_time,
-            volume,
-            liquidity,
-            prices,
-            metadata: data.clone(),
-            tick_size,
+            group_id,
+            event_id,
+            title,
             description,
+            rules,
+            status,
+            market_type: MarketType::Binary,
+            accepting_orders,
+            outcomes,
+            outcome_prices,
+            volume,
+            open_interest,
+            last_trade_price: last_price,
+            best_bid: yes_bid,
+            best_ask: yes_ask,
+            spread,
+            tick_size,
+            close_time,
+            open_time,
+            created_at,
+            settlement_time,
+            notional_value,
+            price_level_structure,
+            settlement_value,
+            previous_price,
+            can_close_early,
+            result,
+            ..Default::default()
         })
     }
 
@@ -641,10 +775,10 @@ impl Kalshi {
             .to_string();
 
         let mut outcomes = Vec::with_capacity(markets.len());
-        let mut prices = HashMap::new();
-        let mut token_ids = Vec::with_capacity(markets.len());
+        let mut outcome_prices = HashMap::new();
+        let mut outcome_tokens = Vec::with_capacity(markets.len());
         let mut total_volume = 0.0f64;
-        let mut total_liquidity = 0.0f64;
+        let mut total_open_interest = 0.0f64;
         let mut close_time: Option<chrono::DateTime<chrono::Utc>> = None;
 
         for m in markets {
@@ -660,21 +794,29 @@ impl Kalshi {
                 .unwrap_or(ticker)
                 .to_string();
 
-            let yes_price = obj
-                .get("yes_ask")
-                .or_else(|| obj.get("last_price"))
-                .and_then(|v| v.as_f64())
-                .map(|p| p / 100.0)
+            // Fixed-point migration: try dollar-string fields first
+            let yes_price = parse_dollars(obj, "yes_ask_dollars")
+                .or_else(|| parse_dollars(obj, "last_price_dollars"))
+                .or_else(|| {
+                    obj.get("yes_ask")
+                        .or_else(|| obj.get("last_price"))
+                        .and_then(|v| v.as_f64())
+                        .map(|p| p / 100.0)
+                })
                 .unwrap_or(0.0);
 
             outcomes.push(outcome_name.clone());
-            prices.insert(outcome_name, yes_price);
-            token_ids.push(serde_json::Value::String(ticker.to_string()));
+            outcome_prices.insert(outcome_name.clone(), yes_price);
+            outcome_tokens.push(OutcomeToken {
+                outcome: outcome_name,
+                token_id: ticker.to_string(),
+            });
 
-            total_volume += obj.get("volume").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            total_liquidity += obj
-                .get("open_interest")
-                .and_then(|v| v.as_f64())
+            total_volume += parse_fp(obj, "volume_fp")
+                .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
+                .unwrap_or(0.0);
+            total_open_interest += parse_fp(obj, "open_interest_fp")
+                .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()))
                 .unwrap_or(0.0);
 
             // Use the latest close_time across sub-markets
@@ -692,51 +834,28 @@ impl Kalshi {
             }
         }
 
-        // Build metadata with event_ticker (for group_id extraction in to_unified_market)
-        // and clobTokenIds (sub-market tickers, for outcome → token_id resolution)
-        let metadata = serde_json::json!({
-            "event_ticker": event_ticker,
-            "is_event": true,
-            "clobTokenIds": token_ids,
-        });
+        let openpx_id = Market::make_openpx_id("kalshi", event_ticker);
+        let event_id = canonical_event_id("kalshi", event_ticker);
 
         Some(Market {
+            openpx_id,
+            exchange: "kalshi".into(),
             id: event_ticker.to_string(),
-            question: title,
-            outcomes,
-            close_time,
-            volume: total_volume,
-            liquidity: total_liquidity,
-            prices,
-            metadata,
-            tick_size: 0.01, // event-level: default to 1 cent (individual markets carry their own)
+            group_id: Some(event_ticker.to_string()),
+            event_id,
+            title,
             description,
-        })
-    }
-
-    /// Fetch orderbook for a market (Yes-equivalent view)
-    pub async fn fetch_orderbook(&self, ticker: &str) -> Result<Orderbook, KalshiError> {
-        let (yes, no) = self.fetch_orderbook_raw(ticker).await?;
-
-        // Convert yes/no orderbook to Yes-equivalent bids/asks
-        // Bids = buying Yes (or selling No)
-        // Asks = selling Yes (or buying No)
-        let mut bids = yes;
-        let mut asks: Vec<PriceLevel> = no
-            .into_iter()
-            .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
-            .collect();
-
-        sort_bids(&mut bids);
-        sort_asks(&mut asks);
-
-        Ok(Orderbook {
-            market_id: ticker.to_string(),
-            asset_id: ticker.to_string(),
-            bids,
-            asks,
-            last_update_id: None,
-            timestamp: Some(chrono::Utc::now()),
+            status: MarketStatus::Active,
+            market_type: MarketType::Categorical,
+            accepting_orders: true,
+            outcomes,
+            outcome_tokens,
+            outcome_prices,
+            volume: total_volume,
+            open_interest: Some(total_open_interest),
+            close_time,
+            tick_size: Some(0.01), // event-level: default to 1 cent
+            ..Default::default()
         })
     }
 }
@@ -780,7 +899,7 @@ impl Exchange for Kalshi {
         &KALSHI_MANIFEST
     }
 
-    async fn fetch_all_unified_markets(&self) -> Result<Vec<UnifiedMarket>, OpenPxError> {
+    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
         #[derive(serde::Deserialize)]
         struct MarketsResponse {
             markets: Vec<serde_json::Value>,
@@ -800,7 +919,7 @@ impl Exchange for Kalshi {
             if let Some(cap) = max_pages {
                 if page_idx >= cap {
                     return Err(OpenPxError::Exchange(ExchangeError::Api(format!(
-                        "kalshi fetch_all_unified_markets exceeded configured page cap: max_pages={cap}"
+                        "kalshi fetch_markets exceeded configured page cap: max_pages={cap}"
                     ))));
                 }
             }
@@ -819,14 +938,14 @@ impl Exchange for Kalshi {
             let map_start = Instant::now();
             for raw in &resp.markets {
                 if let Some(market) = self.parse_market(raw) {
-                    all_markets.push(self.to_unified_market(market)?);
+                    all_markets.push(market);
                 }
             }
             let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
             histogram!(
                 "openpx.exchange.mapping_us",
                 "exchange" => "kalshi",
-                "operation" => "fetch_all_unified_markets"
+                "operation" => "fetch_markets"
             )
             .record(map_us);
 
@@ -852,48 +971,7 @@ impl Exchange for Kalshi {
         Ok(all_markets)
     }
 
-    async fn fetch_markets(
-        &self,
-        params: Option<FetchMarketsParams>,
-    ) -> Result<Vec<Market>, OpenPxError> {
-        let params = params.unwrap_or_default();
-        let limit = params.limit.unwrap_or(100).min(200);
-
-        #[derive(serde::Deserialize)]
-        struct MarketsResponse {
-            markets: Vec<serde_json::Value>,
-            #[allow(dead_code)]
-            cursor: Option<String>,
-        }
-
-        let mut endpoint = format!("/markets?limit={limit}");
-        if let Some(cursor) = params.cursor.as_ref() {
-            endpoint.push_str(&format!("&cursor={cursor}"));
-        }
-
-        let resp: MarketsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
-
-        let map_start = Instant::now();
-        let markets: Vec<Market> = resp
-            .markets
-            .iter()
-            .filter_map(|v| self.parse_market(v))
-            .collect();
-        let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!(
-            "openpx.exchange.mapping_us",
-            "exchange" => "kalshi",
-            "operation" => "fetch_markets"
-        )
-        .record(map_us);
-
-        Ok(markets)
-    }
-
-    async fn fetch_event_markets(
-        &self,
-        group_id: &str,
-    ) -> Result<Vec<px_core::UnifiedMarket>, OpenPxError> {
+    async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
         #[derive(serde::Deserialize)]
         struct MarketsResponse {
             markets: Vec<serde_json::Value>,
@@ -925,7 +1003,7 @@ impl Exchange for Kalshi {
 
             for raw_market in resp.markets {
                 if let Some(market) = self.parse_market(&raw_market) {
-                    all_markets.push(self.to_unified_market(market)?);
+                    all_markets.push(market);
                 }
             }
 

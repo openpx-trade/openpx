@@ -107,9 +107,6 @@ impl schemars::JsonSchema for FixedPrice {
     }
 }
 
-/// Epsilon for floating-point price comparison (legacy, prefer FixedPrice == for exact match).
-pub const PRICE_EPSILON: f64 = 1e-9;
-
 // ---------------------------------------------------------------------------
 // Orderbook types
 // ---------------------------------------------------------------------------

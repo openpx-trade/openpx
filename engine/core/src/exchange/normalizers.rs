@@ -92,43 +92,6 @@ pub fn get_nested<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-/// Extract value from JSON using a fallback chain of paths.
-/// Returns the first non-null value found.
-pub fn extract_path<'a>(value: &'a Value, paths: &[&str]) -> Option<&'a Value> {
-    for path in paths {
-        if let Some(v) = get_nested(value, path) {
-            if !v.is_null() {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
-/// Extract a string value using a fallback chain of paths.
-pub fn extract_string(value: &Value, paths: &[&str]) -> Option<String> {
-    extract_path(value, paths).and_then(coerce_to_string)
-}
-
-/// Extract an i64 value using a fallback chain of paths.
-pub fn extract_int(value: &Value, paths: &[&str]) -> Option<i64> {
-    extract_path(value, paths).and_then(coerce_to_int)
-}
-
-/// Extract a DateTime value using a fallback chain of paths.
-pub fn extract_datetime(
-    value: &Value,
-    paths: &[&str],
-    transform: Transform,
-) -> Option<DateTime<Utc>> {
-    extract_path(value, paths).and_then(|v| coerce_to_datetime(v, transform))
-}
-
-/// Extract a value from a JSON array at the specified index.
-pub fn extract_array_index(value: &Value, index: usize) -> Option<&Value> {
-    value.as_array()?.get(index)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,20 +138,6 @@ mod tests {
             Some("active")
         );
         assert!(get_nested(&data, "nonexistent").is_none());
-    }
-
-    #[test]
-    fn test_extract_path_fallback() {
-        let data = json!({
-            "title": "Market Title",
-            "question": null
-        });
-
-        // Should fallback from null question to title
-        assert_eq!(
-            extract_string(&data, &["question", "title"]),
-            Some("Market Title".to_string())
-        );
     }
 
     #[test]

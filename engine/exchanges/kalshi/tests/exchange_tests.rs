@@ -1,6 +1,6 @@
-use px_core::{Exchange, FetchMarketsParams, TradesRequest};
+use px_core::{Exchange, TradesRequest};
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_markets_response() -> serde_json::Value {
@@ -62,46 +62,19 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
 
     // #then
     assert_eq!(markets.len(), 2);
 
     let first = &markets[0];
     assert_eq!(first.id, "INXD-24DEC31-B5000");
-    assert_eq!(first.question, "S&P 500 above 5000 on Dec 31?");
+    assert_eq!(first.title, "S&P 500 above 5000 on Dec 31?");
     assert_eq!(first.outcomes, vec!["Yes", "No"]);
-    assert_eq!(*first.prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*first.prices.get("No").unwrap(), 0.35);
+    assert_eq!(*first.outcome_prices.get("Yes").unwrap(), 0.65);
+    assert_eq!(*first.outcome_prices.get("No").unwrap(), 0.35);
     assert_eq!(first.volume, 150000.0);
-    assert_eq!(first.liquidity, 25000.0);
-}
-
-#[tokio::test]
-async fn test_fetch_markets_with_limit() {
-    // #given
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/markets"))
-        .and(query_param("limit", "5"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
-        .mount(&mock_server)
-        .await;
-
-    let config = KalshiConfig::new()
-        .with_api_url(mock_server.uri())
-        .with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // #when
-    let params = FetchMarketsParams {
-        limit: Some(5),
-        cursor: None,
-    };
-    let markets = exchange.fetch_markets(Some(params)).await.unwrap();
-
-    // #then
-    assert_eq!(markets.len(), 2);
+    assert_eq!(first.open_interest, Some(25000.0));
 }
 
 #[tokio::test]
@@ -124,9 +97,9 @@ async fn test_fetch_market_by_ticker() {
 
     // #then
     assert_eq!(market.id, "INXD-24DEC31-B5000");
-    assert_eq!(market.question, "S&P 500 above 5000 on Dec 31?");
-    assert_eq!(*market.prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*market.prices.get("No").unwrap(), 0.35);
+    assert_eq!(market.title, "S&P 500 above 5000 on Dec 31?");
+    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.65);
+    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.35);
 }
 
 #[tokio::test]

@@ -64,25 +64,11 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_markets(
-        &self,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn fetch_markets(&self) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move {
-                let params = if limit.is_some() || cursor.is_some() {
-                    Some(px_core::FetchMarketsParams {
-                        limit: limit.map(|l| l as usize),
-                        cursor,
-                    })
-                } else {
-                    None
-                };
-                inner.fetch_markets(params).await
-            })
+            .spawn(async move { inner.fetch_markets().await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -95,18 +81,6 @@ impl Exchange {
         let rt = get_runtime();
         let result = rt
             .spawn(async move { inner.fetch_market(&market_id).await })
-            .await
-            .map_err(to_napi_err)?
-            .map_err(to_napi_err)?;
-        serde_json::to_value(&result).map_err(to_napi_err)
-    }
-
-    #[napi]
-    pub async fn fetch_all_unified_markets(&self) -> Result<serde_json::Value> {
-        let inner = self.inner.clone();
-        let rt = get_runtime();
-        let result = rt
-            .spawn(async move { inner.fetch_all_unified_markets().await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

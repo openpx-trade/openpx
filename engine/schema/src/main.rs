@@ -15,9 +15,9 @@ fn main() {
     let schemas: Vec<RootSchema> = vec![
         // Models — market
         schema_for!(px_core::Market),
-        schema_for!(px_core::UnifiedMarket),
         schema_for!(px_core::OutcomeToken),
         schema_for!(px_core::MarketStatus),
+        schema_for!(px_core::MarketType),
         // Models — order
         schema_for!(px_core::Order),
         schema_for!(px_core::OrderType),
@@ -27,9 +27,6 @@ fn main() {
         schema_for!(px_core::Fill),
         // Models — position
         schema_for!(px_core::Position),
-        schema_for!(px_core::Nav),
-        schema_for!(px_core::PositionBreakdown),
-        schema_for!(px_core::DeltaInfo),
         // Models — orderbook
         schema_for!(px_core::Orderbook),
         schema_for!(px_core::OrderbookSnapshot),
@@ -41,7 +38,6 @@ fn main() {
         schema_for!(px_core::Candlestick),
         schema_for!(px_core::PriceHistoryInterval),
         // Exchange config params
-        schema_for!(px_core::FetchMarketsParams),
         schema_for!(px_core::FetchOrdersParams),
         schema_for!(px_core::FetchUserActivityParams),
         // Exchange trait request types

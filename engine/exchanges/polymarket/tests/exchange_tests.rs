@@ -1,4 +1,4 @@
-use px_core::{Exchange, FetchMarketsParams};
+use px_core::Exchange;
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -57,46 +57,19 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Polymarket::new(config).unwrap();
 
     // when
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
 
     // then
     assert_eq!(markets.len(), 2);
 
     let first = &markets[0];
     assert_eq!(first.id, "123");
-    assert_eq!(first.question, "Will it rain tomorrow?");
+    assert_eq!(first.title, "Will it rain tomorrow?");
     assert_eq!(first.outcomes, vec!["Yes", "No"]);
-    assert_eq!(*first.prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*first.prices.get("No").unwrap(), 0.35);
+    assert_eq!(*first.outcome_prices.get("Yes").unwrap(), 0.65);
+    assert_eq!(*first.outcome_prices.get("No").unwrap(), 0.35);
     assert_eq!(first.volume, 50000.0);
-    assert_eq!(first.liquidity, 10000.0);
-}
-
-#[tokio::test]
-async fn test_fetch_markets_with_limit() {
-    // given
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/markets"))
-        .and(query_param("limit", "5"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
-        .mount(&mock_server)
-        .await;
-
-    let config = PolymarketConfig::new()
-        .with_gamma_url(mock_server.uri())
-        .with_verbose(false);
-    let exchange = Polymarket::new(config).unwrap();
-
-    // when
-    let params = FetchMarketsParams {
-        limit: Some(5),
-        cursor: None,
-    };
-    let markets = exchange.fetch_markets(Some(params)).await.unwrap();
-
-    // then
-    assert_eq!(markets.len(), 2);
+    assert_eq!(first.liquidity, Some(10000.0));
 }
 
 #[tokio::test]
@@ -123,9 +96,9 @@ async fn test_fetch_market_by_id() {
 
     // then
     assert_eq!(market.id, "789");
-    assert_eq!(market.question, "Single market test");
-    assert_eq!(*market.prices.get("Yes").unwrap(), 0.80);
-    assert_eq!(*market.prices.get("No").unwrap(), 0.20);
+    assert_eq!(market.title, "Single market test");
+    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.80);
+    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.20);
 }
 
 #[tokio::test]

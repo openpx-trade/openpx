@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use px_core::error::OpenPxError;
 use px_core::models::{
     Candlestick, Fill, Market, MarketTrade, Order, OrderSide, Orderbook, OrderbookSnapshot,
-    Position, UnifiedMarket,
+    Position,
 };
 use px_core::{
-    ExchangeInfo, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
-    OrderbookHistoryRequest, OrderbookRequest, PriceHistoryRequest, TradesRequest,
+    ExchangeInfo, FetchOrdersParams, FetchUserActivityParams, OrderbookHistoryRequest,
+    OrderbookRequest, PriceHistoryRequest, TradesRequest,
 };
 
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
@@ -158,25 +158,15 @@ impl ExchangeInner {
         dispatch_sync!(self, describe)
     }
 
-    pub async fn fetch_markets(
-        &self,
-        params: Option<FetchMarketsParams>,
-    ) -> Result<Vec<Market>, OpenPxError> {
-        dispatch!(self, fetch_markets, params)
+    pub async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
+        dispatch!(self, fetch_markets)
     }
 
     pub async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
         dispatch!(self, fetch_market, market_id)
     }
 
-    pub async fn fetch_all_unified_markets(&self) -> Result<Vec<UnifiedMarket>, OpenPxError> {
-        dispatch!(self, fetch_all_unified_markets)
-    }
-
-    pub async fn fetch_event_markets(
-        &self,
-        group_id: &str,
-    ) -> Result<Vec<UnifiedMarket>, OpenPxError> {
+    pub async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
         dispatch!(self, fetch_event_markets, group_id)
     }
 

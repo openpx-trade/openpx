@@ -1,6 +1,6 @@
-use px_core::{Exchange, FetchMarketsParams, FixedPrice};
+use px_core::{Exchange, FixedPrice};
 use px_exchange_opinion::{Opinion, OpinionConfig};
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_markets_response() -> serde_json::Value {
@@ -92,14 +92,14 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Opinion::new(config).unwrap();
 
     // when
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
 
     // then
     assert_eq!(markets.len(), 2);
 
     let first = &markets[0];
     assert_eq!(first.id, "123");
-    assert_eq!(first.question, "Will BTC reach $100k?");
+    assert_eq!(first.title, "Will BTC reach $100k?");
     assert_eq!(first.outcomes, vec!["Yes", "No"]);
     assert_eq!(first.volume, 50000.0);
 }
@@ -124,7 +124,7 @@ async fn test_fetch_market_by_id() {
 
     // then
     assert_eq!(market.id, "789");
-    assert_eq!(market.question, "Test market question");
+    assert_eq!(market.title, "Test market question");
     assert_eq!(market.volume, 25000.0);
 }
 
@@ -200,7 +200,7 @@ async fn test_market_tick_size() {
     let market = exchange.fetch_market("789").await.unwrap();
 
     // then
-    assert_eq!(market.tick_size, 0.001);
+    assert_eq!(market.tick_size, Some(0.001));
 }
 
 #[tokio::test]
@@ -229,31 +229,15 @@ async fn test_parse_token_ids_from_market() {
 }
 
 #[tokio::test]
-async fn test_pagination_offset_to_page_conversion() {
-    // Opinion uses page-number pagination (1-indexed, limit=20).
-    // The default fetch_all_unified_markets() passes offsets as cursor strings.
-    // Verify the offset→page conversion: offset 0 → page 1, offset 20 → page 2, etc.
+async fn test_fetch_markets_auto_paginates() {
+    // Opinion uses page-number pagination (1-indexed, page_size=20).
+    // fetch_markets() auto-paginates internally. Since the mock returns only
+    // 2 markets (less than page_size 20), the auto-paginator stops after one page.
     let mock_server = MockServer::start().await;
 
-    // Page 1 (offset 0 or no cursor): returns 2 markets (less than limit=20, so pagination stops)
     Mock::given(method("GET"))
         .and(path("/openapi/market"))
-        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
-        .expect(2) // called twice: once with no cursor, once with cursor="0"
-        .mount(&mock_server)
-        .await;
-
-    // Page 2 (offset 20): returns empty list
-    Mock::given(method("GET"))
-        .and(path("/openapi/market"))
-        .and(query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "errno": 0,
-            "errmsg": null,
-            "result": { "list": [] }
-        })))
-        .expect(1) // called once with cursor="20"
         .mount(&mock_server)
         .await;
 
@@ -262,24 +246,8 @@ async fn test_pagination_offset_to_page_conversion() {
         .with_verbose(false);
     let exchange = Opinion::new(config).unwrap();
 
-    // Test 1: no cursor → page 1
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
     assert_eq!(markets.len(), 2);
-
-    // Test 2: cursor "0" → page 1
-    let params = FetchMarketsParams {
-        limit: Some(20),
-        cursor: Some("0".to_string()),
-    };
-    let markets = exchange.fetch_markets(Some(params)).await.unwrap();
-    assert_eq!(markets.len(), 2);
-
-    // Test 3: cursor "20" → page 2 (verifies (20 / 20) + 1 = 2)
-    let params = FetchMarketsParams {
-        limit: Some(20),
-        cursor: Some("20".to_string()),
-    };
-    let _markets = exchange.fetch_markets(Some(params)).await.unwrap();
-    // page 2 returns empty, so 0 markets
-    assert_eq!(_markets.len(), 0);
+    assert_eq!(markets[0].id, "123");
+    assert_eq!(markets[1].id, "456");
 }

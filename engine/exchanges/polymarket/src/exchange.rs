@@ -19,11 +19,12 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use px_core::{
-    manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange, ExchangeError,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
-    Fill, Market, MarketTrade, Nav, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
-    OrderbookHistoryRequest, OrderbookSnapshot, Position, PriceHistoryInterval,
-    PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, TradesRequest,
+    canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick,
+    Exchange, ExchangeError, ExchangeInfo, ExchangeManifest, FetchOrdersParams,
+    FetchUserActivityParams, Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError,
+    Order, OrderSide, OrderStatus, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot,
+    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade,
+    RateLimiter, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -31,7 +32,6 @@ use crate::client::HttpClient;
 use crate::clob::{ApiCredentials, CLOB_URL};
 use crate::config::PolymarketConfig;
 use crate::error::PolymarketError;
-use crate::websocket::PolymarketWebSocket;
 
 /// Type alias for the SDK's LocalSigner with k256 SigningKey
 type PrivateKeySigner = LocalSigner<SigningKey>;
@@ -160,8 +160,6 @@ pub struct Polymarket {
     api_creds: Option<ApiCredentials>,
     /// External signer for Privy-managed wallets (bypasses local k256 signing)
     external_signer: Option<Arc<dyn crate::signer::ExternalSigner>>,
-    /// Gasless relayer for CTF on-chain operations (split/merge/redeem)
-    relayer: Option<crate::relayer::PolymarketRelayer>,
 }
 
 impl Polymarket {
@@ -199,20 +197,6 @@ impl Polymarket {
             None
         };
 
-        // Initialize relayer from builder credentials if available
-        let relayer = match (
-            config.builder_api_key.as_ref(),
-            config.builder_secret.as_ref(),
-            config.builder_passphrase.as_ref(),
-        ) {
-            (Some(key), Some(secret), Some(pass)) => Some(crate::relayer::PolymarketRelayer::new(
-                key.clone(),
-                secret.clone(),
-                pass.clone(),
-            )),
-            _ => None,
-        };
-
         Ok(Self {
             config,
             client,
@@ -221,7 +205,6 @@ impl Polymarket {
             signer,
             api_creds,
             external_signer: None,
-            relayer,
         })
     }
 
@@ -665,57 +648,6 @@ impl Polymarket {
         )))
     }
 
-    pub async fn search_markets(
-        &self,
-        query: Option<&str>,
-        min_liquidity: Option<f64>,
-        binary_only: Option<bool>,
-        limit: Option<usize>,
-    ) -> Result<Vec<Market>, PolymarketError> {
-        let params = px_core::FetchMarketsParams {
-            limit: Some(limit.unwrap_or(100)),
-            cursor: None,
-        };
-
-        let markets = self
-            .fetch_markets(Some(params))
-            .await
-            .map_err(|e| PolymarketError::Api(format!("{e}")))?;
-
-        let query_lower = query.map(|q| q.to_lowercase());
-        let min_liq = min_liquidity.unwrap_or(0.0);
-        let binary = binary_only.unwrap_or(false);
-
-        let filtered: Vec<Market> = markets
-            .into_iter()
-            .filter(|m| {
-                if binary && !m.is_binary() {
-                    return false;
-                }
-
-                if m.liquidity < min_liq {
-                    return false;
-                }
-
-                if let Some(ref q) = query_lower {
-                    let text = format!(
-                        "{} {}",
-                        m.question.to_lowercase(),
-                        m.description.to_lowercase()
-                    );
-                    if !text.contains(q) {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .take(limit.unwrap_or(100))
-            .collect();
-
-        Ok(filtered)
-    }
-
     pub async fn fetch_public_trades(
         &self,
         market: Option<&str>,
@@ -1001,19 +933,6 @@ impl Polymarket {
             .map_err(|e| PolymarketError::Api(format!("{e}")))
     }
 
-    pub async fn calculate_nav(&self, market: &Market) -> Result<Nav, PolymarketError> {
-        let balances = self
-            .fetch_balance()
-            .await
-            .map_err(|e| PolymarketError::Api(format!("{e}")))?;
-
-        let cash = balances.get("USDC").copied().unwrap_or(0.0);
-
-        let positions = self.fetch_positions_for_market(market).await?;
-
-        Ok(Nav::calculate(cash, &positions))
-    }
-
     /// Fetch current open interest from Polymarket data-api.
     /// Returns the OI value (USDC-denominated outstanding token pairs).
     pub async fn fetch_open_interest(
@@ -1043,66 +962,42 @@ impl Polymarket {
         Ok(oi)
     }
 
-    pub fn get_websocket(&self) -> PolymarketWebSocket {
-        PolymarketWebSocket::new()
-    }
-
-    pub fn get_websocket_with_config(&self, auto_reconnect: bool) -> PolymarketWebSocket {
-        PolymarketWebSocket::with_config(auto_reconnect)
-    }
-
-    pub fn parse_market_identifier(identifier: &str) -> String {
-        if identifier.is_empty() {
-            return String::new();
-        }
-
-        if identifier.starts_with("http") {
-            let without_query = identifier.split('?').next().unwrap_or(identifier);
-            let parts: Vec<&str> = without_query.trim_end_matches('/').split('/').collect();
-
-            if let Some(idx) = parts.iter().position(|&p| p == "event") {
-                if idx + 1 < parts.len() {
-                    return parts[idx + 1].to_string();
-                }
-            }
-
-            return parts.last().unwrap_or(&"").to_string();
-        }
-
-        identifier.to_string()
-    }
-
-    pub async fn get_tag_by_slug(&self, slug: &str) -> Result<serde_json::Value, PolymarketError> {
-        if slug.is_empty() {
-            return Err(PolymarketError::Api("slug must be non-empty".into()));
-        }
-
-        self.rate_limit().await;
-
-        let url = format!("{}/tags/slug/{}", self.config.gamma_url, slug);
-        let response = reqwest::get(&url)
-            .await
-            .map_err(|e| PolymarketError::Network(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(PolymarketError::Api(format!(
-                "get_tag_by_slug failed: {status} - {text}"
-            )));
-        }
-
-        response
-            .json()
-            .await
-            .map_err(|e| PolymarketError::Api(e.to_string()))
-    }
-
     fn parse_market(&self, data: serde_json::Value) -> Option<Market> {
         let obj = data.as_object()?;
 
+        fn parse_f64(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<f64> {
+            obj.get(key).and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+        }
+
+        fn parse_str(
+            obj: &serde_json::Map<String, serde_json::Value>,
+            key: &str,
+        ) -> Option<String> {
+            obj.get(key).and_then(|v| v.as_str()).map(String::from)
+        }
+
+        fn parse_datetime(
+            obj: &serde_json::Map<String, serde_json::Value>,
+            key: &str,
+        ) -> Option<chrono::DateTime<chrono::Utc>> {
+            obj.get(key).and_then(|v| {
+                v.as_str().and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                })
+            })
+        }
+
         let id = obj.get("id")?.as_str()?.to_string();
-        let question = obj.get("question")?.as_str().unwrap_or("").to_string();
+        let title = obj
+            .get("question")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         let outcomes: Vec<String> = obj
             .get("outcomes")
@@ -1121,10 +1016,9 @@ impl Polymarket {
             })
             .unwrap_or_else(|| vec!["Yes".into(), "No".into()]);
 
-        let prices_raw = obj.get("outcomePrices");
-        let mut prices = HashMap::new();
-
-        if let Some(prices_val) = prices_raw {
+        // Parse outcome prices
+        let mut outcome_prices = HashMap::new();
+        if let Some(prices_val) = obj.get("outcomePrices") {
             let price_list: Vec<f64> = if let Some(arr) = prices_val.as_array() {
                 arr.iter()
                     .filter_map(|v| {
@@ -1146,33 +1040,18 @@ impl Polymarket {
 
             for (outcome, price) in outcomes.iter().zip(price_list.iter()) {
                 if *price > 0.0 {
-                    prices.insert(outcome.clone(), *price);
+                    outcome_prices.insert(outcome.clone(), *price);
                 }
             }
         }
 
-        let volume = obj
-            .get("volumeNum")
-            .or_else(|| obj.get("volume"))
-            .and_then(|v| {
-                v.as_f64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-            })
+        let volume = parse_f64(obj, "volumeNum")
+            .or_else(|| parse_f64(obj, "volume"))
             .unwrap_or(0.0);
 
-        let liquidity = obj
-            .get("liquidityNum")
-            .or_else(|| obj.get("liquidity"))
-            .and_then(|v| {
-                v.as_f64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-            })
-            .unwrap_or(0.0);
+        let liquidity = parse_f64(obj, "liquidityNum").or_else(|| parse_f64(obj, "liquidity"));
 
-        let tick_size = obj
-            .get("minimum_tick_size")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.01);
+        let tick_size = parse_f64(obj, "minimum_tick_size").or(Some(0.01));
 
         let description = obj
             .get("description")
@@ -1180,17 +1059,131 @@ impl Polymarket {
             .unwrap_or("")
             .to_string();
 
+        // Extract token IDs from clobTokenIds
+        let clob_token_ids: Vec<String> = obj
+            .get("clobTokenIds")
+            .and_then(|v| {
+                if let Some(arr) = v.as_array() {
+                    Some(
+                        arr.iter()
+                            .filter_map(|x| x.as_str().map(String::from))
+                            .collect(),
+                    )
+                } else if let Some(s) = v.as_str() {
+                    serde_json::from_str(s).ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
+        let token_id_yes = clob_token_ids.first().cloned();
+        let token_id_no = clob_token_ids.get(1).cloned();
+
+        // Build outcome_tokens from outcomes + token IDs
+        let outcome_tokens: Vec<OutcomeToken> = outcomes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, outcome)| {
+                clob_token_ids.get(i).map(|tid| OutcomeToken {
+                    outcome: outcome.clone(),
+                    token_id: tid.clone(),
+                })
+            })
+            .collect();
+
+        // Group / event IDs
+        let group_id = obj
+            .get("events")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|e| e.get("id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let event_id = group_id
+            .as_deref()
+            .and_then(|gid| canonical_event_id("polymarket", gid));
+
+        // Derive status
+        let is_closed = obj.get("closed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_active = obj.get("active").and_then(|v| v.as_bool()).unwrap_or(true);
+        let status = if is_closed {
+            MarketStatus::Closed
+        } else if is_active {
+            MarketStatus::Active
+        } else {
+            MarketStatus::Closed
+        };
+
+        // Derive market type
+        let market_type = if outcomes.len() == 2 {
+            MarketType::Binary
+        } else {
+            MarketType::Categorical
+        };
+
+        let accepting_orders = obj
+            .get("acceptingOrders")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(is_active && !is_closed);
+
+        // Compute spread from best_bid / best_ask
+        let best_bid = parse_f64(obj, "bestBid");
+        let best_ask = parse_f64(obj, "bestAsk");
+        let spread = match (best_bid, best_ask) {
+            (Some(b), Some(a)) if a > b => Some(a - b),
+            _ => None,
+        };
+
         Some(Market {
+            openpx_id: Market::make_openpx_id("polymarket", &id),
+            exchange: "polymarket".into(),
             id,
-            question,
-            outcomes,
-            close_time: None,
-            volume,
-            liquidity,
-            prices,
-            metadata: data,
-            tick_size,
+            group_id,
+            event_id,
+            title: title.clone(),
+            question: Some(title),
             description,
+            slug: parse_str(obj, "slug"),
+            status,
+            market_type,
+            accepting_orders,
+            outcomes,
+            outcome_tokens,
+            outcome_prices,
+            token_id_yes,
+            token_id_no,
+            condition_id: parse_str(obj, "conditionId"),
+            question_id: parse_str(obj, "questionID"),
+            volume,
+            volume_24h: parse_f64(obj, "volume24hr"),
+            volume_1wk: parse_f64(obj, "volume1wk"),
+            volume_1mo: parse_f64(obj, "volume1mo"),
+            liquidity,
+            last_trade_price: parse_f64(obj, "lastTradePrice"),
+            best_bid,
+            best_ask,
+            spread,
+            price_change_1d: parse_f64(obj, "oneDayPriceChange"),
+            price_change_1h: parse_f64(obj, "oneHourPriceChange"),
+            price_change_1wk: parse_f64(obj, "oneWeekPriceChange"),
+            price_change_1mo: parse_f64(obj, "oneMonthPriceChange"),
+            tick_size,
+            min_order_size: parse_f64(obj, "orderMinSize"),
+            close_time: parse_datetime(obj, "endDate")
+                .or_else(|| parse_datetime(obj, "endDateIso")),
+            open_time: parse_datetime(obj, "startDate")
+                .or_else(|| parse_datetime(obj, "startDateIso")),
+            created_at: parse_datetime(obj, "createdAt"),
+            image_url: parse_str(obj, "image"),
+            icon_url: parse_str(obj, "icon"),
+            neg_risk: obj.get("negRisk").and_then(|v| v.as_bool()),
+            neg_risk_market_id: parse_str(obj, "negRiskMarketID"),
+            maker_fee_bps: parse_f64(obj, "makerBaseFee"),
+            taker_fee_bps: parse_f64(obj, "takerBaseFee"),
+            denomination_token: parse_str(obj, "denominationToken"),
+            ..Default::default()
         })
     }
 
@@ -1610,85 +1603,6 @@ fn aggregate_sub_prices_to_candles(
     candles
 }
 
-// ── CTF (Conditional Token Framework) operations ──────────────────────────────
-impl Polymarket {
-    /// Split USDC into YES/NO outcome tokens (gasless via relayer).
-    pub async fn split_position(
-        &self,
-        condition_id: alloy::primitives::B256,
-        amount: alloy::primitives::U256,
-    ) -> Result<crate::relayer::RelayerResponse, PolymarketError> {
-        let relayer = self.relayer.as_ref().ok_or_else(|| {
-            PolymarketError::Config("relayer not configured — builder credentials required".into())
-        })?;
-
-        let (to, data) = crate::ctf::encode_split_calldata(condition_id, amount);
-        relayer
-            .execute(vec![crate::relayer::RelayerTransaction {
-                to,
-                data,
-                value: "0".into(),
-            }])
-            .await
-    }
-
-    /// Merge YES/NO outcome tokens back into USDC (gasless via relayer).
-    pub async fn merge_positions(
-        &self,
-        condition_id: alloy::primitives::B256,
-        amount: alloy::primitives::U256,
-    ) -> Result<crate::relayer::RelayerResponse, PolymarketError> {
-        let relayer = self.relayer.as_ref().ok_or_else(|| {
-            PolymarketError::Config("relayer not configured — builder credentials required".into())
-        })?;
-
-        let (to, data) = crate::ctf::encode_merge_calldata(condition_id, amount);
-        relayer
-            .execute(vec![crate::relayer::RelayerTransaction {
-                to,
-                data,
-                value: "0".into(),
-            }])
-            .await
-    }
-
-    /// Redeem winning tokens after market resolution (gasless via relayer).
-    ///
-    /// For neg-risk markets, `amounts` must be provided.
-    pub async fn redeem_positions(
-        &self,
-        condition_id: alloy::primitives::B256,
-        neg_risk: bool,
-        amounts: Option<Vec<alloy::primitives::U256>>,
-    ) -> Result<crate::relayer::RelayerResponse, PolymarketError> {
-        let relayer = self.relayer.as_ref().ok_or_else(|| {
-            PolymarketError::Config("relayer not configured — builder credentials required".into())
-        })?;
-
-        let (to, data) = if neg_risk {
-            let amounts = amounts.ok_or_else(|| {
-                PolymarketError::Config("amounts required for neg-risk redemption".into())
-            })?;
-            crate::ctf::encode_redeem_neg_risk_calldata(condition_id, amounts)
-        } else {
-            crate::ctf::encode_redeem_calldata(condition_id)
-        };
-
-        relayer
-            .execute(vec![crate::relayer::RelayerTransaction {
-                to,
-                data,
-                value: "0".into(),
-            }])
-            .await
-    }
-
-    /// Whether the gasless relayer is configured (builder credentials present).
-    pub fn has_relayer(&self) -> bool {
-        self.relayer.is_some()
-    }
-}
-
 impl Exchange for Polymarket {
     fn id(&self) -> &'static str {
         "polymarket"
@@ -1702,7 +1616,7 @@ impl Exchange for Polymarket {
         &POLYMARKET_MANIFEST
     }
 
-    async fn fetch_all_unified_markets(&self) -> Result<Vec<px_core::UnifiedMarket>, OpenPxError> {
+    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
         let page_size = self.manifest().pagination.max_page_size.clamp(1, 500);
         // Optional hard guardrail for debugging; when reached we fail explicitly
         // instead of returning truncated results.
@@ -1722,7 +1636,7 @@ impl Exchange for Polymarket {
                 if let Some(max_pages) = max_pages_per_status {
                     if page_idx >= max_pages {
                         return Err(OpenPxError::Exchange(ExchangeError::Api(format!(
-                            "polymarket fetch_all_unified_markets exceeded configured page cap: closed={closed} max_pages={max_pages}"
+                            "polymarket fetch_markets exceeded configured page cap: closed={closed} max_pages={max_pages}"
                         ))));
                     }
                 }
@@ -1743,9 +1657,8 @@ impl Exchange for Polymarket {
 
                 for raw in data {
                     if let Some(parsed) = self.parse_market(raw) {
-                        let unified = self.to_unified_market(parsed)?;
-                        if seen_openpx_ids.insert(unified.openpx_id.clone()) {
-                            all_markets.push(unified);
+                        if seen_openpx_ids.insert(parsed.openpx_id.clone()) {
+                            all_markets.push(parsed);
                         }
                     }
                 }
@@ -1761,64 +1674,13 @@ impl Exchange for Polymarket {
 
         info!(
             total = all_markets.len(),
-            "polymarket fetch_all_unified_markets completed"
+            "polymarket fetch_markets completed"
         );
 
         Ok(all_markets)
     }
 
-    async fn fetch_markets(
-        &self,
-        params: Option<FetchMarketsParams>,
-    ) -> Result<Vec<Market>, OpenPxError> {
-        self.rate_limit().await;
-
-        let params = params.unwrap_or_default();
-        let mut query = String::new();
-
-        if let Some(limit) = params.limit {
-            query.push_str(&format!("?limit={limit}"));
-        }
-
-        // Cursor is offset for Polymarket
-        if let Some(ref cursor) = params.cursor {
-            if let Ok(offset) = cursor.parse::<usize>() {
-                if query.is_empty() {
-                    query.push('?');
-                } else {
-                    query.push('&');
-                }
-                query.push_str(&format!("offset={offset}"));
-            }
-        }
-
-        let endpoint = format!("/markets{query}");
-        let data: Vec<serde_json::Value> = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-
-        let map_start = Instant::now();
-        let markets: Vec<Market> = data
-            .into_iter()
-            .filter_map(|v| self.parse_market(v))
-            .collect();
-        let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!(
-            "openpx.exchange.mapping_us",
-            "exchange" => "polymarket",
-            "operation" => "fetch_markets"
-        )
-        .record(map_us);
-
-        Ok(markets)
-    }
-
-    async fn fetch_event_markets(
-        &self,
-        group_id: &str,
-    ) -> Result<Vec<px_core::UnifiedMarket>, OpenPxError> {
+    async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
         let group_id = group_id.trim();
         if group_id.is_empty() {
             return Ok(Vec::new());
@@ -1851,12 +1713,12 @@ impl Exchange for Polymarket {
             };
         }
 
-        let mut unified = Vec::new();
+        let mut result = Vec::new();
         for event in events {
             let Some(event_obj) = event.as_object() else {
                 continue;
             };
-            let event_id = event_obj
+            let native_event_id = event_obj
                 .get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or(group_id)
@@ -1866,33 +1728,21 @@ impl Exchange for Polymarket {
             };
 
             for market_raw in markets {
-                let mut raw = market_raw.clone();
-                if let Some(obj) = raw.as_object_mut() {
-                    if !obj.contains_key("events") {
-                        let mut event_meta = serde_json::Map::new();
-                        event_meta.insert(
-                            "id".to_string(),
-                            serde_json::Value::String(event_id.clone()),
-                        );
-                        obj.insert(
-                            "events".to_string(),
-                            serde_json::Value::Array(vec![serde_json::Value::Object(event_meta)]),
-                        );
+                let raw = market_raw.clone();
+                if let Some(mut parsed) = self.parse_market(raw) {
+                    // Set group_id and event_id directly on the parsed Market
+                    if parsed.group_id.is_none() {
+                        parsed.group_id = Some(native_event_id.clone());
                     }
-                    if !obj.contains_key("group_id") {
-                        obj.insert(
-                            "group_id".to_string(),
-                            serde_json::Value::String(event_id.clone()),
-                        );
+                    if parsed.event_id.is_none() {
+                        parsed.event_id = canonical_event_id("polymarket", &native_event_id);
                     }
-                }
-                if let Some(parsed) = self.parse_market(raw) {
-                    unified.push(self.to_unified_market(parsed)?);
+                    result.push(parsed);
                 }
             }
         }
 
-        Ok(unified)
+        Ok(result)
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
@@ -1923,43 +1773,32 @@ impl Exchange for Polymarket {
         .record(map_us);
 
         if parsed.get_token_ids().is_empty() {
-            let condition_id = parsed
-                .metadata
-                .get("conditionId")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&parsed.id);
+            let condition_id = parsed.condition_id.as_deref().unwrap_or(&parsed.id);
 
             if let Ok(token_ids) = self.fetch_token_ids(condition_id).await {
                 if !token_ids.is_empty() {
-                    let tokens_value = serde_json::Value::Array(
-                        token_ids
-                            .into_iter()
-                            .map(serde_json::Value::String)
-                            .collect(),
-                    );
-
-                    if let Some(obj) = parsed.metadata.as_object_mut() {
-                        obj.insert("clobTokenIds".into(), tokens_value);
-                    } else {
-                        let mut obj = serde_json::Map::new();
-                        obj.insert("clobTokenIds".into(), tokens_value);
-                        parsed.metadata = serde_json::Value::Object(obj);
-                    }
+                    // Update outcome_tokens, token_id_yes, token_id_no
+                    parsed.outcome_tokens = parsed
+                        .outcomes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, outcome)| {
+                            token_ids.get(i).map(|tid| OutcomeToken {
+                                outcome: outcome.clone(),
+                                token_id: tid.clone(),
+                            })
+                        })
+                        .collect();
+                    parsed.token_id_yes = token_ids.first().cloned();
+                    parsed.token_id_no = token_ids.get(1).cloned();
                 }
             }
         }
 
         // Enrich with open interest from data-api
-        if let Some(condition_id) = parsed
-            .metadata
-            .get("conditionId")
-            .and_then(|v| v.as_str())
-            .map(String::from)
-        {
+        if let Some(condition_id) = parsed.condition_id.clone() {
             if let Ok(Some(oi)) = self.fetch_open_interest(&condition_id).await {
-                if let Some(obj) = parsed.metadata.as_object_mut() {
-                    obj.insert("open_interest".to_string(), serde_json::json!(oi));
-                }
+                parsed.open_interest = Some(oi);
             }
         }
 
@@ -1977,11 +1816,7 @@ impl Exchange for Polymarket {
             let mut token_ids = market.get_token_ids();
 
             if token_ids.is_empty() {
-                let condition_id = market
-                    .metadata
-                    .get("conditionId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&market.id);
+                let condition_id = market.condition_id.as_deref().unwrap_or(&market.id);
                 token_ids = self
                     .fetch_token_ids(condition_id)
                     .await
@@ -2123,9 +1958,8 @@ impl Exchange for Polymarket {
             } else {
                 let market = self.fetch_market(&req.market_id).await?;
                 market
-                    .metadata
-                    .get("conditionId")
-                    .and_then(|v| v.as_str())
+                    .condition_id
+                    .as_deref()
                     .unwrap_or(&market.id)
                     .to_string()
             };
@@ -2396,11 +2230,7 @@ impl Exchange for Polymarket {
             let mut token_ids = market.get_token_ids();
 
             if token_ids.is_empty() {
-                let condition_id = market
-                    .metadata
-                    .get("conditionId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&market.id);
+                let condition_id = market.condition_id.as_deref().unwrap_or(&market.id);
                 token_ids = self
                     .fetch_token_ids(condition_id)
                     .await
@@ -2434,8 +2264,8 @@ impl Exchange for Polymarket {
                 .cloned()
                 .ok_or_else(|| OpenPxError::InvalidInput("token not found for outcome".into()))?;
 
-            // Extract neg_risk from market metadata
-            let neg_risk_from_market = market.metadata.get("negRisk").and_then(|v| v.as_bool());
+            // Extract neg_risk from market
+            let neg_risk_from_market = market.neg_risk;
 
             (resolved_token_id, neg_risk_from_market)
         };
@@ -2782,7 +2612,7 @@ impl Exchange for Polymarket {
         // Use the Data API with condition_id filter for rich position data
         // (avgPrice, curPrice, cashPnl) instead of raw on-chain balances.
         let market = self.fetch_market(market_id).await?;
-        let condition_id = market.metadata.get("conditionId").and_then(|v| v.as_str());
+        let condition_id = market.condition_id.as_deref();
         if let Some(cid) = condition_id {
             const DATA_API_URL: &str = "https://data-api.polymarket.com";
             let url =
@@ -2845,23 +2675,7 @@ impl Exchange for Polymarket {
             ))
         })?;
 
-        let token_ids: Vec<String> = market
-            .metadata
-            .get("clobTokenIds")
-            .and_then(|v| {
-                if let Some(arr) = v.as_array() {
-                    Some(
-                        arr.iter()
-                            .filter_map(|x| x.as_str().map(String::from))
-                            .collect(),
-                    )
-                } else if let Some(s) = v.as_str() {
-                    serde_json::from_str(s).ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
+        let token_ids: Vec<String> = market.get_token_ids();
 
         if token_ids.is_empty() {
             return Ok(vec![]);
@@ -2902,7 +2716,7 @@ impl Exchange for Polymarket {
                     }
                 });
 
-                let current_price = market.prices.get(&outcome).copied().unwrap_or(0.0);
+                let current_price = market.outcome_prices.get(&outcome).copied().unwrap_or(0.0);
 
                 positions.push(Position {
                     market_id: market_id.to_string(),
@@ -2936,11 +2750,7 @@ impl Exchange for Polymarket {
         // Resolve condition_id when filtering by market
         let condition_id = if let Some(mid) = market_id {
             let market = self.fetch_market(mid).await?;
-            market
-                .metadata
-                .get("conditionId")
-                .and_then(|v| v.as_str())
-                .map(String::from)
+            market.condition_id.clone()
         } else {
             None
         };

@@ -58,20 +58,15 @@ with NAPI-RS.
 
 ```rust
 use px_sdk::ExchangeInner;
-use px_core::{Exchange, FetchMarketsParams};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let exchange = ExchangeInner::new("polymarket", json!({}))?;
 
-    let markets = exchange.fetch_markets(Some(FetchMarketsParams {
-        limit: Some(10),
-        cursor: None,
-    })).await?;
-
+    let markets = exchange.fetch_markets().await?;
     for m in &markets {
-        println!("[{}] {} — prices: {:?}", m.id, m.question, m.prices);
+        println!("[{}] {} — {:?}", m.id, m.title, m.outcome_prices);
     }
 
     Ok(())
@@ -96,9 +91,9 @@ from openpx import Exchange
 
 # Unauthenticated (market data only)
 exchange = Exchange("polymarket")
-markets = exchange.fetch_markets(limit=10)
+markets = exchange.fetch_markets()
 for m in markets:
-    print(f"[{m.id}] {m.question}")
+    print(f"[{m.id}] {m.title}")
 
 # Authenticated (trading)
 exchange = Exchange("kalshi", {
@@ -112,7 +107,7 @@ balance = exchange.fetch_balance()
 ### How It Works
 
 ```
-User calls exchange.fetch_markets(limit=5)
+User calls exchange.fetch_markets()
          |
 exchange.py  (pure Python wrapper)
          |  calls _native.NativeExchange.fetch_markets()
@@ -133,9 +128,9 @@ import { Exchange } from "@openpx/sdk";
 
 // Unauthenticated (market data only)
 const exchange = new Exchange("polymarket", {});
-const markets = await exchange.fetchMarkets(10);
+const markets = await exchange.fetchMarkets();
 for (const m of markets) {
-  console.log(`[${m.id}] ${m.question}`);
+  console.log(`[${m.id}] ${m.title}`);
 }
 
 // Authenticated (trading)

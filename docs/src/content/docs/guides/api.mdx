@@ -152,13 +152,10 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 
 ### fetch_markets
 
-Fetch a paginated list of markets. All parameters are optional — call with no
-arguments to use exchange defaults.
+Fetch all markets from this exchange. Handles pagination internally —
+returns the complete set.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `limit` | `int` | No | Max markets to return per page |
-| `cursor` | `string` | No | Pagination cursor from a previous response |
+No parameters.
 
 **Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
 
@@ -166,19 +163,9 @@ arguments to use exchange defaults.
 <TabItem label="Rust">
 
 ```rust
-use px_core::FetchMarketsParams;
-
-// All markets (default pagination)
-let markets = exchange.fetch_markets(None).await?;
-
-// With pagination
-let markets = exchange.fetch_markets(Some(FetchMarketsParams {
-    limit: Some(10),
-    cursor: None,
-})).await?;
-
+let markets = exchange.fetch_markets().await?;
 for m in &markets {
-    println!("[{}] {} — ${:.2}", m.id, m.question, m.prices["Yes"]);
+    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
 }
 ```
 
@@ -186,28 +173,18 @@ for m in &markets {
 <TabItem label="Python">
 
 ```python
-# All markets (default pagination)
 markets = exchange.fetch_markets()
-
-# With limit
-markets = exchange.fetch_markets(limit=10)
-
 for m in markets:
-    print(f"[{m.id}] {m.question}")
+    print(f"[{m.id}] {m.title}")
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// All markets (default pagination)
 const markets = await exchange.fetchMarkets();
-
-// With limit
-const markets = await exchange.fetchMarkets(10);
-
 for (const m of markets) {
-  console.log(`[${m.id}] ${m.question}`);
+  console.log(`[${m.id}] ${m.title}`);
 }
 ```
 
@@ -229,7 +206,7 @@ Fetch a single market by its exchange-native ID.
 
 ```rust
 let market = exchange.fetch_market("KXBTC-25MAR14").await?;
-println!("{}: {}", market.id, market.question);
+println!("{}: {}", market.id, market.title);
 ```
 
 </TabItem>
@@ -237,7 +214,7 @@ println!("{}: {}", market.id, market.question);
 
 ```python
 market = exchange.fetch_market("KXBTC-25MAR14")
-print(f"{market.id}: {market.question}")
+print(f"{market.id}: {market.title}")
 ```
 
 </TabItem>
@@ -245,48 +222,7 @@ print(f"{market.id}: {market.question}")
 
 ```typescript
 const market = await exchange.fetchMarket("KXBTC-25MAR14");
-console.log(`${market.id}: ${market.question}`);
-```
-
-</TabItem>
-</Tabs>
-
-### fetch_all_unified_markets
-
-Fetch all markets with normalized fields across exchanges. Handles pagination
-internally — returns the complete set.
-
-No parameters.
-
-**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-let markets = exchange.fetch_all_unified_markets().await?;
-for m in &markets {
-    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-markets = exchange.fetch_all_unified_markets()
-for m in markets:
-    print(f"[{m['openpx_id']}] {m['title']} — {m['exchange']}")
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-const markets = await exchange.fetchAllUnifiedMarkets();
-for (const m of markets) {
-  console.log(`[${m.openpx_id}] ${m.title} — ${m.exchange}`);
-}
+console.log(`${market.id}: ${market.title}`);
 ```
 
 </TabItem>
@@ -303,7 +239,7 @@ markets if the exchange has no native group endpoint.
 |-----------|------|----------|-------------|
 | `group_id` | `string` | **Yes** | Exchange event or group ID |
 
-**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
+**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
 
 ```rust
 let markets = exchange.fetch_event_markets("group-abc").await?;

@@ -211,9 +211,9 @@ def categorize_types(definitions: dict[str, Any]) -> dict[str, list[str]]:
         "Configuration & Requests": [],
     }
 
-    market_types = {"Market", "UnifiedMarket", "OutcomeToken", "MarketStatus"}
+    market_types = {"Market", "OutcomeToken", "MarketStatus", "MarketType"}
     order_types = {"Order", "OrderType", "OrderSide", "OrderStatus", "LiquidityRole", "Fill"}
-    account_types = {"Position", "Nav", "PositionBreakdown", "DeltaInfo"}
+    account_types = {"Position"}
     orderbook_types = {"Orderbook", "OrderbookSnapshot", "PriceLevel", "PriceLevelChange", "PriceLevelSide"}
     trade_types = {"MarketTrade", "Candlestick", "PriceHistoryInterval"}
     ws_types = {"ActivityEvent", "ActivityTrade", "ActivityFill"}
@@ -430,8 +430,6 @@ Users bring their own exchange credentials and trade directly through a single i
 | Kalshi | Yes | Yes | Yes |
 | Polymarket | Yes | Yes | Yes |
 | Opinion | Yes | Yes | Yes |
-| Limitless | Yes | Yes | Yes |
-| Predict.fun | Yes | Yes | Yes |
 
 ## Architecture
 
@@ -477,8 +475,6 @@ px-core = "0.1"
 px-exchange-kalshi = "0.1"
 px-exchange-polymarket = "0.1"
 px-exchange-opinion = "0.1"
-px-exchange-limitless = "0.1"
-px-exchange-predictfun = "0.1"
 
 # Or use the unified SDK facade
 px-sdk = "0.1"
@@ -528,9 +524,9 @@ use serde_json::json;
 #[tokio::main]
 async fn main() {
     let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
-    let markets = exchange.fetch_markets(None).await.unwrap();
+    let markets = exchange.fetch_markets().await.unwrap();
     for market in &markets[..5] {
-        println!("{}: {}", market.id, market.question);
+        println!("{}: {}", market.id, market.title);
     }
 }
 ```
@@ -542,9 +538,9 @@ async fn main() {
 from openpx import Exchange
 
 exchange = Exchange("kalshi")
-markets = exchange.fetch_markets(limit=5)
+markets = exchange.fetch_markets()
 for market in markets:
-    print(f"{market.id}: {market.question}")
+    print(f"{market.id}: {market.title}")
 ```
 
 </TabItem>
@@ -554,9 +550,9 @@ for market in markets:
 import { Exchange } from "@openpx/sdk";
 
 const exchange = new Exchange("kalshi", {});
-const markets = await exchange.fetchMarkets(5);
+const markets = await exchange.fetchMarkets();
 for (const market of markets) {
-  console.log(`${market.id}: ${market.question}`);
+  console.log(`${market.id}: ${market.title}`);
 }
 ```
 
@@ -698,23 +694,7 @@ title: Exchanges
 - **Website:** [opinion.trade](https://opinion.trade)
 - **API Docs:** [docs.opinion.trade](https://docs.opinion.trade/developer-guide/opinion-open-api)
 - **Auth:** API key + private key + multi-sig address
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
-
-### Limitless
-
-- **ID:** `limitless`
-- **Website:** [limitless.exchange](https://limitless.exchange)
-- **API Docs:** [api.limitless.exchange](https://api.limitless.exchange/api-v1)
-- **Auth:** Private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
-
-### Predict.fun
-
-- **ID:** `predictfun`
-- **Website:** [predict.fun](https://predict.fun)
-- **API Docs:** [dev.predict.fun](https://dev.predict.fun/)
-- **Auth:** API key + private key
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket
+- **Features:** Markets, Orders, Positions, Balance, Orderbook
 
 ## Configuration
 
@@ -738,14 +718,6 @@ All exchanges accept a JSON config object. Pass exchange-specific fields:
     "api_key": "...",
     "private_key": "0x...",
     "multi_sig_addr": "0x..."
-  },
-  "limitless": {
-    "private_key": "0x..."
-  },
-  "predictfun": {
-    "api_key": "...",
-    "private_key": "0x...",
-    "testnet": false
   }
 }
 ```
@@ -769,7 +741,7 @@ object with credentials.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `exchange_id` | `string` | Yes | Exchange identifier (`"kalshi"`, `"polymarket"`, `"opinion"`, `"limitless"`, `"predictfun"`) |
+| `exchange_id` | `string` | Yes | Exchange identifier (`"kalshi"`, `"polymarket"`, `"opinion"`) |
 | `config` | `object` | No | Credentials object — omit for unauthenticated (market data only) access |
 
 <Tabs syncKey="lang">
@@ -907,13 +879,10 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 
 ### fetch_markets
 
-Fetch a paginated list of markets. All parameters are optional — call with no
-arguments to use exchange defaults.
+Fetch all markets from this exchange. Handles pagination internally —
+returns the complete set.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `limit` | `int` | No | Max markets to return per page |
-| `cursor` | `string` | No | Pagination cursor from a previous response |
+No parameters.
 
 **Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
 
@@ -921,19 +890,9 @@ arguments to use exchange defaults.
 <TabItem label="Rust">
 
 ```rust
-use px_core::FetchMarketsParams;
-
-// All markets (default pagination)
-let markets = exchange.fetch_markets(None).await?;
-
-// With pagination
-let markets = exchange.fetch_markets(Some(FetchMarketsParams {
-    limit: Some(10),
-    cursor: None,
-})).await?;
-
+let markets = exchange.fetch_markets().await?;
 for m in &markets {
-    println!("[{}] {} — ${:.2}", m.id, m.question, m.prices["Yes"]);
+    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
 }
 ```
 
@@ -941,28 +900,18 @@ for m in &markets {
 <TabItem label="Python">
 
 ```python
-# All markets (default pagination)
 markets = exchange.fetch_markets()
-
-# With limit
-markets = exchange.fetch_markets(limit=10)
-
 for m in markets:
-    print(f"[{m.id}] {m.question}")
+    print(f"[{m.id}] {m.title}")
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-// All markets (default pagination)
 const markets = await exchange.fetchMarkets();
-
-// With limit
-const markets = await exchange.fetchMarkets(10);
-
 for (const m of markets) {
-  console.log(`[${m.id}] ${m.question}`);
+  console.log(`[${m.id}] ${m.title}`);
 }
 ```
 
@@ -984,7 +933,7 @@ Fetch a single market by its exchange-native ID.
 
 ```rust
 let market = exchange.fetch_market("KXBTC-25MAR14").await?;
-println!("{}: {}", market.id, market.question);
+println!("{}: {}", market.id, market.title);
 ```
 
 </TabItem>
@@ -992,7 +941,7 @@ println!("{}: {}", market.id, market.question);
 
 ```python
 market = exchange.fetch_market("KXBTC-25MAR14")
-print(f"{market.id}: {market.question}")
+print(f"{market.id}: {market.title}")
 ```
 
 </TabItem>
@@ -1000,48 +949,7 @@ print(f"{market.id}: {market.question}")
 
 ```typescript
 const market = await exchange.fetchMarket("KXBTC-25MAR14");
-console.log(`${market.id}: ${market.question}`);
-```
-
-</TabItem>
-</Tabs>
-
-### fetch_all_unified_markets
-
-Fetch all markets with normalized fields across exchanges. Handles pagination
-internally — returns the complete set.
-
-No parameters.
-
-**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
-
-<Tabs syncKey="lang">
-<TabItem label="Rust">
-
-```rust
-let markets = exchange.fetch_all_unified_markets().await?;
-for m in &markets {
-    println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
-}
-```
-
-</TabItem>
-<TabItem label="Python">
-
-```python
-markets = exchange.fetch_all_unified_markets()
-for m in markets:
-    print(f"[{m['openpx_id']}] {m['title']} — {m['exchange']}")
-```
-
-</TabItem>
-<TabItem label="TypeScript">
-
-```typescript
-const markets = await exchange.fetchAllUnifiedMarkets();
-for (const m of markets) {
-  console.log(`[${m.openpx_id}] ${m.title} — ${m.exchange}`);
-}
+console.log(`${market.id}: ${market.title}`);
 ```
 
 </TabItem>
@@ -1058,7 +966,7 @@ markets if the exchange has no native group endpoint.
 |-----------|------|----------|-------------|
 | `group_id` | `string` | **Yes** | Exchange event or group ID |
 
-**Returns:** `list[UnifiedMarket]` — see [`UnifiedMarket`](/reference/models/#unifiedmarket)
+**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
 
 ```rust
 let markets = exchange.fetch_event_markets("group-abc").await?;
@@ -1768,8 +1676,6 @@ trades, and fill events across all supported exchanges.
 | Kalshi | Yes | Yes | Yes | Native WS |
 | Polymarket | Yes | Yes | Yes | Native WS (dual connection) |
 | Opinion | Yes | Yes | Yes | Native WS |
-| Limitless | Yes | — | Yes | Socket.IO |
-| Predict.fun | Yes | — | Yes | Native WS |
 
 ## Connection Lifecycle
 
@@ -2132,7 +2038,7 @@ See [`ActivityTrade`](/reference/models/#activitytrade) and
 | Event | Description | Exchanges |
 |-------|-------------|-----------|
 | **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket, Opinion |
-| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion, Limitless, Predict.fun |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion |
 
 ## Auto-Reconnect
 

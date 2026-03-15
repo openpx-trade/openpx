@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let exchange = Kalshi::with_default_config()?;
     
     // Fetch markets
-    let markets = exchange.fetch_markets(None).await?;
+    let markets = exchange.fetch_markets().await?;
     for market in markets.iter().take(5) {
         println!("{}: {:?}", market.question, market.prices);
     }

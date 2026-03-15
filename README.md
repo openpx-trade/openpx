@@ -64,20 +64,20 @@ px-sdk = "0.1.4"
 ```
 
 ```rust
-use px_core::{Exchange, FetchMarketsParams};
+use px_core::Exchange;
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = KalshiConfig::new()
-        .with_api_key("your-api-key-id")
+        .with_api_key_id("your-api-key-id")
         .with_private_key_path("/path/to/key.pem");
 
     let exchange = Kalshi::new(config)?;
-    let markets = exchange.fetch_markets(None).await?;
+    let markets = exchange.fetch_markets().await?;
 
     for market in &markets {
-        println!("{}: {}", market.id, market.question);
+        println!("{}: {}", market.id, market.title);
     }
     Ok(())
 }
@@ -97,9 +97,9 @@ exchange = Exchange("kalshi", {
     "private_key_pem": "your-private-key"
 })
 
-markets = exchange.fetch_markets(limit=10)
+markets = exchange.fetch_markets()
 for market in markets:
-    print(f"{market.id}: {market.question}")
+    print(f"{market.id}: {market.title}")
 ```
 
 ### TypeScript
@@ -109,15 +109,15 @@ npm install @openpx/sdk
 ```
 
 ```typescript
-const { Exchange } = require("@openpx/sdk");
+import { Exchange } from "@openpx/sdk";
 
 const exchange = new Exchange("kalshi", {
-  apiKeyId: "your-api-key-id",
-  privateKeyPem: "your-private-key"
+  api_key_id: "your-api-key-id",
+  private_key_pem: "your-private-key",
 });
 
-const markets = await exchange.fetchMarkets({ limit: 10 });
-markets.forEach(m => console.log(`${m.id}: ${m.question}`));
+const markets = await exchange.fetchMarkets();
+markets.forEach(m => console.log(`${m.id}: ${m.title}`));
 ```
 
 ## Exchange Credentials
