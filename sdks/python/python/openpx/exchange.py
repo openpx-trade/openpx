@@ -46,12 +46,24 @@ class Exchange:
     def describe(self) -> dict[str, Any]:
         return self._native.describe()
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
-        """Fetch all markets from the exchange (auto-paginates)."""
-        raw = self._native.fetch_markets()
+    def fetch_markets(
+        self,
+        *,
+        status: Optional[str] = None,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Fetch one page of markets from the exchange.
+
+        Returns {"markets": [...], "cursor": "..." | None}.
+        Pass the returned cursor back to fetch the next page.
+        """
+        raw = self._native.fetch_markets(status, cursor)
         try:
             from openpx._models import Market
-            return [Market(**m) for m in raw]
+            return {
+                "markets": [Market(**m) for m in raw["markets"]],
+                "cursor": raw.get("cursor"),
+            }
         except (ImportError, Exception):
             return raw
 

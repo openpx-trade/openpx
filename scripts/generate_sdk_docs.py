@@ -955,26 +955,6 @@ console.log(`${market.id}: ${market.title}`);
 </TabItem>
 </Tabs>
 
-### fetch_event_markets
-
-Fetch all markets belonging to an event or group. Falls back to scanning all
-markets if the exchange has no native group endpoint.
-
-> **Rust only** — not yet exposed in Python or TypeScript SDKs.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | `string` | **Yes** | Exchange event or group ID |
-
-**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
-
-```rust
-let markets = exchange.fetch_event_markets("group-abc").await?;
-for m in &markets {
-    println!("[{}] {}", m.openpx_id, m.title);
-}
-```
-
 ---
 
 ## Trading

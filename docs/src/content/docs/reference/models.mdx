@@ -1365,7 +1365,6 @@ Describes the capabilities of an exchange instance. Boolean fields indicate whic
 | `has_cancel_order` | `boolean` | Yes | K P O | Whether order cancellation is supported |
 | `has_create_order` | `boolean` | Yes | K P O | Whether order placement is supported (requires auth) |
 | `has_fetch_balance` | `boolean` | Yes | K P O | Whether account balance queries are supported |
-| `has_fetch_events` | `boolean` | Yes | K P | Whether fetching event/group market listings is supported |
 | `has_fetch_fills` | `boolean` | Yes | K P | Whether fill/trade history queries are supported |
 | `has_fetch_markets` | `boolean` | Yes | K P O | Whether market listing is supported |
 | `has_fetch_orderbook` | `boolean` | Yes | K P O | Whether L2 orderbook snapshots are available |
@@ -1394,7 +1393,6 @@ pub struct ExchangeInfo {
     pub has_fetch_orderbook: bool,
     pub has_fetch_price_history: bool,
     pub has_fetch_trades: bool,
-    pub has_fetch_events: bool,
     pub has_fetch_user_activity: bool,
     pub has_fetch_fills: bool,
     pub has_approvals: bool,
@@ -1419,7 +1417,6 @@ class ExchangeInfo(BaseModel):
     has_fetch_orderbook: bool
     has_fetch_price_history: bool
     has_fetch_trades: bool
-    has_fetch_events: bool
     has_fetch_user_activity: bool
     has_fetch_fills: bool
     has_approvals: bool
@@ -1443,7 +1440,6 @@ interface ExchangeInfo {
   has_fetch_orderbook: boolean;
   has_fetch_price_history: boolean;
   has_fetch_trades: boolean;
-  has_fetch_events: boolean;
   has_fetch_user_activity: boolean;
   has_fetch_fills: boolean;
   has_approvals: boolean;

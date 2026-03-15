@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::models::MarketStatus;
+
 #[derive(Debug, Clone)]
 pub struct ExchangeConfig {
     pub timeout: Duration,
@@ -55,6 +57,9 @@ pub struct FetchMarketsParams {
     /// Exchange-specific cursor (offset, page number, or cursor string)
     #[serde(default)]
     pub cursor: Option<String>,
+    /// Filter by market status. Defaults to Active at the exchange level when None.
+    #[serde(default)]
+    pub status: Option<MarketStatus>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

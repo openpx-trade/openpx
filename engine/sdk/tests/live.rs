@@ -26,7 +26,11 @@ use px_sdk::{ExchangeInner, WebSocketInner};
 // ---------------------------------------------------------------------------
 
 /// Skip the test unless OPENPX_LIVE_TESTS=1.
+/// Automatically loads `.env` from the workspace root so contributors
+/// only need to set credentials there.
 fn require_live() -> bool {
+    // Load .env once (no-op if already loaded or file missing)
+    let _ = dotenvy::dotenv();
     env::var("OPENPX_LIVE_TESTS").is_ok_and(|v| v == "1")
 }
 
@@ -146,9 +150,9 @@ macro_rules! exchange_tests {
             #[tokio::test]
             async fn fetch_markets() {
                 let Some(ex) = get_exchange() else { return };
-                let result = ex.fetch_markets().await;
-                let markets = match result {
-                    Ok(m) => m,
+                let result = ex.fetch_markets(&Default::default()).await;
+                let (markets, cursor) = match result {
+                    Ok(r) => r,
                     Err(e) if is_auth_error(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_markets: requires auth",
@@ -165,6 +169,21 @@ macro_rules! exchange_tests {
                     }
                     Err(e) => panic!("fetch_markets failed: {e:?}"),
                 };
+                eprintln!(
+                    "\n=== {}: {} markets, cursor={:?} ===",
+                    stringify!($exchange_id),
+                    markets.len(),
+                    cursor,
+                );
+                for m in markets.iter().take(3) {
+                    eprintln!(
+                        "  {} | {:50} | status={:?} | group={:?} | vol={:.0}",
+                        m.id, m.title, m.status, m.group_id, m.volume
+                    );
+                }
+                if markets.len() > 3 {
+                    eprintln!("  ... and {} more", markets.len() - 3);
+                }
                 assert!(!markets.is_empty(), "expected at least 1 market");
                 for m in &markets {
                     assert!(!m.id.is_empty(), "market id should not be empty");
@@ -176,8 +195,8 @@ macro_rules! exchange_tests {
             #[tokio::test]
             async fn fetch_markets_field_invariants() {
                 let Some(ex) = get_exchange() else { return };
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
 
@@ -244,8 +263,8 @@ macro_rules! exchange_tests {
             #[tokio::test]
             async fn fetch_market_single() {
                 let Some(ex) = get_exchange() else { return };
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) => m,
                     Err(_) => return, // covered by fetch_markets test
                 };
                 if markets.is_empty() {
@@ -261,8 +280,8 @@ macro_rules! exchange_tests {
             #[tokio::test]
             async fn fetch_market_consistency() {
                 let Some(ex) = get_exchange() else { return };
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
                 // Pick a market from the list and fetch individually
@@ -305,8 +324,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_orderbook {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
                 let market_id = &markets[0].id;
@@ -345,8 +364,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_orderbook {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
 
@@ -447,8 +466,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_price_history {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
                 // Try multiple markets — first one may be newly created with no history
@@ -499,8 +518,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_price_history {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
 
@@ -524,30 +543,10 @@ macro_rules! exchange_tests {
                     for c in &candles {
                         // OHLC invariants
                         assert!(c.high >= c.low, "high {} < low {}", c.high, c.low);
-                        assert!(
-                            c.high >= c.open,
-                            "high {} < open {}",
-                            c.high,
-                            c.open
-                        );
-                        assert!(
-                            c.high >= c.close,
-                            "high {} < close {}",
-                            c.high,
-                            c.close
-                        );
-                        assert!(
-                            c.low <= c.open,
-                            "low {} > open {}",
-                            c.low,
-                            c.open
-                        );
-                        assert!(
-                            c.low <= c.close,
-                            "low {} > close {}",
-                            c.low,
-                            c.close
-                        );
+                        assert!(c.high >= c.open, "high {} < open {}", c.high, c.open);
+                        assert!(c.high >= c.close, "high {} < close {}", c.high, c.close);
+                        assert!(c.low <= c.open, "low {} > open {}", c.low, c.open);
+                        assert!(c.low <= c.close, "low {} > close {}", c.low, c.close);
 
                         // Prices should be in [0, 1] range for prediction markets
                         assert!(
@@ -570,7 +569,11 @@ macro_rules! exchange_tests {
 
                         // Open interest, if present, should be non-negative
                         if let Some(oi) = c.open_interest {
-                            assert!(oi >= 0.0, "open_interest should be non-negative, got {}", oi);
+                            assert!(
+                                oi >= 0.0,
+                                "open_interest should be non-negative, got {}",
+                                oi
+                            );
                         }
                     }
 
@@ -600,8 +603,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_trades {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
                 match ex
@@ -634,8 +637,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_trades {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
 
@@ -667,8 +670,8 @@ macro_rules! exchange_tests {
                 if !ex.describe().has_fetch_trades {
                     return;
                 }
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
 
@@ -702,8 +705,7 @@ macro_rules! exchange_tests {
                     {
                         Ok((page2, _)) => {
                             // Pages should not overlap (if both non-empty)
-                            if !page2.is_empty() && page1[0].id.is_some() && page2[0].id.is_some()
-                            {
+                            if !page2.is_empty() && page1[0].id.is_some() && page2[0].id.is_some() {
                                 assert_ne!(
                                     page1[0].id, page2[0].id,
                                     "pagination returned same first trade"
@@ -712,66 +714,6 @@ macro_rules! exchange_tests {
                         }
                         Err(_) => {} // Cursor may have expired
                     }
-                }
-            }
-
-            // ==================================================================
-            // Unauthenticated — Event markets
-            // ==================================================================
-
-            #[tokio::test]
-            async fn fetch_event_markets() {
-                let Some(ex) = get_exchange() else { return };
-                if !ex.describe().has_fetch_events {
-                    return;
-                }
-
-                // Find a market with a group_id to test event fetching
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
-                    _ => return,
-                };
-
-                let group_id = match markets.iter().find_map(|m| m.group_id.as_deref()) {
-                    Some(gid) => gid.to_string(),
-                    None => {
-                        eprintln!(
-                            "SKIP {}/fetch_event_markets: no markets with group_id",
-                            stringify!($exchange_id)
-                        );
-                        return;
-                    }
-                };
-
-                let event_markets = ex
-                    .fetch_event_markets(&group_id)
-                    .await
-                    .expect("fetch_event_markets failed");
-
-                assert!(
-                    !event_markets.is_empty(),
-                    "event should contain at least 1 market"
-                );
-
-                // All returned markets should belong to this event
-                for m in &event_markets {
-                    assert_eq!(
-                        m.group_id.as_deref(),
-                        Some(group_id.as_str()),
-                        "market {} has wrong group_id",
-                        m.id
-                    );
-                }
-            }
-
-            #[tokio::test]
-            async fn fetch_event_markets_empty_group() {
-                let Some(ex) = get_exchange() else { return };
-                // Empty group_id should return empty vec, not error
-                let result = ex.fetch_event_markets("").await;
-                match result {
-                    Ok(markets) => assert!(markets.is_empty(), "empty group_id should return no markets"),
-                    Err(_) => {} // Some exchanges may error on empty input
                 }
             }
 
@@ -804,10 +746,7 @@ macro_rules! exchange_tests {
                 match ex.fetch_balance_raw().await {
                     Ok(raw) => {
                         // Raw balance should be a valid JSON value
-                        assert!(
-                            !raw.is_null(),
-                            "raw balance should not be null"
-                        );
+                        assert!(!raw.is_null(), "raw balance should not be null");
                     }
                     Err(e) if is_not_supported(&e) => {
                         eprintln!(
@@ -851,9 +790,7 @@ macro_rules! exchange_tests {
                     return;
                 }
                 // refresh_balance should succeed without error
-                ex.refresh_balance()
-                    .await
-                    .expect("refresh_balance failed");
+                ex.refresh_balance().await.expect("refresh_balance failed");
             }
 
             #[tokio::test]
@@ -980,18 +917,12 @@ macro_rules! exchange_tests {
                     );
                     assert!(f.size > 0.0, "fill size should be positive");
                     assert!(f.fee >= 0.0, "fill fee should be non-negative");
-                    assert!(
-                        !f.order_id.is_empty(),
-                        "fill order_id should not be empty"
-                    );
+                    assert!(!f.order_id.is_empty(), "fill order_id should not be empty");
                     assert!(
                         !f.market_id.is_empty(),
                         "fill market_id should not be empty"
                     );
-                    assert!(
-                        !f.outcome.is_empty(),
-                        "fill outcome should not be empty"
-                    );
+                    assert!(!f.outcome.is_empty(), "fill outcome should not be empty");
                 }
             }
 
@@ -1061,8 +992,8 @@ macro_rules! exchange_tests {
                 }
 
                 // Get a market to subscribe to
-                let markets = match ex.fetch_markets().await {
-                    Ok(m) if !m.is_empty() => m,
+                let markets = match ex.fetch_markets(&Default::default()).await {
+                    Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
                 let market_id = &markets[0].id;

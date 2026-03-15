@@ -7,9 +7,10 @@ use tokio::sync::Mutex;
 
 use px_core::{
     canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
-    ExchangeError, ExchangeInfo, ExchangeManifest, FetchOrdersParams, Fill, Market, MarketStatus,
-    MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OutcomeToken,
-    Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter, TradesRequest,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
+    MarketStatus, MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
+    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter,
+    TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -878,14 +879,6 @@ fn kalshi_time_in_force(params: &HashMap<String, String>) -> Result<Option<Strin
     }
 }
 
-fn parse_positive_usize_env(raw: Option<&str>) -> Option<usize> {
-    raw.and_then(|v| v.parse::<usize>().ok()).filter(|v| *v > 0)
-}
-
-fn configured_fetch_all_page_cap() -> Option<usize> {
-    parse_positive_usize_env(std::env::var("KALSHI_FETCH_ALL_MAX_PAGES").ok().as_deref())
-}
-
 impl Exchange for Kalshi {
     fn id(&self) -> &'static str {
         "kalshi"
@@ -899,134 +892,51 @@ impl Exchange for Kalshi {
         &KALSHI_MANIFEST
     }
 
-    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
+    async fn fetch_markets(
+        &self,
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
         #[derive(serde::Deserialize)]
-        struct MarketsResponse {
-            markets: Vec<serde_json::Value>,
+        struct EventsResponse {
+            events: Vec<serde_json::Value>,
             cursor: Option<String>,
         }
 
-        let limit = 1000usize;
-        // Optional hard guardrail for debugging/load testing.
-        // When configured and reached, return an explicit error (never silent truncation).
-        let max_pages = configured_fetch_all_page_cap();
+        let status_str = match params.status {
+            Some(MarketStatus::Active) => "open",
+            Some(MarketStatus::Closed) => "closed",
+            Some(MarketStatus::Resolved) => "settled",
+            None => "open",
+        };
+
+        let mut endpoint =
+            format!("/events?limit=200&with_nested_markets=true&status={status_str}");
+        if let Some(ref c) = params.cursor {
+            endpoint.push_str(&format!("&cursor={c}"));
+        }
+
+        let resp: EventsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
+
         let mut all_markets = Vec::new();
-        let mut cursor: Option<String> = None;
-        let mut prev_cursor: Option<String> = None;
-        let mut page_idx = 0usize;
-
-        loop {
-            if let Some(cap) = max_pages {
-                if page_idx >= cap {
-                    return Err(OpenPxError::Exchange(ExchangeError::Api(format!(
-                        "kalshi fetch_markets exceeded configured page cap: max_pages={cap}"
-                    ))));
+        let map_start = Instant::now();
+        for event in &resp.events {
+            if let Some(markets_arr) = event.get("markets").and_then(|v| v.as_array()) {
+                for raw in markets_arr {
+                    if let Some(market) = self.parse_market(raw) {
+                        all_markets.push(market);
+                    }
                 }
             }
-            let mut endpoint = format!("/markets?limit={limit}");
-            if let Some(ref c) = cursor {
-                endpoint.push_str(&format!("&cursor={c}"));
-            }
-
-            let resp: MarketsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
-
-            let count = resp.markets.len();
-            if count == 0 {
-                break; // Empty page = done
-            }
-
-            let map_start = Instant::now();
-            for raw in &resp.markets {
-                if let Some(market) = self.parse_market(raw) {
-                    all_markets.push(market);
-                }
-            }
-            let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
-            histogram!(
-                "openpx.exchange.mapping_us",
-                "exchange" => "kalshi",
-                "operation" => "fetch_markets"
-            )
-            .record(map_us);
-
-            let next_cursor = resp.cursor;
-            if count < limit || next_cursor.is_none() {
-                break;
-            }
-
-            // Stuck-cursor guard
-            if next_cursor == prev_cursor {
-                return Err(OpenPxError::Exchange(ExchangeError::Api(format!(
-                    "Kalshi pagination stuck at cursor={:?}, collected {} markets",
-                    next_cursor,
-                    all_markets.len()
-                ))));
-            }
-
-            prev_cursor = cursor;
-            cursor = next_cursor;
-            page_idx += 1;
         }
+        let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
+        histogram!(
+            "openpx.exchange.mapping_us",
+            "exchange" => "kalshi",
+            "operation" => "fetch_markets"
+        )
+        .record(map_us);
 
-        Ok(all_markets)
-    }
-
-    async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
-        #[derive(serde::Deserialize)]
-        struct MarketsResponse {
-            markets: Vec<serde_json::Value>,
-            cursor: Option<String>,
-        }
-
-        let group_id = group_id.trim();
-        if group_id.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut cursor: Option<String> = None;
-        let mut prev_cursor: Option<String> = None;
-        let mut all_markets = Vec::new();
-        let limit = 200usize;
-
-        loop {
-            let mut endpoint = format!("/markets?event_ticker={group_id}&limit={limit}");
-            if let Some(c) = cursor.as_ref() {
-                endpoint.push_str(&format!("&cursor={c}"));
-            }
-
-            let resp: MarketsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
-
-            let count = resp.markets.len();
-            if count == 0 {
-                break; // Empty page = done
-            }
-
-            for raw_market in resp.markets {
-                if let Some(market) = self.parse_market(&raw_market) {
-                    all_markets.push(market);
-                }
-            }
-
-            let next_cursor = resp.cursor;
-            if count < limit || next_cursor.is_none() {
-                break;
-            }
-
-            // Stuck-cursor guard
-            if next_cursor == prev_cursor {
-                return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                    "Kalshi pagination stuck for event={}, cursor={:?}, collected {} markets",
-                    group_id,
-                    next_cursor,
-                    all_markets.len()
-                ))));
-            }
-
-            prev_cursor = cursor;
-            cursor = next_cursor;
-        }
-
-        Ok(all_markets)
+        Ok((all_markets, resp.cursor))
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
@@ -1536,7 +1446,6 @@ impl Exchange for Kalshi {
             has_fetch_orderbook: true,
             has_fetch_price_history: true,
             has_fetch_trades: true,
-            has_fetch_events: true,
             has_fetch_user_activity: false,
             has_fetch_fills: true,
             has_approvals: false,
@@ -1549,7 +1458,7 @@ impl Exchange for Kalshi {
 
 #[cfg(test)]
 mod tests {
-    use super::{kalshi_time_in_force, parse_positive_usize_env};
+    use super::kalshi_time_in_force;
     use std::collections::HashMap;
 
     #[test]
@@ -1588,19 +1497,5 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("order_type".to_string(), "market".to_string());
         assert!(kalshi_time_in_force(&params).is_err());
-    }
-
-    #[test]
-    fn parse_positive_usize_env_rejects_invalid_or_zero() {
-        assert_eq!(parse_positive_usize_env(None), None);
-        assert_eq!(parse_positive_usize_env(Some("0")), None);
-        assert_eq!(parse_positive_usize_env(Some("-1")), None);
-        assert_eq!(parse_positive_usize_env(Some("abc")), None);
-    }
-
-    #[test]
-    fn parse_positive_usize_env_accepts_positive() {
-        assert_eq!(parse_positive_usize_env(Some("1")), Some(1));
-        assert_eq!(parse_positive_usize_env(Some("250")), Some(250));
     }
 }

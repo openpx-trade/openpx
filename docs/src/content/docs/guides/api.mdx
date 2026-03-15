@@ -152,18 +152,25 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 
 ### fetch_markets
 
-Fetch all markets from this exchange. Handles pagination internally —
-returns the complete set.
+Fetch one page of markets from this exchange. Returns markets and a cursor
+for the next page.
 
-No parameters.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | `string` | No | Filter by status: `"active"`, `"closed"`, `"resolved"`. Defaults to `"active"` |
+| `cursor` | `string` | No | Opaque cursor from a previous response for pagination |
 
-**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
+**Returns:** `{ markets: Market[], cursor: string | null }` — see [`Market`](/reference/models/#market)
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
-let markets = exchange.fetch_markets().await?;
+use px_core::FetchMarketsParams;
+
+let (markets, next_cursor) = exchange
+    .fetch_markets(&FetchMarketsParams::default())
+    .await?;
 for m in &markets {
     println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
 }
@@ -173,19 +180,21 @@ for m in &markets {
 <TabItem label="Python">
 
 ```python
-markets = exchange.fetch_markets()
-for m in markets:
+result = exchange.fetch_markets()
+for m in result["markets"]:
     print(f"[{m.id}] {m.title}")
+# Paginate: exchange.fetch_markets(cursor=result["cursor"])
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-const markets = await exchange.fetchMarkets();
-for (const m of markets) {
+const result = await exchange.fetchMarkets();
+for (const m of result.markets) {
   console.log(`[${m.id}] ${m.title}`);
 }
+// Paginate: await exchange.fetchMarkets(null, result.cursor)
 ```
 
 </TabItem>
@@ -227,26 +236,6 @@ console.log(`${market.id}: ${market.title}`);
 
 </TabItem>
 </Tabs>
-
-### fetch_event_markets
-
-Fetch all markets belonging to an event or group. Falls back to scanning all
-markets if the exchange has no native group endpoint.
-
-> **Rust only** — not yet exposed in Python or TypeScript SDKs.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | `string` | **Yes** | Exchange event or group ID |
-
-**Returns:** `list[Market]` — see [`Market`](/reference/models/#market)
-
-```rust
-let markets = exchange.fetch_event_markets("group-abc").await?;
-for m in &markets {
-    println!("[{}] {}", m.openpx_id, m.title);
-}
-```
 
 ---
 

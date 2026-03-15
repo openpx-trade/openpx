@@ -38,6 +38,7 @@ fn main() {
         schema_for!(px_core::Candlestick),
         schema_for!(px_core::PriceHistoryInterval),
         // Exchange config params
+        schema_for!(px_core::FetchMarketsParams),
         schema_for!(px_core::FetchOrdersParams),
         schema_for!(px_core::FetchUserActivityParams),
         // Exchange trait request types

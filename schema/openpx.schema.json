@@ -225,9 +225,6 @@
         "has_fetch_balance": {
           "type": "boolean"
         },
-        "has_fetch_events": {
-          "type": "boolean"
-        },
         "has_fetch_fills": {
           "type": "boolean"
         },
@@ -270,7 +267,6 @@
         "has_cancel_order",
         "has_create_order",
         "has_fetch_balance",
-        "has_fetch_events",
         "has_fetch_fills",
         "has_fetch_markets",
         "has_fetch_orderbook",
@@ -285,6 +281,40 @@
         "name"
       ],
       "title": "ExchangeInfo",
+      "type": "object"
+    },
+    "FetchMarketsParams": {
+      "properties": {
+        "cursor": {
+          "default": null,
+          "description": "Exchange-specific cursor (offset, page number, or cursor string)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MarketStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter by market status. Defaults to Active at the exchange level when None."
+        }
+      },
+      "title": "FetchMarketsParams",
       "type": "object"
     },
     "FetchOrdersParams": {
@@ -791,7 +821,6 @@
         "closed",
         "resolved"
       ],
-      "title": "MarketStatus",
       "type": "string"
     },
     "MarketTrade": {

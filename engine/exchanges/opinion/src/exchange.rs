@@ -704,20 +704,27 @@ impl Opinion {
     /// Internal: fetch a single page of markets. Not part of the public API.
     async fn fetch_markets_page(
         &self,
-        params: Option<FetchMarketsParams>,
-    ) -> Result<Vec<Market>, OpenPxError> {
-        let params = params.unwrap_or_default();
-
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
         let limit = params.limit.unwrap_or(20).min(20);
-        // Cursor is offset, convert to page number (1-indexed)
-        let page = params
+        let offset = params
             .cursor
             .as_ref()
             .and_then(|c| c.parse::<usize>().ok())
-            .map(|offset| (offset / limit) + 1)
-            .unwrap_or(1);
+            .unwrap_or(0);
+        // Cursor is offset, convert to page number (1-indexed)
+        let page = (offset / limit) + 1;
 
-        let endpoint = format!("/openapi/market?marketType=2&page={}&limit={}", page, limit);
+        let status_str = match params.status {
+            Some(MarketStatus::Active) => "activated",
+            Some(MarketStatus::Closed) | Some(MarketStatus::Resolved) => "resolved",
+            None => "activated",
+        };
+
+        let endpoint = format!(
+            "/openapi/market?marketType=2&page={}&limit={}&status={}",
+            page, limit, status_str
+        );
 
         let resp: ApiResponse<serde_json::Value> = self
             .get(&endpoint)
@@ -737,7 +744,14 @@ impl Opinion {
             .filter_map(|v| self.parse_market(v))
             .collect();
 
-        Ok(markets)
+        let count = markets.len();
+        let next_cursor = if count == limit {
+            Some((offset + count).to_string())
+        } else {
+            None
+        };
+
+        Ok((markets, next_cursor))
     }
 
     pub async fn fetch_positions_for_market(
@@ -791,52 +805,11 @@ impl Exchange for Opinion {
         &OPINION_MANIFEST
     }
 
-    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
-        let mut all_markets = Vec::new();
-        let mut cursor: Option<String> = None;
-        let manifest = self.manifest();
-        let page_size = manifest.pagination.max_page_size;
-
-        loop {
-            let sent_cursor = cursor.clone();
-            let params = FetchMarketsParams {
-                limit: Some(page_size),
-                cursor: cursor.clone(),
-            };
-            let batch = self.fetch_markets_page(Some(params)).await?;
-            let count = batch.len();
-
-            if count == 0 {
-                break;
-            }
-
-            all_markets.extend(batch);
-
-            if count < page_size {
-                break;
-            }
-
-            let next_cursor = Some(
-                (cursor
-                    .as_ref()
-                    .and_then(|c| c.parse::<usize>().ok())
-                    .unwrap_or(0)
-                    + count)
-                    .to_string(),
-            );
-
-            if next_cursor == sent_cursor {
-                return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                    "Pagination stuck at cursor={:?}, collected {} markets for {}",
-                    next_cursor,
-                    all_markets.len(),
-                    self.id()
-                ))));
-            }
-
-            cursor = next_cursor;
-        }
-        Ok(all_markets)
+    async fn fetch_markets(
+        &self,
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        self.fetch_markets_page(params).await
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
@@ -1215,7 +1188,6 @@ impl Exchange for Opinion {
             has_fetch_orderbook: true,
             has_fetch_price_history: false,
             has_fetch_trades: false,
-            has_fetch_events: false,
             has_fetch_user_activity: true,
             has_fetch_fills: false,
             has_approvals: false,

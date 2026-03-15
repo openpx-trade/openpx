@@ -42,12 +42,27 @@ impl NativeExchange {
         pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
     }
 
-    fn fetch_markets<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    #[pyo3(signature = (status=None, cursor=None))]
+    fn fetch_markets<'py>(
+        &self,
+        py: Python<'py>,
+        status: Option<&str>,
+        cursor: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_markets()));
-        let markets = result.map_err(|e| to_py_err(e.to_string()))?;
-        pythonize(py, &markets).map_err(|e| to_py_err(e.to_string()))
+        let fetch_params = px_core::FetchMarketsParams {
+            status: status
+                .map(|s| s.parse::<px_core::MarketStatus>())
+                .transpose()
+                .map_err(to_py_err)?,
+            cursor: cursor.map(String::from),
+            ..Default::default()
+        };
+        let result = py.detach(|| rt.block_on(inner.fetch_markets(&fetch_params)));
+        let (markets, next_cursor) = result.map_err(|e| to_py_err(e.to_string()))?;
+        let val = serde_json::json!({ "markets": markets, "cursor": next_cursor });
+        pythonize(py, &val).map_err(|e| to_py_err(e.to_string()))
     }
 
     fn fetch_market<'py>(&self, py: Python<'py>, market_id: &str) -> PyResult<Bound<'py, PyAny>> {

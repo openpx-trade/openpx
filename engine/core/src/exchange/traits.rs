@@ -8,7 +8,7 @@ use crate::models::{
     Position, PriceHistoryInterval,
 };
 
-use super::config::{FetchOrdersParams, FetchUserActivityParams};
+use super::config::{FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams};
 use super::manifest::ExchangeManifest;
 
 #[allow(async_fn_in_trait)]
@@ -16,9 +16,15 @@ pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
 
-    /// Fetch ALL markets from this exchange, handling pagination internally.
-    /// Exchanges override this with their own pagination strategy.
-    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError>;
+    /// Fetch one page of markets from this exchange.
+    ///
+    /// Returns `(markets, next_cursor)` where `next_cursor` is `None` when no more pages.
+    /// Callers paginate externally by passing `next_cursor` back in `params.cursor`.
+    /// When `params.status` is `None`, exchanges default to `Active`.
+    async fn fetch_markets(
+        &self,
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError>;
 
@@ -102,24 +108,6 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch all markets within one source-native exchange event/group.
-    ///
-    /// Default behavior preserves compatibility by scanning all markets and filtering
-    /// by `group_id`. Exchanges with native event endpoints should override this
-    /// for performance.
-    async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
-        let group_id = group_id.trim();
-        if group_id.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let markets = self.fetch_markets().await?;
-        Ok(markets
-            .into_iter()
-            .filter(|m| m.group_id.as_deref() == Some(group_id))
-            .collect())
-    }
-
     /// Fetch raw balance response from exchange API
     async fn fetch_balance_raw(&self) -> Result<Value, OpenPxError> {
         Err(OpenPxError::Exchange(
@@ -167,7 +155,6 @@ pub trait Exchange: Send + Sync {
             has_fetch_orderbook: false,
             has_fetch_price_history: false,
             has_fetch_trades: false,
-            has_fetch_events: false,
             has_fetch_user_activity: false,
             has_fetch_fills: false,
             has_approvals: false,
@@ -194,7 +181,6 @@ pub struct ExchangeInfo {
     pub has_fetch_orderbook: bool,
     pub has_fetch_price_history: bool,
     pub has_fetch_trades: bool,
-    pub has_fetch_events: bool,
     pub has_fetch_user_activity: bool,
     pub has_fetch_fills: bool,
     pub has_approvals: bool,

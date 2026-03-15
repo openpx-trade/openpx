@@ -1,29 +1,41 @@
-use px_core::Exchange;
+use px_core::{Exchange, FetchMarketsParams};
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn sample_markets_response() -> serde_json::Value {
+fn sample_events_response() -> serde_json::Value {
     serde_json::json!([
         {
-            "id": "123",
-            "question": "Will it rain tomorrow?",
-            "outcomes": "[\"Yes\", \"No\"]",
-            "outcomePrices": "[\"0.65\", \"0.35\"]",
-            "volumeNum": 50000.0,
-            "liquidityNum": 10000.0,
-            "minimum_tick_size": 0.01,
-            "description": "Weather prediction market"
+            "id": "event-1",
+            "title": "Weather Event",
+            "markets": [
+                {
+                    "id": "123",
+                    "question": "Will it rain tomorrow?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.65\", \"0.35\"]",
+                    "volumeNum": 50000.0,
+                    "liquidityNum": 10000.0,
+                    "minimum_tick_size": 0.01,
+                    "description": "Weather prediction market"
+                }
+            ]
         },
         {
-            "id": "456",
-            "question": "Bitcoin > $100k by EOY?",
-            "outcomes": "[\"Yes\", \"No\"]",
-            "outcomePrices": "[\"0.42\", \"0.58\"]",
-            "volumeNum": 1000000.0,
-            "liquidityNum": 250000.0,
-            "minimum_tick_size": 0.001,
-            "description": "Crypto price prediction"
+            "id": "event-2",
+            "title": "Crypto Event",
+            "markets": [
+                {
+                    "id": "456",
+                    "question": "Bitcoin > $100k by EOY?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.42\", \"0.58\"]",
+                    "volumeNum": 1000000.0,
+                    "liquidityNum": 250000.0,
+                    "minimum_tick_size": 0.001,
+                    "description": "Crypto price prediction"
+                }
+            ]
         }
     ])
 }
@@ -46,8 +58,8 @@ async fn test_fetch_markets_parses_response() {
     // given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/markets"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -57,10 +69,14 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Polymarket::new(config).unwrap();
 
     // when
-    let markets = exchange.fetch_markets().await.unwrap();
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
 
     // then
     assert_eq!(markets.len(), 2);
+    assert!(cursor.is_none());
 
     let first = &markets[0];
     assert_eq!(first.id, "123");

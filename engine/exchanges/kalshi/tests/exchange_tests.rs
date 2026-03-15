@@ -1,30 +1,44 @@
-use px_core::{Exchange, TradesRequest};
+use px_core::{Exchange, FetchMarketsParams, TradesRequest};
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn sample_markets_response() -> serde_json::Value {
+fn sample_events_response() -> serde_json::Value {
     serde_json::json!({
-        "markets": [
+        "events": [
             {
-                "ticker": "INXD-24DEC31-B5000",
-                "title": "S&P 500 above 5000 on Dec 31?",
-                "subtitle": "Market resolves Yes if S&P closes above 5000",
-                "yes_ask": 65,
-                "volume": 150000.0,
-                "open_interest": 25000.0,
-                "close_time": "2024-12-31T21:00:00Z",
-                "status": "open"
+                "event_ticker": "INXD-24DEC31",
+                "title": "S&P 500 Dec 31",
+                "markets": [
+                    {
+                        "ticker": "INXD-24DEC31-B5000",
+                        "event_ticker": "INXD-24DEC31",
+                        "title": "S&P 500 above 5000 on Dec 31?",
+                        "subtitle": "Market resolves Yes if S&P closes above 5000",
+                        "yes_ask": 65,
+                        "volume": 150000.0,
+                        "open_interest": 25000.0,
+                        "close_time": "2024-12-31T21:00:00Z",
+                        "status": "open"
+                    }
+                ]
             },
             {
-                "ticker": "ELON-TWEET-2024",
-                "title": "Will Elon tweet about crypto today?",
-                "subtitle": "Any tweet mentioning BTC, ETH, or DOGE",
-                "yes_ask": 42,
-                "volume": 50000.0,
-                "open_interest": 8000.0,
-                "close_time": "2024-12-28T23:59:59Z",
-                "status": "open"
+                "event_ticker": "ELON-TWEET",
+                "title": "Elon Tweets",
+                "markets": [
+                    {
+                        "ticker": "ELON-TWEET-2024",
+                        "event_ticker": "ELON-TWEET",
+                        "title": "Will Elon tweet about crypto today?",
+                        "subtitle": "Any tweet mentioning BTC, ETH, or DOGE",
+                        "yes_ask": 42,
+                        "volume": 50000.0,
+                        "open_interest": 8000.0,
+                        "close_time": "2024-12-28T23:59:59Z",
+                        "status": "open"
+                    }
+                ]
             }
         ],
         "cursor": null
@@ -51,8 +65,8 @@ async fn test_fetch_markets_parses_response() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/markets"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -62,10 +76,14 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let markets = exchange.fetch_markets().await.unwrap();
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
 
     // #then
     assert_eq!(markets.len(), 2);
+    assert!(cursor.is_none());
 
     let first = &markets[0];
     assert_eq!(first.id, "INXD-24DEC31-B5000");

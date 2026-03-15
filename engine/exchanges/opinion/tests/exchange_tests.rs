@@ -1,4 +1,4 @@
-use px_core::{Exchange, FixedPrice};
+use px_core::{Exchange, FetchMarketsParams, FixedPrice};
 use px_exchange_opinion::{Opinion, OpinionConfig};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -92,10 +92,14 @@ async fn test_fetch_markets_parses_response() {
     let exchange = Opinion::new(config).unwrap();
 
     // when
-    let markets = exchange.fetch_markets().await.unwrap();
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
 
     // then
     assert_eq!(markets.len(), 2);
+    assert!(cursor.is_none()); // less than page size → no more pages
 
     let first = &markets[0];
     assert_eq!(first.id, "123");
@@ -229,10 +233,8 @@ async fn test_parse_token_ids_from_market() {
 }
 
 #[tokio::test]
-async fn test_fetch_markets_auto_paginates() {
-    // Opinion uses page-number pagination (1-indexed, page_size=20).
-    // fetch_markets() auto-paginates internally. Since the mock returns only
-    // 2 markets (less than page_size 20), the auto-paginator stops after one page.
+async fn test_fetch_markets_returns_cursor_none_when_incomplete_page() {
+    // Opinion returns 2 markets (less than page_size 20), so cursor should be None.
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
@@ -246,8 +248,12 @@ async fn test_fetch_markets_auto_paginates() {
         .with_verbose(false);
     let exchange = Opinion::new(config).unwrap();
 
-    let markets = exchange.fetch_markets().await.unwrap();
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
     assert_eq!(markets.len(), 2);
+    assert!(cursor.is_none());
     assert_eq!(markets[0].id, "123");
     assert_eq!(markets[1].id, "456");
 }

@@ -11,7 +11,7 @@ use polymarket_client_sdk::contract_config;
 use polymarket_client_sdk::types::{Decimal, U256};
 use polymarket_client_sdk::POLYGON;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -20,7 +20,7 @@ use tracing::info;
 
 use px_core::{
     canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick,
-    Exchange, ExchangeError, ExchangeInfo, ExchangeManifest, FetchOrdersParams,
+    Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
     FetchUserActivityParams, Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError,
     Order, OrderSide, OrderStatus, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot,
     OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade,
@@ -1616,133 +1616,70 @@ impl Exchange for Polymarket {
         &POLYMARKET_MANIFEST
     }
 
-    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError> {
-        let page_size = self.manifest().pagination.max_page_size.clamp(1, 500);
-        // Optional hard guardrail for debugging; when reached we fail explicitly
-        // instead of returning truncated results.
-        let max_pages_per_status = std::env::var("POLYMARKET_FETCH_ALL_MAX_PAGES_PER_STATUS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|v| *v > 0);
+    async fn fetch_markets(
+        &self,
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        let status_param = match params.status {
+            Some(MarketStatus::Active) => "active=true",
+            Some(MarketStatus::Closed) => "closed=true",
+            Some(MarketStatus::Resolved) => "archived=true",
+            None => "active=true",
+        };
 
-        let mut all_markets = Vec::new();
-        let mut seen_openpx_ids = HashSet::new();
+        let offset = params
+            .cursor
+            .as_ref()
+            .and_then(|c| c.parse::<usize>().ok())
+            .unwrap_or(0);
 
-        // Gamma requires explicit status filtering for deterministic pagination windows.
-        for closed in [false, true] {
-            let mut offset = 0usize;
-            let mut page_idx = 0usize;
-            loop {
-                if let Some(max_pages) = max_pages_per_status {
-                    if page_idx >= max_pages {
-                        return Err(OpenPxError::Exchange(ExchangeError::Api(format!(
-                            "polymarket fetch_markets exceeded configured page cap: closed={closed} max_pages={max_pages}"
-                        ))));
-                    }
-                }
-                self.rate_limit().await;
+        let endpoint = format!("/events?limit=200&{status_param}&offset={offset}");
 
-                let endpoint =
-                    format!("/markets?closed={closed}&limit={page_size}&offset={offset}");
-                let data: Vec<serde_json::Value> = self
-                    .client
-                    .get_gamma(&endpoint)
-                    .await
-                    .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        self.rate_limit().await;
 
-                let count = data.len();
-                if count == 0 {
-                    break;
-                }
-
-                for raw in data {
-                    if let Some(parsed) = self.parse_market(raw) {
-                        if seen_openpx_ids.insert(parsed.openpx_id.clone()) {
-                            all_markets.push(parsed);
-                        }
-                    }
-                }
-
-                if count < page_size {
-                    break;
-                }
-
-                offset += count;
-                page_idx += 1;
-            }
-        }
-
-        info!(
-            total = all_markets.len(),
-            "polymarket fetch_markets completed"
-        );
-
-        Ok(all_markets)
-    }
-
-    async fn fetch_event_markets(&self, group_id: &str) -> Result<Vec<Market>, OpenPxError> {
-        let group_id = group_id.trim();
-        if group_id.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let query_endpoint = format!("/events?id={group_id}");
-        let query_value: serde_json::Value = self
+        let events: Vec<serde_json::Value> = self
             .client
-            .get_gamma(&query_endpoint)
+            .get_gamma(&endpoint)
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let mut events = match query_value {
-            serde_json::Value::Array(arr) => arr,
-            serde_json::Value::Object(_) => vec![query_value],
-            _ => Vec::new(),
-        };
+        let events_len = events.len();
+        let mut markets = Vec::new();
 
-        if events.is_empty() {
-            let path_endpoint = format!("/events/{group_id}");
-            let path_value: serde_json::Value = self
-                .client
-                .get_gamma(&path_endpoint)
-                .await
-                .map_err(|e| OpenPxError::Exchange(e.into()))?;
-            events = match path_value {
-                serde_json::Value::Array(arr) => arr,
-                serde_json::Value::Object(_) => vec![path_value],
-                _ => Vec::new(),
-            };
-        }
-
-        let mut result = Vec::new();
         for event in events {
-            let Some(event_obj) = event.as_object() else {
-                continue;
-            };
-            let native_event_id = event_obj
+            let native_event_id = event
                 .get("id")
                 .and_then(|v| v.as_str())
-                .unwrap_or(group_id)
+                .unwrap_or_default()
                 .to_string();
-            let Some(markets) = event_obj.get("markets").and_then(|v| v.as_array()) else {
+
+            let Some(market_array) = event.get("markets").and_then(|v| v.as_array()) else {
                 continue;
             };
 
-            for market_raw in markets {
+            for market_raw in market_array {
                 let raw = market_raw.clone();
                 if let Some(mut parsed) = self.parse_market(raw) {
-                    // Set group_id and event_id directly on the parsed Market
                     if parsed.group_id.is_none() {
                         parsed.group_id = Some(native_event_id.clone());
                     }
                     if parsed.event_id.is_none() {
                         parsed.event_id = canonical_event_id("polymarket", &native_event_id);
                     }
-                    result.push(parsed);
+                    markets.push(parsed);
                 }
             }
         }
 
-        Ok(result)
+        let next_cursor = if events_len == 200 {
+            Some((offset + events_len).to_string())
+        } else {
+            None
+        };
+
+        info!(total = markets.len(), "polymarket fetch_markets completed");
+
+        Ok((markets, next_cursor))
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
@@ -2924,7 +2861,6 @@ impl Exchange for Polymarket {
             has_fetch_orderbook: true,
             has_fetch_price_history: true,
             has_fetch_trades: true,
-            has_fetch_events: true,
             has_fetch_user_activity: true,
             has_fetch_fills: true,
             has_approvals: true,

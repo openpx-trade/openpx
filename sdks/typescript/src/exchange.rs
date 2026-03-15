@@ -64,15 +64,28 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_markets(&self) -> Result<serde_json::Value> {
+    pub async fn fetch_markets(
+        &self,
+        status: Option<String>,
+        cursor: Option<String>,
+    ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
+        let fetch_params = px_core::FetchMarketsParams {
+            status: status
+                .map(|s| s.parse::<px_core::MarketStatus>())
+                .transpose()
+                .map_err(to_napi_err)?,
+            cursor,
+            ..Default::default()
+        };
         let result = rt
-            .spawn(async move { inner.fetch_markets().await })
+            .spawn(async move { inner.fetch_markets(&fetch_params).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
-        serde_json::to_value(&result).map_err(to_napi_err)
+        let (markets, next_cursor) = result;
+        Ok(serde_json::json!({ "markets": markets, "cursor": next_cursor }))
     }
 
     #[napi]
