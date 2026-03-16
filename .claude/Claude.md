@@ -39,6 +39,7 @@ openpx/
 │   │   ├── polymarket/
 │   │   └── opinion/
 │   ├── sdk/                  # Unified facade (enum dispatch)
+│   ├── cli/                  # CLI tool for testing APIs & WebSocket streams
 │   └── schema/               # JSON Schema export binary
 ├── sdks/                     # Language SDKs
 │   ├── python/               # PyO3 + auto-generated Pydantic models

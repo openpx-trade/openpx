@@ -917,12 +917,18 @@ impl Exchange for Kalshi {
 
         let resp: EventsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
 
+        let requested_status = params.status.unwrap_or(MarketStatus::Active);
         let mut all_markets = Vec::new();
         let map_start = Instant::now();
         for event in &resp.events {
             if let Some(markets_arr) = event.get("markets").and_then(|v| v.as_array()) {
                 for raw in markets_arr {
                     if let Some(market) = self.parse_market(raw) {
+                        // Events can contain markets with mixed statuses — filter to
+                        // only return markets matching the requested status.
+                        if market.status != requested_status {
+                            continue;
+                        }
                         all_markets.push(market);
                     }
                 }

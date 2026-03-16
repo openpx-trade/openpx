@@ -1,0 +1,21 @@
+[package]
+name = "px-cli"
+description = "CLI tool for testing OpenPX exchange APIs and WebSocket streams"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "px-cli"
+path = "src/main.rs"
+
+[dependencies]
+px-core = { workspace = true }
+px-sdk = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+dotenvy = "0.15"
+tokio = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

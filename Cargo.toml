@@ -7,6 +7,7 @@ members = [
     "engine/exchanges/kalshi",
     "engine/schema",
     "engine/sdk",
+    "engine/cli",
     "sdks/python",
     "sdks/typescript",
 ]
@@ -64,6 +65,9 @@ tikv-jemallocator = "0.6"
 
 # Cryptography
 base64 = "0.22"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
 
 # Internal crates
 px-core = { version = "0.1.4", path = "engine/core" }

@@ -203,21 +203,25 @@ impl Opinion {
             .get("yesTokenId")
             .or_else(|| obj.get("yes_token_id"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(String::from);
         let no_token = obj
             .get("noTokenId")
             .or_else(|| obj.get("no_token_id"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(String::from);
         let yes_label = obj
             .get("yesLabel")
             .or_else(|| obj.get("yes_label"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or("Yes");
         let no_label = obj
             .get("noLabel")
             .or_else(|| obj.get("no_label"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or("No");
 
         let mut outcomes = Vec::new();
@@ -345,12 +349,14 @@ impl Opinion {
             .get("conditionId")
             .or_else(|| obj.get("condition_id"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(String::from);
 
         let question_id = obj
             .get("questionId")
             .or_else(|| obj.get("question_id"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(String::from);
 
         let group_id = obj
@@ -366,6 +372,28 @@ impl Opinion {
             .as_deref()
             .and_then(|gid| canonical_event_id("opinion", gid));
 
+        // Parse status from statusEnum (Activated, Resolved, Created, etc.)
+        // or fall back to integer status field.
+        let status = obj
+            .get("statusEnum")
+            .or_else(|| obj.get("status_enum"))
+            .and_then(|v| v.as_str())
+            .map(|s| match s.to_lowercase().as_str() {
+                "activated" => MarketStatus::Active,
+                "resolved" => MarketStatus::Resolved,
+                _ => MarketStatus::Closed,
+            })
+            .or_else(|| {
+                obj.get("status").and_then(|v| v.as_i64()).map(|code| match code {
+                    2 => MarketStatus::Active,
+                    4 => MarketStatus::Resolved,
+                    _ => MarketStatus::Closed,
+                })
+            })
+            .unwrap_or(MarketStatus::Active);
+
+        let accepting_orders = status == MarketStatus::Active;
+
         Some(Market {
             openpx_id: Market::make_openpx_id("opinion", &id),
             exchange: "opinion".into(),
@@ -376,9 +404,9 @@ impl Opinion {
             question: Some(title),
             description,
             rules: rules_str,
-            status: MarketStatus::Active,
+            status,
             market_type,
-            accepting_orders: true,
+            accepting_orders,
             outcomes,
             outcome_tokens,
             outcome_prices: HashMap::new(),
@@ -739,9 +767,11 @@ impl Opinion {
 
         let markets_list = resp.result.and_then(|r| r.list).unwrap_or_default();
 
+        let requested_status = params.status.unwrap_or(MarketStatus::Active);
         let markets: Vec<Market> = markets_list
             .into_iter()
             .filter_map(|v| self.parse_market(v))
+            .filter(|m| m.status == requested_status)
             .collect();
 
         let count = markets.len();

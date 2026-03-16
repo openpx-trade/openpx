@@ -1657,9 +1657,16 @@ impl Exchange for Polymarket {
                 continue;
             };
 
+            let requested_status = params.status.unwrap_or(MarketStatus::Active);
+
             for market_raw in market_array {
                 let raw = market_raw.clone();
                 if let Some(mut parsed) = self.parse_market(raw) {
+                    // Events can contain markets with mixed statuses — filter to
+                    // only return markets matching the requested status.
+                    if parsed.status != requested_status {
+                        continue;
+                    }
                     if parsed.group_id.is_none() {
                         parsed.group_id = Some(native_event_id.clone());
                     }
