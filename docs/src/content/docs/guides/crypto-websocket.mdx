@@ -1,0 +1,183 @@
+---
+title: Crypto Price WebSocket
+description: Stream real-time crypto prices from Binance and Chainlink via WebSocket.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Overview
+
+The Crypto Price WebSocket streams real-time cryptocurrency prices from two sources: **Binance** and **Chainlink**. Unlike the Sports WebSocket, it requires **explicit subscribe/unsubscribe messages** and a **client-initiated PING every 5 seconds**.
+
+**Endpoint:** `wss://ws-live-data.polymarket.com`
+
+## Connection
+
+<Tabs>
+<TabItem label="Rust">
+```rust
+use px_crypto::CryptoPriceWebSocket;
+use px_core::models::CryptoPriceSource;
+use futures::StreamExt;
+
+let mut ws = CryptoPriceWebSocket::new();
+ws.connect().await?;
+
+// Subscribe to specific Binance symbols
+ws.subscribe(CryptoPriceSource::Binance, &["btcusdt".into(), "ethusdt".into()]).await?;
+
+let mut stream = ws.stream();
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(price) => println!("{} = {} ({:?})", price.symbol, price.value, price.source),
+        Err(e) => eprintln!("error: {e}"),
+    }
+}
+```
+</TabItem>
+<TabItem label="Python">
+```python
+from openpx import CryptoPriceWebSocket
+
+ws = CryptoPriceWebSocket()
+ws.connect()
+ws.subscribe("binance", ["btcusdt", "ethusdt"])
+
+for price in ws.stream():
+    print(f"{price['symbol']} = {price['value']} ({price['source']})")
+
+ws.disconnect()
+```
+</TabItem>
+<TabItem label="TypeScript">
+```typescript
+import { CryptoPriceWebSocket } from "@openpx/sdk";
+
+const ws = new CryptoPriceWebSocket();
+await ws.connect();
+await ws.subscribe("binance", ["btcusdt", "ethusdt"]);
+
+await ws.onPriceUpdate((err, price) => {
+  if (err) { console.error(err); return; }
+  console.log(`${price.symbol} = ${price.value} (${price.source})`);
+});
+```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream all Binance crypto prices
+openpx crypto
+
+# Stream specific symbols
+openpx crypto --symbols btcusdt,ethusdt
+
+# Stream Chainlink prices
+openpx crypto --source chainlink --symbols eth/usd,btc/usd
+```
+</TabItem>
+</Tabs>
+
+## Subscribe / Unsubscribe
+
+Subscriptions require a source (Binance or Chainlink) and an optional list of symbols. Omitting symbols subscribes to all available prices for that source.
+
+```rust
+// Subscribe to all Binance prices
+ws.subscribe(CryptoPriceSource::Binance, &[]).await?;
+
+// Subscribe to specific Chainlink symbols
+ws.subscribe(CryptoPriceSource::Chainlink, &["eth/usd".into()]).await?;
+
+// Unsubscribe
+ws.unsubscribe(CryptoPriceSource::Binance, &["btcusdt".into()]).await?;
+```
+
+### Binance Subscribe Format
+
+```json
+{
+  "action": "subscribe",
+  "subscriptions": [{
+    "topic": "crypto_prices",
+    "type": "update",
+    "filters": "btcusdt,ethusdt"
+  }]
+}
+```
+
+### Chainlink Subscribe Format
+
+```json
+{
+  "action": "subscribe",
+  "subscriptions": [{
+    "topic": "crypto_prices_chainlink",
+    "type": "*",
+    "filters": "{\"symbol\":\"eth/usd\"}"
+  }]
+}
+```
+
+## Message Format
+
+Each message is a `CryptoPrice` with the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `symbol` | `String` | Trading pair or price feed identifier |
+| `timestamp` | `u64` | Unix timestamp of the price update |
+| `value` | `f64` | Current price value |
+| `source` | `CryptoPriceSource` | `binance` or `chainlink` |
+
+### Raw Envelope
+
+Messages arrive as JSON envelopes:
+
+```json
+{
+  "topic": "crypto_prices",
+  "type": "update",
+  "timestamp": 1700000000,
+  "payload": {
+    "symbol": "btcusdt",
+    "timestamp": 1700000000,
+    "value": 43250.50
+  }
+}
+```
+
+## Supported Symbols
+
+| Source | Symbol Format | Examples |
+|--------|--------------|----------|
+| Binance | Lowercase pair | `btcusdt`, `ethusdt`, `solusdt` |
+| Chainlink | Slash-separated | `eth/usd`, `btc/usd`, `sol/usd` |
+
+## Auto-Reconnect
+
+The `CryptoPriceWebSocket` automatically reconnects on disconnection using exponential backoff. All stored subscriptions are replayed after reconnect.
+
+- **Base delay**: 3 seconds
+- **Max delay**: 60 seconds
+- **Max attempts**: 10
+- **Backoff factor**: 1.5x per attempt
+
+## Keepalive
+
+The client sends `"PING"` as a TEXT message every 5 seconds. The server responds with `"PONG"`. This is handled automatically — no action needed.
+
+## Error Handling
+
+```rust
+use px_core::error::WebSocketError;
+
+let mut stream = ws.stream();
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(price) => { /* handle */ },
+        Err(WebSocketError::Connection(msg)) => eprintln!("connection lost: {msg}"),
+        Err(WebSocketError::Closed) => break,
+        Err(e) => eprintln!("error: {e}"),
+    }
+}
+```

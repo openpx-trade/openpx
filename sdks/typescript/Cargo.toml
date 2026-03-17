@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 [dependencies]
 px-core = { workspace = true }
 px-sdk = { workspace = true }
+px-sports = { workspace = true }
+px-crypto = { workspace = true }
 futures = { workspace = true }
 napi = { version = "2", features = ["async", "serde-json", "napi4"] }
 napi-derive = "2"

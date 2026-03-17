@@ -23,6 +23,9 @@ export default defineConfig({
           items: [
             { label: 'API Methods', link: '/guides/api/' },
             { label: 'WebSocket Streaming', link: '/guides/websocket/' },
+            { label: 'Sports WebSocket', link: '/guides/sports-websocket/' },
+            { label: 'Crypto Price WebSocket', link: '/guides/crypto-websocket/' },
+            { label: 'CLI', link: '/guides/cli/' },
             { label: 'SDKs', link: '/guides/sdks/' },
           ],
         },

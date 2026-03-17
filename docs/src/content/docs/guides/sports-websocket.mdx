@@ -1,0 +1,159 @@
+---
+title: Sports WebSocket
+description: Stream real-time sports scores and game state from Polymarket's Sports API.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Overview
+
+The Sports WebSocket streams real-time scores, game state, and status for all active sports events on Polymarket. It requires **no authentication** and **no subscription messages** — connect and receive.
+
+**Endpoint:** `wss://sports-api.polymarket.com/ws`
+
+## Connection
+
+<Tabs>
+<TabItem label="Rust">
+```rust
+use px_sports::SportsWebSocket;
+use futures::StreamExt;
+
+let mut ws = SportsWebSocket::new();
+ws.connect().await?;
+
+let mut stream = ws.stream();
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(sport) => println!("{} vs {} — {}", sport.home_team, sport.away_team, sport.status),
+        Err(e) => eprintln!("error: {e}"),
+    }
+}
+```
+</TabItem>
+<TabItem label="Python">
+```python
+from openpx import SportsWebSocket
+
+ws = SportsWebSocket()
+ws.connect()
+
+for score in ws.stream():
+    print(f"{score['away_team']} @ {score['home_team']}: {score.get('score')}")
+
+ws.disconnect()
+```
+</TabItem>
+<TabItem label="TypeScript">
+```typescript
+import { SportsWebSocket } from "@openpx/sdk";
+
+const ws = new SportsWebSocket();
+await ws.connect();
+
+await ws.onScoreUpdate((err, score) => {
+  if (err) { console.error(err); return; }
+  console.log(`${score.away_team} @ ${score.home_team}: ${score.score}`);
+});
+```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream all sports
+openpx sports
+
+# Filter to NFL only
+openpx sports --league nfl
+
+# Only live games
+openpx sports --live-only
+
+# Combine filters
+openpx sports --league nba --live-only
+```
+</TabItem>
+</Tabs>
+
+## Message Format
+
+Each message is a `SportResult` with the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `game_id` | `u64` | Unique game identifier |
+| `league_abbreviation` | `String` | League code (e.g. `nfl`, `nba`, `nhl`, `mlb`) |
+| `slug` | `String` | URL-friendly game identifier |
+| `home_team` | `String` | Home team name |
+| `away_team` | `String` | Away team name |
+| `status` | `String` | Game status (varies by sport) |
+| `score` | `String?` | Current score (format varies by sport) |
+| `period` | `String?` | Current period/quarter/half |
+| `elapsed` | `String?` | Elapsed time in current period |
+| `live` | `bool` | Whether the game is currently in progress |
+| `ended` | `bool` | Whether the game has finished |
+| `turn` | `String?` | Current turn (used in esports) |
+| `finished_timestamp` | `DateTime?` | When the game ended (only present when `ended: true`) |
+
+## Game Status Values by Sport
+
+| Sport | Possible Status Values |
+|-------|----------------------|
+| NFL / CFB | `Scheduled`, `In Progress`, `Halftime`, `End of Period`, `Final`, `Final/OT`, `Delayed`, `Postponed` |
+| NBA / CBB | `Scheduled`, `In Progress`, `Halftime`, `End of Period`, `Final`, `Final/OT` |
+| NHL | `Scheduled`, `In Progress`, `End of Period`, `Final`, `Final/OT`, `Final/SO` |
+| MLB | `Scheduled`, `In Progress`, `Delayed`, `Final`, `Postponed` |
+| Soccer | `Scheduled`, `FirstHalf`, `Halftime`, `SecondHalf`, `ExtraTime`, `PenaltyShootout`, `Final` |
+| Esports | `Scheduled`, `In Progress`, `Final` |
+| Tennis | `Scheduled`, `In Progress`, `Final` |
+
+## Score Formats
+
+Score formats differ by sport:
+- **NFL/NBA/NHL/CFB/CBB**: `"3-16"` (away-home)
+- **MLB**: `"3-16"` (away-home)
+- **Soccer**: `"1-0"` (home-away)
+- **Esports**: `"000-000|2-0|Bo3"` (round scores, map score, series format)
+
+## Filtering by League
+
+Client-side filtering on the stream:
+
+```rust
+use futures::StreamExt;
+
+let mut stream = ws.stream();
+while let Some(Ok(result)) = stream.next().await {
+    if result.league_abbreviation == "nfl" && result.live {
+        println!("{}", serde_json::to_string(&result)?);
+    }
+}
+```
+
+## Auto-Reconnect
+
+The `SportsWebSocket` automatically reconnects on disconnection using exponential backoff:
+
+- **Base delay**: 3 seconds
+- **Max delay**: 60 seconds
+- **Max attempts**: 10
+- **Backoff factor**: 1.5x per attempt
+
+## Keepalive
+
+The server sends `"ping"` as a TEXT message every ~5 seconds. The client must reply `"pong"` as TEXT within 10 seconds. This is handled automatically — no action needed.
+
+## Error Handling
+
+```rust
+use px_core::error::WebSocketError;
+
+let mut stream = ws.stream();
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(sport) => { /* handle */ },
+        Err(WebSocketError::Connection(msg)) => eprintln!("connection lost: {msg}"),
+        Err(WebSocketError::Closed) => break,
+        Err(e) => eprintln!("error: {e}"),
+    }
+}
+```

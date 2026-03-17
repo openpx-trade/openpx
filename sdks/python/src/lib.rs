@@ -1,5 +1,7 @@
+mod crypto;
 mod error;
 mod exchange;
+mod sports;
 mod stream;
 mod websocket;
 
@@ -24,6 +26,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<websocket::NativeWebSocket>()?;
     m.add_class::<stream::NativeOrderbookStream>()?;
     m.add_class::<stream::NativeActivityStream>()?;
+    m.add_class::<sports::NativeSportsWebSocket>()?;
+    m.add_class::<sports::NativeSportsStream>()?;
+    m.add_class::<crypto::NativeCryptoPriceWebSocket>()?;
+    m.add_class::<crypto::NativeCryptoPriceStream>()?;
     error::register_exceptions(m)?;
     Ok(())
 }
