@@ -234,6 +234,9 @@ fn print_json(val: &impl serde::Serialize) {
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
     let id = cli.exchange.as_str();
@@ -415,6 +418,10 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
         eprintln!("error: failed to subscribe to orderbook: {e}");
         std::process::exit(1);
     });
+    ws.subscribe(market_id).await.unwrap_or_else(|e| {
+        eprintln!("error: failed to subscribe to market: {e}");
+        std::process::exit(1);
+    });
     eprintln!("streaming orderbook for {market_id} (Ctrl+C to stop)...");
     while let Some(update) = stream.next().await {
         match update {
@@ -435,6 +442,10 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
     });
     let mut stream = ws.activity_stream(market_id).await.unwrap_or_else(|e| {
         eprintln!("error: failed to subscribe to activity: {e}");
+        std::process::exit(1);
+    });
+    ws.subscribe(market_id).await.unwrap_or_else(|e| {
+        eprintln!("error: failed to subscribe to market: {e}");
         std::process::exit(1);
     });
     eprintln!("streaming activity for {market_id} (Ctrl+C to stop)...");
