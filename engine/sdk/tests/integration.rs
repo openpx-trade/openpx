@@ -335,9 +335,9 @@ fn opinion_describe_capabilities() {
     let ex = ExchangeInner::new("opinion", json!({})).unwrap();
     let info = ex.describe();
     assert!(info.has_fetch_orderbook, "opinion should have fetch_orderbook");
-    assert!(!info.has_fetch_price_history, "opinion should not have fetch_price_history");
-    assert!(!info.has_fetch_trades, "opinion should not have fetch_trades");
-    assert!(!info.has_fetch_fills, "opinion should not have fetch_fills");
+    assert!(info.has_fetch_price_history, "opinion should have fetch_price_history");
+    assert!(info.has_fetch_trades, "opinion should have fetch_trades");
+    assert!(info.has_fetch_fills, "opinion should have fetch_fills");
     assert!(!info.has_approvals, "opinion should not have approvals");
     assert!(!info.has_refresh_balance, "opinion should not have refresh_balance");
     assert!(info.has_fetch_user_activity, "opinion should have fetch_user_activity");

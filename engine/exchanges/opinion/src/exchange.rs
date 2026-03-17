@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use std::borrow::Cow;
+
 use px_core::{
-    canonical_event_id, manifests::OPINION_MANIFEST, sort_asks, sort_bids, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams, Market,
-    MarketStatus, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OutcomeToken,
-    Position, PriceHistoryInterval, PriceLevel, PricePoint, RateLimiter,
+    canonical_event_id, manifests::OPINION_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
+    FetchUserActivityParams, Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError,
+    Order, OrderSide, OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, PricePoint, RateLimiter, TradesRequest,
 };
 
 use crate::config::OpinionConfig;
@@ -1289,6 +1292,278 @@ impl Exchange for Opinion {
         }))
     }
 
+    async fn fetch_price_history(
+        &self,
+        req: PriceHistoryRequest,
+    ) -> Result<Vec<Candlestick>, OpenPxError> {
+        let token_id = req
+            .token_id
+            .as_deref()
+            .ok_or_else(|| OpenPxError::InvalidInput("token_id required for Opinion price history".into()))?;
+
+        let points = self
+            .fetch_price_history(token_id, req.interval, req.start_ts, req.end_ts)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        // Convert PricePoint (single price) to Candlestick (OHLCV).
+        // Opinion's price-history endpoint returns point-in-time prices, not
+        // true OHLCV bars, so O=H=L=C=price with volume=0.
+        let candles = points
+            .into_iter()
+            .map(|p| Candlestick {
+                timestamp: p.timestamp,
+                open: p.price,
+                high: p.price,
+                low: p.price,
+                close: p.price,
+                volume: 0.0,
+                open_interest: None,
+            })
+            .collect();
+
+        Ok(candles)
+    }
+
+    async fn fetch_trades(
+        &self,
+        req: TradesRequest,
+    ) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError> {
+        self.ensure_auth()
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        let address = self
+            .config
+            .multi_sig_addr
+            .as_deref()
+            .ok_or_else(|| OpenPxError::InvalidInput("multi_sig_addr required for Opinion trades".into()))?;
+
+        let limit = req.limit.unwrap_or(20).clamp(1, 100);
+        let page = req
+            .cursor
+            .as_deref()
+            .and_then(|c| c.parse::<usize>().ok())
+            .unwrap_or(1);
+
+        let endpoint = format!(
+            "/openapi/trade/user/{address}?page={page}&limit={limit}"
+        );
+        let resp: ApiResponse<serde_json::Value> = self
+            .get(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        if resp.code != 0 {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(
+                resp.msg.unwrap_or_else(|| "fetch trades failed".into()),
+            )));
+        }
+
+        let items = resp.result.and_then(|r| r.list).unwrap_or_default();
+        let has_more = items.len() >= limit;
+
+        let trades: Vec<MarketTrade> = items
+            .iter()
+            .filter_map(|item| {
+                let obj = item.as_object()?;
+
+                let price = obj
+                    .get("price")
+                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))?;
+                let size = obj
+                    .get("shares")
+                    .or_else(|| obj.get("amount"))
+                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0.0);
+
+                if size <= 0.0 {
+                    return None;
+                }
+
+                let timestamp = obj
+                    .get("created_at")
+                    .or_else(|| obj.get("timestamp"))
+                    .and_then(|v| {
+                        v.as_i64()
+                            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+                            .or_else(|| {
+                                v.as_str()
+                                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                            })
+                    })
+                    .unwrap_or_else(chrono::Utc::now);
+
+                let id = obj
+                    .get("trade_id")
+                    .or_else(|| obj.get("id"))
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())));
+
+                let side = obj.get("side").and_then(|v| {
+                    v.as_str()
+                        .or_else(|| v.as_i64().map(|n| if n == 1 { "buy" } else { "sell" }).into())
+                });
+                let aggressor_side = side.map(|s| {
+                    match s.to_lowercase().as_str() {
+                        "buy" | "1" => "buy",
+                        _ => "sell",
+                    }
+                    .to_string()
+                });
+
+                // Filter by market if requested
+                if !req.market_id.is_empty() {
+                    let trade_market = obj
+                        .get("market_id")
+                        .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())));
+                    if let Some(ref tm) = trade_market {
+                        if tm != &req.market_id {
+                            return None;
+                        }
+                    }
+                }
+
+                Some(MarketTrade {
+                    id,
+                    price,
+                    size,
+                    side: None,
+                    aggressor_side,
+                    timestamp,
+                    source_channel: Cow::Borrowed("opinion_rest_trade"),
+                    tx_hash: None,
+                    outcome: obj.get("outcome").and_then(|v| v.as_str()).map(String::from),
+                    yes_price: None,
+                    no_price: None,
+                    taker_address: None,
+                })
+            })
+            .collect();
+
+        let next_cursor = if has_more {
+            Some((page + 1).to_string())
+        } else {
+            None
+        };
+
+        Ok((trades, next_cursor))
+    }
+
+    async fn fetch_fills(
+        &self,
+        market_id: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Fill>, OpenPxError> {
+        self.ensure_auth()
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        let address = self
+            .config
+            .multi_sig_addr
+            .as_deref()
+            .ok_or_else(|| OpenPxError::InvalidInput("multi_sig_addr required for Opinion fills".into()))?;
+
+        let all_trades = self
+            .fetch_user_trades_all(address)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        let limit = limit.unwrap_or(100);
+        let fills: Vec<Fill> = all_trades
+            .iter()
+            .filter_map(|item| {
+                let obj = item.as_object()?;
+
+                // Filter by market if requested
+                if let Some(mid) = market_id {
+                    let trade_market = obj
+                        .get("market_id")
+                        .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())));
+                    if trade_market.as_deref() != Some(mid) {
+                        return None;
+                    }
+                }
+
+                let fill_id = obj
+                    .get("trade_id")
+                    .or_else(|| obj.get("id"))
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())))?;
+
+                let order_id = obj
+                    .get("order_id")
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())))
+                    .unwrap_or_default();
+
+                let trade_market_id = obj
+                    .get("market_id")
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())))
+                    .unwrap_or_default();
+
+                let price = obj
+                    .get("price")
+                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))?;
+                let size = obj
+                    .get("shares")
+                    .or_else(|| obj.get("amount"))
+                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0.0);
+
+                if size <= 0.0 {
+                    return None;
+                }
+
+                let side_val = obj.get("side").and_then(|v| {
+                    v.as_str().map(String::from).or_else(|| Some(v.to_string()))
+                });
+                let side = match side_val.as_deref() {
+                    Some("sell" | "2") => OrderSide::Sell,
+                    _ => OrderSide::Buy,
+                };
+
+                let outcome = obj
+                    .get("outcome")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Yes")
+                    .to_string();
+
+                let fee = obj
+                    .get("fee")
+                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0.0);
+
+                let created_at = obj
+                    .get("created_at")
+                    .or_else(|| obj.get("timestamp"))
+                    .and_then(|v| {
+                        v.as_i64()
+                            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+                            .or_else(|| {
+                                v.as_str()
+                                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                            })
+                    })
+                    .unwrap_or_else(chrono::Utc::now);
+
+                Some(Fill {
+                    fill_id,
+                    order_id,
+                    market_id: trade_market_id,
+                    outcome,
+                    side,
+                    price,
+                    size,
+                    is_taker: false,
+                    fee,
+                    created_at,
+                })
+            })
+            .take(limit)
+            .collect();
+
+        Ok(fills)
+    }
+
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -1300,10 +1575,10 @@ impl Exchange for Opinion {
             has_fetch_positions: true,
             has_fetch_balance: true,
             has_fetch_orderbook: true,
-            has_fetch_price_history: false,
-            has_fetch_trades: false,
+            has_fetch_price_history: true,
+            has_fetch_trades: true,
             has_fetch_user_activity: true,
-            has_fetch_fills: false,
+            has_fetch_fills: true,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: self.config.is_authenticated(),
