@@ -7,171 +7,194 @@
 One interface to trade across Polymarket, Kalshi, and Opinion.
 Rust engine with Python & TypeScript SDKs.
 
-[![CI](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-ai/openpx/actions/workflows/ci.yml)
+[![CI](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
-<a href="https://polymarket.com"><img src="https://img.logo.dev/polymarket.com?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Polymarket" /></a>&nbsp;&nbsp;
-<a href="https://kalshi.com"><img src="https://img.logo.dev/kalshi.com?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Kalshi" /></a>&nbsp;&nbsp;
-<a href="https://opinion.trade"><img src="https://img.logo.dev/opinion.trade?token=pk_JRbMGCbBRUOkIXIn2SFJNw&size=60&retina=true" width="48" height="48" alt="Opinion" /></a>
+<br/>
+
+<a href="https://polymarket.com"><img src="https://avatars.githubusercontent.com/u/80769523?s=200" width="56" height="56" alt="Polymarket" style="border-radius:12px" /></a>&nbsp;&nbsp;&nbsp;
+<a href="https://kalshi.com"><img src="https://avatars.githubusercontent.com/u/74683861?s=200" width="56" height="56" alt="Kalshi" style="border-radius:12px" /></a>&nbsp;&nbsp;&nbsp;
+<a href="https://opinion.trade"><img src="https://pbs.twimg.com/profile_images/1868375820281561088/g0P4fUzd_200x200.jpg" width="56" height="56" alt="Opinion" style="border-radius:12px" /></a>
 
 </div>
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
-
-- [Rust 1.91+](https://rustup.rs/)
-- API credentials for at least one exchange (see [Exchange Credentials](#exchange-credentials))
-
-### 1. Clone and configure
+### Install
 
 ```bash
-git clone https://github.com/openpx-ai/openpx.git
-cd openpx
-cp .env.example .env
-# Edit .env with your exchange API keys
+# Rust — add to Cargo.toml
+px-sdk = "0.1"
+
+# Python
+pip install openpx
+
+# TypeScript
+npm install @openpx/sdk
 ```
 
-### 2. Build and run
-
-```bash
-# Build everything
-cargo build --workspace
-
-# Run the trading dashboard
-cargo run -p px-dashboard
-
-# Dashboard is now at http://localhost:3000
-```
-
-### 3. Or use Docker
-
-```bash
-docker compose up -d
-# Dashboard at http://localhost:3000
-```
-
-## Usage
-
-### Rust
-
-```toml
-[dependencies]
-px-sdk = "0.1.4"
-```
+### Fetch Markets
 
 ```rust
-use px_core::Exchange;
-use px_exchange_kalshi::{Kalshi, KalshiConfig};
+use px_sdk::ExchangeInner;
+use serde_json::json;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = KalshiConfig::new()
-        .with_api_key_id("your-api-key-id")
-        .with_private_key_path("/path/to/key.pem");
-
-    let exchange = Kalshi::new(config)?;
-    let markets = exchange.fetch_markets().await?;
-
-    for market in &markets {
-        println!("{}: {}", market.id, market.title);
+async fn main() {
+    let exchange = ExchangeInner::new("kalshi", json!({})).unwrap();
+    let (markets, _) = exchange.fetch_markets(&Default::default()).await.unwrap();
+    for m in &markets[..5] {
+        println!("{}: {}", m.id, m.title);
     }
-    Ok(())
 }
-```
-
-### Python
-
-```bash
-pip install openpx
 ```
 
 ```python
 from openpx import Exchange
 
-exchange = Exchange("kalshi", {
-    "api_key_id": "your-api-key-id",
-    "private_key_pem": "your-private-key"
-})
-
+exchange = Exchange("kalshi")
 markets = exchange.fetch_markets()
-for market in markets:
-    print(f"{market.id}: {market.title}")
-```
-
-### TypeScript
-
-```bash
-npm install @openpx/sdk
+for m in markets:
+    print(f"{m.id}: {m.title}")
 ```
 
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
-const exchange = new Exchange("kalshi", {
-  api_key_id: "your-api-key-id",
-  private_key_pem: "your-private-key",
-});
-
+const exchange = new Exchange("kalshi", {});
 const markets = await exchange.fetchMarkets();
 markets.forEach(m => console.log(`${m.id}: ${m.title}`));
 ```
 
+```bash
+# CLI
+openpx kalshi fetch-markets --limit 5
+```
+
+### Place an Order
+
+```rust
+let order = exchange.create_order(
+    "KXBTC-25MAR14", "Yes", OrderSide::Buy, 0.65, 10.0, HashMap::new(),
+).await?;
+```
+
+```python
+order = exchange.create_order("KXBTC-25MAR14", outcome="Yes", side="buy", price=0.65, size=10.0)
+```
+
+```typescript
+const order = await exchange.createOrder("KXBTC-25MAR14", "Yes", "buy", 0.65, 10.0);
+```
+
+## Unified API
+
+Every exchange exposes the same interface — switch exchanges by changing one string.
+
+| Method | Description |
+|--------|-------------|
+| `fetch_markets` | List markets with pagination |
+| `fetch_market` | Get a single market by ID |
+| `fetch_orderbook` | L2 orderbook (bids/asks) |
+| `fetch_price_history` | OHLCV candlestick data |
+| `fetch_trades` | Recent public trades |
+| `create_order` | Place a limit order |
+| `cancel_order` | Cancel an open order |
+| `fetch_positions` | Current portfolio positions |
+| `fetch_balance` | Account balance |
+| `fetch_fills` | Trade execution history |
+| `ws orderbook` | Real-time orderbook stream |
+| `ws activity` | Real-time trade & fill stream |
+
+## Exchange Support
+
+| Feature | <img src="https://avatars.githubusercontent.com/u/80769523?s=200" width="20" height="20" /> Polymarket | <img src="https://avatars.githubusercontent.com/u/74683861?s=200" width="20" height="20" /> Kalshi | <img src="https://pbs.twimg.com/profile_images/1868375820281561088/g0P4fUzd_200x200.jpg" width="20" height="20" /> Opinion |
+|---------|:---:|:---:|:---:|
+| Markets | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Trading | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Orderbook | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Price History | :white_check_mark: | :white_check_mark: | |
+| Trades | :white_check_mark: | :white_check_mark: | |
+| WebSocket | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Fills | | :white_check_mark: | |
+
 ## Exchange Credentials
 
-Edit `.env` with your keys. Each exchange is optional — only configure what you need.
+Each exchange is optional — only configure what you need.
 
 | Exchange | Required Keys | Docs |
 |----------|--------------|------|
-| Polymarket | `POLYMARKET_PRIVATE_KEY` | [docs](https://docs.polymarket.com/developers/) |
-| Kalshi | `KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PATH` | [docs](https://docs.kalshi.com/) |
-| Opinion | `OPINION_API_KEY`, `OPINION_PRIVATE_KEY`, `OPINION_MULTI_SIG_ADDR` | [docs](https://docs.opinion.trade/developer-guide/opinion-open-api) |
+| <img src="https://avatars.githubusercontent.com/u/80769523?s=200" width="16" height="16" /> Polymarket | `POLYMARKET_PRIVATE_KEY` | [docs](https://docs.polymarket.com/developers/) |
+| <img src="https://avatars.githubusercontent.com/u/74683861?s=200" width="16" height="16" /> Kalshi | `KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PEM` | [docs](https://docs.kalshi.com/) |
+| <img src="https://pbs.twimg.com/profile_images/1868375820281561088/g0P4fUzd_200x200.jpg" width="16" height="16" /> Opinion | `OPINION_API_KEY`, `OPINION_PRIVATE_KEY`, `OPINION_MULTI_SIG_ADDR` | [docs](https://docs.opinion.trade/developer-guide/opinion-open-api) |
 
-See `.env.example` for the full list of optional fields.
+Set them as environment variables or in a `.env` file (auto-loaded by the CLI).
 
-## Exchange Support Matrix
-
-| Exchange | Markets | Trading | Orderbook | WebSocket |
-|----------|---------|---------|-----------|-----------|
-| Polymarket | Yes | Yes | Yes | Yes |
-| Kalshi | Yes | Yes | Yes | Yes |
-| Opinion | Yes | Yes | Yes | Yes |
-
-## Development
+## CLI
 
 ```bash
-cargo check --workspace     # Type check
-cargo test --workspace      # Run tests
-cargo clippy --workspace -- -D warnings  # Lint
-cargo fmt --all             # Format
+cargo install --path engine/cli
 
-just sync-all               # Regenerate Python/TS SDKs + docs from Rust types
-just dashboard              # Run dashboard in debug mode
-just docs-serve             # Serve docs locally
+# Market data (no auth needed)
+openpx kalshi fetch-markets
+openpx polymarket fetch-market "0x1234..."
+openpx kalshi fetch-orderbook KXBTC-25MAR14
+
+# WebSocket streams
+openpx kalshi ws-orderbook KXBTC-25MAR14
+openpx polymarket ws-activity "0x1234..."
+
+# Sports & crypto (no auth needed)
+openpx sports --league nba --live-only
+openpx crypto --symbols btcusdt,ethusdt
+
+# Pipe to jq
+openpx kalshi fetch-markets --limit 1 | jq '.markets[0].title'
 ```
 
 ## Project Structure
 
 ```
-engine/               Rust core
-  core/               Types, traits, error handling
-  exchanges/          Exchange implementations (kalshi, polymarket, etc.)
+engine/
+  core/               Core types, Exchange trait, error handling
+  exchanges/          Exchange implementations (kalshi, polymarket, opinion)
   sdk/                Unified facade (enum dispatch)
+  cli/                CLI tool
+  sports/             Sports WebSocket (Polymarket live scores)
+  crypto/             Crypto price WebSocket (Binance + Chainlink)
 sdks/
-  python/             PyO3 bindings
-  typescript/         NAPI-RS bindings
-dashboard/            Trading terminal (Axum server + JS frontend)
-docs/                 Starlight docs site
+  python/             PyO3 bindings + Pydantic models
+  typescript/         NAPI-RS bindings + TS types
+docs/                 Starlight documentation site
 ```
+
+## Development
+
+```bash
+cargo check --workspace                    # Type check
+cargo test --workspace                     # Run tests
+cargo clippy --workspace -- -D warnings    # Lint
+cargo fmt --all                            # Format
+just sync-all                              # Regenerate Python/TS SDKs from Rust types
+```
+
+## Star History
+
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=openpx-trade/openpx&type=Date)](https://star-history.com/#openpx-trade/openpx&Date)
+
+</div>
 
 ## Community
 
-- [Issues](https://github.com/openpx-ai/openpx/issues) — Bugs & feature requests
-- [Discussions](https://github.com/openpx-ai/openpx/discussions) — Questions & chat
-- [Contributing](CONTRIBUTING.md)
+- [Documentation](https://openpx.dev) — Full API reference, guides, and tutorials
+- [LLM-ready docs](https://openpx.dev/llms.md) — All docs in one copy-pasteable markdown file
+- [Issues](https://github.com/openpx-trade/openpx/issues) — Bugs & feature requests
+- [Discussions](https://github.com/openpx-trade/openpx/discussions) — Questions & chat
 
 ## License
 
