@@ -2,40 +2,58 @@ use std::env;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
-use px_core::models::{MarketStatus, PriceHistoryInterval};
+use px_core::models::{CryptoPriceSource, MarketStatus, PriceHistoryInterval};
 use px_core::websocket::OrderBookWebSocket;
 use px_core::{
     FetchMarketsParams, FetchOrdersParams, OrderbookHistoryRequest, OrderbookRequest,
     PriceHistoryRequest, TradesRequest,
 };
+use px_crypto::CryptoPriceWebSocket;
 use px_sdk::{ExchangeInner, WebSocketInner};
+use px_sports::SportsWebSocket;
 
 #[derive(Parser)]
-#[command(name = "px-cli", about = "OpenPX CLI — test exchange APIs & WebSocket streams")]
+#[command(name = "openpx", about = "OpenPX CLI — test exchange APIs & WebSocket streams")]
 struct Cli {
-    /// Exchange to use
-    #[arg(value_enum)]
-    exchange: ExchangeId,
-
     #[command(subcommand)]
-    command: Command,
+    command: TopCommand,
 }
 
-#[derive(Clone, ValueEnum)]
-enum ExchangeId {
-    Kalshi,
-    Polymarket,
-    Opinion,
-}
-
-impl ExchangeId {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Kalshi => "kalshi",
-            Self::Polymarket => "polymarket",
-            Self::Opinion => "opinion",
-        }
-    }
+#[derive(Subcommand)]
+enum TopCommand {
+    /// Stream live sports scores (Ctrl+C to stop)
+    Sports {
+        /// Filter by league abbreviation (e.g. nfl, nba, nhl)
+        #[arg(long)]
+        league: Option<String>,
+        /// Only show live games
+        #[arg(long)]
+        live_only: bool,
+    },
+    /// Stream live crypto prices (Ctrl+C to stop)
+    Crypto {
+        /// Price source (binance or chainlink)
+        #[arg(long, value_enum, default_value = "binance")]
+        source: CryptoSourceArg,
+        /// Comma-separated symbols to subscribe to (e.g. btcusdt,ethusdt)
+        #[arg(long)]
+        symbols: Option<String>,
+    },
+    /// Kalshi exchange commands
+    Kalshi {
+        #[command(subcommand)]
+        command: Command,
+    },
+    /// Polymarket exchange commands
+    Polymarket {
+        #[command(subcommand)]
+        command: Command,
+    },
+    /// Opinion exchange commands
+    Opinion {
+        #[command(subcommand)]
+        command: Command,
+    },
 }
 
 #[derive(Subcommand)]
@@ -154,6 +172,21 @@ enum StatusArg {
     Resolved,
 }
 
+#[derive(Clone, ValueEnum)]
+enum CryptoSourceArg {
+    Binance,
+    Chainlink,
+}
+
+impl From<CryptoSourceArg> for CryptoPriceSource {
+    fn from(s: CryptoSourceArg) -> Self {
+        match s {
+            CryptoSourceArg::Binance => CryptoPriceSource::Binance,
+            CryptoSourceArg::Chainlink => CryptoPriceSource::Chainlink,
+        }
+    }
+}
+
 impl From<StatusArg> for MarketStatus {
     fn from(s: StatusArg) -> Self {
         match s {
@@ -239,19 +272,39 @@ async fn main() {
         .expect("Failed to install rustls crypto provider");
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
-    let id = cli.exchange.as_str();
-    let config = make_exchange_config(id);
 
     match cli.command {
-        // -- WebSocket commands (don't need ExchangeInner) --
+        TopCommand::Sports { league, live_only } => {
+            ws_sports(league, live_only).await;
+        }
+        TopCommand::Crypto { source, symbols } => {
+            let symbols: Vec<String> = symbols
+                .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            ws_crypto(source.into(), symbols).await;
+        }
+        TopCommand::Kalshi { command } => {
+            run_exchange("kalshi", command).await;
+        }
+        TopCommand::Polymarket { command } => {
+            run_exchange("polymarket", command).await;
+        }
+        TopCommand::Opinion { command } => {
+            run_exchange("opinion", command).await;
+        }
+    }
+}
+
+async fn run_exchange(id: &str, command: Command) {
+    let config = make_exchange_config(id);
+
+    match command {
         Command::WsOrderbook { market_id } => {
             ws_orderbook(id, config, &market_id).await;
         }
         Command::WsActivity { market_id } => {
             ws_activity(id, config, &market_id).await;
         }
-
-        // -- REST commands --
         cmd => {
             let exchange = ExchangeInner::new(id, config).unwrap_or_else(|e| {
                 eprintln!("error: failed to create {id} exchange: {e}");
@@ -392,7 +445,7 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let fills = exchange.fetch_fills(market_id.as_deref(), limit).await?;
                 print_json(&fills);
             }
-            // WebSocket commands handled in main
+            // WebSocket commands handled in run_exchange
             Command::WsOrderbook { .. } | Command::WsActivity { .. } => unreachable!(),
         }
         Ok(())
@@ -402,6 +455,57 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
     if let Err(e) = result {
         eprintln!("error: {e}");
         std::process::exit(1);
+    }
+}
+
+async fn ws_sports(league: Option<String>, live_only: bool) {
+    let mut ws = SportsWebSocket::new();
+    ws.connect().await.unwrap_or_else(|e| {
+        eprintln!("error: sports websocket connect failed: {e}");
+        std::process::exit(1);
+    });
+
+    let mut stream = ws.stream();
+    let league_lower = league.map(|l| l.to_lowercase());
+
+    eprintln!("streaming sports scores (Ctrl+C to stop)...");
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(data) => {
+                if live_only && !data.live {
+                    continue;
+                }
+                if let Some(ref league) = league_lower {
+                    if data.league_abbreviation.to_lowercase() != *league {
+                        continue;
+                    }
+                }
+                print_json(&data);
+            }
+            Err(e) => eprintln!("error: {e}"),
+        }
+    }
+}
+
+async fn ws_crypto(source: CryptoPriceSource, symbols: Vec<String>) {
+    let mut ws = CryptoPriceWebSocket::new();
+    ws.connect().await.unwrap_or_else(|e| {
+        eprintln!("error: crypto websocket connect failed: {e}");
+        std::process::exit(1);
+    });
+
+    ws.subscribe(source, &symbols).await.unwrap_or_else(|e| {
+        eprintln!("error: crypto subscribe failed: {e}");
+        std::process::exit(1);
+    });
+
+    let mut stream = ws.stream();
+    eprintln!("streaming crypto prices (Ctrl+C to stop)...");
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(data) => print_json(&data),
+            Err(e) => eprintln!("error: {e}"),
+        }
     }
 }
 

@@ -9,6 +9,9 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/openpx/openpx' },
       ],
+      components: {
+        SocialIcons: './src/components/SocialIcons.astro',
+      },
       sidebar: [
         { label: 'Introduction', link: '/' },
         {

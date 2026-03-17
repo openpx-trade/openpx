@@ -2,13 +2,12 @@
 title: Quick Start
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Fetch Markets
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_sdk::ExchangeInner;
 use serde_json::json;
@@ -22,10 +21,8 @@ async fn main() {
     }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange
 
@@ -34,10 +31,8 @@ markets = exchange.fetch_markets()
 for market in markets:
     print(f"{market.id}: {market.title}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -47,15 +42,13 @@ for (const market of markets) {
   console.log(`${market.id}: ${market.title}`);
 }
 ```
-
 </TabItem>
 </Tabs>
 
 ## Create an Order
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_sdk::ExchangeInner;
 use px_core::OrderSide;
@@ -81,10 +74,8 @@ async fn main() {
     println!("Order {}: {:?}", order.id, order.status);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange
 
@@ -102,10 +93,8 @@ order = exchange.create_order(
 )
 print(f"Order {order.id}: {order.status}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -119,15 +108,13 @@ const order = await exchange.createOrder(
 );
 console.log(`Order ${order.id}: ${order.status}`);
 ```
-
 </TabItem>
 </Tabs>
 
 ## Fetch Orderbook
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let book = exchange.fetch_orderbook(OrderbookRequest {
     market_id: "MARKET-ID".into(),
@@ -135,22 +122,17 @@ let book = exchange.fetch_orderbook(OrderbookRequest {
 }).await.unwrap();
 println!("Best bid: {:?}, Best ask: {:?}", book.best_bid(), book.best_ask());
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 book = exchange.fetch_orderbook("MARKET-ID")
 print(f"Best bid: {book.bids[0].price}, Best ask: {book.asks[0].price}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const book = await exchange.fetchOrderbook("MARKET-ID");
 console.log(`Best bid: ${book.bids[0].price}, Best ask: ${book.asks[0].price}`);
 ```
-
 </TabItem>
 </Tabs>

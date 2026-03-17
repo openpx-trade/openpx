@@ -7,10 +7,11 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use crate::error::WebSocketError;
-use crate::models::{LiquidityRole, OrderbookUpdate};
+use crate::models::{CryptoPrice, LiquidityRole, OrderbookUpdate, SportResult};
 
 /// Shared WebSocket reconnect/keepalive constants for all exchange implementations.
 pub const WS_PING_INTERVAL: Duration = Duration::from_secs(20);
+pub const WS_CRYPTO_PING_INTERVAL: Duration = Duration::from_secs(5);
 pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
@@ -18,6 +19,8 @@ pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
 pub type OrderbookStream =
     Pin<Box<dyn Stream<Item = Result<OrderbookUpdate, WebSocketError>> + Send>>;
 pub type ActivityStream = Pin<Box<dyn Stream<Item = Result<ActivityEvent, WebSocketError>> + Send>>;
+pub type SportsStream = Pin<Box<dyn Stream<Item = Result<SportResult, WebSocketError>> + Send>>;
+pub type CryptoPriceStream = Pin<Box<dyn Stream<Item = Result<CryptoPrice, WebSocketError>> + Send>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

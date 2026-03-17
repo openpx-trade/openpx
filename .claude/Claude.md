@@ -28,7 +28,7 @@ openpx/
 ├── engine/                   # Rust core — powers everything
 │   ├── core/                 # Core types, traits, timing, error handling
 │   │   ├── src/exchange/     # Exchange trait, manifests, normalizers, rate limiting
-│   │   ├── src/models/       # Market, Order, Position, Orderbook, Trade, RawMarket
+│   │   ├── src/models/       # Market, Order, Position, Orderbook, Trade
 │   │   ├── src/events.rs     # Canonical event ID handling
 │   │   ├── src/timing.rs     # timed! macro + TimingGuard
 │   │   ├── src/error.rs      # OpenPxError hierarchy + define_exchange_error! macro
@@ -36,8 +36,8 @@ openpx/
 │   │   └── src/websocket/    # WebSocket traits
 │   ├── exchanges/            # Exchange implementations
 │   │   ├── kalshi/           # auth, config, error, exchange, fetcher, normalize, websocket
-│   │   ├── polymarket/
-│   │   └── opinion/
+│   │   ├── polymarket/       # auth, config, error, exchange, fetcher, websocket, approvals, clob, ctf, signer, relayer, swap, client, diagnostics
+│   │   └── opinion/          # config, error, exchange, websocket
 │   ├── sdk/                  # Unified facade (enum dispatch)
 │   ├── cli/                  # CLI tool for testing APIs & WebSocket streams
 │   └── schema/               # JSON Schema export binary
@@ -55,13 +55,14 @@ openpx/
 | Purpose | File | Notes |
 |---------|------|-------|
 | Exchange trait | `engine/core/src/exchange/traits.rs` | All exchanges implement this |
-| Exchange manifests | `engine/core/src/exchange/manifest.rs` | Connection + pagination config per exchange |
+| Exchange manifest base | `engine/core/src/exchange/manifest.rs` | ExchangeManifest struct, PaginationConfig, FieldMapping, Transform |
+| Exchange manifests | `engine/core/src/exchange/manifests/` | Per-exchange configs (kalshi.rs, polymarket.rs, opinion.rs) |
 | Timing macros | `engine/core/src/timing.rs` | `timed!` macro + metric name constants |
 | Error types | `engine/core/src/error.rs` | `OpenPxError` hierarchy + `define_exchange_error!` macro |
 | Event IDs | `engine/core/src/events.rs` | Canonical cross-exchange event grouping |
 | WebSocket traits | `engine/core/src/websocket/traits.rs` | WebSocket connection interface |
 | Kalshi exchange | `engine/exchanges/kalshi/src/exchange.rs` | Reference implementation |
-| Market model | `engine/core/src/models/market.rs` | Market, UnifiedMarket types |
+| Market model | `engine/core/src/models/market.rs` | Unified Market type (single struct for all exchanges) |
 
 ## Common Patterns
 

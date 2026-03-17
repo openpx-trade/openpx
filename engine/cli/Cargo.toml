@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 px-core = { workspace = true }
 px-sdk = { workspace = true }
+px-sports = { workspace = true }
+px-crypto = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 dotenvy = "0.15"

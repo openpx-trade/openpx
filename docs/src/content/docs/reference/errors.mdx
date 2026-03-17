@@ -2,7 +2,7 @@
 title: Error Handling
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Error Hierarchy
 
@@ -38,9 +38,8 @@ OpenPxError
 
 ## Language Mapping
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::{OpenPxError, ExchangeError};
 
@@ -55,10 +54,8 @@ match result {
     Ok(v) => { /* success */ }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange, OpenPxError, AuthenticationError, NetworkError
 
@@ -71,10 +68,8 @@ except NetworkError as e:
 except OpenPxError as e:
     print(f"Error: {e}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 try {
   await exchange.fetchBalance();
@@ -82,6 +77,5 @@ try {
   console.error(e.message);
 }
 ```
-
 </TabItem>
 </Tabs>

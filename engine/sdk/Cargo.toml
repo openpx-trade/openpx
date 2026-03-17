@@ -11,6 +11,8 @@ px-core = { workspace = true }
 px-exchange-kalshi = { workspace = true }
 px-exchange-polymarket = { workspace = true }
 px-exchange-opinion = { workspace = true }
+px-sports = { workspace = true }
+px-crypto = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

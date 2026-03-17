@@ -2,11 +2,10 @@
 title: Installation
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 Add OpenPX crates to your `Cargo.toml`:
 
 ```toml
@@ -21,26 +20,21 @@ px-exchange-opinion = "0.1"
 # Or use the unified SDK facade
 px-sdk = "0.1"
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```bash
 pip install openpx
 ```
 
 Requires Python >= 3.9. The package includes a native Rust extension compiled
 with PyO3 — no Rust toolchain needed on the user's machine.
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```bash
 npm install @openpx/sdk
 ```
 
 Requires Node.js >= 18. The package includes a native Rust addon compiled
 with NAPI-RS.
-
 </TabItem>
 </Tabs>

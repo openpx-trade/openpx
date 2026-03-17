@@ -1,0 +1,28 @@
+---
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+---
+<div class="sl-social-icons-wrapper">
+  <a href="/llms.md" class="llm-docs-link">LLM-ready docs</a>
+  <Default {...Astro.props}><slot /></Default>
+</div>
+
+<style>
+  .sl-social-icons-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .llm-docs-link {
+    font-size: var(--sl-text-sm);
+    font-weight: 500;
+    color: var(--sl-color-white);
+    text-decoration: none;
+    white-space: nowrap;
+    opacity: 0.85;
+    transition: opacity 0.15s;
+  }
+  .llm-docs-link:hover {
+    opacity: 1;
+    text-decoration: underline;
+  }
+</style>

@@ -2,10 +2,9 @@
 title: API Methods
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Every exchange in OpenPX implements the same interface. Pick your language
-once — all examples on this page switch together.
+Every exchange in OpenPX implements the same interface.
 
 ## Constructor
 
@@ -17,9 +16,8 @@ object with credentials.
 | `exchange_id` | `string` | Yes | Exchange identifier (`"kalshi"`, `"polymarket"`, `"opinion"`) |
 | `config` | `object` | No | Credentials object — omit for unauthenticated (market data only) access |
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_sdk::ExchangeInner;
 use serde_json::json;
@@ -33,10 +31,8 @@ let exchange = ExchangeInner::new("kalshi", json!({
     "private_key_pem": "your-pem"
 })).unwrap();
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange
 
@@ -49,10 +45,8 @@ exchange = Exchange("kalshi", {
     "private_key_pem": "your-pem",
 })
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -65,7 +59,19 @@ const exchange = new Exchange("kalshi", {
   private_key_pem: "your-pem",
 });
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# The CLI reads credentials from environment variables.
+# Create a .env file or export them directly:
+export KALSHI_API_KEY_ID="your-key"
+export KALSHI_PRIVATE_KEY_PEM="your-pem"
 
+# All commands: openpx <exchange> <command> [options]
+openpx kalshi fetch-markets
+openpx polymarket fetch-markets
+openpx opinion fetch-markets
+```
 </TabItem>
 </Tabs>
 
@@ -81,30 +87,30 @@ No parameters.
 
 **Returns:** `string`
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let id: &str = exchange.id();     // "kalshi"
 let name: &str = exchange.name(); // "Kalshi"
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 exchange.id    # "kalshi"
 exchange.name  # "Kalshi"
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 exchange.id;   // "kalshi"
 exchange.name; // "Kalshi"
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+# The CLI implicitly uses the exchange ID you pass:
+openpx kalshi describe | jq '.id, .name'
+```
 </TabItem>
 </Tabs>
 
@@ -116,33 +122,33 @@ No parameters.
 
 **Returns:** [`ExchangeInfo`](/reference/models/#exchangeinfo)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let info = exchange.describe();
 println!("Has WebSocket: {}", info.has_websocket);
 println!("Has price history: {}", info.has_fetch_price_history);
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 info = exchange.describe()
 print(f"Has WebSocket: {info['has_websocket']}")
 print(f"Has price history: {info['has_fetch_price_history']}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const info = exchange.describe();
 console.log(`Has WebSocket: ${info.has_websocket}`);
 console.log(`Has price history: ${info.has_fetch_price_history}`);
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi describe
+openpx kalshi describe | jq '.has_websocket, .has_fetch_price_history'
+```
 </TabItem>
 </Tabs>
 
@@ -162,9 +168,8 @@ for the next page.
 
 **Returns:** `{ markets: Market[], cursor: string | null }` — see [`Market`](/reference/models/#market)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::FetchMarketsParams;
 
@@ -175,20 +180,16 @@ for m in &markets {
     println!("[{}] {} — {}", m.openpx_id, m.title, m.exchange);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 result = exchange.fetch_markets()
 for m in result["markets"]:
     print(f"[{m.id}] {m.title}")
 # Paginate: exchange.fetch_markets(cursor=result["cursor"])
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const result = await exchange.fetchMarkets();
 for (const m of result.markets) {
@@ -196,7 +197,16 @@ for (const m of result.markets) {
 }
 // Paginate: await exchange.fetchMarkets(null, result.cursor)
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-markets
+openpx kalshi fetch-markets --status active --limit 10
+openpx polymarket fetch-markets --cursor "next_page_token"
 
+# Pretty-print first market
+openpx kalshi fetch-markets --limit 1 | jq '.markets[0]'
+```
 </TabItem>
 </Tabs>
 
@@ -210,30 +220,30 @@ Fetch a single market by its exchange-native ID.
 
 **Returns:** [`Market`](/reference/models/#market)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let market = exchange.fetch_market("KXBTC-25MAR14").await?;
 println!("{}: {}", market.id, market.title);
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 market = exchange.fetch_market("KXBTC-25MAR14")
 print(f"{market.id}: {market.title}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const market = await exchange.fetchMarket("KXBTC-25MAR14");
 console.log(`${market.id}: ${market.title}`);
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-market KXBTC-25MAR14
+openpx polymarket fetch-market "0x1234..."
+```
 </TabItem>
 </Tabs>
 
@@ -256,9 +266,8 @@ Place a limit order on a market.
 
 **Returns:** [`Order`](/reference/models/#order)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::OrderSide;
 use std::collections::HashMap;
@@ -274,10 +283,8 @@ let order = exchange.create_order(
 
 println!("Order {}: {:?}", order.id, order.status);
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 order = exchange.create_order(
     market_id="KXBTC-25MAR14",
@@ -288,17 +295,20 @@ order = exchange.create_order(
 )
 print(f"Order {order.id}: {order.status}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const order = await exchange.createOrder(
   "KXBTC-25MAR14", "Yes", "buy", 0.65, 10.0
 );
 console.log(`Order ${order.id}: ${order.status}`);
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi create-order KXBTC-25MAR14 \
+  --outcome Yes --side buy --price 0.65 --size 10
+```
 </TabItem>
 </Tabs>
 
@@ -313,30 +323,30 @@ Cancel an open order.
 
 **Returns:** [`Order`](/reference/models/#order)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let cancelled = exchange.cancel_order("order-123", None).await?;
 println!("Cancelled: {:?}", cancelled.status);
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 cancelled = exchange.cancel_order("order-123")
 print(f"Cancelled: {cancelled.status}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const cancelled = await exchange.cancelOrder("order-123");
 console.log(`Cancelled: ${cancelled.status}`);
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi cancel-order ORDER_ID
+openpx polymarket cancel-order ORDER_ID --market-id "0x1234..."
+```
 </TabItem>
 </Tabs>
 
@@ -351,30 +361,30 @@ Fetch a single order by ID.
 
 **Returns:** [`Order`](/reference/models/#order)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let order = exchange.fetch_order("order-123", None).await?;
 println!("Status: {:?}, Filled: {}", order.status, order.filled);
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 order = exchange.fetch_order("order-123")
 print(f"Status: {order.status}, Filled: {order.filled}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const order = await exchange.fetchOrder("order-123");
 console.log(`Status: ${order.status}, Filled: ${order.filled}`);
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-order ORDER_ID
+openpx polymarket fetch-order ORDER_ID --market-id "0x1234..."
+```
 </TabItem>
 </Tabs>
 
@@ -388,9 +398,8 @@ Fetch all open orders, optionally filtered by market.
 
 **Returns:** `list[Order]` — see [`Order`](/reference/models/#order)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::FetchOrdersParams;
 
@@ -406,10 +415,8 @@ for o in &orders {
     println!("{}: {} @ {:.2}", o.id, o.side, o.price);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 # All open orders
 orders = exchange.fetch_open_orders()
@@ -420,10 +427,8 @@ orders = exchange.fetch_open_orders(market_id="KXBTC-25MAR14")
 for o in orders:
     print(f"{o.id}: {o.side} @ {o.price:.2f}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 // All open orders
 const orders = await exchange.fetchOpenOrders();
@@ -435,7 +440,12 @@ for (const o of orders) {
   console.log(`${o.id}: ${o.side} @ ${o.price.toFixed(2)}`);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-open-orders
+openpx polymarket fetch-open-orders --market-id "0x1234..."
+```
 </TabItem>
 </Tabs>
 
@@ -453,9 +463,8 @@ Fetch current positions, optionally filtered by market.
 
 **Returns:** `list[Position]` — see [`Position`](/reference/models/#position)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let positions = exchange.fetch_positions(None).await?;
 for p in &positions {
@@ -463,26 +472,27 @@ for p in &positions {
         p.market_id, p.outcome, p.size, p.average_price);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 positions = exchange.fetch_positions()
 for p in positions:
     print(f"{p.market_id} {p.outcome} — size: {p.size}, avg: {p.average_price:.2f}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const positions = await exchange.fetchPositions();
 for (const p of positions) {
   console.log(`${p.market_id} ${p.outcome} — size: ${p.size}, avg: ${p.average_price.toFixed(2)}`);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-positions
+openpx kalshi fetch-positions --market-id KXBTC-25MAR14
+```
 </TabItem>
 </Tabs>
 
@@ -494,35 +504,35 @@ No parameters.
 
 **Returns:** `map[string, float]` — asset name to balance (e.g. `{"USDC": 1250.00}`)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let balance = exchange.fetch_balance().await?;
 for (asset, amount) in &balance {
     println!("{}: ${:.2}", asset, amount);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 balance = exchange.fetch_balance()
 for asset, amount in balance.items():
     print(f"{asset}: ${amount:.2f}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const balance = await exchange.fetchBalance();
 for (const [asset, amount] of Object.entries(balance)) {
   console.log(`${asset}: $${amount.toFixed(2)}`);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-balance
+openpx polymarket fetch-balance
+```
 </TabItem>
 </Tabs>
 
@@ -537,9 +547,8 @@ Fetch trade execution history (fills).
 
 **Returns:** `list[Fill]` — see [`Fill`](/reference/models/#fill)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 let fills = exchange.fetch_fills(None, Some(20)).await?;
 for f in &fills {
@@ -547,26 +556,27 @@ for f in &fills {
         f.fill_id, f.side, f.outcome, f.price, f.size);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 fills = exchange.fetch_fills(limit=20)
 for f in fills:
     print(f"{f.fill_id}: {f.side} {f.outcome} @ {f.price:.2f} x {f.size}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const fills = await exchange.fetchFills(undefined, 20);
 for (const f of fills) {
   console.log(`${f.fill_id}: ${f.side} ${f.outcome} @ ${f.price.toFixed(2)} x ${f.size}`);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-fills
+openpx kalshi fetch-fills --market-id KXBTC-25MAR14 --limit 20
+```
 </TabItem>
 </Tabs>
 
@@ -586,9 +596,8 @@ Fetch the L2 orderbook for a market.
 
 **Returns:** [`Orderbook`](/reference/models/#orderbook)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::OrderbookRequest;
 
@@ -606,10 +615,8 @@ for level in &book.bids[..5.min(book.bids.len())] {
     println!("  BID {:.2} x {}", level.price, level.size);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 book = exchange.fetch_orderbook("KXBTC-25MAR14")
 
@@ -619,10 +626,8 @@ print(f"Best ask: {book['asks'][0]['price']}")
 for level in book["bids"][:5]:
     print(f"  BID {level['price']:.2f} x {level['size']}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const book = await exchange.fetchOrderbook("KXBTC-25MAR14");
 
@@ -633,7 +638,18 @@ for (const level of book.bids.slice(0, 5)) {
   console.log(`  BID ${level.price.toFixed(2)} x ${level.size}`);
 }
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-orderbook KXBTC-25MAR14
+openpx polymarket fetch-orderbook "0x1234..." --token-id "TOKEN_ID"
 
+# Extract best bid/ask
+openpx kalshi fetch-orderbook KXBTC-25MAR14 | jq '{
+  best_bid: .bids[0].price,
+  best_ask: .asks[0].price
+}'
+```
 </TabItem>
 </Tabs>
 
@@ -653,9 +669,8 @@ Fetch historical orderbook snapshots. Not all exchanges support this.
 **Returns:** `(list[OrderbookSnapshot], cursor?)` — see [`OrderbookSnapshot`](/reference/models/#orderbooksnapshot).
 The cursor is `null` when there are no more pages.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::OrderbookHistoryRequest;
 
@@ -672,10 +687,8 @@ for snap in &snapshots {
         snap.timestamp, snap.bids.len(), snap.asks.len());
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 result = exchange.fetch_orderbook_history("KXBTC-25MAR14", limit=10)
 
@@ -686,10 +699,8 @@ for snap in result["snapshots"]:
 if result["cursor"]:
     next_page = exchange.fetch_orderbook_history("KXBTC-25MAR14", cursor=result["cursor"])
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const result = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, 10);
 
@@ -702,7 +713,12 @@ if (result.cursor) {
   const nextPage = await exchange.fetchOrderbookHistory("KXBTC-25MAR14", undefined, undefined, undefined, undefined, result.cursor);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-orderbook-history KXBTC-25MAR14
+openpx kalshi fetch-orderbook-history KXBTC-25MAR14 --start-ts 1700000000 --limit 10
+```
 </TabItem>
 </Tabs>
 
@@ -726,9 +742,8 @@ Fetch OHLCV candlestick data.
 
 **Returns:** `list[Candlestick]` — see [`Candlestick`](/reference/models/#candlestick)
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::{PriceHistoryRequest, PriceHistoryInterval};
 
@@ -747,20 +762,16 @@ for c in &candles {
         c.timestamp, c.open, c.high, c.low, c.close, c.volume);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 candles = exchange.fetch_price_history("KXBTC-25MAR14", "1h")
 
 for c in candles:
     print(f"{c.timestamp}: O={c.open:.2f} H={c.high:.2f} L={c.low:.2f} C={c.close:.2f} V={c.volume}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const candles = await exchange.fetchPriceHistory("KXBTC-25MAR14", "1h");
 
@@ -768,7 +779,12 @@ for (const c of candles) {
   console.log(`${c.timestamp}: O=${c.open} H=${c.high} L=${c.low} C=${c.close} V=${c.volume}`);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-price-history KXBTC-25MAR14 1h
+openpx polymarket fetch-price-history "0x1234..." 1d --start-ts 1700000000
+```
 </TabItem>
 </Tabs>
 
@@ -791,9 +807,8 @@ pagination.
 **Returns:** `(list[MarketTrade], cursor?)` — see [`MarketTrade`](/reference/models/#markettrade).
 The cursor is `null` when there are no more pages.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::TradesRequest;
 
@@ -808,10 +823,8 @@ for t in &trades {
         t.timestamp, t.price, t.size, t.source_channel);
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 result = exchange.fetch_trades("KXBTC-25MAR14", limit=50)
 
@@ -822,10 +835,8 @@ for t in result["trades"]:
 if result["cursor"]:
     next_page = exchange.fetch_trades("KXBTC-25MAR14", cursor=result["cursor"])
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const result = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, 50);
 
@@ -838,7 +849,12 @@ if (result.cursor) {
   const nextPage = await exchange.fetchTrades("KXBTC-25MAR14", undefined, undefined, undefined, undefined, undefined, undefined, result.cursor);
 }
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+openpx kalshi fetch-trades KXBTC-25MAR14
+openpx polymarket fetch-trades "0x1234..." --limit 50 --outcome Yes
+```
 </TabItem>
 </Tabs>
 
@@ -850,9 +866,8 @@ Real-time streaming via WebSocket for orderbook updates, trades, and fills.
 
 See the [WebSocket Streaming](/guides/websocket/) guide for full documentation.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::OrderBookWebSocket;
 use futures::StreamExt;
@@ -876,10 +891,8 @@ while let Some(update) = stream.next().await {
     }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 ws = exchange.websocket()
 ws.connect()
@@ -895,10 +908,8 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
 
 ws.disconnect()
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const ws = exchange.websocket();
 await ws.connect();
@@ -915,6 +926,22 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
   }
 });
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream live orderbook updates (JSON per line)
+openpx kalshi ws-orderbook KXBTC-25MAR14
+openpx polymarket ws-orderbook "0x1234..."
 
+# Stream live trade and fill events
+openpx kalshi ws-activity KXBTC-25MAR14
+openpx polymarket ws-activity "0x1234..."
+
+# Extract snapshots with jq
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
+  best_bid: .Snapshot.bids[0].price,
+  best_ask: .Snapshot.asks[0].price
+}'
+```
 </TabItem>
 </Tabs>

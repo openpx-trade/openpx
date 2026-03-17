@@ -1,6 +1,9 @@
 mod websocket;
 pub use websocket::WebSocketInner;
 
+pub use px_sports::SportsWebSocket;
+pub use px_crypto::CryptoPriceWebSocket;
+
 use std::collections::HashMap;
 
 use px_core::error::OpenPxError;

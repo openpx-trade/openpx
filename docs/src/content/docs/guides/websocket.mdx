@@ -2,7 +2,7 @@
 title: WebSocket Streaming
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 OpenPX provides real-time streaming via WebSocket for orderbook updates,
 trades, and fill events across all supported exchanges.
@@ -17,9 +17,8 @@ trades, and fill events across all supported exchanges.
 
 ## Connection Lifecycle
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::OrderBookWebSocket;
 
@@ -42,10 +41,8 @@ ws.unsubscribe("KXBTC-25MAR14").await?;
 // 6. Disconnect
 ws.disconnect().await?;
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange
 
@@ -71,10 +68,8 @@ ws.unsubscribe("KXBTC-25MAR14")
 # 6. Disconnect
 ws.disconnect()
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -100,7 +95,15 @@ await ws.unsubscribe("KXBTC-25MAR14");
 // 6. Disconnect
 await ws.disconnect();
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream orderbook updates (JSON per line, Ctrl+C to stop)
+openpx kalshi ws-orderbook KXBTC-25MAR14
 
+# Stream trade and fill events
+openpx kalshi ws-activity KXBTC-25MAR14
+```
 </TabItem>
 </Tabs>
 
@@ -151,9 +154,8 @@ No parameters.
 
 **Returns:** `WebSocketState` — one of `Disconnected`, `Connecting`, `Connected`, `Reconnecting`, or `Closed`.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::WebSocketState;
 
@@ -165,23 +167,18 @@ match ws.state() {
     WebSocketState::Closed => println!("Closed"),
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 state = ws.state  # "Connected", "Disconnected", etc.
 print(f"WebSocket state: {state}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const state = ws.state; // "Connected", "Disconnected", etc.
 console.log(`WebSocket state: ${state}`);
 ```
-
 </TabItem>
 </Tabs>
 
@@ -197,9 +194,8 @@ updates. You must call `subscribe` before opening a stream.
 
 **Returns:** `Stream[OrderbookUpdate]` — yields `Snapshot` or `Delta` events.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::{OrderBookWebSocket, OrderbookUpdate};
 use futures::StreamExt;
@@ -227,10 +223,8 @@ while let Some(update) = stream.next().await {
     }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
@@ -248,10 +242,8 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
             action = "REMOVE" if change["size"] == 0 else "UPDATE"
             print(f"  {action} {change['side']} {change['price']:.2f} x {change['size']}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
@@ -272,7 +264,19 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
   }
 });
 ```
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream live orderbook updates
+openpx kalshi ws-orderbook KXBTC-25MAR14
+openpx polymarket ws-orderbook "0x1234..."
 
+# Extract best bid/ask from snapshots
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
+  best_bid: .Snapshot.bids[0].price,
+  best_ask: .Snapshot.asks[0].price
+}'
+```
 </TabItem>
 </Tabs>
 
@@ -298,9 +302,8 @@ You must call `subscribe` before opening a stream.
 
 **Returns:** `Stream[ActivityEvent]` — yields `Trade` or `Fill` events.
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::{OrderBookWebSocket, ActivityEvent};
 use futures::StreamExt;
@@ -329,10 +332,8 @@ while let Some(event) = stream.next().await {
     }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
@@ -345,10 +346,8 @@ for event in ws.activity_stream("KXBTC-25MAR14"):
         f = event["Fill"]
         print(f"FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
@@ -364,7 +363,13 @@ await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
   }
 });
 ```
-
+</TabItem>
+<TabItem label="CLI">
+```bash
+# Stream live trade and fill events
+openpx kalshi ws-activity KXBTC-25MAR14
+openpx polymarket ws-activity "0x1234..."
+```
 </TabItem>
 </Tabs>
 
@@ -395,9 +400,8 @@ orderbook snapshot is sent.
 
 ## Error Handling
 
-<Tabs syncKey="lang">
+<Tabs>
 <TabItem label="Rust">
-
 ```rust
 use px_core::WebSocketError;
 
@@ -419,10 +423,8 @@ match ws.connect().await {
     }
 }
 ```
-
 </TabItem>
 <TabItem label="Python">
-
 ```python
 from openpx import Exchange, OpenPxError
 
@@ -434,10 +436,8 @@ try:
 except OpenPxError as e:
     print(f"WebSocket error: {e}")
 ```
-
 </TabItem>
 <TabItem label="TypeScript">
-
 ```typescript
 const ws = exchange.websocket();
 
@@ -447,7 +447,6 @@ try {
   console.error(`WebSocket error: ${e.message}`);
 }
 ```
-
 </TabItem>
 </Tabs>
 

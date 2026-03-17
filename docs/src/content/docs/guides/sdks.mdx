@@ -2,14 +2,16 @@
 title: SDKs
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 OpenPX ships native SDKs for Rust, Python, and TypeScript. All three share
 the same Rust engine — the Python and TypeScript SDKs are thin wrappers
 compiled via PyO3 and NAPI-RS respectively.
 
 ## Installation
 
-**Rust**
-
+<Tabs>
+<TabItem label="Rust">
 Add OpenPX crates to your `Cargo.toml`:
 
 ```toml
@@ -25,8 +27,17 @@ px-exchange-opinion = "0.1"
 px-sdk = "0.1"
 ```
 
-**Python**
+### Crate Structure
 
+| Crate | Description |
+|-------|-------------|
+| `px-core` | Core types, Exchange trait, error handling, timing |
+| `px-sdk` | Unified facade — enum dispatch over all exchanges |
+| `px-exchange-kalshi` | Kalshi exchange implementation |
+| `px-exchange-polymarket` | Polymarket exchange implementation |
+| `px-exchange-opinion` | Opinion exchange implementation |
+</TabItem>
+<TabItem label="Python">
 ```bash
 pip install openpx
 ```
@@ -34,19 +45,36 @@ pip install openpx
 Requires Python >= 3.9. The package includes a native Rust extension compiled
 with PyO3 — no Rust toolchain needed on the user's machine.
 
-**TypeScript**
+### How It Works
 
+```
+User calls exchange.fetch_markets()
+         |
+exchange.py  (pure Python wrapper)
+         |  calls _native.NativeExchange.fetch_markets()
+         |
+lib.rs  (PyO3 → Rust, returns Python dict via pythonize)
+         |
+exchange.py  receives list[dict]
+         |  wraps: [Market(**d) for d in raw_dicts]
+         |
+User receives list[Market]  (Pydantic models with autocomplete)
+```
+</TabItem>
+<TabItem label="TypeScript">
 ```bash
 npm install @openpx/sdk
 ```
 
 Requires Node.js >= 18. The package includes a native Rust addon compiled
 with NAPI-RS.
+</TabItem>
+</Tabs>
 
 ## Quick Start
 
-**Rust**
-
+<Tabs>
+<TabItem label="Rust">
 ```rust
 use px_sdk::ExchangeInner;
 use serde_json::json;
@@ -63,19 +91,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
-
-### Crate Structure
-
-| Crate | Description |
-|-------|-------------|
-| `px-core` | Core types, Exchange trait, error handling, timing |
-| `px-sdk` | Unified facade — enum dispatch over all exchanges |
-| `px-exchange-kalshi` | Kalshi exchange implementation |
-| `px-exchange-polymarket` | Polymarket exchange implementation |
-| `px-exchange-opinion` | Opinion exchange implementation |
-
-**Python**
-
+</TabItem>
+<TabItem label="Python">
 ```python
 from openpx import Exchange
 
@@ -93,25 +110,8 @@ exchange = Exchange("kalshi", {
 positions = exchange.fetch_positions()
 balance = exchange.fetch_balance()
 ```
-
-### How It Works
-
-```
-User calls exchange.fetch_markets()
-         |
-exchange.py  (pure Python wrapper)
-         |  calls _native.NativeExchange.fetch_markets()
-         |
-lib.rs  (PyO3 → Rust, returns Python dict via pythonize)
-         |
-exchange.py  receives list[dict]
-         |  wraps: [Market(**d) for d in raw_dicts]
-         |
-User receives list[Market]  (Pydantic models with autocomplete)
-```
-
-**TypeScript**
-
+</TabItem>
+<TabItem label="TypeScript">
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -130,14 +130,34 @@ const authed = new Exchange("kalshi", {
 const positions = await authed.fetchPositions();
 const balance = await authed.fetchBalance();
 ```
+</TabItem>
+</Tabs>
 
 ## WebSocket Streaming
 
 All three SDKs support real-time WebSocket streaming. See the full
 [WebSocket guide](/guides/websocket/) for connection lifecycle details.
 
-**Python**
+<Tabs>
+<TabItem label="Rust">
+```rust
+use px_core::OrderBookWebSocket;
+use futures::StreamExt;
 
+let mut ws = exchange.websocket().unwrap();
+
+ws.connect().await?;
+ws.subscribe("KXBTC-25MAR14").await?;
+
+let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
+while let Some(update) = stream.next().await {
+    println!("{:?}", update?);
+}
+
+ws.disconnect().await?;
+```
+</TabItem>
+<TabItem label="Python">
 ```python
 from openpx import Exchange
 
@@ -154,9 +174,8 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
 
 ws.disconnect()
 ```
-
-**TypeScript**
-
+</TabItem>
+<TabItem label="TypeScript">
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -173,6 +192,8 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
   console.log(update);
 });
 ```
+</TabItem>
+</Tabs>
 
 OpenPX also provides standalone WebSocket streams for
 [sports scores](/guides/sports-websocket/) and
@@ -180,8 +201,8 @@ OpenPX also provides standalone WebSocket streams for
 
 ## Error Handling
 
-**Rust**
-
+<Tabs>
+<TabItem label="Rust">
 ```rust
 use px_core::{OpenPxError, ExchangeError};
 
@@ -193,9 +214,8 @@ match exchange.fetch_balance().await {
     Err(e) => eprintln!("Error: {e}"),
 }
 ```
-
-**Python**
-
+</TabItem>
+<TabItem label="Python">
 ```python
 from openpx import Exchange, OpenPxError, AuthenticationError
 
@@ -207,9 +227,8 @@ except AuthenticationError as e:
 except OpenPxError as e:
     print(f"Error: {e}")
 ```
-
-**TypeScript**
-
+</TabItem>
+<TabItem label="TypeScript">
 ```typescript
 import { Exchange } from "@openpx/sdk";
 
@@ -220,3 +239,5 @@ try {
   console.error(`Error: ${e.message}`);
 }
 ```
+</TabItem>
+</Tabs>

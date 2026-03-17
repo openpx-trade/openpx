@@ -257,3 +257,352 @@ async fn test_fetch_markets_returns_cursor_none_when_incomplete_page() {
     assert_eq!(markets[0].id, "123");
     assert_eq!(markets[1].id, "456");
 }
+
+#[test]
+fn test_config_builder() {
+    let config = OpinionConfig::new()
+        .with_api_key("test-key")
+        .with_private_key("test-pk")
+        .with_multi_sig("0x123")
+        .with_api_url("http://test.example")
+        .with_verbose(true);
+
+    assert_eq!(config.api_key, Some("test-key".to_string()));
+    assert_eq!(config.private_key, Some("test-pk".to_string()));
+    assert_eq!(config.multi_sig_addr, Some("0x123".to_string()));
+    assert_eq!(config.api_url, "http://test.example");
+    assert!(config.base.verbose);
+    assert!(config.is_authenticated());
+}
+
+#[test]
+fn test_default_config_not_authenticated() {
+    let config = OpinionConfig::new();
+
+    assert!(config.api_key.is_none());
+    assert!(config.private_key.is_none());
+    assert!(config.multi_sig_addr.is_none());
+    assert!(!config.is_authenticated());
+}
+
+#[tokio::test]
+async fn test_fetch_markets_empty_response() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "list": []
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
+
+    // then
+    assert!(markets.is_empty());
+    assert!(cursor.is_none());
+}
+
+#[tokio::test]
+async fn test_fetch_market_not_found() {
+    // given
+    let mock_server = MockServer::start().await;
+
+    // Binary endpoint returns error
+    Mock::given(method("GET"))
+        .and(path("/openapi/market/nonexistent"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 1,
+            "errmsg": "market not found",
+            "result": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Categorical fallback also returns error
+    Mock::given(method("GET"))
+        .and(path("/openapi/market/categorical/nonexistent"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 1,
+            "errmsg": "market not found",
+            "result": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let result = exchange.fetch_market("nonexistent").await;
+
+    // then
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_orderbook_empty() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/token/orderbook"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "data": {
+                    "bids": [],
+                    "asks": []
+                }
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let orderbook = exchange.get_orderbook("token_xyz").await.unwrap();
+
+    // then
+    assert!(orderbook.bids.is_empty());
+    assert!(orderbook.asks.is_empty());
+    assert_eq!(orderbook.asset_id, "token_xyz");
+}
+
+#[tokio::test]
+async fn test_orderbook_sorted_correctly() {
+    // given — bids and asks deliberately unsorted
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/token/orderbook"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "data": {
+                    "bids": [
+                        {"price": 0.50, "size": 100.0},
+                        {"price": 0.60, "size": 200.0},
+                        {"price": 0.55, "size": 150.0}
+                    ],
+                    "asks": [
+                        {"price": 0.75, "size": 300.0},
+                        {"price": 0.65, "size": 100.0},
+                        {"price": 0.70, "size": 200.0}
+                    ]
+                }
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let orderbook = exchange.get_orderbook("token_sort").await.unwrap();
+
+    // then — bids should be sorted descending by price
+    assert_eq!(orderbook.bids.len(), 3);
+    assert_eq!(orderbook.bids[0].price, FixedPrice::from_f64(0.60));
+    assert_eq!(orderbook.bids[1].price, FixedPrice::from_f64(0.55));
+    assert_eq!(orderbook.bids[2].price, FixedPrice::from_f64(0.50));
+
+    // then — asks should be sorted ascending by price
+    assert_eq!(orderbook.asks.len(), 3);
+    assert_eq!(orderbook.asks[0].price, FixedPrice::from_f64(0.65));
+    assert_eq!(orderbook.asks[1].price, FixedPrice::from_f64(0.70));
+    assert_eq!(orderbook.asks[2].price, FixedPrice::from_f64(0.75));
+}
+
+#[tokio::test]
+async fn test_fetch_market_close_time() {
+    // given — cutoff_at is 1735689600 (2025-01-01 00:00:00 UTC)
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market/ct_test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "data": {
+                    "market_id": "ct_test",
+                    "market_title": "Close time test",
+                    "yes_token_id": "token_yes_ct",
+                    "no_token_id": "token_no_ct",
+                    "yes_label": "Yes",
+                    "no_label": "No",
+                    "volume": 1000.0,
+                    "liquidity": 500.0,
+                    "description": "Testing close time parsing",
+                    "cutoff_at": 1735689600
+                }
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let market = exchange.fetch_market("ct_test").await.unwrap();
+
+    // then
+    let close_time = market.close_time.expect("close_time should be set");
+    assert_eq!(close_time.timestamp(), 1735689600);
+    assert_eq!(
+        close_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+        "2025-01-01 00:00:00"
+    );
+}
+
+#[tokio::test]
+async fn test_exchange_describe_capabilities() {
+    // given — not authenticated (no api_key)
+    let config = OpinionConfig::new();
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let info = exchange.describe();
+
+    // then
+    assert!(info.has_fetch_markets);
+    assert!(!info.has_create_order);
+    assert!(!info.has_cancel_order);
+    assert!(!info.has_websocket);
+    assert!(info.has_fetch_positions);
+    assert!(info.has_fetch_balance);
+    assert!(info.has_fetch_orderbook);
+
+    // given — authenticated
+    let auth_config = OpinionConfig::new()
+        .with_api_key("my-key");
+    let auth_exchange = Opinion::new(auth_config).unwrap();
+
+    // when
+    let auth_info = auth_exchange.describe();
+
+    // then — authenticated enables order and websocket capabilities
+    assert!(auth_info.has_create_order);
+    assert!(auth_info.has_cancel_order);
+    assert!(auth_info.has_websocket);
+}
+
+#[tokio::test]
+async fn test_market_exchange_field() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market/ex_test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "data": {
+                    "market_id": "ex_test",
+                    "market_title": "Exchange field test",
+                    "yes_token_id": "token_yes_ex",
+                    "no_token_id": "token_no_ex",
+                    "yes_label": "Yes",
+                    "no_label": "No",
+                    "volume": 0.0,
+                    "liquidity": 0.0,
+                    "description": "Verify exchange field"
+                }
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let market = exchange.fetch_market("ex_test").await.unwrap();
+
+    // then
+    assert_eq!(market.exchange, "opinion");
+    assert!(
+        market.openpx_id.starts_with("opinion:"),
+        "openpx_id should start with 'opinion:' but was '{}'",
+        market.openpx_id
+    );
+    assert_eq!(market.openpx_id, "opinion:ex_test");
+}
+
+#[tokio::test]
+async fn test_fetch_markets_pagination_full_page() {
+    // given — return exactly 20 markets (Opinion page_size)
+    let mut market_list = Vec::new();
+    for i in 0..20 {
+        market_list.push(serde_json::json!({
+            "market_id": format!("mkt_{}", i),
+            "market_title": format!("Market {}", i),
+            "yes_token_id": format!("yes_{}", i),
+            "no_token_id": format!("no_{}", i),
+            "yes_label": "Yes",
+            "no_label": "No",
+            "volume": 1000.0,
+            "liquidity": 500.0,
+            "description": format!("Description {}", i)
+        }));
+    }
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "errno": 0,
+            "errmsg": null,
+            "result": {
+                "list": market_list
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let (markets, cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await
+        .unwrap();
+
+    // then — full page means there could be more, cursor should be Some
+    assert_eq!(markets.len(), 20);
+    assert!(
+        cursor.is_some(),
+        "cursor should be Some when a full page of 20 markets is returned"
+    );
+}
