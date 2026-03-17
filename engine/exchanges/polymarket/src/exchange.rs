@@ -87,6 +87,12 @@ macro_rules! sdk_dispatch {
     };
 }
 
+/// Lazily-initialized SDK state: authenticated client + derived CLOB credentials.
+struct SdkState {
+    client: Arc<RwLock<AuthenticatedSdkClient>>,
+    creds: ApiCredentials,
+}
+
 /// Parse CLOB `/orderbook-history` response data into `OrderbookSnapshot`s.
 fn parse_orderbook_snapshots(data: &serde_json::Value) -> Vec<OrderbookSnapshot> {
     let history = data
@@ -152,12 +158,14 @@ pub struct Polymarket {
     config: PolymarketConfig,
     client: HttpClient,
     rate_limiter: Arc<Mutex<RateLimiter>>,
-    /// SDK authenticated client - initialized via init_trading()
-    sdk_client: Option<Arc<RwLock<AuthenticatedSdkClient>>>,
+    /// SDK state - lazily initialized on first authenticated call.
+    /// Derives CLOB credentials automatically from the private key.
+    sdk_state: tokio::sync::OnceCell<SdkState>,
     /// Local signer for signing orders
     signer: Option<PrivateKeySigner>,
-    /// Cached API credentials
-    api_creds: Option<ApiCredentials>,
+    /// Pre-configured API credentials (from config or set_api_credentials).
+    /// Consumed during lazy SDK initialization.
+    preset_api_creds: Option<ApiCredentials>,
     /// External signer for Privy-managed wallets (bypasses local k256 signing)
     external_signer: Option<Arc<dyn crate::signer::ExternalSigner>>,
 }
@@ -185,7 +193,7 @@ impl Polymarket {
         };
 
         // Pre-set API credentials if provided in config
-        let api_creds = if let (Some(key), Some(secret), Some(pass)) =
+        let preset_api_creds = if let (Some(key), Some(secret), Some(pass)) =
             (&config.api_key, &config.api_secret, &config.api_passphrase)
         {
             Some(ApiCredentials {
@@ -201,9 +209,9 @@ impl Polymarket {
             config,
             client,
             rate_limiter,
-            sdk_client: None,
+            sdk_state: tokio::sync::OnceCell::new(),
             signer,
-            api_creds,
+            preset_api_creds,
             external_signer: None,
         })
     }
@@ -232,31 +240,42 @@ impl Polymarket {
     }
 
     pub fn api_credentials(&self) -> Option<ApiCredentials> {
-        self.api_creds.clone()
+        self.sdk_state
+            .get()
+            .map(|s| s.creds.clone())
+            .or_else(|| self.preset_api_creds.clone())
     }
 
-    /// Derives API credentials and initializes the SDK client. Call before trading.
-    pub async fn init_trading(&mut self) -> Result<ApiCredentials, PolymarketError> {
-        use polymarket_client_sdk::auth::{Credentials, ExposeSecret};
+    /// Eagerly derive CLOB credentials and initialize the SDK client.
+    /// This is optional — all authenticated methods lazily initialize via `ensure_sdk_client`.
+    pub async fn init_trading(&self) -> Result<ApiCredentials, PolymarketError> {
+        let state = self.ensure_sdk_client().await?;
+        Ok(state.creds.clone())
+    }
 
-        // Return cached credentials if already initialized
-        if let Some(ref creds) = self.api_creds {
-            if self.sdk_client.is_some() {
-                return Ok(creds.clone());
-            }
-        }
+    /// Lazily initialize the SDK client, deriving CLOB credentials from the private key
+    /// if needed. Returns a reference to the cached SDK state. Thread-safe and idempotent:
+    /// concurrent callers wait for the first initialization to complete.
+    async fn ensure_sdk_client(&self) -> Result<&SdkState, PolymarketError> {
+        self.sdk_state
+            .get_or_try_init(|| self.init_sdk_state_inner())
+            .await
+    }
+
+    /// Core initialization: derive CLOB credentials + authenticate the SDK client.
+    async fn init_sdk_state_inner(&self) -> Result<SdkState, PolymarketError> {
+        use polymarket_client_sdk::auth::{Credentials, ExposeSecret};
 
         let signer = self
             .signer
             .as_ref()
             .ok_or_else(|| PolymarketError::Auth("private key required for trading".into()))?;
 
-        // Create unauthenticated client first to get credentials
         let unauth_client =
             SdkClient::new(CLOB_URL, SdkConfig::default()).map_err(PolymarketError::from)?;
 
         // Use pre-set API credentials if available, otherwise derive from Polymarket
-        let (sdk_creds, creds) = if let Some(ref existing) = self.api_creds {
+        let (sdk_creds, creds) = if let Some(ref existing) = self.preset_api_creds {
             let key_uuid: uuid::Uuid = existing
                 .api_key
                 .parse()
@@ -284,13 +303,11 @@ impl Polymarket {
             (sdk_creds, creds)
         };
 
-        // Build authenticated client with the credentials we just obtained
         let mut builder = unauth_client
             .authentication_builder(signer)
             .signature_type(self.config.signature_type.into())
             .credentials(sdk_creds);
 
-        // Set funder address if configured
         if let Some(ref funder) = self.config.funder {
             let funder_addr = funder
                 .parse()
@@ -298,28 +315,26 @@ impl Polymarket {
             builder = builder.funder(funder_addr);
         }
 
-        // Authenticate with the credentials
         let sdk_client = builder
             .authenticate()
             .await
             .map_err(PolymarketError::from)?;
 
-        // Promote to Builder if builder credentials are configured (affiliate attribution)
         let sdk_client = self.maybe_promote_to_builder(sdk_client).await?;
 
-        // Store the client and credentials
-        self.sdk_client = Some(Arc::new(RwLock::new(sdk_client)));
-        self.api_creds = Some(creds.clone());
-
-        Ok(creds)
+        Ok(SdkState {
+            client: Arc::new(RwLock::new(sdk_client)),
+            creds,
+        })
     }
 
     pub async fn set_api_credentials(
         &mut self,
         creds: ApiCredentials,
     ) -> Result<(), PolymarketError> {
-        self.api_creds = Some(creds);
-        // Note: We don't initialize sdk_client here - it will be created on first trading call
+        self.preset_api_creds = Some(creds);
+        // Reset SDK state so next call re-initializes with the new credentials
+        self.sdk_state = tokio::sync::OnceCell::new();
         Ok(())
     }
 
@@ -336,12 +351,12 @@ impl Polymarket {
         use polymarket_client_sdk::auth::Credentials;
         use uuid::Uuid;
 
-        if self.sdk_client.is_some() {
+        if self.sdk_state.initialized() {
             return Ok(());
         }
 
         let creds = self
-            .api_creds
+            .preset_api_creds
             .as_ref()
             .ok_or_else(|| PolymarketError::Auth("no API credentials set".into()))?;
 
@@ -386,7 +401,11 @@ impl Polymarket {
         // Promote to Builder if builder credentials are configured (affiliate attribution)
         let sdk_client = self.maybe_promote_to_builder(sdk_client).await?;
 
-        self.sdk_client = Some(Arc::new(RwLock::new(sdk_client)));
+        let state = SdkState {
+            client: Arc::new(RwLock::new(sdk_client)),
+            creds: creds.clone(),
+        };
+        let _ = self.sdk_state.set(state);
 
         // Store wallet address so owner_address() works without a private key
         if self.config.funder.is_none() && self.signer.is_none() {
@@ -1105,11 +1124,12 @@ impl Polymarket {
             .as_deref()
             .and_then(|gid| canonical_event_id("polymarket", gid));
 
-        // Derive status
+        // Derive status — Polymarket uses boolean flags on each market object.
+        // closed=true means the market has settled (no separate "resolved" state).
         let is_closed = obj.get("closed").and_then(|v| v.as_bool()).unwrap_or(false);
         let is_active = obj.get("active").and_then(|v| v.as_bool()).unwrap_or(true);
         let status = if is_closed {
-            MarketStatus::Closed
+            MarketStatus::Resolved
         } else if is_active {
             MarketStatus::Active
         } else {
@@ -1620,11 +1640,14 @@ impl Exchange for Polymarket {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // Polymarket events use boolean query params. The events endpoint
+        // filters at the event level, so we need closed=false to avoid
+        // getting events whose markets are all closed.
+        // Polymarket has no separate "resolved" state — closed=true means settled.
         let status_param = match params.status {
-            Some(MarketStatus::Active) => "active=true",
-            Some(MarketStatus::Closed) => "closed=true",
-            Some(MarketStatus::Resolved) => "archived=true",
-            None => "active=true",
+            Some(MarketStatus::Active) => "active=true&closed=false",
+            Some(MarketStatus::Closed) | Some(MarketStatus::Resolved) => "closed=true",
+            None => "active=true&closed=false",
         };
 
         let offset = params
@@ -1664,7 +1687,15 @@ impl Exchange for Polymarket {
                 if let Some(mut parsed) = self.parse_market(raw) {
                     // Events can contain markets with mixed statuses — filter to
                     // only return markets matching the requested status.
-                    if parsed.status != requested_status {
+                    // Polymarket has no separate "closed" vs "resolved" state, so
+                    // accept Resolved for both Closed and Resolved requests.
+                    let status_matches = match requested_status {
+                        MarketStatus::Active => parsed.status == MarketStatus::Active,
+                        MarketStatus::Closed | MarketStatus::Resolved => {
+                            matches!(parsed.status, MarketStatus::Closed | MarketStatus::Resolved)
+                        }
+                    };
+                    if !status_matches {
                         continue;
                     }
                     if parsed.group_id.is_none() {
@@ -2148,13 +2179,10 @@ impl Exchange for Polymarket {
         size: f64,
         params: HashMap<String, String>,
     ) -> Result<Order, OpenPxError> {
-        // Note: We need &mut self for ensure_sdk_auth, but the trait doesn't allow it.
-        // This is a limitation - we'll need to ensure init_trading() is called beforehand.
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
         // Resolve signing strategy: local key (self/per-request) or external signer (managed)
         let has_local_signer = self.signer.is_some();
@@ -2242,7 +2270,7 @@ impl Exchange for Polymarket {
             OrderSide::Sell => Side::Sell,
         };
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let order_type = polymarket_order_type(&params)?;
 
@@ -2365,16 +2393,8 @@ impl Exchange for Polymarket {
                 )))
             })?;
 
-            // Get the API key (owner) from our cached credentials
-            let api_key_str = &self
-                .api_creds
-                .as_ref()
-                .ok_or_else(|| {
-                    OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                        "API credentials not set — call init_trading() first".into(),
-                    ))
-                })?
-                .api_key;
+            // Get the API key (owner) from the derived credentials
+            let api_key_str = &sdk_state.creds.api_key;
             let owner = uuid::Uuid::parse_str(api_key_str).map_err(|e| {
                 OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
                     "invalid API key UUID: {e}"
@@ -2427,13 +2447,12 @@ impl Exchange for Polymarket {
         order_id: &str,
         _market_id: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         // Fetch order details before cancelling. Polymarket's GET /data/order/{id} endpoint
         // only returns active orders - once cancelled, it 404s. We need the order details
@@ -2482,13 +2501,12 @@ impl Exchange for Polymarket {
         order_id: &str,
         _market_id: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let send_start = Instant::now();
         let order_resp = sdk_dispatch!(
@@ -2514,13 +2532,12 @@ impl Exchange for Polymarket {
         &self,
         _params: Option<FetchOrdersParams>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let send_start = Instant::now();
         let request = OrdersRequest::default();
@@ -2613,11 +2630,10 @@ impl Exchange for Polymarket {
         }
 
         // Fallback: on-chain balance queries (no avgPrice available)
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
         let token_ids: Vec<String> = market.get_token_ids();
 
@@ -2625,7 +2641,7 @@ impl Exchange for Polymarket {
             return Ok(vec![]);
         }
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
         let mut positions = Vec::new();
 
         for (i, token_id) in token_ids.iter().enumerate() {
@@ -2724,13 +2740,12 @@ impl Exchange for Polymarket {
     }
 
     async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let request = BalanceAllowanceRequest::builder()
             .asset_type(AssetType::Collateral)
@@ -2753,13 +2768,12 @@ impl Exchange for Polymarket {
     }
 
     async fn refresh_balance(&self) -> Result<(), OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let request = BalanceAllowanceRequest::builder()
             .asset_type(AssetType::Collateral)
@@ -2778,13 +2792,12 @@ impl Exchange for Polymarket {
     }
 
     async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
-        let sdk_client = self.sdk_client.as_ref().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Authentication(
-                "SDK client not initialized. Call init_trading() first.".into(),
-            ))
-        })?;
+        let sdk_state = self
+            .ensure_sdk_client()
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let guard = sdk_client.read().await;
+        let guard = sdk_state.client.read().await;
 
         let request = BalanceAllowanceRequest::builder()
             .asset_type(AssetType::Collateral)
@@ -2819,40 +2832,72 @@ impl Exchange for Polymarket {
         const DATA_API_URL: &str = "https://data-api.polymarket.com";
 
         let address = &params.address;
+        if address.len() != 42
+            || !address.starts_with("0x")
+            || !address[2..].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err(OpenPxError::InvalidInput(format!(
+                "invalid Ethereum address: {address}"
+            )));
+        }
+
         let limit = params.limit.unwrap_or(100);
 
-        let positions_url = format!("{DATA_API_URL}/positions?user={address}&limit={limit}");
-        let value_url = format!("{DATA_API_URL}/value?user={address}");
+        let profile_url = format!(
+            "{}/public-profile?address={address}",
+            self.config.gamma_url
+        );
+        let positions_url =
+            format!("{DATA_API_URL}/positions?user={address}&limit={limit}&sizeThreshold=0");
+        let trades_url = format!("{DATA_API_URL}/trades?user={address}&limit={limit}");
 
-        let positions_resp = reqwest::get(&positions_url)
-            .await
+        let (profile_result, positions_result, trades_result) = tokio::join!(
+            reqwest::get(&profile_url),
+            reqwest::get(&positions_url),
+            reqwest::get(&trades_url),
+        );
+
+        // Profile is soft — 404 or any failure → null
+        let profile: serde_json::Value = match profile_result {
+            Ok(resp) if resp.status().is_success() => {
+                resp.json().await.unwrap_or(serde_json::Value::Null)
+            }
+            _ => serde_json::Value::Null,
+        };
+
+        // Positions — hard failure
+        let positions_resp = positions_result
             .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
-
         if !positions_resp.status().is_success() {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
                 "positions HTTP {}",
                 positions_resp.status()
             ))));
         }
-
         let positions: serde_json::Value = positions_resp
             .json()
             .await
             .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
 
-        let value_resp = reqwest::get(&value_url).await;
-        let value: Option<serde_json::Value> = match value_resp {
-            Ok(resp) if resp.status().is_success() => resp.json().await.ok(),
-            _ => None,
-        };
-
-        let mut result = serde_json::Map::new();
-        result.insert("positions".to_string(), positions);
-        if let Some(v) = value {
-            result.insert("value".to_string(), v);
+        // Trades — hard failure
+        let trades_resp = trades_result
+            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+        if !trades_resp.status().is_success() {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "trades HTTP {}",
+                trades_resp.status()
+            ))));
         }
+        let trades: serde_json::Value = trades_resp
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
 
-        Ok(serde_json::Value::Object(result))
+        Ok(serde_json::json!({
+            "profile": profile,
+            "positions": positions,
+            "trades": trades,
+        }))
     }
 
     fn describe(&self) -> ExchangeInfo {

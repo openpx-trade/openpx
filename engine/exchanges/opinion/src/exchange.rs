@@ -766,6 +766,7 @@ impl Opinion {
         }
 
         let markets_list = resp.result.and_then(|r| r.list).unwrap_or_default();
+        let api_count = markets_list.len();
 
         let requested_status = params.status.unwrap_or(MarketStatus::Active);
         let markets: Vec<Market> = markets_list
@@ -774,9 +775,11 @@ impl Opinion {
             .filter(|m| m.status == requested_status)
             .collect();
 
-        let count = markets.len();
-        let next_cursor = if count == limit {
-            Some((offset + count).to_string())
+        // Base cursor on API response count, not post-filter count.
+        // Client-side filtering can reduce the count below `limit` even when
+        // more pages exist on the server.
+        let next_cursor = if api_count == limit {
+            Some((offset + api_count).to_string())
         } else {
             None
         };
@@ -811,6 +814,76 @@ impl Opinion {
         Ok(token_ids)
     }
 
+    /// Auto-paginate all trades for a wallet address.
+    /// Endpoint: GET /openapi/trade/user/{address}?page={page}&limit=20
+    async fn fetch_user_trades_all(
+        &self,
+        address: &str,
+    ) -> Result<Vec<serde_json::Value>, OpinionError> {
+        const PAGE_SIZE: usize = 20;
+        let mut all = Vec::new();
+        let mut page: usize = 1;
+
+        loop {
+            let endpoint =
+                format!("/openapi/trade/user/{address}?page={page}&limit={PAGE_SIZE}");
+            let resp: ApiResponse<serde_json::Value> = self.get(&endpoint).await?;
+
+            if resp.code != 0 {
+                return Err(OpinionError::Api(
+                    resp.msg
+                        .unwrap_or_else(|| "fetch user trades failed".into()),
+                ));
+            }
+
+            let items = resp.result.and_then(|r| r.list).unwrap_or_default();
+            let count = items.len();
+            all.extend(items);
+
+            if count < PAGE_SIZE {
+                break;
+            }
+            page += 1;
+        }
+
+        Ok(all)
+    }
+
+    /// Auto-paginate all positions for a wallet address.
+    /// Endpoint: GET /openapi/positions/user/{address}?page={page}&limit=20
+    async fn fetch_user_positions_all(
+        &self,
+        address: &str,
+    ) -> Result<Vec<serde_json::Value>, OpinionError> {
+        const PAGE_SIZE: usize = 20;
+        let mut all = Vec::new();
+        let mut page: usize = 1;
+
+        loop {
+            let endpoint =
+                format!("/openapi/positions/user/{address}?page={page}&limit={PAGE_SIZE}");
+            let resp: ApiResponse<serde_json::Value> = self.get(&endpoint).await?;
+
+            if resp.code != 0 {
+                return Err(OpinionError::Api(
+                    resp.msg
+                        .unwrap_or_else(|| "fetch user positions failed".into()),
+                ));
+            }
+
+            let items = resp.result.and_then(|r| r.list).unwrap_or_default();
+            let count = items.len();
+            all.extend(items);
+
+            if count < PAGE_SIZE {
+                break;
+            }
+            page += 1;
+        }
+
+        Ok(all)
+    }
+
     pub async fn fetch_public_trades(
         &self,
         _market: Option<&Market>,
@@ -843,9 +916,25 @@ impl Exchange for Opinion {
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
-        let endpoint = format!("/openapi/market/{}", market_id);
+        // Try binary endpoint first
+        let binary_endpoint = format!("/openapi/market/{}", market_id);
+        match self.get::<serde_json::Value>(&binary_endpoint).await {
+            Ok(resp) if resp.code == 0 => {
+                if let Some(market) = resp.result.and_then(|r| r.data).and_then(|d| self.parse_market(d)) {
+                    return Ok(market);
+                }
+            }
+            // Non-recoverable errors — categorical endpoint would fail the same way
+            Err(e @ (OpinionError::RateLimited | OpinionError::AuthRequired)) => {
+                return Err(OpenPxError::Exchange(e.into()));
+            }
+            _ => {}
+        }
+
+        // Fall back to categorical endpoint
+        let categorical_endpoint = format!("/openapi/market/categorical/{}", market_id);
         let resp: ApiResponse<serde_json::Value> = self
-            .get(&endpoint)
+            .get(&categorical_endpoint)
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
@@ -1126,7 +1215,11 @@ impl Exchange for Opinion {
         self.rate_limit().await;
 
         let url = format!("{}{}", self.config.api_url, endpoint);
-        let req = self.auth_headers(self.client.get(&url));
+        let req = self.auth_headers(
+            self.client
+                .get(&url)
+                .query(&[("chain_id", self.config.chain_id.to_string())]),
+        );
         let response = req
             .send()
             .await
@@ -1181,28 +1274,19 @@ impl Exchange for Opinion {
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
         let address = &params.address;
-        let limit = params.limit.unwrap_or(100);
 
-        let endpoint = format!("/openapi/positions/user/{address}?limit={limit}");
+        let (trades_result, positions_result) = tokio::join!(
+            self.fetch_user_trades_all(address),
+            self.fetch_user_positions_all(address),
+        );
 
-        let resp: ApiResponse<serde_json::Value> = self
-            .get(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let trades = trades_result.map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let positions = positions_result.map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        if resp.code != 0 {
-            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(
-                resp.msg
-                    .unwrap_or_else(|| "fetch user activity failed".into()),
-            )));
-        }
-
-        let data = resp
-            .result
-            .and_then(|r| r.data.or_else(|| r.list.map(serde_json::Value::Array)))
-            .unwrap_or(serde_json::Value::Null);
-
-        Ok(data)
+        Ok(serde_json::json!({
+            "trades": trades,
+            "positions": positions,
+        }))
     }
 
     fn describe(&self) -> ExchangeInfo {

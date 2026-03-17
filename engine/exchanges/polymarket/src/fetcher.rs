@@ -199,16 +199,10 @@ impl MarketFetcher for PolymarketMarketFetcher {
 
     fn extract_status(&self, raw: &serde_json::Value) -> String {
         let closed = raw.get("closed").and_then(|v| v.as_bool()).unwrap_or(false);
-        let resolved = raw
-            .get("resolved")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
         let active = raw.get("active").and_then(|v| v.as_bool()).unwrap_or(true);
 
-        if resolved {
+        if closed || !active {
             "resolved".to_string()
-        } else if closed || !active {
-            "closed".to_string()
         } else {
             "active".to_string()
         }

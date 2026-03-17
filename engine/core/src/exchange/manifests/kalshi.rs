@@ -108,10 +108,13 @@ pub const KALSHI_MANIFEST: ExchangeManifest = ExchangeManifest {
         },
     ],
     status_map: &[
-        ("open", MarketStatus::Active),
+        ("active", MarketStatus::Active),
         ("closed", MarketStatus::Closed),
-        ("settled", MarketStatus::Resolved),
-        ("paused", MarketStatus::Closed),
-        ("unopened", MarketStatus::Closed),
+        ("determined", MarketStatus::Resolved),
+        ("finalized", MarketStatus::Resolved),
+        ("initialized", MarketStatus::Closed),
+        ("inactive", MarketStatus::Closed),
+        ("disputed", MarketStatus::Closed),
+        ("amended", MarketStatus::Closed),
     ],
 };

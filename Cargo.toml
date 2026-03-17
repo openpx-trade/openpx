@@ -11,6 +11,15 @@ members = [
     "sdks/python",
     "sdks/typescript",
 ]
+default-members = [
+    "engine/core",
+    "engine/exchanges/polymarket",
+    "engine/exchanges/opinion",
+    "engine/exchanges/kalshi",
+    "engine/schema",
+    "engine/sdk",
+    "engine/cli",
+]
 
 [workspace.package]
 version = "0.1.4"

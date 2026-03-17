@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "px-cli"
+name = "openpx"
 path = "src/main.rs"
 
 [dependencies]

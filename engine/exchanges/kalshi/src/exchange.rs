@@ -313,11 +313,16 @@ impl Kalshi {
             .as_deref()
             .and_then(|gid| canonical_event_id("kalshi", gid));
 
-        // Status
+        // Status — Kalshi market objects use a granular lifecycle:
+        // active, closed, determined, finalized, initialized, inactive, disputed, amended
         let status = obj
             .get("status")
             .and_then(|v| v.as_str())
-            .and_then(|s| s.parse::<MarketStatus>().ok())
+            .map(|s| match s {
+                "active" => MarketStatus::Active,
+                "determined" | "finalized" => MarketStatus::Resolved,
+                _ => MarketStatus::Closed,
+            })
             .unwrap_or(MarketStatus::Active);
 
         // accepting_orders

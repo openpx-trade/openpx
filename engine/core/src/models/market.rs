@@ -48,8 +48,9 @@ impl std::str::FromStr for MarketStatus {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "active" | "open" => Ok(MarketStatus::Active),
-            "closed" => Ok(MarketStatus::Closed),
-            "resolved" | "settled" => Ok(MarketStatus::Resolved),
+            "closed" | "initialized" | "inactive" | "paused" | "unopened" | "disputed"
+            | "amended" => Ok(MarketStatus::Closed),
+            "resolved" | "settled" | "determined" | "finalized" => Ok(MarketStatus::Resolved),
             _ => Err(format!("Unknown market status: {}", s)),
         }
     }

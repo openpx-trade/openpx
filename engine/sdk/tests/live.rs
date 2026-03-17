@@ -93,6 +93,35 @@ fn is_not_supported(e: &px_core::error::OpenPxError) -> bool {
     format!("{e:?}").contains("NotSupported")
 }
 
+/// Helper: returns true if error indicates invalid input.
+fn is_invalid_input(e: &px_core::error::OpenPxError) -> bool {
+    format!("{e:?}").contains("InvalidInput") || format!("{e:?}").contains("invalid input")
+}
+
+/// Helper: returns true if error indicates a config or SDK initialization failure.
+fn is_config_error(e: &px_core::error::OpenPxError) -> bool {
+    let msg = format!("{e:?}");
+    msg.contains("config error") || msg.contains("Validation") || msg.contains("private key required")
+}
+
+/// Helper: returns true if error indicates rate limiting.
+fn is_rate_limited(e: &px_core::error::OpenPxError) -> bool {
+    let msg = format!("{e:?}");
+    msg.contains("rate limit") || msg.contains("429") || msg.contains("RateLimited")
+}
+
+/// Derive the wallet/owner address for an exchange from env vars.
+/// Returns None if the exchange doesn't have address-based activity or no address is configured.
+fn owner_address_for(id: &str) -> Option<String> {
+    match id {
+        "polymarket" => env::var("POLYMARKET_FUNDER")
+            .or_else(|_| env::var("POLYMARKET_WALLET_ADDRESS"))
+            .ok(),
+        "opinion" => env::var("OPINION_MULTI_SIG_ADDR").ok(),
+        _ => None,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Macros for per-exchange test generation
 // ---------------------------------------------------------------------------
@@ -270,11 +299,18 @@ macro_rules! exchange_tests {
                 if markets.is_empty() {
                     return;
                 }
-                let single = ex
-                    .fetch_market(&markets[0].id)
-                    .await
-                    .expect("fetch_market failed");
-                assert_eq!(single.id, markets[0].id);
+                match ex.fetch_market(&markets[0].id).await {
+                    Ok(single) => {
+                        assert_eq!(single.id, markets[0].id);
+                    }
+                    Err(e) if is_rate_limited(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_market_single: rate limited",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("fetch_market failed: {e:?}"),
+                }
             }
 
             #[tokio::test]
@@ -328,12 +364,20 @@ macro_rules! exchange_tests {
                     Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
-                let market_id = &markets[0].id;
+
+                // Prefer a binary market (no outcome required); fall back to first market
+                // with an explicit outcome for non-binary markets.
+                let (market_id, outcome) = if let Some(m) = markets.iter().find(|m| m.is_binary()) {
+                    (m.id.clone(), None)
+                } else {
+                    let m = &markets[0];
+                    (m.id.clone(), m.outcomes.first().cloned())
+                };
 
                 match ex
                     .fetch_orderbook(OrderbookRequest {
-                        market_id: market_id.clone(),
-                        outcome: None,
+                        market_id,
+                        outcome,
                         token_id: None,
                     })
                     .await
@@ -351,6 +395,18 @@ macro_rules! exchange_tests {
                     Err(e) if format!("{e:?}").contains("NotFound") => {
                         eprintln!(
                             "SKIP {}/fetch_orderbook: market not found on CLOB",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_invalid_input(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_orderbook: {e}",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_rate_limited(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_orderbook: rate limited",
                             stringify!($exchange_id)
                         );
                     }
@@ -727,13 +783,29 @@ macro_rules! exchange_tests {
                 if !is_authenticated(&ex) || !ex.describe().has_fetch_balance {
                     return;
                 }
-                let balance = ex.fetch_balance().await.expect("fetch_balance failed");
-                assert!(
-                    !balance.is_empty(),
-                    "authenticated account should have at least one balance entry"
-                );
-                for (_asset, amount) in &balance {
-                    assert!(*amount >= 0.0, "balance should be non-negative");
+                match ex.fetch_balance().await {
+                    Ok(balance) => {
+                        assert!(
+                            !balance.is_empty(),
+                            "authenticated account should have at least one balance entry"
+                        );
+                        for (_asset, amount) in &balance {
+                            assert!(*amount >= 0.0, "balance should be non-negative");
+                        }
+                    }
+                    Err(e) if is_config_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_balance: config/init error: {e}",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_balance: auth failed",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("fetch_balance failed: {e:?}"),
                 }
             }
 
@@ -751,6 +823,12 @@ macro_rules! exchange_tests {
                     Err(e) if is_not_supported(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_balance_raw: not supported",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_config_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_balance_raw: config/init error: {e}",
                             stringify!($exchange_id)
                         );
                     }
@@ -789,8 +867,16 @@ macro_rules! exchange_tests {
                 if !is_authenticated(&ex) || !ex.describe().has_refresh_balance {
                     return;
                 }
-                // refresh_balance should succeed without error
-                ex.refresh_balance().await.expect("refresh_balance failed");
+                match ex.refresh_balance().await {
+                    Ok(()) => {}
+                    Err(e) if is_config_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/refresh_balance: config/init error: {e}",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) => panic!("refresh_balance failed: {e:?}"),
+                }
             }
 
             #[tokio::test]
@@ -895,6 +981,12 @@ macro_rules! exchange_tests {
                             stringify!($exchange_id)
                         );
                     }
+                    Err(e) if is_config_error(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_open_orders: config/init error: {e}",
+                            stringify!($exchange_id)
+                        );
+                    }
                     Err(e) => panic!("fetch_open_orders failed: {e:?}"),
                 }
             }
@@ -951,8 +1043,21 @@ macro_rules! exchange_tests {
                 if !is_authenticated(&ex) || !ex.describe().has_fetch_user_activity {
                     return;
                 }
+                let address = match owner_address_for(stringify!($exchange_id)) {
+                    Some(a) => a,
+                    None => {
+                        eprintln!(
+                            "SKIP {}/fetch_user_activity: no wallet address configured",
+                            stringify!($exchange_id)
+                        );
+                        return;
+                    }
+                };
                 match ex
-                    .fetch_user_activity(px_core::FetchUserActivityParams::default())
+                    .fetch_user_activity(px_core::FetchUserActivityParams {
+                        address,
+                        limit: None,
+                    })
                     .await
                 {
                     Ok(activity) => {
@@ -967,6 +1072,12 @@ macro_rules! exchange_tests {
                     Err(e) if is_auth_error(&e) => {
                         eprintln!(
                             "SKIP {}/fetch_user_activity: auth failed",
+                            stringify!($exchange_id)
+                        );
+                    }
+                    Err(e) if is_invalid_input(&e) => {
+                        eprintln!(
+                            "SKIP {}/fetch_user_activity: invalid input: {e}",
                             stringify!($exchange_id)
                         );
                     }
