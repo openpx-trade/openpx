@@ -118,8 +118,10 @@ Every exchange exposes the same interface — switch exchanges by changing one s
 | Orderbook | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | Price History | :white_check_mark: | :white_check_mark: | |
 | Trades | :white_check_mark: | :white_check_mark: | |
+| Positions | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Balance | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Fills | :white_check_mark: | :white_check_mark: | |
 | WebSocket | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Fills | | :white_check_mark: | |
 
 ## Exchange Credentials
 
