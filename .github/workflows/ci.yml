@@ -103,4 +103,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmarks (detect panics / compilation regressions)
-        run: cargo bench -p px-core -- --warm-up-time 1 --measurement-time 2
+        run: cargo bench -p px-core --benches -- --warm-up-time 1 --measurement-time 2
