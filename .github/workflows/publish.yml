@@ -51,30 +51,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # Tier 1: no internal deps
-      - name: Publish px-core
-        run: cargo publish -p px-core
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      # Tier 2: depends on px-core
-      - name: Publish exchange & utility crates
+      # Publish all crates in dependency order, skipping already-published versions
+      - name: Publish crates
         run: |
+          publish() {
+            echo "Publishing $1..."
+            if cargo publish -p "$1" 2>&1 | tee /dev/stderr | grep -q "already exists"; then
+              echo "$1 already published — skipping"
+            fi
+          }
+
+          # Tier 1: no internal deps
+          publish px-core
+          sleep 30
+
+          # Tier 2: depends on px-core
           for crate in px-exchange-kalshi px-exchange-polymarket px-exchange-opinion px-crypto px-sports; do
-            echo "Publishing $crate..."
-            cargo publish -p "$crate"
+            publish "$crate"
             sleep 10
           done
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
+          sleep 30
 
-      # Tier 3: depends on everything above
-      - name: Publish openpx
-        run: cargo publish -p openpx
+          # Tier 3: depends on everything above
+          publish openpx
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
