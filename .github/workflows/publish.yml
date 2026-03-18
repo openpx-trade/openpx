@@ -226,12 +226,12 @@ jobs:
           pattern: node-*
           path: sdks/typescript/artifacts
           merge-multiple: true
-      - name: Move artifacts
-        working-directory: sdks/typescript
-        run: npx napi artifacts --dir artifacts
       - name: Generate platform packages
         working-directory: sdks/typescript
         run: npx napi prepublish -t npm --skip-gh-release
+      - name: Move artifacts
+        working-directory: sdks/typescript
+        run: npx napi artifacts --dir artifacts
       - name: Publish platform packages
         working-directory: sdks/typescript
         run: |
