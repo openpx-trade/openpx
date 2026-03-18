@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Enforce Conventional Commits format for release-please compatibility.
+# See: https://www.conventionalcommits.org/
+
+commit_msg_file="$1"
+commit_msg=$(head -1 "$commit_msg_file")
+
+# Allow merge commits and reverts
+if echo "$commit_msg" | grep -qE '^(Merge|Revert) '; then
+    exit 0
+fi
+
+# Conventional Commits: type(optional-scope): description
+if ! echo "$commit_msg" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\(.+\))?!?: .+'; then
+    echo "ERROR: Commit message does not follow Conventional Commits format."
+    echo ""
+    echo "  Expected: <type>[optional scope]: <description>"
+    echo ""
+    echo "  Types: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert"
+    echo ""
+    echo "  Examples:"
+    echo "    feat: add websocket support"
+    echo "    fix(kalshi): correct order routing logic"
+    echo "    chore: update dependencies"
+    echo ""
+    echo "  Your message: $commit_msg"
+    exit 1
+fi

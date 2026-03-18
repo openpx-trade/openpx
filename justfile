@@ -4,6 +4,7 @@
 venv := ".venv"
 
 setup:
+    git config core.hooksPath .githooks
     python3 -m venv {{venv}}
     {{venv}}/bin/pip install datamodel-code-generator maturin pydantic
     cd sdks/typescript && npm install
