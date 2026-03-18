@@ -359,6 +359,9 @@ async fn main() {
     for h in &handles {
         h.abort();
     }
+    for h in handles {
+        let _ = h.await;
+    }
 
     // Write parquet
     let rows = Arc::try_unwrap(rows).unwrap().into_inner();
