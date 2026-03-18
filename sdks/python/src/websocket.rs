@@ -5,8 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tokio::sync::Mutex;
 
-use px_core::websocket::OrderBookWebSocket;
 use openpx::WebSocketInner;
+use px_core::websocket::OrderBookWebSocket;
 
 use crate::error::to_py_err;
 use crate::get_runtime;

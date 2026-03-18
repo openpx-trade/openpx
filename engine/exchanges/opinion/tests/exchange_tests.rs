@@ -500,8 +500,7 @@ async fn test_exchange_describe_capabilities() {
     assert!(info.has_fetch_orderbook);
 
     // given — authenticated
-    let auth_config = OpinionConfig::new()
-        .with_api_key("my-key");
+    let auth_config = OpinionConfig::new().with_api_key("my-key");
     let auth_exchange = Opinion::new(auth_config).unwrap();
 
     // when

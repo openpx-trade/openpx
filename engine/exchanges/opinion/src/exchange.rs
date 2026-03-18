@@ -6,10 +6,10 @@ use std::borrow::Cow;
 
 use px_core::{
     canonical_event_id, manifests::OPINION_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    FetchUserActivityParams, Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError,
-    Order, OrderSide, OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
-    PriceHistoryRequest, PriceLevel, PricePoint, RateLimiter, TradesRequest,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
+    Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError, Order, OrderSide,
+    OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
+    PriceLevel, PricePoint, RateLimiter, TradesRequest,
 };
 
 use crate::config::OpinionConfig;
@@ -387,11 +387,13 @@ impl Opinion {
                 _ => MarketStatus::Closed,
             })
             .or_else(|| {
-                obj.get("status").and_then(|v| v.as_i64()).map(|code| match code {
-                    2 => MarketStatus::Active,
-                    4 => MarketStatus::Resolved,
-                    _ => MarketStatus::Closed,
-                })
+                obj.get("status")
+                    .and_then(|v| v.as_i64())
+                    .map(|code| match code {
+                        2 => MarketStatus::Active,
+                        4 => MarketStatus::Resolved,
+                        _ => MarketStatus::Closed,
+                    })
             })
             .unwrap_or(MarketStatus::Active);
 
@@ -828,8 +830,7 @@ impl Opinion {
         let mut page: usize = 1;
 
         loop {
-            let endpoint =
-                format!("/openapi/trade/user/{address}?page={page}&limit={PAGE_SIZE}");
+            let endpoint = format!("/openapi/trade/user/{address}?page={page}&limit={PAGE_SIZE}");
             let resp: ApiResponse<serde_json::Value> = self.get(&endpoint).await?;
 
             if resp.code != 0 {
@@ -923,7 +924,11 @@ impl Exchange for Opinion {
         let binary_endpoint = format!("/openapi/market/{}", market_id);
         match self.get::<serde_json::Value>(&binary_endpoint).await {
             Ok(resp) if resp.code == 0 => {
-                if let Some(market) = resp.result.and_then(|r| r.data).and_then(|d| self.parse_market(d)) {
+                if let Some(market) = resp
+                    .result
+                    .and_then(|r| r.data)
+                    .and_then(|d| self.parse_market(d))
+                {
                     return Ok(market);
                 }
             }
@@ -1296,10 +1301,9 @@ impl Exchange for Opinion {
         &self,
         req: PriceHistoryRequest,
     ) -> Result<Vec<Candlestick>, OpenPxError> {
-        let token_id = req
-            .token_id
-            .as_deref()
-            .ok_or_else(|| OpenPxError::InvalidInput("token_id required for Opinion price history".into()))?;
+        let token_id = req.token_id.as_deref().ok_or_else(|| {
+            OpenPxError::InvalidInput("token_id required for Opinion price history".into())
+        })?;
 
         let points = self
             .fetch_price_history(token_id, req.interval, req.start_ts, req.end_ts)
@@ -1332,11 +1336,9 @@ impl Exchange for Opinion {
         self.ensure_auth()
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let address = self
-            .config
-            .multi_sig_addr
-            .as_deref()
-            .ok_or_else(|| OpenPxError::InvalidInput("multi_sig_addr required for Opinion trades".into()))?;
+        let address = self.config.multi_sig_addr.as_deref().ok_or_else(|| {
+            OpenPxError::InvalidInput("multi_sig_addr required for Opinion trades".into())
+        })?;
 
         let limit = req.limit.unwrap_or(20).clamp(1, 100);
         let page = req
@@ -1345,9 +1347,7 @@ impl Exchange for Opinion {
             .and_then(|c| c.parse::<usize>().ok())
             .unwrap_or(1);
 
-        let endpoint = format!(
-            "/openapi/trade/user/{address}?page={page}&limit={limit}"
-        );
+        let endpoint = format!("/openapi/trade/user/{address}?page={page}&limit={limit}");
         let resp: ApiResponse<serde_json::Value> = self
             .get(&endpoint)
             .await
@@ -1367,13 +1367,17 @@ impl Exchange for Opinion {
             .filter_map(|item| {
                 let obj = item.as_object()?;
 
-                let price = obj
-                    .get("price")
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))?;
+                let price = obj.get("price").and_then(|v| {
+                    v.as_f64()
+                        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                })?;
                 let size = obj
                     .get("shares")
                     .or_else(|| obj.get("amount"))
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .and_then(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0.0);
 
                 if size <= 0.0 {
@@ -1401,7 +1405,7 @@ impl Exchange for Opinion {
 
                 let side = obj.get("side").and_then(|v| {
                     v.as_str()
-                        .or_else(|| v.as_i64().map(|n| if n == 1 { "buy" } else { "sell" }).into())
+                        .or_else(|| v.as_i64().map(|n| if n == 1 { "buy" } else { "sell" }))
                 });
                 let aggressor_side = side.map(|s| {
                     match s.to_lowercase().as_str() {
@@ -1432,7 +1436,10 @@ impl Exchange for Opinion {
                     timestamp,
                     source_channel: Cow::Borrowed("opinion_rest_trade"),
                     tx_hash: None,
-                    outcome: obj.get("outcome").and_then(|v| v.as_str()).map(String::from),
+                    outcome: obj
+                        .get("outcome")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                     yes_price: None,
                     no_price: None,
                     taker_address: None,
@@ -1457,11 +1464,9 @@ impl Exchange for Opinion {
         self.ensure_auth()
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let address = self
-            .config
-            .multi_sig_addr
-            .as_deref()
-            .ok_or_else(|| OpenPxError::InvalidInput("multi_sig_addr required for Opinion fills".into()))?;
+        let address = self.config.multi_sig_addr.as_deref().ok_or_else(|| {
+            OpenPxError::InvalidInput("multi_sig_addr required for Opinion fills".into())
+        })?;
 
         let all_trades = self
             .fetch_user_trades_all(address)
@@ -1499,22 +1504,26 @@ impl Exchange for Opinion {
                     .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())))
                     .unwrap_or_default();
 
-                let price = obj
-                    .get("price")
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))?;
+                let price = obj.get("price").and_then(|v| {
+                    v.as_f64()
+                        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                })?;
                 let size = obj
                     .get("shares")
                     .or_else(|| obj.get("amount"))
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .and_then(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0.0);
 
                 if size <= 0.0 {
                     return None;
                 }
 
-                let side_val = obj.get("side").and_then(|v| {
-                    v.as_str().map(String::from).or_else(|| Some(v.to_string()))
-                });
+                let side_val = obj
+                    .get("side")
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| Some(v.to_string())));
                 let side = match side_val.as_deref() {
                     Some("sell" | "2") => OrderSide::Sell,
                     _ => OrderSide::Buy,
@@ -1528,7 +1537,10 @@ impl Exchange for Opinion {
 
                 let fee = obj
                     .get("fee")
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .and_then(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0.0);
 
                 let created_at = obj

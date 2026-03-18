@@ -6,8 +6,8 @@ use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFun
 use napi_derive::napi;
 use tokio::sync::Mutex;
 
-use px_core::websocket::OrderBookWebSocket;
 use openpx::WebSocketInner;
+use px_core::websocket::OrderBookWebSocket;
 
 use crate::error::to_napi_err;
 

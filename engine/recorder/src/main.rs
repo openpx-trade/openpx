@@ -2,21 +2,19 @@ use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 
-use arrow::array::{
-    Float64Array, StringBuilder, TimestampMicrosecondArray, UInt64Array,
-};
+use arrow::array::{Float64Array, StringBuilder, TimestampMicrosecondArray, UInt64Array};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use chrono::Utc;
 use clap::Parser;
 use futures::StreamExt;
+use openpx::{ExchangeInner, WebSocketInner};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
 use px_core::models::{MarketStatus, OrderbookUpdate};
 use px_core::websocket::{OrderBookWebSocket, OrderbookStream};
 use px_core::FetchMarketsParams;
-use openpx::{ExchangeInner, WebSocketInner};
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 
@@ -24,7 +22,10 @@ const RECORD_DURATION: Duration = Duration::from_secs(60);
 const MARKET_FETCH_LIMIT: usize = 50;
 
 #[derive(Parser)]
-#[command(name = "px-recorder", about = "Record WebSocket orderbook data to Parquet (zstd)")]
+#[command(
+    name = "px-recorder",
+    about = "Record WebSocket orderbook data to Parquet (zstd)"
+)]
 struct Args {
     /// Exchange to record: kalshi, polymarket, or opinion
     #[arg(short, long)]
@@ -38,8 +39,8 @@ struct ObRow {
     exchange: String,
     market_id: String,
     asset_id: String,
-    update_type: String,        // "snapshot" or "delta"
-    side: String,               // "bid" or "ask"
+    update_type: String, // "snapshot" or "delta"
+    side: String,        // "bid" or "ask"
     price: f64,
     size: f64,
     last_update_id: Option<u64>, // exchange sequence number
@@ -132,9 +133,7 @@ fn rows_to_batch(rows: &[ObRow], schema: &Arc<Schema>) -> RecordBatch {
     RecordBatch::try_new(
         schema.clone(),
         vec![
-            Arc::new(
-                TimestampMicrosecondArray::from(timestamps).with_timezone("UTC"),
-            ),
+            Arc::new(TimestampMicrosecondArray::from(timestamps).with_timezone("UTC")),
             Arc::new(exchange_builder.finish()),
             Arc::new(market_id_builder.finish()),
             Arc::new(asset_id_builder.finish()),
@@ -164,15 +163,14 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
             Ok((markets, next_cursor)) => {
                 for m in &markets {
                     // Collect token IDs for markets that need them (polymarket)
-                    let token_ids: Vec<String> =
-                        m.outcome_tokens.iter().map(|t| t.token_id.clone()).collect();
+                    let token_ids: Vec<String> = m
+                        .outcome_tokens
+                        .iter()
+                        .map(|t| t.token_id.clone())
+                        .collect();
                     all.push((m.id.clone(), token_ids));
                 }
-                eprintln!(
-                    "  fetched {} markets (total: {})",
-                    markets.len(),
-                    all.len()
-                );
+                eprintln!("  fetched {} markets (total: {})", markets.len(), all.len());
                 if next_cursor.is_none() || markets.is_empty() {
                     break;
                 }
@@ -276,7 +274,9 @@ async fn main() {
 
     let exchange_id = args.exchange.to_lowercase();
     if !matches!(exchange_id.as_str(), "kalshi" | "polymarket" | "opinion") {
-        eprintln!("error: unknown exchange '{exchange_id}' — must be kalshi, polymarket, or opinion");
+        eprintln!(
+            "error: unknown exchange '{exchange_id}' — must be kalshi, polymarket, or opinion"
+        );
         std::process::exit(1);
     }
 
@@ -295,7 +295,10 @@ async fn main() {
         return;
     }
 
-    eprintln!("\nrecording orderbooks for {} markets on {exchange_id} for 60s...\n", markets.len());
+    eprintln!(
+        "\nrecording orderbooks for {} markets on {exchange_id} for 60s...\n",
+        markets.len()
+    );
 
     let rows: Arc<Mutex<Vec<ObRow>>> = Arc::new(Mutex::new(Vec::new()));
     let seq = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -311,7 +314,10 @@ async fn main() {
         eprintln!("[{exchange_id}] failed to connect websocket: {e}");
         std::process::exit(1);
     }
-    eprintln!("[{exchange_id}] websocket connected, subscribing to {} markets...", markets.len());
+    eprintln!(
+        "[{exchange_id}] websocket connected, subscribing to {} markets...",
+        markets.len()
+    );
 
     // Sequentially create streams and subscribe (requires &mut self)
     let mut market_streams = Vec::new();
@@ -329,7 +335,10 @@ async fn main() {
             }
         }
     }
-    eprintln!("[{exchange_id}] subscribed to {} markets", market_streams.len());
+    eprintln!(
+        "[{exchange_id}] subscribed to {} markets",
+        market_streams.len()
+    );
 
     // Spawn one read task per market, each owning its stream
     let mut handles = Vec::new();
@@ -373,8 +382,8 @@ async fn main() {
         .set_compression(Compression::ZSTD(ZstdLevel::try_new(3).unwrap()))
         .build();
 
-    let mut writer = ArrowWriter::try_new(file, schema, Some(props))
-        .expect("failed to create parquet writer");
+    let mut writer =
+        ArrowWriter::try_new(file, schema, Some(props)).expect("failed to create parquet writer");
     writer.write(&batch).expect("failed to write batch");
     writer.close().expect("failed to close writer");
 

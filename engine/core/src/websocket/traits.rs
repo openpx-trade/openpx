@@ -20,7 +20,8 @@ pub type OrderbookStream =
     Pin<Box<dyn Stream<Item = Result<OrderbookUpdate, WebSocketError>> + Send>>;
 pub type ActivityStream = Pin<Box<dyn Stream<Item = Result<ActivityEvent, WebSocketError>> + Send>>;
 pub type SportsStream = Pin<Box<dyn Stream<Item = Result<SportResult, WebSocketError>> + Send>>;
-pub type CryptoPriceStream = Pin<Box<dyn Stream<Item = Result<CryptoPrice, WebSocketError>> + Send>>;
+pub type CryptoPriceStream =
+    Pin<Box<dyn Stream<Item = Result<CryptoPrice, WebSocketError>> + Send>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

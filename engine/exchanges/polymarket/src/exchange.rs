@@ -2843,10 +2843,7 @@ impl Exchange for Polymarket {
 
         let limit = params.limit.unwrap_or(100);
 
-        let profile_url = format!(
-            "{}/public-profile?address={address}",
-            self.config.gamma_url
-        );
+        let profile_url = format!("{}/public-profile?address={address}", self.config.gamma_url);
         let positions_url =
             format!("{DATA_API_URL}/positions?user={address}&limit={limit}&sizeThreshold=0");
         let trades_url = format!("{DATA_API_URL}/trades?user={address}&limit={limit}");

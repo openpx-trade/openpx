@@ -2,6 +2,7 @@ use std::env;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
+use openpx::{ExchangeInner, WebSocketInner};
 use px_core::models::{CryptoPriceSource, MarketStatus, PriceHistoryInterval};
 use px_core::websocket::OrderBookWebSocket;
 use px_core::{
@@ -9,11 +10,13 @@ use px_core::{
     PriceHistoryRequest, TradesRequest,
 };
 use px_crypto::CryptoPriceWebSocket;
-use openpx::{ExchangeInner, WebSocketInner};
 use px_sports::SportsWebSocket;
 
 #[derive(Parser)]
-#[command(name = "openpx", about = "OpenPX CLI — test exchange APIs & WebSocket streams")]
+#[command(
+    name = "openpx",
+    about = "OpenPX CLI — test exchange APIs & WebSocket streams"
+)]
 struct Cli {
     #[command(subcommand)]
     command: TopCommand,
@@ -72,9 +75,7 @@ enum Command {
         limit: Option<usize>,
     },
     /// Fetch a single market by ID
-    FetchMarket {
-        market_id: String,
-    },
+    FetchMarket { market_id: String },
     /// Fetch L2 orderbook
     FetchOrderbook {
         market_id: String,
@@ -156,13 +157,9 @@ enum Command {
 
     // -- WebSocket --
     /// Stream live orderbook updates (Ctrl+C to stop)
-    WsOrderbook {
-        market_id: String,
-    },
+    WsOrderbook { market_id: String },
     /// Stream live trade/fill activity (Ctrl+C to stop)
-    WsActivity {
-        market_id: String,
-    },
+    WsActivity { market_id: String },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -438,7 +435,9 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 order_id,
                 market_id,
             } => {
-                let order = exchange.fetch_order(&order_id, market_id.as_deref()).await?;
+                let order = exchange
+                    .fetch_order(&order_id, market_id.as_deref())
+                    .await?;
                 print_json(&order);
             }
             Command::FetchFills { market_id, limit } => {

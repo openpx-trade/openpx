@@ -187,10 +187,7 @@ fn config_with_array_value_treated_as_empty() {
 #[test]
 fn config_with_extra_unknown_fields_ignored() {
     // Unknown fields in the config object should be silently ignored.
-    let ex = ExchangeInner::new(
-        "kalshi",
-        json!({"unknown_field": "value", "another": 42}),
-    );
+    let ex = ExchangeInner::new("kalshi", json!({"unknown_field": "value", "another": 42}));
     assert!(ex.is_ok(), "unknown config fields should be ignored");
 }
 
@@ -255,11 +252,7 @@ fn describe_id_matches_exchange_id() {
     for id in &exchanges {
         let ex = ExchangeInner::new(id, json!({})).unwrap();
         let info = ex.describe();
-        assert_eq!(
-            info.id,
-            ex.id(),
-            "describe().id should match id() for {id}"
-        );
+        assert_eq!(info.id, ex.id(), "describe().id should match id() for {id}");
     }
 }
 
@@ -307,26 +300,50 @@ fn all_exchanges_report_has_fetch_balance_true() {
 fn kalshi_describe_capabilities() {
     let ex = ExchangeInner::new("kalshi", json!({})).unwrap();
     let info = ex.describe();
-    assert!(info.has_fetch_orderbook, "kalshi should have fetch_orderbook");
-    assert!(info.has_fetch_price_history, "kalshi should have fetch_price_history");
+    assert!(
+        info.has_fetch_orderbook,
+        "kalshi should have fetch_orderbook"
+    );
+    assert!(
+        info.has_fetch_price_history,
+        "kalshi should have fetch_price_history"
+    );
     assert!(info.has_fetch_trades, "kalshi should have fetch_trades");
     assert!(info.has_fetch_fills, "kalshi should have fetch_fills");
     assert!(!info.has_approvals, "kalshi should not have approvals");
-    assert!(!info.has_refresh_balance, "kalshi should not have refresh_balance");
-    assert!(!info.has_fetch_user_activity, "kalshi should not have fetch_user_activity");
+    assert!(
+        !info.has_refresh_balance,
+        "kalshi should not have refresh_balance"
+    );
+    assert!(
+        !info.has_fetch_user_activity,
+        "kalshi should not have fetch_user_activity"
+    );
 }
 
 #[test]
 fn polymarket_describe_capabilities() {
     let ex = ExchangeInner::new("polymarket", json!({})).unwrap();
     let info = ex.describe();
-    assert!(info.has_fetch_orderbook, "polymarket should have fetch_orderbook");
-    assert!(info.has_fetch_price_history, "polymarket should have fetch_price_history");
+    assert!(
+        info.has_fetch_orderbook,
+        "polymarket should have fetch_orderbook"
+    );
+    assert!(
+        info.has_fetch_price_history,
+        "polymarket should have fetch_price_history"
+    );
     assert!(info.has_fetch_trades, "polymarket should have fetch_trades");
     assert!(info.has_fetch_fills, "polymarket should have fetch_fills");
     assert!(info.has_approvals, "polymarket should have approvals");
-    assert!(info.has_refresh_balance, "polymarket should have refresh_balance");
-    assert!(info.has_fetch_user_activity, "polymarket should have fetch_user_activity");
+    assert!(
+        info.has_refresh_balance,
+        "polymarket should have refresh_balance"
+    );
+    assert!(
+        info.has_fetch_user_activity,
+        "polymarket should have fetch_user_activity"
+    );
     assert!(info.has_websocket, "polymarket should have websocket");
 }
 
@@ -334,13 +351,25 @@ fn polymarket_describe_capabilities() {
 fn opinion_describe_capabilities() {
     let ex = ExchangeInner::new("opinion", json!({})).unwrap();
     let info = ex.describe();
-    assert!(info.has_fetch_orderbook, "opinion should have fetch_orderbook");
-    assert!(info.has_fetch_price_history, "opinion should have fetch_price_history");
+    assert!(
+        info.has_fetch_orderbook,
+        "opinion should have fetch_orderbook"
+    );
+    assert!(
+        info.has_fetch_price_history,
+        "opinion should have fetch_price_history"
+    );
     assert!(info.has_fetch_trades, "opinion should have fetch_trades");
     assert!(info.has_fetch_fills, "opinion should have fetch_fills");
     assert!(!info.has_approvals, "opinion should not have approvals");
-    assert!(!info.has_refresh_balance, "opinion should not have refresh_balance");
-    assert!(info.has_fetch_user_activity, "opinion should have fetch_user_activity");
+    assert!(
+        !info.has_refresh_balance,
+        "opinion should not have refresh_balance"
+    );
+    assert!(
+        info.has_fetch_user_activity,
+        "opinion should have fetch_user_activity"
+    );
 }
 
 #[test]
@@ -370,7 +399,10 @@ fn unauthenticated_opinion_has_no_websocket() {
 #[test]
 fn empty_string_exchange_id_returns_error() {
     let result = ExchangeInner::new("", json!({}));
-    assert!(result.is_err(), "empty string exchange ID should return Err");
+    assert!(
+        result.is_err(),
+        "empty string exchange ID should return Err"
+    );
 }
 
 #[test]

@@ -247,7 +247,9 @@ async fn test_fetch_market_not_found() {
     let err = result.unwrap_err();
     let err_msg = format!("{err}");
     assert!(
-        err_msg.contains("not found") || err_msg.contains("NotFound") || err_msg.contains("nonexistent"),
+        err_msg.contains("not found")
+            || err_msg.contains("NotFound")
+            || err_msg.contains("nonexistent"),
         "expected market-not-found error, got: {err_msg}"
     );
 }

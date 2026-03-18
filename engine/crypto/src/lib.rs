@@ -169,9 +169,7 @@ impl CryptoPriceWebSocket {
             tx.unbounded_send(Message::Text(msg))
                 .map_err(|e| WebSocketError::Connection(e.to_string()))?;
         } else {
-            return Err(WebSocketError::Connection(
-                "not connected".to_string(),
-            ));
+            return Err(WebSocketError::Connection("not connected".to_string()));
         }
 
         let mut subs = self.subscriptions.lock().await;
@@ -278,7 +276,11 @@ impl CryptoPriceWebSocket {
                 state.store(WebSocketState::Reconnecting);
 
                 let delay = calculate_reconnect_delay(attempt);
-                warn!(attempt, delay_ms = delay.as_millis() as u64, "reconnecting crypto websocket");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis() as u64,
+                    "reconnecting crypto websocket"
+                );
                 tokio::time::sleep(delay).await;
 
                 match connect_async(CRYPTO_WS_URL).await {
@@ -325,15 +327,12 @@ impl CryptoPriceWebSocket {
                         let ping_future = {
                             let write_tx = wtx_clone;
                             async move {
-                                let mut interval =
-                                    tokio::time::interval(WS_CRYPTO_PING_INTERVAL);
+                                let mut interval = tokio::time::interval(WS_CRYPTO_PING_INTERVAL);
                                 loop {
                                     interval.tick().await;
                                     let tx = write_tx.lock().await;
                                     if let Some(ref tx) = *tx {
-                                        if tx
-                                            .unbounded_send(Message::Text("PING".into()))
-                                            .is_err()
+                                        if tx.unbounded_send(Message::Text("PING".into())).is_err()
                                         {
                                             break;
                                         }
@@ -503,10 +502,10 @@ mod tests {
 
     #[test]
     fn serialize_binance_subscribe() {
-        let msg = build_subscribe_msg(CryptoPriceSource::Binance, &[
-            "btcusdt".into(),
-            "ethusdt".into(),
-        ]);
+        let msg = build_subscribe_msg(
+            CryptoPriceSource::Binance,
+            &["btcusdt".into(), "ethusdt".into()],
+        );
         let parsed: serde_json::Value = serde_json::from_str(&msg).expect("valid JSON");
         assert_eq!(parsed["action"], "subscribe");
         // One subscription entry per symbol
@@ -528,7 +527,10 @@ mod tests {
         let msg = build_subscribe_msg(CryptoPriceSource::Chainlink, &["eth/usd".into()]);
         let parsed: serde_json::Value = serde_json::from_str(&msg).expect("valid JSON");
         assert_eq!(parsed["action"], "subscribe");
-        assert_eq!(parsed["subscriptions"][0]["topic"], "crypto_prices_chainlink");
+        assert_eq!(
+            parsed["subscriptions"][0]["topic"],
+            "crypto_prices_chainlink"
+        );
         assert_eq!(parsed["subscriptions"][0]["type"], "*");
         let filters: serde_json::Value =
             serde_json::from_str(parsed["subscriptions"][0]["filters"].as_str().unwrap())

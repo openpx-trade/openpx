@@ -128,7 +128,11 @@ impl SportsWebSocket {
                 state.store(WebSocketState::Reconnecting);
 
                 let delay = calculate_reconnect_delay(attempt);
-                warn!(attempt, delay_ms = delay.as_millis() as u64, "reconnecting sports websocket");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis() as u64,
+                    "reconnecting sports websocket"
+                );
                 tokio::time::sleep(delay).await;
 
                 match connect_async(SPORTS_WS_URL).await {
@@ -155,7 +159,8 @@ impl SportsWebSocket {
                                     Ok(Message::Text(text)) => {
                                         if text == "ping" {
                                             if let Some(ref tx) = *wtx_clone.lock().await {
-                                                let _ = tx.unbounded_send(Message::Text("pong".into()));
+                                                let _ =
+                                                    tx.unbounded_send(Message::Text("pong".into()));
                                             }
                                             continue;
                                         }

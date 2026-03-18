@@ -4,8 +4,8 @@ pub use px_core::*;
 mod ws;
 pub use ws::WebSocketInner;
 
-pub use px_sports::SportsWebSocket;
 pub use px_crypto::CryptoPriceWebSocket;
+pub use px_sports::SportsWebSocket;
 
 // Exchange implementations (re-export for direct construction)
 pub use px_exchange_kalshi::{Kalshi, KalshiConfig};

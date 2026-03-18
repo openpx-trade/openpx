@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{interval, Duration};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{connect_async_tls_with_config, Connector};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use px_core::{
     ActivityEvent, ActivityFill, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
@@ -69,7 +68,8 @@ impl OpinionWebSocket {
             .api_key
             .as_ref()
             .ok_or_else(|| WebSocketError::Connection("api_key required".into()))?;
-        Ok(format!("{}?apikey={}", self.config.ws_url, api_key))
+        let base = self.config.ws_url.trim_end_matches('/');
+        Ok(format!("{base}/?apikey={api_key}"))
     }
 
     async fn send_message(&self, msg: &str) -> Result<(), WebSocketError> {
@@ -456,20 +456,6 @@ impl OpinionWebSocket {
         Ok(())
     }
 
-    /// Build a TLS connector that advertises only HTTP/1.1 via ALPN.
-    /// Opinion's server (AWS) negotiates HTTP/2 without explicit ALPN,
-    /// which breaks the WebSocket HTTP/1.1 upgrade handshake.
-    fn tls_connector() -> Connector {
-        let mut root_store = rustls::RootCertStore::empty();
-        let certs = rustls_native_certs::load_native_certs();
-        root_store.add_parsable_certificates(certs.certs);
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-        config.alpn_protocols = vec![b"http/1.1".to_vec()];
-        Connector::Rustls(Arc::new(config))
-    }
-
     fn calculate_reconnect_delay(attempt: u32) -> Duration {
         let delay = WS_RECONNECT_BASE_DELAY.as_millis() as f64 * 1.5_f64.powi(attempt as i32);
         let delay = delay.min(WS_RECONNECT_MAX_DELAY.as_millis() as f64) as u64;
@@ -482,21 +468,9 @@ impl OrderBookWebSocket for OpinionWebSocket {
         self.set_state(WebSocketState::Connecting);
 
         let url = self.ws_url()?;
-        eprintln!("[opinion-ws] connecting to: {}..{}", &url[..40.min(url.len())], url.len());
-        let connector = Self::tls_connector();
-        let (ws_stream, _) =
-            connect_async_tls_with_config(&url, None, false, Some(connector))
-                .await
-                .map_err(|e| {
-                    if let tokio_tungstenite::tungstenite::Error::Http(ref resp) = e {
-                        eprintln!("[opinion-ws] HTTP {}, headers: {:?}", resp.status(), resp.headers());
-                        if let Some(body) = resp.body() {
-                            eprintln!("[opinion-ws] body: {}", String::from_utf8_lossy(body));
-                        }
-                    }
-                    eprintln!("[opinion-ws] connect error: {e}");
-                    WebSocketError::Connection(e.to_string())
-                })?;
+        let (ws_stream, _) = connect_async(&url)
+            .await
+            .map_err(|e| WebSocketError::Connection(e.to_string()))?;
 
         let (write, read) = ws_stream.split();
         let (tx, rx) = futures::channel::mpsc::unbounded::<Message>();
@@ -596,8 +570,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
                         Err(_) => break,
                     };
 
-                    let connector = OpinionWebSocket::tls_connector();
-                    match connect_async_tls_with_config(&url, None, false, Some(connector)).await {
+                    match connect_async(&url).await {
                         Ok((new_ws, _)) => {
                             let (new_write, new_read) = new_ws.split();
                             let (new_tx, new_rx) = futures::channel::mpsc::unbounded::<Message>();

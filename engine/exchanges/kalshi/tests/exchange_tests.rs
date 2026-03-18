@@ -657,10 +657,7 @@ async fn test_http_401_returns_auth_error() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(401)
-                .set_body_string("Unauthorized: invalid API key"),
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized: invalid API key"))
         .mount(&mock_server)
         .await;
 
@@ -670,9 +667,7 @@ async fn test_http_401_returns_auth_error() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let result = exchange
-        .fetch_markets(&FetchMarketsParams::default())
-        .await;
+    let result = exchange.fetch_markets(&FetchMarketsParams::default()).await;
 
     // #then
     assert!(result.is_err());
@@ -690,8 +685,7 @@ async fn test_http_403_returns_auth_error() {
     Mock::given(method("GET"))
         .and(path("/events"))
         .respond_with(
-            ResponseTemplate::new(403)
-                .set_body_string("Forbidden: insufficient permissions"),
+            ResponseTemplate::new(403).set_body_string("Forbidden: insufficient permissions"),
         )
         .mount(&mock_server)
         .await;
@@ -702,9 +696,7 @@ async fn test_http_403_returns_auth_error() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let result = exchange
-        .fetch_markets(&FetchMarketsParams::default())
-        .await;
+    let result = exchange.fetch_markets(&FetchMarketsParams::default()).await;
 
     // #then
     assert!(result.is_err());
@@ -735,9 +727,7 @@ async fn test_http_429_returns_rate_limit_error() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let result = exchange
-        .fetch_markets(&FetchMarketsParams::default())
-        .await;
+    let result = exchange.fetch_markets(&FetchMarketsParams::default()).await;
 
     // #then
     assert!(result.is_err());
@@ -760,11 +750,9 @@ async fn test_http_500_returns_api_error() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(500).set_body_json(serde_json::json!({
-                "error": { "code": "internal_error", "message": "something broke" }
-            })),
-        )
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": { "code": "internal_error", "message": "something broke" }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -774,9 +762,7 @@ async fn test_http_500_returns_api_error() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let result = exchange
-        .fetch_markets(&FetchMarketsParams::default())
-        .await;
+    let result = exchange.fetch_markets(&FetchMarketsParams::default()).await;
 
     // #then
     assert!(result.is_err());
@@ -1074,9 +1060,18 @@ fn test_describe_unauthenticated() {
     assert!(info.has_fetch_balance);
     assert!(info.has_fetch_fills);
     // Auth-dependent capabilities
-    assert!(!info.has_create_order, "should not have create_order without auth");
-    assert!(!info.has_cancel_order, "should not have cancel_order without auth");
-    assert!(!info.has_websocket, "should not have websocket without auth");
+    assert!(
+        !info.has_create_order,
+        "should not have create_order without auth"
+    );
+    assert!(
+        !info.has_cancel_order,
+        "should not have cancel_order without auth"
+    );
+    assert!(
+        !info.has_websocket,
+        "should not have websocket without auth"
+    );
     // Unsupported features
     assert!(!info.has_fetch_user_activity);
     assert!(!info.has_approvals);

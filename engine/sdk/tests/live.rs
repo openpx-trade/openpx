@@ -18,8 +18,8 @@
 use std::env;
 use std::time::Duration;
 
-use px_core::{OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest};
 use openpx::{ExchangeInner, WebSocketInner};
+use px_core::{OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,7 +101,9 @@ fn is_invalid_input(e: &px_core::error::OpenPxError) -> bool {
 /// Helper: returns true if error indicates a config or SDK initialization failure.
 fn is_config_error(e: &px_core::error::OpenPxError) -> bool {
     let msg = format!("{e:?}");
-    msg.contains("config error") || msg.contains("Validation") || msg.contains("private key required")
+    msg.contains("config error")
+        || msg.contains("Validation")
+        || msg.contains("private key required")
 }
 
 /// Helper: returns true if error indicates rate limiting.
@@ -399,10 +401,7 @@ macro_rules! exchange_tests {
                         );
                     }
                     Err(e) if is_invalid_input(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_orderbook: {e}",
-                            stringify!($exchange_id)
-                        );
+                        eprintln!("SKIP {}/fetch_orderbook: {e}", stringify!($exchange_id));
                     }
                     Err(e) if is_rate_limited(&e) => {
                         eprintln!(
@@ -463,7 +462,7 @@ macro_rules! exchange_tests {
                     for level in book.bids.iter().chain(book.asks.iter()) {
                         let price = level.price.to_f64();
                         assert!(
-                            price >= 0.0 && price <= 1.0,
+                            (0.0..=1.0).contains(&price),
                             "orderbook price {} out of [0,1] range",
                             price
                         );
