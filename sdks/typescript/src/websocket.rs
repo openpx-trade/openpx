@@ -7,7 +7,7 @@ use napi_derive::napi;
 use tokio::sync::Mutex;
 
 use px_core::websocket::OrderBookWebSocket;
-use px_sdk::WebSocketInner;
+use openpx::WebSocketInner;
 
 use crate::error::to_napi_err;
 

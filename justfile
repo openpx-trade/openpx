@@ -57,10 +57,37 @@ docs-install:
 check-sync: schema python-models node-models docs
     git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/src/
 
+# ---------------------------------------------------------------------------
+# Publishing
+# ---------------------------------------------------------------------------
+
+# Publish all Rust crates to crates.io (respects dependency order)
+publish-crates:
+    cargo publish -p px-core
+    sleep 30
+    cargo publish -p px-exchange-kalshi
+    cargo publish -p px-exchange-polymarket
+    cargo publish -p px-exchange-opinion
+    cargo publish -p px-crypto
+    cargo publish -p px-sports
+    sleep 30
+    cargo publish -p openpx
+
+# Build and publish Python SDK to PyPI
+publish-python: python-build
+    cd sdks/python && {{venv}}/bin/maturin publish --skip-existing
+
+# Build and publish Node.js SDK to npm
+publish-node: node-build
+    cd sdks/typescript && npm publish --access public
+
+# Publish everything
+publish-all: publish-crates publish-python publish-node
+
 # Run live integration tests against real exchange APIs
 # Usage: just live-test [exchange]
 # Examples:
 #   just live-test              # all exchanges
 #   just live-test kalshi       # single exchange
 live-test *FILTER:
-    OPENPX_LIVE_TESTS=1 cargo test -p px-sdk --test live {{FILTER}} -- --nocapture
+    OPENPX_LIVE_TESTS=1 cargo test -p openpx --test live {{FILTER}} -- --nocapture

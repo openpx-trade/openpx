@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["prediction-market", "trading", "sdk", "exchange"]
+categories = ["api-bindings", "finance"]
 
 [features]
 default = []

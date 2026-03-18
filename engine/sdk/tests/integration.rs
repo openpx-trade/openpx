@@ -4,7 +4,7 @@
 //! describe consistency, and error handling without requiring network access
 //! or mock servers.
 
-use px_sdk::ExchangeInner;
+use openpx::ExchangeInner;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------

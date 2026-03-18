@@ -10,6 +10,7 @@ members = [
     "engine/schema",
     "engine/sdk",
     "engine/cli",
+    "engine/recorder",
     "sdks/python",
     "sdks/typescript",
 ]
@@ -23,6 +24,7 @@ default-members = [
     "engine/schema",
     "engine/sdk",
     "engine/cli",
+    "engine/recorder",
 ]
 
 [workspace.package]
@@ -89,7 +91,7 @@ px-exchange-opinion = { version = "0.1.4", path = "engine/exchanges/opinion" }
 px-exchange-kalshi = { version = "0.1.4", path = "engine/exchanges/kalshi" }
 px-sports = { version = "0.1.4", path = "engine/sports" }
 px-crypto = { version = "0.1.4", path = "engine/crypto" }
-px-sdk = { version = "0.1.4", path = "engine/sdk" }
+openpx = { version = "0.1.4", path = "engine/sdk" }
 
 [profile.release]
 lto = true

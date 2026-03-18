@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pythonize::pythonize;
 
-use px_sdk::ExchangeInner;
+use openpx::ExchangeInner;
 use std::sync::Arc;
 
 use crate::error::to_py_err;

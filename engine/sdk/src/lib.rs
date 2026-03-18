@@ -1,26 +1,18 @@
-mod websocket;
-pub use websocket::WebSocketInner;
+// Re-export everything from px-core so users only need `openpx`.
+pub use px_core::*;
+
+mod ws;
+pub use ws::WebSocketInner;
 
 pub use px_sports::SportsWebSocket;
 pub use px_crypto::CryptoPriceWebSocket;
 
+// Exchange implementations (re-export for direct construction)
+pub use px_exchange_kalshi::{Kalshi, KalshiConfig};
+pub use px_exchange_opinion::{Opinion, OpinionConfig};
+pub use px_exchange_polymarket::{Polymarket, PolymarketConfig};
+
 use std::collections::HashMap;
-
-use px_core::error::OpenPxError;
-use px_core::models::{
-    Candlestick, Fill, Market, MarketTrade, Order, OrderSide, Orderbook, OrderbookSnapshot,
-    Position,
-};
-use px_core::{
-    ExchangeInfo, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
-    OrderbookHistoryRequest, OrderbookRequest, PriceHistoryRequest, TradesRequest,
-};
-
-use px_exchange_kalshi::{Kalshi, KalshiConfig};
-use px_exchange_opinion::{Opinion, OpinionConfig};
-use px_exchange_polymarket::{Polymarket, PolymarketConfig};
-
-use px_core::Exchange;
 
 /// Enum dispatch over all supported exchanges.
 /// Direct match dispatch eliminates vtable indirection and allows the compiler to

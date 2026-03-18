@@ -2,7 +2,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::sync::Arc;
 
-use px_sdk::ExchangeInner;
+use openpx::ExchangeInner;
 
 use crate::error::to_napi_err;
 use crate::websocket::WebSocket;

@@ -1,10 +1,13 @@
 [package]
-name = "px-sdk"
-description = "Unified SDK facade for all OpenPX exchanges"
+name = "openpx"
+description = "Unified SDK for prediction markets — Kalshi, Polymarket, Opinion and more"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["prediction-market", "trading", "polymarket", "kalshi", "sdk"]
+categories = ["api-bindings", "finance"]
 
 [dependencies]
 px-core = { workspace = true }

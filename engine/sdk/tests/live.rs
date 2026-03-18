@@ -5,21 +5,21 @@
 //! ## Running
 //!
 //! Unauthenticated (market data only):
-//!   OPENPX_LIVE_TESTS=1 cargo test -p px-sdk --test live -- --nocapture
+//!   OPENPX_LIVE_TESTS=1 cargo test -p openpx --test live -- --nocapture
 //!
 //! Single exchange:
-//!   OPENPX_LIVE_TESTS=1 cargo test -p px-sdk --test live kalshi -- --nocapture
+//!   OPENPX_LIVE_TESTS=1 cargo test -p openpx --test live kalshi -- --nocapture
 //!
 //! With auth (enables balance/position/fill tests):
 //!   OPENPX_LIVE_TESTS=1 \
 //!   KALSHI_API_KEY_ID=... KALSHI_PRIVATE_KEY_PEM=... \
-//!   cargo test -p px-sdk --test live kalshi -- --nocapture
+//!   cargo test -p openpx --test live kalshi -- --nocapture
 
 use std::env;
 use std::time::Duration;
 
 use px_core::{OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest};
-use px_sdk::{ExchangeInner, WebSocketInner};
+use openpx::{ExchangeInner, WebSocketInner};
 
 // ---------------------------------------------------------------------------
 // Helpers

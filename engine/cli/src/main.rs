@@ -9,7 +9,7 @@ use px_core::{
     PriceHistoryRequest, TradesRequest,
 };
 use px_crypto::CryptoPriceWebSocket;
-use px_sdk::{ExchangeInner, WebSocketInner};
+use openpx::{ExchangeInner, WebSocketInner};
 use px_sports::SportsWebSocket;
 
 #[derive(Parser)]

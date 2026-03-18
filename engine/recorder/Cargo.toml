@@ -1,0 +1,25 @@
+[package]
+name = "px-recorder"
+description = "Record WebSocket orderbook data to Parquet (zstd)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "px-recorder"
+path = "src/main.rs"
+
+[dependencies]
+px-core = { workspace = true }
+openpx = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+dotenvy = "0.15"
+rustls = { version = "0.23", features = ["ring"] }
+arrow = { version = "54", default-features = false }
+parquet = { version = "54", default-features = false, features = ["arrow", "zstd"] }
