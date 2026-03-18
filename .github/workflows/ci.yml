@@ -104,3 +104,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmarks (detect panics / compilation regressions)
         run: cargo bench -p px-core --bench orderbook --bench normalizers --bench price_utils -- --warm-up-time 1 --measurement-time 2
+
+  ci-success:
+    name: CI Success
+    if: always()
+    needs: [fmt, clippy, test, check, version-sync, sdk-sync, bench]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more CI jobs failed or were cancelled."
+            exit 1
+          fi
