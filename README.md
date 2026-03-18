@@ -8,8 +8,10 @@ One interface to trade across Polymarket, Kalshi, and Opinion.
 Rust engine with Python & TypeScript SDKs.
 
 [![CI](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/openpx.svg)](https://crates.io/crates/openpx)
+[![PyPI](https://img.shields.io/pypi/v/openpx.svg)](https://pypi.org/project/openpx/)
+[![npm](https://img.shields.io/npm/v/@openpx/sdk.svg)](https://www.npmjs.com/package/@openpx/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
 <br/>
 
@@ -27,7 +29,7 @@ Rust engine with Python & TypeScript SDKs.
 
 ```bash
 # Rust — add to Cargo.toml
-px-sdk = "0.1"
+openpx = "0.1"
 
 # Python
 pip install openpx
@@ -39,7 +41,7 @@ npm install @openpx/sdk
 ### Fetch Markets
 
 ```rust
-use px_sdk::ExchangeInner;
+use openpx::ExchangeInner;
 use serde_json::json;
 
 #[tokio::main]
