@@ -1,8 +1,8 @@
 name: Publish
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -10,41 +10,10 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Gate: only run publish jobs when the workspace version has changed
-  # ---------------------------------------------------------------------------
-  check-version:
-    name: Check Version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.local.outputs.version }}
-      changed: ${{ steps.check.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Get local version
-        id: local
-        run: |
-          VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      - name: Check if already published
-        id: check
-        run: |
-          PUBLISHED=$(cargo search openpx --limit 10 2>/dev/null | grep '^openpx ' | head -1 | sed 's/.*= "\([^"]*\)".*/\1/' || echo "0.0.0")
-          LOCAL="${{ steps.local.outputs.version }}"
-          if [ "$PUBLISHED" = "$LOCAL" ]; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "Version $LOCAL already published — skipping"
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "Publishing $LOCAL (crates.io has $PUBLISHED)"
-          fi
-
-  # ---------------------------------------------------------------------------
-  # 1. Rust crates → crates.io (runs first)
+  # 1. Rust crates → crates.io
   # ---------------------------------------------------------------------------
   publish-crates:
     name: Publish Crates
-    needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,32 +47,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
   # ---------------------------------------------------------------------------
-  # GitHub Release (tag + release notes)
-  # ---------------------------------------------------------------------------
-  github-release:
-    name: GitHub Release
-    needs: [check-version, publish-crates, publish-python, publish-node]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Create tag and release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="v${{ needs.check-version.outputs.version }}"
-          git tag "$VERSION" || true
-          git push origin "$VERSION" || true
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --generate-notes \
-            --latest
-
-  # ---------------------------------------------------------------------------
-  # 2. Python wheels (per-platform) — only after crates succeed
+  # 2. Python wheels (per-platform)
   # ---------------------------------------------------------------------------
   build-python:
     name: Python (${{ matrix.os }} / ${{ matrix.target }})
@@ -171,7 +115,7 @@ jobs:
           password: ${{ secrets.PYPI_TOKEN }}
 
   # ---------------------------------------------------------------------------
-  # 4. Node.js native addons (per-platform) — only after crates succeed
+  # 4. Node.js native addons (per-platform)
   # ---------------------------------------------------------------------------
   build-node:
     name: Node.js (${{ matrix.target }})

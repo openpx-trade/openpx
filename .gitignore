@@ -35,6 +35,8 @@ output/
 !px-mcp/src/ws-protocol-manifest.json
 !schema/openpx.schema.json
 !sdks/typescript/package.json
+!release-please-config.json
+!.release-please-manifest.json
 
 
 # Python
