@@ -70,8 +70,9 @@ jobs:
           node-version: "22"
       - uses: extractions/setup-just@v2
       - run: pip install datamodel-code-generator
+      - run: cd sdks/typescript && npm install
       - name: Generate schema and SDK models
-        run: just schema python-models node-models
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models
       - name: Check generated files are in sync
         run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
 
