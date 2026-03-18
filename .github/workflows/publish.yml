@@ -28,7 +28,7 @@ jobs:
       - name: Check if already published
         id: check
         run: |
-          PUBLISHED=$(cargo search openpx --limit 1 2>/dev/null | head -1 | sed 's/.*= "\([^"]*\)".*/\1/' || echo "0.0.0")
+          PUBLISHED=$(cargo search openpx --limit 10 2>/dev/null | grep '^openpx ' | head -1 | sed 's/.*= "\([^"]*\)".*/\1/' || echo "0.0.0")
           LOCAL="${{ steps.local.outputs.version }}"
           if [ "$PUBLISHED" = "$LOCAL" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
