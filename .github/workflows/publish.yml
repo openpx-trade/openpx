@@ -226,12 +226,14 @@ jobs:
           pattern: node-*
           path: sdks/typescript/artifacts
           merge-multiple: true
+      - name: Move artifacts into platform dirs
+        working-directory: sdks/typescript
+        run: |
+          mkdir -p npm/darwin-x64 npm/darwin-arm64 npm/linux-x64-gnu npm/linux-arm64-gnu npm/win32-x64-msvc
+          npx napi artifacts --dir artifacts
       - name: Generate platform packages
         working-directory: sdks/typescript
         run: npx napi prepublish -t npm --skip-gh-release
-      - name: Move artifacts
-        working-directory: sdks/typescript
-        run: npx napi artifacts --dir artifacts
       - name: Publish platform packages
         working-directory: sdks/typescript
         run: |
