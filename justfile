@@ -58,6 +58,34 @@ check-sync: schema python-models node-models docs
     git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/src/
 
 # ---------------------------------------------------------------------------
+# Versioning
+# ---------------------------------------------------------------------------
+
+# Bump version across all packages: just bump 0.2.0
+bump VERSION:
+    @echo "Bumping all packages to {{VERSION}}..."
+    sed -i'' -e 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
+    sed -i'' -e 's/^version = ".*"/version = "{{VERSION}}"/' sdks/python/pyproject.toml
+    cd sdks/typescript && npm version "{{VERSION}}" --no-git-tag-version
+    sed -i'' -e 's/\(px-core\|px-exchange-kalshi\|px-exchange-polymarket\|px-exchange-opinion\|px-sports\|px-crypto\|openpx\) = { version = "[^"]*"/\1 = { version = "{{VERSION}}"/' Cargo.toml
+    @echo "Done. Verify with: just check-versions"
+
+# Verify all package versions match
+check-versions:
+    #!/usr/bin/env bash
+    RUST=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+    PYTHON=$(grep -m1 '^version' sdks/python/pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+    NODE=$(node -p "require('./sdks/typescript/package.json').version")
+    echo "Rust:       $RUST"
+    echo "Python:     $PYTHON"
+    echo "TypeScript: $NODE"
+    if [ "$RUST" != "$PYTHON" ] || [ "$RUST" != "$NODE" ]; then
+        echo "ERROR: Version mismatch!"
+        exit 1
+    fi
+    echo "All versions in sync."
+
+# ---------------------------------------------------------------------------
 # Publishing
 # ---------------------------------------------------------------------------
 

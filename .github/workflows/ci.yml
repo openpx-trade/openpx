@@ -55,6 +55,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets
 
+  version-sync:
+    name: Version Sync Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check all package versions match
+        run: |
+          RUST=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          PYTHON=$(grep -m1 '^version' sdks/python/pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+          NODE=$(node -p "require('./sdks/typescript/package.json').version")
+          echo "Rust:       $RUST"
+          echo "Python:     $PYTHON"
+          echo "TypeScript: $NODE"
+          if [ "$RUST" != "$PYTHON" ] || [ "$RUST" != "$NODE" ]; then
+            echo "::error::Version mismatch! All packages must have the same version."
+            exit 1
+          fi
+          echo "All versions in sync: $RUST"
+
   sdk-sync:
     name: SDK Sync Check
     runs-on: ubuntu-latest
