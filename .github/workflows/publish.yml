@@ -39,7 +39,7 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Rust crates → crates.io
+  # 1. Rust crates → crates.io (runs first)
   # ---------------------------------------------------------------------------
   publish-crates:
     name: Publish Crates
@@ -79,29 +79,26 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
   # ---------------------------------------------------------------------------
-  # Python wheels (per-platform) → upload as artifacts
+  # 2. Python wheels (per-platform) — only after crates succeed
   # ---------------------------------------------------------------------------
   build-python:
     name: Python (${{ matrix.os }} / ${{ matrix.target }})
-    needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
+    needs: publish-crates
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  target: x86_64 }
-          - { os: ubuntu-latest,  target: aarch64 }
-          - { os: macos-13,       target: x86_64 }
-          - { os: macos-latest,   target: aarch64 }
-          - { os: windows-latest, target: x86_64 }
+          - { os: ubuntu-latest,     target: x86_64 }
+          - { os: ubuntu-24.04-arm,  target: aarch64 }
+          - { os: macos-13,          target: x86_64 }
+          - { os: macos-latest,      target: aarch64 }
+          - { os: windows-latest,    target: x86_64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: docker/setup-qemu-action@v3
-        if: runner.os == 'Linux' && matrix.target == 'aarch64'
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -115,8 +112,7 @@ jobs:
 
   build-python-sdist:
     name: Python sdist
-    needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
+    needs: publish-crates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +127,7 @@ jobs:
           path: sdks/python/dist/*.tar.gz
 
   # ---------------------------------------------------------------------------
-  # Publish all Python artifacts → PyPI
+  # 3. Publish all Python artifacts → PyPI
   # ---------------------------------------------------------------------------
   publish-python:
     name: Publish Python
@@ -151,21 +147,20 @@ jobs:
           password: ${{ secrets.PYPI_TOKEN }}
 
   # ---------------------------------------------------------------------------
-  # Node.js native addons (per-platform) → upload as artifacts
+  # 4. Node.js native addons (per-platform) — only after crates succeed
   # ---------------------------------------------------------------------------
   build-node:
     name: Node.js (${{ matrix.target }})
-    needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
+    needs: publish-crates
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu }
-          - { os: macos-13,       target: x86_64-apple-darwin }
-          - { os: macos-latest,   target: aarch64-apple-darwin }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { os: ubuntu-latest,     target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm,  target: aarch64-unknown-linux-gnu }
+          - { os: macos-13,          target: x86_64-apple-darwin }
+          - { os: macos-latest,      target: aarch64-apple-darwin }
+          - { os: windows-latest,    target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -175,26 +170,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Install dependencies
         working-directory: sdks/typescript
         run: npm install
       - name: Build native addon
         working-directory: sdks/typescript
         run: npx napi build --release --platform --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
       - uses: actions/upload-artifact@v4
         with:
           name: node-${{ matrix.target }}
           path: sdks/typescript/*.node
 
   # ---------------------------------------------------------------------------
-  # Publish Node.js → npm (platform packages + main package)
+  # 5. Publish Node.js → npm (platform packages + main package)
   # ---------------------------------------------------------------------------
   publish-node:
     name: Publish Node.js
