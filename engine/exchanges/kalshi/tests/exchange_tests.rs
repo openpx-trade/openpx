@@ -1,6 +1,6 @@
 use px_core::{
-    Exchange, FetchMarketsParams, OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest,
-    TradesRequest,
+    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest,
+    PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
 };
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path};
@@ -1287,4 +1287,143 @@ async fn test_fetch_trades_filters_zero_size() {
     // #then - zero-size trade should be filtered out
     assert_eq!(trades.len(), 1);
     assert_eq!(trades[0].id.as_deref(), Some("t-valid"));
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: MarketStatusFilter::All returns all statuses
+// ---------------------------------------------------------------------------
+
+fn sample_mixed_status_events() -> serde_json::Value {
+    serde_json::json!({
+        "events": [{
+            "event_ticker": "MIX-EVT",
+            "title": "Mixed Status Event",
+            "markets": [
+                {
+                    "ticker": "MIX-ACTIVE",
+                    "event_ticker": "MIX-EVT",
+                    "title": "Active market",
+                    "subtitle": "Currently trading",
+                    "yes_ask": 50,
+                    "volume": 1000.0,
+                    "close_time": "2025-12-31T21:00:00Z",
+                    "status": "active"
+                },
+                {
+                    "ticker": "MIX-CLOSED",
+                    "event_ticker": "MIX-EVT",
+                    "title": "Closed market",
+                    "subtitle": "No longer trading",
+                    "yes_ask": 90,
+                    "volume": 5000.0,
+                    "close_time": "2024-06-01T21:00:00Z",
+                    "status": "closed"
+                },
+                {
+                    "ticker": "MIX-SETTLED",
+                    "event_ticker": "MIX-EVT",
+                    "title": "Settled market",
+                    "subtitle": "Resolved",
+                    "yes_ask": 100,
+                    "volume": 8000.0,
+                    "close_time": "2024-01-01T21:00:00Z",
+                    "status": "determined"
+                }
+            ]
+        }],
+        "cursor": null
+    })
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_all_returns_all_statuses() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::All),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then — all three markets should be returned regardless of status
+    assert_eq!(markets.len(), 3);
+
+    let statuses: Vec<MarketStatus> = markets.iter().map(|m| m.status).collect();
+    assert!(statuses.contains(&MarketStatus::Active));
+    assert!(statuses.contains(&MarketStatus::Closed));
+    assert!(statuses.contains(&MarketStatus::Resolved));
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_active_filters_correctly() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Active),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then — only the active market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "MIX-ACTIVE");
+    assert_eq!(markets[0].status, MarketStatus::Active);
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_resolved_filters_correctly() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Resolved),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then — only the settled/determined market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].status, MarketStatus::Resolved);
 }

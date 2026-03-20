@@ -75,7 +75,7 @@ exchange.name; // "Kalshi"
 
 ```bash
 # The CLI implicitly uses the exchange ID you pass:
-openpx kalshi describe | jq '.id, .name'
+openpx kalshi fetch-markets --limit 1 | jq '.markets[0].exchange'
 ```
 
 
@@ -120,8 +120,7 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 **CLI**
 
 ```bash
-openpx kalshi describe
-openpx kalshi describe | jq '.has_websocket, .has_fetch_price_history'
+# describe is available via the SDK; the CLI does not have a dedicated command for it.
 ```
 
 
@@ -192,8 +191,7 @@ console.log(`Order ${order.id}: ${order.status}`);
 **CLI**
 
 ```bash
-openpx kalshi create-order KXBTC-25MAR14 \
-  --outcome Yes --side buy --price 0.65 --size 10
+# create-order is available via the SDK; the CLI is read-only.
 ```
 
 
@@ -238,8 +236,7 @@ console.log(`Cancelled: ${cancelled.status}`);
 **CLI**
 
 ```bash
-openpx kalshi cancel-order ORDER_ID
-openpx polymarket cancel-order ORDER_ID --market-id "0x1234..."
+# cancel-order is available via the SDK; the CLI is read-only.
 ```
 
 
@@ -1516,7 +1513,7 @@ openpx polymarket fetch-markets --cursor "next_page_token"
 
 | Flag | Description |
 |------|-------------|
-| `--status` | Filter by status: `active`, `closed`, `resolved` |
+| `--status` | Filter by status: `active`, `closed`, `resolved`, `all` |
 | `--cursor` | Pagination cursor from a previous response |
 | `--limit` | Max markets to return |
 
@@ -1832,13 +1829,16 @@ with NAPI-RS.
 
 ```rust
 use px_sdk::ExchangeInner;
+use px_core::FetchMarketsParams;
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let exchange = ExchangeInner::new("polymarket", json!({}))?;
 
-    let markets = exchange.fetch_markets().await?;
+    let (markets, _cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await?;
     for m in &markets {
         println!("[{}] {} — {:?}", m.id, m.title, m.outcome_prices);
     }
@@ -2835,17 +2835,17 @@ A fill event received via WebSocket, representing a trade execution on one of yo
 
 ```rust
 pub struct ActivityFill {
+    pub market_id: String,
     pub asset_id: String,
     pub fill_id: Option<String>,
-    pub liquidity_role: Option<LiquidityRole>,
-    pub market_id: String,
     pub order_id: Option<String>,
-    pub outcome: Option<String>,
     pub price: f64,
-    pub side: Option<String>,
     pub size: f64,
-    pub source_channel: String,
+    pub side: Option<String>,
+    pub outcome: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
+    pub source_channel: Cow<'static, str>,
+    pub liquidity_role: Option<LiquidityRole>,
 }
 ```
 
@@ -3000,12 +3000,11 @@ interface ExchangeInfo {
 
 
 
-### FetchUserActivityParams
+### FetchOrdersParams
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `address` | `string` | Yes | P O | User wallet address to query activity for |
-| `limit` | `number \| null` | No | P O | Maximum number of results to return |
+| `market_id` | `string \| null` | No | K P O | Filter orders to a specific market |
 
 
 
@@ -3013,9 +3012,8 @@ interface ExchangeInfo {
 
 
 ```rust
-pub struct FetchUserActivityParams {
-    pub address: String,
-    pub limit: Option<i64>,
+pub struct FetchOrdersParams {
+    pub market_id: Option<String>,
 }
 ```
 
@@ -3025,9 +3023,8 @@ pub struct FetchUserActivityParams {
 
 
 ```python
-class FetchUserActivityParams(BaseModel):
-    address: str
-    limit: Optional[int]
+class FetchOrdersParams(BaseModel):
+    market_id: Optional[str]
 ```
 
 
@@ -3036,9 +3033,8 @@ class FetchUserActivityParams(BaseModel):
 
 
 ```typescript
-interface FetchUserActivityParams {
-  address: string;
-  limit?: number | null;
+interface FetchOrdersParams {
+  market_id?: string | null;
 }
 ```
 
@@ -3046,13 +3042,16 @@ interface FetchUserActivityParams {
 
 
 
-### OrderbookRequest
+### OrderbookHistoryRequest
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `market_id` | `string` | Yes | K P O | Native market ID to fetch the orderbook for |
-| `outcome` | `string \| null` | No | K O | Filter by outcome name (e.g., `"Yes"`). Required for non-binary Opinion markets |
-| `token_id` | `string \| null` | No | P | Directly specify the token ID to fetch. Bypasses outcome resolution |
+| `cursor` | `string \| null` | No | P | Opaque pagination cursor from a previous response |
+| `end_ts` | `number \| null` | No | P | End time filter (Unix seconds) |
+| `limit` | `number \| null` | No | P | Maximum number of snapshots per page |
+| `market_id` | `string` | Yes | P | Native market ID to fetch history for |
+| `start_ts` | `number \| null` | No | P | Start time filter (Unix seconds) |
+| `token_id` | `string \| null` | No | P | Filter to a specific token ID |
 
 
 
@@ -3060,10 +3059,13 @@ interface FetchUserActivityParams {
 
 
 ```rust
-pub struct OrderbookRequest {
+pub struct OrderbookHistoryRequest {
     pub market_id: String,
-    pub outcome: Option<String>,
     pub token_id: Option<String>,
+    pub start_ts: Option<i64>,
+    pub end_ts: Option<i64>,
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
 }
 ```
 
@@ -3073,10 +3075,13 @@ pub struct OrderbookRequest {
 
 
 ```python
-class OrderbookRequest(BaseModel):
+class OrderbookHistoryRequest(BaseModel):
     market_id: str
-    outcome: Optional[str]
     token_id: Optional[str]
+    start_ts: Optional[int]
+    end_ts: Optional[int]
+    limit: Optional[int]
+    cursor: Optional[str]
 ```
 
 
@@ -3085,10 +3090,13 @@ class OrderbookRequest(BaseModel):
 
 
 ```typescript
-interface OrderbookRequest {
+interface OrderbookHistoryRequest {
   market_id: string;
-  outcome?: string | null;
   token_id?: string | null;
+  start_ts?: number | null;
+  end_ts?: number | null;
+  limit?: number | null;
+  cursor?: string | null;
 }
 ```
 
@@ -3096,15 +3104,14 @@ interface OrderbookRequest {
 
 
 
-### TradesRequest
+### PriceHistoryRequest
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `cursor` | `string \| null` | No | K P | Opaque pagination cursor from a previous response |
+| `condition_id` | `string \| null` | No | P | Condition ID for open interest enrichment (Polymarket only) |
 | `end_ts` | `number \| null` | No | K P | End time filter (Unix seconds, inclusive) |
-| `limit` | `number \| null` | No | K P | Maximum number of trades to return |
-| `market_id` | `string` | Yes | K P | Native market ID to fetch trades for |
-| `market_ref` | `string \| null` | No | P | Alternate market identifier (e.g., Polymarket `conditionId`) |
+| `interval` | `PriceHistoryInterval` | Yes | K P | Candle interval (e.g., `"1h"`, `"1d"`) |
+| `market_id` | `string` | Yes | K P | Native market ID to fetch candles for |
 | `outcome` | `string \| null` | No | K | Filter by outcome name (Kalshi only) |
 | `start_ts` | `number \| null` | No | K P | Start time filter (Unix seconds, inclusive) |
 | `token_id` | `string \| null` | No | P | Filter by token ID (Polymarket only) |
@@ -3115,15 +3122,14 @@ interface OrderbookRequest {
 
 
 ```rust
-pub struct TradesRequest {
+pub struct PriceHistoryRequest {
     pub market_id: String,
+    pub outcome: Option<String>,
     pub token_id: Option<String>,
-    pub market_ref: Option<String>,
+    pub condition_id: Option<String>,
+    pub interval: PriceHistoryInterval,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
-    pub limit: Option<i64>,
-    pub cursor: Option<String>,
-    pub outcome: Option<String>,
 }
 ```
 
@@ -3133,15 +3139,14 @@ pub struct TradesRequest {
 
 
 ```python
-class TradesRequest(BaseModel):
+class PriceHistoryRequest(BaseModel):
     market_id: str
+    interval: PriceHistoryInterval
     token_id: Optional[str]
-    market_ref: Optional[str]
     start_ts: Optional[int]
     end_ts: Optional[int]
-    limit: Optional[int]
-    cursor: Optional[str]
     outcome: Optional[str]
+    condition_id: Optional[str]
 ```
 
 
@@ -3150,20 +3155,152 @@ class TradesRequest(BaseModel):
 
 
 ```typescript
-interface TradesRequest {
+interface PriceHistoryRequest {
   market_id: string;
+  interval: PriceHistoryInterval;
   token_id?: string | null;
-  market_ref?: string | null;
   start_ts?: number | null;
   end_ts?: number | null;
-  limit?: number | null;
-  cursor?: string | null;
   outcome?: string | null;
+  condition_id?: string | null;
 }
 ```
 
 
 
 
-title: Exchanges
-title: Error Handling
+
+## Supported Exchanges
+
+### Kalshi
+
+- **ID:** `kalshi`
+- **Website:** [kalshi.com](https://kalshi.com)
+- **API Docs:** [docs.kalshi.com](https://docs.kalshi.com)
+- **Auth:** RSA key pair (`api_key_id` + `private_key_pem`)
+- **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades, WebSocket
+
+### Polymarket
+
+- **ID:** `polymarket`
+- **Website:** [polymarket.com](https://polymarket.com)
+- **API Docs:** [docs.polymarket.com](https://docs.polymarket.com/developers/)
+- **Auth:** Private key + optional CLOB API credentials
+- **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades, WebSocket
+
+### Opinion
+
+- **ID:** `opinion`
+- **Website:** [opinion.trade](https://opinion.trade)
+- **API Docs:** [docs.opinion.trade](https://docs.opinion.trade/developer-guide/opinion-open-api)
+- **Auth:** API key + private key + multi-sig address
+- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket (requires auth)
+
+## Configuration
+
+All exchanges accept a JSON config object. Pass exchange-specific fields:
+
+```json
+{
+  "kalshi": {
+    "api_key_id": "...",
+    "private_key_pem": "...",
+    "demo": false
+  },
+  "polymarket": {
+    "private_key": "0x...",
+    "funder": "0x...",
+    "api_key": "...",
+    "api_secret": "...",
+    "api_passphrase": "..."
+  },
+  "opinion": {
+    "api_key": "...",
+    "private_key": "0x...",
+    "multi_sig_addr": "0x..."
+  }
+}
+```
+
+
+## Error Hierarchy
+
+```
+OpenPxError
+├── Network
+│   ├── Http(String)
+│   ├── Timeout(u64)
+│   └── Connection(String)
+├── Exchange
+│   ├── MarketNotFound(String)
+│   ├── InvalidOrder(String)
+│   ├── OrderRejected(String)
+│   ├── InsufficientFunds(String)
+│   ├── Authentication(String)
+│   ├── NotSupported(String)
+│   └── Api(String)
+├── WebSocket
+│   ├── Connection(String)
+│   ├── Closed
+│   ├── Protocol(String)
+│   └── Subscription(String)
+├── Signing
+│   ├── InvalidKey
+│   ├── SigningFailed(String)
+│   └── Unsupported(String)
+├── RateLimitExceeded
+├── Serialization(Error)
+├── Config(String)
+├── InvalidInput(String)
+└── Other(String)
+```
+
+## Language Mapping
+
+
+
+**Rust**
+
+```rust
+use px_core::{OpenPxError, ExchangeError};
+
+match result {
+    Err(OpenPxError::Exchange(ExchangeError::Authentication(msg))) => {
+        eprintln!("Auth failed: {msg}");
+    }
+    Err(OpenPxError::Network(e)) => {
+        eprintln!("Network error: {e}");
+    }
+    Err(e) => eprintln!("Error: {e}"),
+    Ok(v) => { /* success */ }
+}
+```
+
+
+**Python**
+
+```python
+from openpx import Exchange, OpenPxError, AuthenticationError, NetworkError
+
+try:
+    exchange.fetch_balance()
+except AuthenticationError as e:
+    print(f"Auth failed: {e}")
+except NetworkError as e:
+    print(f"Network error: {e}")
+except OpenPxError as e:
+    print(f"Error: {e}")
+```
+
+
+**TypeScript**
+
+```typescript
+try {
+  await exchange.fetchBalance();
+} catch (e) {
+  console.error(e.message);
+}
+```
+
+

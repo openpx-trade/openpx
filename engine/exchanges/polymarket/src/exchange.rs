@@ -21,10 +21,10 @@ use tracing::info;
 use px_core::{
     canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick,
     Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    FetchUserActivityParams, Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError,
-    Order, OrderSide, OrderStatus, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot,
-    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade,
-    RateLimiter, TradesRequest,
+    FetchUserActivityParams, Fill, Market, MarketStatus, MarketStatusFilter, MarketTrade,
+    MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OrderbookHistoryRequest,
+    OrderbookSnapshot, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
+    PriceLevel, PublicTrade, RateLimiter, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -1645,9 +1645,11 @@ impl Exchange for Polymarket {
         // getting events whose markets are all closed.
         // Polymarket has no separate "resolved" state — closed=true means settled.
         let status_param = match params.status {
-            Some(MarketStatus::Active) => "active=true&closed=false",
-            Some(MarketStatus::Closed) | Some(MarketStatus::Resolved) => "closed=true",
-            None => "active=true&closed=false",
+            Some(MarketStatusFilter::Active) | None => Some("active=true&closed=false"),
+            Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => {
+                Some("closed=true")
+            }
+            Some(MarketStatusFilter::All) => None,
         };
 
         let offset = params
@@ -1656,7 +1658,10 @@ impl Exchange for Polymarket {
             .and_then(|c| c.parse::<usize>().ok())
             .unwrap_or(0);
 
-        let endpoint = format!("/events?limit=200&{status_param}&offset={offset}");
+        let endpoint = match status_param {
+            Some(sp) => format!("/events?limit=200&{sp}&offset={offset}"),
+            None => format!("/events?limit=200&offset={offset}"),
+        };
 
         self.rate_limit().await;
 
@@ -1680,7 +1685,7 @@ impl Exchange for Polymarket {
                 continue;
             };
 
-            let requested_status = params.status.unwrap_or(MarketStatus::Active);
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
 
             for market_raw in market_array {
                 let raw = market_raw.clone();
@@ -1689,14 +1694,22 @@ impl Exchange for Polymarket {
                     // only return markets matching the requested status.
                     // Polymarket has no separate "closed" vs "resolved" state, so
                     // accept Resolved for both Closed and Resolved requests.
-                    let status_matches = match requested_status {
-                        MarketStatus::Active => parsed.status == MarketStatus::Active,
-                        MarketStatus::Closed | MarketStatus::Resolved => {
-                            matches!(parsed.status, MarketStatus::Closed | MarketStatus::Resolved)
+                    if filter != MarketStatusFilter::All {
+                        let status_matches = match filter {
+                            MarketStatusFilter::Active => {
+                                parsed.status == MarketStatus::Active
+                            }
+                            MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
+                                matches!(
+                                    parsed.status,
+                                    MarketStatus::Closed | MarketStatus::Resolved
+                                )
+                            }
+                            MarketStatusFilter::All => unreachable!(),
+                        };
+                        if !status_matches {
+                            continue;
                         }
-                    };
-                    if !status_matches {
-                        continue;
                     }
                     if parsed.group_id.is_none() {
                         parsed.group_id = Some(native_event_id.clone());

@@ -297,6 +297,47 @@ type MarketStatus = "active" | "closed" | "resolved";
 
 ---
 
+### MarketStatusFilter
+
+Filter enum for `fetch_markets` queries. Includes all `MarketStatus` variants plus `all` to fetch markets regardless of status.
+
+Enum with variants: `active`, `closed`, `resolved`, `all`
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub enum MarketStatusFilter {
+    Active,
+    Closed,
+    Resolved,
+    All,
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+class MarketStatusFilter(str, Enum):
+    ACTIVE = "active"
+    CLOSED = "closed"
+    RESOLVED = "resolved"
+    ALL = "all"
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
+```
+
+</TabItem>
+</Tabs>
+
+---
+
 ### MarketType
 
 Enum with variants: `binary`, `categorical`, `scalar`
@@ -1166,15 +1207,15 @@ type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
 
 ### ActivityEvent
 
-Enum with variants: `Trade`, `Fill`
+Tagged enum — each variant wraps its payload type.
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
 
 ```rust
 pub enum ActivityEvent {
-    Trade,
-    Fill,
+    Trade(ActivityTrade),
+    Fill(ActivityFill),
 }
 ```
 
@@ -1182,16 +1223,17 @@ pub enum ActivityEvent {
 <TabItem label="Python">
 
 ```python
-class ActivityEvent(str, Enum):
-    TRADE = "Trade"
-    FILL = "Fill"
+# Deserialized as a dict with a single key: "Trade" or "Fill"
+# e.g. {"Trade": { ... }} or {"Fill": { ... }}
 ```
 
 </TabItem>
 <TabItem label="TypeScript">
 
 ```typescript
-type ActivityEvent = "Trade" | "Fill";
+type ActivityEvent =
+  | { Trade: ActivityTrade }
+  | { Fill: ActivityFill };
 ```
 
 </TabItem>
@@ -1222,17 +1264,17 @@ A fill event received via WebSocket, representing a trade execution on one of yo
 
 ```rust
 pub struct ActivityFill {
+    pub market_id: String,
     pub asset_id: String,
     pub fill_id: Option<String>,
-    pub liquidity_role: Option<LiquidityRole>,
-    pub market_id: String,
     pub order_id: Option<String>,
-    pub outcome: Option<String>,
     pub price: f64,
-    pub side: Option<String>,
     pub size: f64,
-    pub source_channel: String,
+    pub side: Option<String>,
+    pub outcome: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
+    pub source_channel: Cow<'static, str>,
+    pub liquidity_role: Option<LiquidityRole>,
 }
 ```
 
@@ -1300,16 +1342,16 @@ A public trade event received via WebSocket.
 
 ```rust
 pub struct ActivityTrade {
-    pub aggressor_side: Option<String>,
-    pub asset_id: String,
     pub market_id: String,
-    pub outcome: Option<String>,
-    pub price: f64,
-    pub side: Option<String>,
-    pub size: f64,
-    pub source_channel: String,
-    pub timestamp: Option<DateTime<Utc>>,
+    pub asset_id: String,
     pub trade_id: Option<String>,
+    pub price: f64,
+    pub size: f64,
+    pub side: Option<String>,
+    pub aggressor_side: Option<String>,
+    pub outcome: Option<String>,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub source_channel: Cow<'static, str>,
 }
 ```
 
@@ -1454,6 +1496,51 @@ interface ExchangeInfo {
 
 ---
 
+### FetchMarketsParams
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `cursor` | `string \| null` | No | K P O | Exchange-specific cursor (offset, page number, or cursor string) for pagination |
+| `limit` | `number \| null` | No | K P O | Maximum number of markets to return per page |
+| `status` | `MarketStatusFilter \| null` | No | K P O | Filter by market status. Defaults to `active` when omitted. Use `all` to fetch markets of any status |
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub struct FetchMarketsParams {
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+    pub status: Option<MarketStatusFilter>,
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+class FetchMarketsParams(BaseModel):
+    limit: Optional[int]
+    cursor: Optional[str]
+    status: Optional[MarketStatusFilter]
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+interface FetchMarketsParams {
+  limit?: number | null;
+  cursor?: string | null;
+  status?: MarketStatusFilter | null;
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
 ### FetchOrdersParams
 
 | Field | Type | Required | Exchanges | Description |
@@ -1504,7 +1591,7 @@ interface FetchOrdersParams {
 ```rust
 pub struct FetchUserActivityParams {
     pub address: String,
-    pub limit: Option<i64>,
+    pub limit: Option<usize>,
 }
 ```
 
@@ -1552,7 +1639,7 @@ pub struct OrderbookHistoryRequest {
     pub token_id: Option<String>,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
-    pub limit: Option<i64>,
+    pub limit: Option<usize>,
     pub cursor: Option<String>,
 }
 ```
@@ -1652,12 +1739,12 @@ interface OrderbookRequest {
 ```rust
 pub struct PriceHistoryRequest {
     pub market_id: String,
-    pub interval: PriceHistoryInterval,
+    pub outcome: Option<String>,
     pub token_id: Option<String>,
+    pub condition_id: Option<String>,
+    pub interval: PriceHistoryInterval,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
-    pub outcome: Option<String>,
-    pub condition_id: Option<String>,
 }
 ```
 
@@ -1714,13 +1801,13 @@ interface PriceHistoryRequest {
 ```rust
 pub struct TradesRequest {
     pub market_id: String,
-    pub token_id: Option<String>,
     pub market_ref: Option<String>,
+    pub outcome: Option<String>,
+    pub token_id: Option<String>,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
-    pub limit: Option<i64>,
+    pub limit: Option<usize>,
     pub cursor: Option<String>,
-    pub outcome: Option<String>,
 }
 ```
 

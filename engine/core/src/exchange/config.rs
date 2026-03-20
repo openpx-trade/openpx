@@ -1,6 +1,53 @@
 use std::time::Duration;
 
-use crate::models::MarketStatus;
+/// Filter for market status in fetch queries.
+///
+/// Unlike `MarketStatus` (which represents a market's actual status), this enum
+/// includes an `All` variant for fetching markets regardless of status.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum MarketStatusFilter {
+    Active,
+    Closed,
+    Resolved,
+    All,
+}
+
+impl std::fmt::Display for MarketStatusFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MarketStatusFilter::Active => write!(f, "active"),
+            MarketStatusFilter::Closed => write!(f, "closed"),
+            MarketStatusFilter::Resolved => write!(f, "resolved"),
+            MarketStatusFilter::All => write!(f, "all"),
+        }
+    }
+}
+
+impl std::str::FromStr for MarketStatusFilter {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "active" | "open" => Ok(MarketStatusFilter::Active),
+            "closed" | "inactive" | "paused" => Ok(MarketStatusFilter::Closed),
+            "resolved" | "settled" | "determined" | "finalized" => Ok(MarketStatusFilter::Resolved),
+            "all" => Ok(MarketStatusFilter::All),
+            _ => Err(format!("Unknown market status filter: {}", s)),
+        }
+    }
+}
+
+impl From<crate::models::MarketStatus> for MarketStatusFilter {
+    fn from(s: crate::models::MarketStatus) -> Self {
+        match s {
+            crate::models::MarketStatus::Active => MarketStatusFilter::Active,
+            crate::models::MarketStatus::Closed => MarketStatusFilter::Closed,
+            crate::models::MarketStatus::Resolved => MarketStatusFilter::Resolved,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ExchangeConfig {
@@ -58,8 +105,9 @@ pub struct FetchMarketsParams {
     #[serde(default)]
     pub cursor: Option<String>,
     /// Filter by market status. Defaults to Active at the exchange level when None.
+    /// Use `MarketStatusFilter::All` to fetch markets of any status.
     #[serde(default)]
-    pub status: Option<MarketStatus>,
+    pub status: Option<MarketStatusFilter>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -149,6 +197,97 @@ impl PolymarketCredentials {
             api_passphrase,
             signature_type: resolved_signature_type,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::MarketStatus;
+
+    #[test]
+    fn market_status_filter_from_str() {
+        assert_eq!(
+            "active".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::Active
+        );
+        assert_eq!(
+            "open".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::Active
+        );
+        assert_eq!(
+            "closed".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::Closed
+        );
+        assert_eq!(
+            "resolved".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::Resolved
+        );
+        assert_eq!(
+            "settled".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::Resolved
+        );
+        assert_eq!(
+            "all".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::All
+        );
+        assert_eq!(
+            "ALL".parse::<MarketStatusFilter>().unwrap(),
+            MarketStatusFilter::All
+        );
+        assert!("invalid".parse::<MarketStatusFilter>().is_err());
+    }
+
+    #[test]
+    fn market_status_filter_display() {
+        assert_eq!(MarketStatusFilter::Active.to_string(), "active");
+        assert_eq!(MarketStatusFilter::Closed.to_string(), "closed");
+        assert_eq!(MarketStatusFilter::Resolved.to_string(), "resolved");
+        assert_eq!(MarketStatusFilter::All.to_string(), "all");
+    }
+
+    #[test]
+    fn market_status_filter_from_market_status() {
+        assert_eq!(
+            MarketStatusFilter::from(MarketStatus::Active),
+            MarketStatusFilter::Active
+        );
+        assert_eq!(
+            MarketStatusFilter::from(MarketStatus::Closed),
+            MarketStatusFilter::Closed
+        );
+        assert_eq!(
+            MarketStatusFilter::from(MarketStatus::Resolved),
+            MarketStatusFilter::Resolved
+        );
+    }
+
+    #[test]
+    fn market_status_filter_serde_roundtrip() {
+        let filter = MarketStatusFilter::All;
+        let json = serde_json::to_string(&filter).unwrap();
+        assert_eq!(json, "\"all\"");
+        let parsed: MarketStatusFilter = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MarketStatusFilter::All);
+    }
+
+    #[test]
+    fn fetch_markets_params_default_status_is_none() {
+        let params = FetchMarketsParams::default();
+        assert!(params.status.is_none());
+    }
+
+    #[test]
+    fn fetch_markets_params_serde_with_all_status() {
+        let params = FetchMarketsParams {
+            status: Some(MarketStatusFilter::All),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["status"], "all");
+
+        let parsed: FetchMarketsParams = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.status, Some(MarketStatusFilter::All));
     }
 }
 

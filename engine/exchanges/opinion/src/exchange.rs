@@ -7,9 +7,9 @@ use std::borrow::Cow;
 use px_core::{
     canonical_event_id, manifests::OPINION_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
     ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
-    Fill, Market, MarketStatus, MarketTrade, MarketType, OpenPxError, Order, OrderSide,
-    OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
-    PriceLevel, PricePoint, RateLimiter, TradesRequest,
+    Fill, Market, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
+    OrderSide, OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, PricePoint, RateLimiter, TradesRequest,
 };
 
 use crate::config::OpinionConfig;
@@ -749,15 +749,17 @@ impl Opinion {
         let page = (offset / limit) + 1;
 
         let status_str = match params.status {
-            Some(MarketStatus::Active) => "activated",
-            Some(MarketStatus::Closed) | Some(MarketStatus::Resolved) => "resolved",
-            None => "activated",
+            Some(MarketStatusFilter::Active) | None => Some("activated"),
+            Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => {
+                Some("resolved")
+            }
+            Some(MarketStatusFilter::All) => None,
         };
 
-        let endpoint = format!(
-            "/openapi/market?marketType=2&page={}&limit={}&status={}",
-            page, limit, status_str
-        );
+        let mut endpoint = format!("/openapi/market?marketType=2&page={}&limit={}", page, limit);
+        if let Some(s) = status_str {
+            endpoint.push_str(&format!("&status={}", s));
+        }
 
         let resp: ApiResponse<serde_json::Value> = self
             .get(&endpoint)
@@ -773,11 +775,22 @@ impl Opinion {
         let markets_list = resp.result.and_then(|r| r.list).unwrap_or_default();
         let api_count = markets_list.len();
 
-        let requested_status = params.status.unwrap_or(MarketStatus::Active);
+        let filter = params.status.unwrap_or(MarketStatusFilter::Active);
         let markets: Vec<Market> = markets_list
             .into_iter()
             .filter_map(|v| self.parse_market(v))
-            .filter(|m| m.status == requested_status)
+            .filter(|m| {
+                if filter == MarketStatusFilter::All {
+                    return true;
+                }
+                let requested = match filter {
+                    MarketStatusFilter::Active => MarketStatus::Active,
+                    MarketStatusFilter::Closed => MarketStatus::Closed,
+                    MarketStatusFilter::Resolved => MarketStatus::Resolved,
+                    MarketStatusFilter::All => unreachable!(),
+                };
+                m.status == requested
+            })
             .collect();
 
         // Base cursor on API response count, not post-filter count.

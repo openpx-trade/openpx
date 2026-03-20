@@ -21,6 +21,7 @@ pub trait Exchange: Send + Sync {
     /// Returns `(markets, next_cursor)` where `next_cursor` is `None` when no more pages.
     /// Callers paginate externally by passing `next_cursor` back in `params.cursor`.
     /// When `params.status` is `None`, exchanges default to `Active`.
+    /// When `params.status` is `Some(All)`, exchanges return all markets regardless of status.
     async fn fetch_markets(
         &self,
         params: &FetchMarketsParams,

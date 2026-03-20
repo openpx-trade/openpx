@@ -3,7 +3,8 @@ use std::env;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
 use openpx::{ExchangeInner, WebSocketInner};
-use px_core::models::{CryptoPriceSource, MarketStatus, PriceHistoryInterval};
+use px_core::models::{CryptoPriceSource, PriceHistoryInterval};
+use px_core::MarketStatusFilter;
 use px_core::websocket::OrderBookWebSocket;
 use px_core::{
     FetchMarketsParams, FetchOrdersParams, OrderbookHistoryRequest, OrderbookRequest,
@@ -167,6 +168,7 @@ enum StatusArg {
     Active,
     Closed,
     Resolved,
+    All,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -184,12 +186,13 @@ impl From<CryptoSourceArg> for CryptoPriceSource {
     }
 }
 
-impl From<StatusArg> for MarketStatus {
+impl From<StatusArg> for MarketStatusFilter {
     fn from(s: StatusArg) -> Self {
         match s {
-            StatusArg::Active => MarketStatus::Active,
-            StatusArg::Closed => MarketStatus::Closed,
-            StatusArg::Resolved => MarketStatus::Resolved,
+            StatusArg::Active => MarketStatusFilter::Active,
+            StatusArg::Closed => MarketStatusFilter::Closed,
+            StatusArg::Resolved => MarketStatusFilter::Resolved,
+            StatusArg::All => MarketStatusFilter::All,
         }
     }
 }

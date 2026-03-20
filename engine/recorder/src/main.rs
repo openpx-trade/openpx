@@ -12,7 +12,8 @@ use openpx::{ExchangeInner, WebSocketInner};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use px_core::models::{MarketStatus, OrderbookUpdate};
+use px_core::models::OrderbookUpdate;
+use px_core::MarketStatusFilter;
 use px_core::websocket::{OrderBookWebSocket, OrderbookStream};
 use px_core::FetchMarketsParams;
 use tokio::sync::Mutex;
@@ -155,7 +156,7 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
 
     loop {
         let params = FetchMarketsParams {
-            status: Some(MarketStatus::Active),
+            status: Some(MarketStatusFilter::Active),
             cursor: cursor.clone(),
             limit: Some(MARKET_FETCH_LIMIT),
         };

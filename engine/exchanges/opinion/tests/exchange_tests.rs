@@ -1,4 +1,4 @@
-use px_core::{Exchange, FetchMarketsParams, FixedPrice};
+use px_core::{Exchange, FetchMarketsParams, FixedPrice, MarketStatus, MarketStatusFilter};
 use px_exchange_opinion::{Opinion, OpinionConfig};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -604,4 +604,138 @@ async fn test_fetch_markets_pagination_full_page() {
         cursor.is_some(),
         "cursor should be Some when a full page of 20 markets is returned"
     );
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: MarketStatusFilter::All returns all statuses
+// ---------------------------------------------------------------------------
+
+fn sample_mixed_status_markets_response() -> serde_json::Value {
+    serde_json::json!({
+        "errno": 0,
+        "errmsg": null,
+        "result": {
+            "list": [
+                {
+                    "market_id": "op-active",
+                    "market_title": "Active market",
+                    "yes_token_id": "yes_active",
+                    "no_token_id": "no_active",
+                    "yes_label": "Yes",
+                    "no_label": "No",
+                    "volume": 1000.0,
+                    "liquidity": 500.0,
+                    "description": "Currently active",
+                    "statusEnum": "Activated"
+                },
+                {
+                    "market_id": "op-resolved",
+                    "market_title": "Resolved market",
+                    "yes_token_id": "yes_resolved",
+                    "no_token_id": "no_resolved",
+                    "yes_label": "Yes",
+                    "no_label": "No",
+                    "volume": 5000.0,
+                    "liquidity": 0.0,
+                    "description": "Already resolved",
+                    "statusEnum": "Resolved"
+                }
+            ]
+        }
+    })
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_all_returns_all_statuses() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(sample_mixed_status_markets_response()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::All),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — both active and resolved markets returned
+    assert_eq!(markets.len(), 2);
+
+    let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"op-active"));
+    assert!(ids.contains(&"op-resolved"));
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_active_filters_correctly() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(sample_mixed_status_markets_response()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Active),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — only the active market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "op-active");
+    assert_eq!(markets[0].status, MarketStatus::Active);
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_resolved_filters_correctly() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(sample_mixed_status_markets_response()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Resolved),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — only the resolved market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "op-resolved");
+    assert_eq!(markets[0].status, MarketStatus::Resolved);
 }

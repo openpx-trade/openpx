@@ -109,7 +109,7 @@ exchange.name; // "Kalshi"
 <TabItem label="CLI">
 ```bash
 # The CLI implicitly uses the exchange ID you pass:
-openpx kalshi describe | jq '.id, .name'
+openpx kalshi fetch-markets --limit 1 | jq '.markets[0].exchange'
 ```
 </TabItem>
 </Tabs>
@@ -146,8 +146,7 @@ console.log(`Has price history: ${info.has_fetch_price_history}`);
 </TabItem>
 <TabItem label="CLI">
 ```bash
-openpx kalshi describe
-openpx kalshi describe | jq '.has_websocket, .has_fetch_price_history'
+# describe is available via the SDK; the CLI does not have a dedicated command for it.
 ```
 </TabItem>
 </Tabs>
@@ -163,8 +162,9 @@ for the next page.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `status` | `string` | No | Filter by status: `"active"`, `"closed"`, `"resolved"`. Defaults to `"active"` |
+| `status` | `string` | No | Filter by status: `"active"`, `"closed"`, `"resolved"`, `"all"`. Defaults to `"active"` |
 | `cursor` | `string` | No | Opaque cursor from a previous response for pagination |
+| `limit` | `int` | No | Max markets to return per page |
 
 **Returns:** `{ markets: Market[], cursor: string | null }` — see [`Market`](/reference/models/#market)
 
@@ -306,8 +306,7 @@ console.log(`Order ${order.id}: ${order.status}`);
 </TabItem>
 <TabItem label="CLI">
 ```bash
-openpx kalshi create-order KXBTC-25MAR14 \
-  --outcome Yes --side buy --price 0.65 --size 10
+# create-order is available via the SDK; the CLI is read-only.
 ```
 </TabItem>
 </Tabs>
@@ -344,8 +343,7 @@ console.log(`Cancelled: ${cancelled.status}`);
 </TabItem>
 <TabItem label="CLI">
 ```bash
-openpx kalshi cancel-order ORDER_ID
-openpx polymarket cancel-order ORDER_ID --market-id "0x1234..."
+# cancel-order is available via the SDK; the CLI is read-only.
 ```
 </TabItem>
 </Tabs>

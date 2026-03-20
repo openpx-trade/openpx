@@ -1,4 +1,4 @@
-use px_core::{Exchange, FetchMarketsParams};
+use px_core::{Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter};
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -529,4 +529,135 @@ async fn test_fetch_market_single_returns_correct_exchange_field() {
     );
     assert_eq!(market.openpx_id, "polymarket:abc-123");
     assert_eq!(market.id, "abc-123");
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: MarketStatusFilter::All returns all statuses
+// ---------------------------------------------------------------------------
+
+fn sample_mixed_status_events() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "id": "event-mixed",
+            "title": "Mixed Status Event",
+            "markets": [
+                {
+                    "id": "pm-active",
+                    "question": "Active market?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.60\", \"0.40\"]",
+                    "volumeNum": 1000.0,
+                    "liquidityNum": 500.0,
+                    "minimum_tick_size": 0.01,
+                    "description": "Currently active",
+                    "active": true,
+                    "closed": false
+                },
+                {
+                    "id": "pm-closed",
+                    "question": "Closed market?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.90\", \"0.10\"]",
+                    "volumeNum": 5000.0,
+                    "liquidityNum": 0.0,
+                    "minimum_tick_size": 0.01,
+                    "description": "Already settled",
+                    "active": false,
+                    "closed": true
+                }
+            ]
+        }
+    ])
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_all_returns_all_statuses() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::All),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — both active and closed markets returned
+    assert_eq!(markets.len(), 2);
+
+    let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"pm-active"));
+    assert!(ids.contains(&"pm-closed"));
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_active_filters_correctly() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Active),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — only active market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "pm-active");
+    assert_eq!(markets[0].status, MarketStatus::Active);
+}
+
+#[tokio::test]
+async fn test_fetch_markets_status_resolved_filters_correctly() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        status: Some(MarketStatusFilter::Resolved),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — only the closed/resolved market
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "pm-closed");
+    assert_eq!(markets[0].status, MarketStatus::Resolved);
 }

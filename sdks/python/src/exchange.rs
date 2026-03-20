@@ -53,7 +53,7 @@ impl NativeExchange {
         let rt = get_runtime();
         let fetch_params = px_core::FetchMarketsParams {
             status: status
-                .map(|s| s.parse::<px_core::MarketStatus>())
+                .map(|s| s.parse::<px_core::MarketStatusFilter>())
                 .transpose()
                 .map_err(to_py_err)?,
             cursor: cursor.map(String::from),

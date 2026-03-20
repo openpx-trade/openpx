@@ -8,9 +8,9 @@ use tokio::sync::Mutex;
 use px_core::{
     canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
     ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketStatus, MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
-    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter,
-    TradesRequest,
+    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderSide,
+    OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
+    PriceLevel, RateLimiter, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -908,21 +908,23 @@ impl Exchange for Kalshi {
         }
 
         let status_str = match params.status {
-            Some(MarketStatus::Active) => "open",
-            Some(MarketStatus::Closed) => "closed",
-            Some(MarketStatus::Resolved) => "settled",
-            None => "open",
+            Some(MarketStatusFilter::Active) | None => Some("open"),
+            Some(MarketStatusFilter::Closed) => Some("closed"),
+            Some(MarketStatusFilter::Resolved) => Some("settled"),
+            Some(MarketStatusFilter::All) => None,
         };
 
-        let mut endpoint =
-            format!("/events?limit=200&with_nested_markets=true&status={status_str}");
+        let mut endpoint = match status_str {
+            Some(s) => format!("/events?limit=200&with_nested_markets=true&status={s}"),
+            None => "/events?limit=200&with_nested_markets=true".to_string(),
+        };
         if let Some(ref c) = params.cursor {
             endpoint.push_str(&format!("&cursor={c}"));
         }
 
         let resp: EventsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
 
-        let requested_status = params.status.unwrap_or(MarketStatus::Active);
+        let filter = params.status.unwrap_or(MarketStatusFilter::Active);
         let mut all_markets = Vec::new();
         let map_start = Instant::now();
         for event in &resp.events {
@@ -931,8 +933,16 @@ impl Exchange for Kalshi {
                     if let Some(market) = self.parse_market(raw) {
                         // Events can contain markets with mixed statuses — filter to
                         // only return markets matching the requested status.
-                        if market.status != requested_status {
-                            continue;
+                        if filter != MarketStatusFilter::All {
+                            let requested = match filter {
+                                MarketStatusFilter::Active => MarketStatus::Active,
+                                MarketStatusFilter::Closed => MarketStatus::Closed,
+                                MarketStatusFilter::Resolved => MarketStatus::Resolved,
+                                MarketStatusFilter::All => unreachable!(),
+                            };
+                            if market.status != requested {
+                                continue;
+                            }
                         }
                         all_markets.push(market);
                     }

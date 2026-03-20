@@ -73,7 +73,7 @@ impl Exchange {
         let rt = get_runtime();
         let fetch_params = px_core::FetchMarketsParams {
             status: status
-                .map(|s| s.parse::<px_core::MarketStatus>())
+                .map(|s| s.parse::<px_core::MarketStatusFilter>())
                 .transpose()
                 .map_err(to_napi_err)?,
             cursor,
