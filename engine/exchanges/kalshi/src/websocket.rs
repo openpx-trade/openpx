@@ -11,11 +11,12 @@ use tokio_tungstenite::{
     tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
 };
 
+use px_core::websocket::ndjson::NdjsonWriter;
 use px_core::{
     insert_ask, insert_bid, sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream,
     ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, LiquidityRole, OrderBookWebSocket,
     Orderbook, OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide,
-    WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
+    WebSocketError, WebSocketState, WsMessage, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
     WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
@@ -23,8 +24,8 @@ use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
 
 const WS_PATH: &str = "/trade-api/ws/v2";
 
-type OrderbookSender = broadcast::Sender<Result<OrderbookUpdate, WebSocketError>>;
-type ActivitySender = broadcast::Sender<Result<ActivityEvent, WebSocketError>>;
+type OrderbookSender = broadcast::Sender<Result<WsMessage<OrderbookUpdate>, WebSocketError>>;
+type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSocketError>>;
 
 #[derive(Debug, Deserialize)]
 struct SnapshotPayload {
@@ -32,9 +33,9 @@ struct SnapshotPayload {
     #[allow(dead_code)]
     market_id: String,
     #[serde(default)]
-    yes: Option<Vec<[i64; 2]>>,
+    yes_dollars_fp: Option<Vec<[String; 2]>>,
     #[serde(default)]
-    no: Option<Vec<[i64; 2]>>,
+    no_dollars_fp: Option<Vec<[String; 2]>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,8 +43,8 @@ struct DeltaPayload {
     market_ticker: String,
     #[allow(dead_code)]
     market_id: String,
-    price: i64,
-    delta: i64,
+    price_dollars: String,
+    delta_fp: String,
     side: String,
     #[serde(default)]
     ts: Option<String>,
@@ -71,6 +72,8 @@ pub struct KalshiWebSocket {
     reconnect_attempts: Arc<Mutex<u32>>,
     command_id: Arc<AtomicU64>,
     enable_user_fills: bool,
+    seq: Arc<AtomicU64>,
+    ndjson_writer: Option<Arc<NdjsonWriter>>,
 }
 
 impl KalshiWebSocket {
@@ -116,7 +119,14 @@ impl KalshiWebSocket {
             reconnect_attempts: Arc::new(Mutex::new(0)),
             command_id: Arc::new(AtomicU64::new(0)),
             enable_user_fills,
+            seq: Arc::new(AtomicU64::new(0)),
+            ndjson_writer: None,
         })
+    }
+
+    pub fn with_ndjson_writer(mut self, writer: impl std::io::Write + Send + 'static) -> Self {
+        self.ndjson_writer = Some(Arc::new(NdjsonWriter::new(writer)));
+        self
     }
 
     fn set_state(&self, new_state: WebSocketState) {
@@ -202,13 +212,13 @@ impl KalshiWebSocket {
         Ok(())
     }
 
-    fn parse_levels(levels: Option<Vec<[i64; 2]>>) -> Vec<PriceLevel> {
+    fn parse_levels(levels: Option<Vec<[String; 2]>>) -> Vec<PriceLevel> {
         levels
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|[price_cents, size]| {
-                let price = price_cents as f64 / 100.0;
-                let size = size as f64;
+            .filter_map(|[price_str, size_str]| {
+                let price: f64 = price_str.parse().ok()?;
+                let size: f64 = size_str.parse().ok()?;
                 if price > 0.0 && size > 0.0 {
                     Some(PriceLevel::new(price, size))
                 } else {
@@ -272,10 +282,6 @@ impl KalshiWebSocket {
         }
     }
 
-    fn value_to_price(value: Option<&serde_json::Value>) -> Option<f64> {
-        Self::value_to_f64(value).map(|v| if v > 1.0 { v / 100.0 } else { v })
-    }
-
     fn value_to_timestamp(
         value: Option<&serde_json::Value>,
     ) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -301,23 +307,7 @@ impl KalshiWebSocket {
     }
 
     fn unix_timestamp_to_datetime(raw: i64) -> Option<chrono::DateTime<chrono::Utc>> {
-        // Kalshi payloads can arrive as seconds, milliseconds, or microseconds.
-        // Normalize to milliseconds before conversion.
-        let abs = raw.unsigned_abs();
-        let ms = if abs >= 10_000_000_000_000 {
-            // microseconds
-            raw / 1_000
-        } else if abs >= 10_000_000_000 {
-            // milliseconds
-            raw
-        } else if abs >= 1_000_000_000 {
-            // seconds
-            raw.saturating_mul(1_000)
-        } else {
-            // fall back to treating small values as milliseconds
-            raw
-        };
-        chrono::DateTime::from_timestamp_millis(ms)
+        chrono::DateTime::from_timestamp(raw, 0)
     }
 
     async fn handle_snapshot(&self, value: &serde_json::Value) {
@@ -329,8 +319,8 @@ impl KalshiWebSocket {
             None => return,
         };
 
-        let mut bids = Self::parse_levels(payload.yes);
-        let mut asks: Vec<PriceLevel> = Self::parse_levels(payload.no)
+        let mut bids = Self::parse_levels(payload.yes_dollars_fp);
+        let mut asks: Vec<PriceLevel> = Self::parse_levels(payload.no_dollars_fp)
             .into_iter()
             .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
             .collect();
@@ -365,10 +355,15 @@ impl KalshiWebSocket {
             None => return,
         };
 
-        // Kalshi prices arrive as cents — convert directly to FixedPrice
-        // (cents * 100 = scale-10000 ticks, no f64 division needed)
-        let fp = FixedPrice::from_raw(payload.price as u64 * 100);
-        let delta = payload.delta as f64;
+        let price: f64 = match payload.price_dollars.parse() {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let delta: f64 = match payload.delta_fp.parse() {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let fp = FixedPrice::from_f64(price);
         let is_yes = payload.side.eq_ignore_ascii_case("yes");
 
         let mut obs = self.orderbooks.write().await;
@@ -422,7 +417,15 @@ impl KalshiWebSocket {
 
             let senders = self.orderbook_senders.read().await;
             if let Some(sender) = senders.get(&payload.market_ticker) {
-                let _ = sender.send(Ok(OrderbookUpdate::Delta { changes, timestamp }));
+                let msg = WsMessage {
+                    seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                    received_at: chrono::Utc::now(),
+                    data: OrderbookUpdate::Delta { changes, timestamp },
+                };
+                if let Some(ref writer) = self.ndjson_writer {
+                    writer.write_record(&msg);
+                }
+                let _ = sender.send(Ok(msg));
             }
         }
     }
@@ -439,12 +442,8 @@ impl KalshiWebSocket {
             return;
         };
 
-        let price = Self::value_to_price(
-            msg.get("yes_price")
-                .or_else(|| msg.get("price"))
-                .or_else(|| msg.get("yes_price_fp")),
-        );
-        let size = Self::value_to_f64(msg.get("count_fp").or_else(|| msg.get("count")));
+        let price = Self::value_to_f64(msg.get("yes_price_dollars"));
+        let size = Self::value_to_f64(msg.get("count_fp"));
         let Some(price) = price else {
             return;
         };
@@ -452,18 +451,12 @@ impl KalshiWebSocket {
             return;
         };
 
-        let side = msg
-            .get("side")
-            .or_else(|| msg.get("maker_side"))
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
         let aggressor_side = msg
             .get("taker_side")
-            .or_else(|| msg.get("aggressor_side"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let trade_id = Self::value_to_string(msg.get("trade_id"));
-        let timestamp = Self::value_to_timestamp(msg.get("ts").or_else(|| msg.get("timestamp")));
+        let timestamp = Self::value_to_timestamp(msg.get("ts"));
 
         let event = ActivityEvent::Trade(ActivityTrade {
             market_id: market_ticker.clone(),
@@ -471,7 +464,7 @@ impl KalshiWebSocket {
             trade_id,
             price,
             size,
-            side,
+            side: None,
             aggressor_side,
             outcome: None,
             timestamp,
@@ -484,38 +477,29 @@ impl KalshiWebSocket {
         let msg = value.get("msg").unwrap_or(value);
         let market_ticker = msg
             .get("market_ticker")
-            .or_else(|| msg.get("ticker"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let Some(market_ticker) = market_ticker else {
             return;
         };
 
-        let price = Self::value_to_price(
-            msg.get("yes_price")
-                .or_else(|| msg.get("price"))
-                .or_else(|| msg.get("yes_price_fp")),
-        )
-        .unwrap_or(0.0);
-        let size = Self::value_to_f64(
-            msg.get("count")
-                .or_else(|| msg.get("count_fp"))
-                .or_else(|| msg.get("filled_count")),
-        )
-        .unwrap_or(0.0);
+        let price = Self::value_to_f64(msg.get("yes_price_dollars")).unwrap_or(0.0);
+        let size = Self::value_to_f64(msg.get("count_fp")).unwrap_or(0.0);
         if price <= 0.0 || size <= 0.0 {
             return;
         }
 
         let side = msg
             .get("action")
-            .or_else(|| msg.get("side"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let outcome = msg.get("side").and_then(|v| v.as_str()).map(str::to_string);
-        let fill_id = Self::value_to_string(msg.get("fill_id").or_else(|| msg.get("id")));
+        let outcome = msg
+            .get("side")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let fill_id = Self::value_to_string(msg.get("trade_id"));
         let order_id = Self::value_to_string(msg.get("order_id"));
-        let timestamp = Self::value_to_timestamp(msg.get("ts").or_else(|| msg.get("timestamp")));
+        let timestamp = Self::value_to_timestamp(msg.get("ts"));
 
         let liquidity_role = msg
             .get("is_taker")
@@ -609,14 +593,30 @@ impl KalshiWebSocket {
     async fn broadcast_orderbook(&self, market_ticker: &str, orderbook: Orderbook) {
         let senders = self.orderbook_senders.read().await;
         if let Some(sender) = senders.get(market_ticker) {
-            let _ = sender.send(Ok(OrderbookUpdate::Snapshot(orderbook)));
+            let msg = WsMessage {
+                seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: OrderbookUpdate::Snapshot(orderbook),
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
     async fn broadcast_activity(&self, market_ticker: &str, activity: ActivityEvent) {
         let senders = self.activity_senders.read().await;
         if let Some(sender) = senders.get(market_ticker) {
-            let _ = sender.send(Ok(activity));
+            let msg = WsMessage {
+                seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: activity,
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -741,6 +741,9 @@ impl OrderBookWebSocket for KalshiWebSocket {
         let auth = self.auth.clone();
         let command_id = self.command_id.clone();
 
+        let seq = self.seq.clone();
+        let ndjson_writer = self.ndjson_writer.clone();
+
         let ws_self = KalshiWebSocket {
             config,
             auth,
@@ -757,6 +760,8 @@ impl OrderBookWebSocket for KalshiWebSocket {
             reconnect_attempts: reconnect_attempts_clone.clone(),
             command_id,
             enable_user_fills: self.enable_user_fills,
+            seq: seq.clone(),
+            ndjson_writer: ndjson_writer.clone(),
         };
 
         tokio::spawn(async move {
@@ -835,6 +840,22 @@ impl OrderBookWebSocket for KalshiWebSocket {
                             {
                                 let mut a = reconnect_attempts_clone.lock().await;
                                 *a = 0;
+                            }
+
+                            // Broadcast reconnect event to all orderbook subscribers
+                            {
+                                let senders = orderbook_senders.read().await;
+                                for sender in senders.values() {
+                                    let msg = WsMessage {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        received_at: chrono::Utc::now(),
+                                        data: OrderbookUpdate::Reconnected,
+                                    };
+                                    if let Some(ref writer) = ndjson_writer {
+                                        writer.write_record(&msg);
+                                    }
+                                    let _ = sender.send(Ok(msg));
+                                }
                             }
 
                             let _ = ws_self.resubscribe_all().await;
@@ -1020,17 +1041,21 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn value_to_timestamp_normalizes_seconds_epoch() {
+    fn value_to_timestamp_parses_seconds_epoch() {
         let ts = KalshiWebSocket::value_to_timestamp(Some(&json!(1_770_241_151_i64)))
             .expect("timestamp should parse");
         assert_eq!(ts.timestamp(), 1_770_241_151_i64);
     }
 
     #[test]
-    fn value_to_timestamp_normalizes_millis_epoch() {
-        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!(1_770_241_151_000_i64)))
+    fn value_to_timestamp_parses_rfc3339_string() {
+        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!("2026-02-05T18:19:11Z")))
             .expect("timestamp should parse");
-        assert_eq!(ts.timestamp_millis(), 1_770_241_151_000_i64);
+        // Verify round-trip: the parsed timestamp formats back to the same string
+        assert_eq!(
+            ts.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            "2026-02-05T18:19:11Z"
+        );
     }
 
     /// Mirrors the liquidity_role extraction in handle_fill().
