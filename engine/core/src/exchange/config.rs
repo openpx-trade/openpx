@@ -108,6 +108,19 @@ pub struct FetchMarketsParams {
     /// Use `MarketStatusFilter::All` to fetch markets of any status.
     #[serde(default)]
     pub status: Option<MarketStatusFilter>,
+    /// Filter by series (Kalshi and Polymarket). Both exchanges organize markets
+    /// as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`)
+    /// or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.
+    #[serde(default)]
+    pub series_id: Option<String>,
+    /// Fetch all markets within a specific event. Pass a Kalshi event ticker
+    /// (e.g., `"KXBTC-25MAR14"`), a Polymarket event ID or slug
+    /// (e.g., `"903"` or `"will-trump-win-2024"`), or an Opinion market slug
+    /// (e.g., `"btc-price-daily"`) to get its child markets.
+    /// When set, `series_id`, `cursor`, and `limit` are ignored (not paginated).
+    /// `status` filtering is still applied client-side.
+    #[serde(default)]
+    pub event_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

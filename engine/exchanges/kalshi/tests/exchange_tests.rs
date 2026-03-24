@@ -3,8 +3,12 @@ use px_core::{
     PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
 };
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn empty_events_response() -> serde_json::Value {
+    serde_json::json!({ "events": [], "cursor": null })
+}
 
 fn sample_events_response() -> serde_json::Value {
     serde_json::json!({
@@ -70,6 +74,11 @@ async fn test_fetch_markets_parses_response() {
     Mock::given(method("GET"))
         .and(path("/events"))
         .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -540,6 +549,11 @@ async fn test_fetch_markets_with_pagination_cursor() {
         })))
         .mount(&mock_server)
         .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .mount(&mock_server)
+        .await;
 
     let config = KalshiConfig::new()
         .with_api_url(mock_server.uri())
@@ -555,7 +569,10 @@ async fn test_fetch_markets_with_pagination_cursor() {
     // #then
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "EVT-1-MKT1");
-    assert_eq!(cursor, Some("abc123".to_string()));
+    // Cursor is now a compound JSON encoding regular + multivariate pagination
+    let cursor_str = cursor.unwrap();
+    let cursor_val: serde_json::Value = serde_json::from_str(&cursor_str).unwrap();
+    assert_eq!(cursor_val["r"], "abc123");
 }
 
 #[tokio::test]
@@ -584,13 +601,18 @@ async fn test_fetch_markets_with_cursor_passes_through() {
         })))
         .mount(&mock_server)
         .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .mount(&mock_server)
+        .await;
 
     let config = KalshiConfig::new()
         .with_api_url(mock_server.uri())
         .with_verbose(false);
     let exchange = Kalshi::new(config).unwrap();
 
-    // #when - pass cursor from previous page
+    // #when - pass legacy cursor from previous page (treated as regular-only)
     let params = FetchMarketsParams {
         cursor: Some("abc123".to_string()),
         ..Default::default()
@@ -988,6 +1010,11 @@ async fn test_fetch_markets_filters_by_status() {
         })))
         .mount(&mock_server)
         .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .mount(&mock_server)
+        .await;
 
     let config = KalshiConfig::new()
         .with_api_url(mock_server.uri())
@@ -1341,9 +1368,12 @@ async fn test_fetch_markets_status_all_returns_all_statuses() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -1374,9 +1404,12 @@ async fn test_fetch_markets_status_active_filters_correctly() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -1404,9 +1437,12 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -1426,4 +1462,197 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "MIX-SETTLED");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: series_id filtering
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_markets_with_series_id() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .and(query_param("series_ticker", "INXD"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .and(query_param("series_ticker", "INXD"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchMarketsParams {
+        series_id: Some("INXD".to_string()),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then — mocks only match when series_ticker=INXD is in the query string
+    assert_eq!(markets.len(), 2);
+}
+
+#[tokio::test]
+async fn test_fetch_markets_with_series_id_and_status() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .and(query_param("series_ticker", "KXBTC"))
+        .and(query_param("status", "settled"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/multivariate"))
+        .and(query_param("series_ticker", "KXBTC"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchMarketsParams {
+        series_id: Some("KXBTC".to_string()),
+        status: Some(MarketStatusFilter::Resolved),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then — both series_id and status passed; client-side filter keeps only resolved
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].status, MarketStatus::Resolved);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: event_id fetches a single event's nested markets
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_markets_with_event_id() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events/KXBTC-25MAR14"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "event": {
+                "event_ticker": "KXBTC-25MAR14",
+                "title": "Bitcoin March 14"
+            },
+            "markets": [
+                {
+                    "ticker": "KXBTC-25MAR14-B85000",
+                    "event_ticker": "KXBTC-25MAR14",
+                    "title": "BTC above 85000?",
+                    "subtitle": "Resolves Yes if BTC >= 85000",
+                    "yes_ask": 60,
+                    "volume": 10000.0,
+                    "status": "active"
+                },
+                {
+                    "ticker": "KXBTC-25MAR14-B90000",
+                    "event_ticker": "KXBTC-25MAR14",
+                    "title": "BTC above 90000?",
+                    "subtitle": "Resolves Yes if BTC >= 90000",
+                    "yes_ask": 35,
+                    "volume": 8000.0,
+                    "status": "active"
+                },
+                {
+                    "ticker": "KXBTC-25MAR14-B95000",
+                    "event_ticker": "KXBTC-25MAR14",
+                    "title": "BTC above 95000?",
+                    "subtitle": "Resolves Yes if BTC >= 95000",
+                    "yes_ask": 15,
+                    "volume": 5000.0,
+                    "status": "determined"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when — default status=Active filters out the determined market
+    let params = FetchMarketsParams {
+        event_id: Some("KXBTC-25MAR14".to_string()),
+        ..Default::default()
+    };
+    let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then
+    assert_eq!(markets.len(), 2);
+    assert!(
+        cursor.is_none(),
+        "event_id fetch should not return a cursor"
+    );
+    assert_eq!(markets[0].id, "KXBTC-25MAR14-B85000");
+    assert_eq!(markets[1].id, "KXBTC-25MAR14-B90000");
+}
+
+#[tokio::test]
+async fn test_fetch_markets_with_event_id_status_all() {
+    // #given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events/KXBTC-25MAR14"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "event": {
+                "event_ticker": "KXBTC-25MAR14",
+                "title": "Bitcoin March 14"
+            },
+            "markets": [
+                {
+                    "ticker": "KXBTC-25MAR14-B85000",
+                    "event_ticker": "KXBTC-25MAR14",
+                    "title": "BTC above 85000?",
+                    "yes_ask": 60,
+                    "status": "active"
+                },
+                {
+                    "ticker": "KXBTC-25MAR14-B95000",
+                    "event_ticker": "KXBTC-25MAR14",
+                    "title": "BTC above 95000?",
+                    "yes_ask": 15,
+                    "status": "determined"
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when — status=All returns everything
+    let params = FetchMarketsParams {
+        event_id: Some("KXBTC-25MAR14".to_string()),
+        status: Some(MarketStatusFilter::All),
+        ..Default::default()
+    };
+    let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
+
+    // #then
+    assert_eq!(markets.len(), 2);
+    assert!(cursor.is_none());
 }

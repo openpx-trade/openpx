@@ -51,13 +51,15 @@ class Exchange:
         *,
         status: Optional[str] = None,
         cursor: Optional[str] = None,
+        series_id: Optional[str] = None,
+        event_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Fetch one page of markets from the exchange.
 
         Returns {"markets": [...], "cursor": "..." | None}.
         Pass the returned cursor back to fetch the next page.
         """
-        raw = self._native.fetch_markets(status, cursor)
+        raw = self._native.fetch_markets(status, cursor, series_id, event_id)
         try:
             from openpx._models import Market
             return {

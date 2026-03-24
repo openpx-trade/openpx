@@ -576,9 +576,7 @@ async fn test_fetch_markets_status_all_returns_all_statuses() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
         .mount(&mock_server)
         .await;
 
@@ -608,9 +606,7 @@ async fn test_fetch_markets_status_active_filters_correctly() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
         .mount(&mock_server)
         .await;
 
@@ -638,9 +634,7 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/events"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
         .mount(&mock_server)
         .await;
 
@@ -660,4 +654,145 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "pm-closed");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: series_id filtering
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_markets_with_series_id() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events"))
+        .and(query_param("series_id", "10345"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        series_id: Some("10345".to_string()),
+        ..Default::default()
+    };
+    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then — mocks only match when series_id=10345 is in the query string
+    assert_eq!(markets.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: event_id fetches a single event's nested markets
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_markets_with_event_id() {
+    // given
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events/903"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "903",
+            "title": "Presidential Election 2028",
+            "markets": [
+                {
+                    "id": "market-a",
+                    "question": "Will Candidate A win?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.55\", \"0.45\"]",
+                    "volumeNum": 100000.0,
+                    "liquidityNum": 50000.0,
+                    "minimum_tick_size": 0.01,
+                    "description": "Candidate A prediction",
+                    "active": true,
+                    "closed": false
+                },
+                {
+                    "id": "market-b",
+                    "question": "Will Candidate B win?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.30\", \"0.70\"]",
+                    "volumeNum": 80000.0,
+                    "liquidityNum": 40000.0,
+                    "minimum_tick_size": 0.01,
+                    "description": "Candidate B prediction",
+                    "active": true,
+                    "closed": false
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when
+    let params = FetchMarketsParams {
+        event_id: Some("903".to_string()),
+        ..Default::default()
+    };
+    let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then
+    assert_eq!(markets.len(), 2);
+    assert!(
+        cursor.is_none(),
+        "event_id fetch should not return a cursor"
+    );
+    assert_eq!(markets[0].id, "market-a");
+    assert_eq!(markets[1].id, "market-b");
+    assert_eq!(markets[0].group_id, Some("903".to_string()));
+}
+
+#[tokio::test]
+async fn test_fetch_markets_with_event_slug() {
+    // given — slug routes to /events/slug/{slug}
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/events/slug/will-trump-win-2024"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "555",
+            "title": "Will Trump win 2024?",
+            "markets": [
+                {
+                    "id": "mkt-yes",
+                    "question": "Trump wins?",
+                    "outcomes": "[\"Yes\", \"No\"]",
+                    "outcomePrices": "[\"0.60\", \"0.40\"]",
+                    "volumeNum": 200000.0,
+                    "description": "Presidential election market",
+                    "active": true,
+                    "closed": false
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_gamma_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    // when — non-numeric event_id is treated as a slug
+    let params = FetchMarketsParams {
+        event_id: Some("will-trump-win-2024".to_string()),
+        ..Default::default()
+    };
+    let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then
+    assert_eq!(markets.len(), 1);
+    assert!(cursor.is_none());
+    assert_eq!(markets[0].id, "mkt-yes");
+    assert_eq!(markets[0].group_id, Some("555".to_string()));
 }

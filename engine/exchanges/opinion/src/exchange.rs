@@ -666,6 +666,7 @@ impl Opinion {
             asks,
             last_update_id: None,
             timestamp: Some(chrono::Utc::now()),
+            hash: None,
         })
     }
 
@@ -929,6 +930,69 @@ impl Exchange for Opinion {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // ── event_id short-circuit: fetch by slug and return child markets ──
+        if let Some(ref slug) = params.event_id {
+            let endpoint = format!("/openapi/market/slug/{slug}");
+            let resp: ApiResponse<serde_json::Value> = self
+                .get(&endpoint)
+                .await
+                .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+            let data = resp.result.and_then(|r| r.data).ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(slug.clone()))
+            })?;
+
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+            let requested_status = match filter {
+                MarketStatusFilter::Active => Some(MarketStatus::Active),
+                MarketStatusFilter::Closed => Some(MarketStatus::Closed),
+                MarketStatusFilter::Resolved => Some(MarketStatus::Resolved),
+                MarketStatusFilter::All => None,
+            };
+
+            let mut markets = Vec::new();
+
+            // If categorical with child markets, return each child as an individual market.
+            if let Some(children) = data.get("childMarkets").and_then(|v| v.as_array()) {
+                if !children.is_empty() {
+                    let parent_id = data
+                        .get("marketId")
+                        .and_then(|v| {
+                            v.as_str()
+                                .map(String::from)
+                                .or_else(|| v.as_i64().map(|n| n.to_string()))
+                        })
+                        .unwrap_or_default();
+
+                    for child in children {
+                        if let Some(mut market) = self.parse_market(child.clone()) {
+                            if let Some(ref req) = requested_status {
+                                if market.status != *req {
+                                    continue;
+                                }
+                            }
+                            if market.group_id.is_none() {
+                                market.group_id = Some(parent_id.clone());
+                            }
+                            if market.event_id.is_none() {
+                                market.event_id = canonical_event_id("opinion", &parent_id);
+                            }
+                            markets.push(market);
+                        }
+                    }
+                    return Ok((markets, None));
+                }
+            }
+
+            // Binary market or categorical without children — return the parent itself.
+            if let Some(market) = self.parse_market(data) {
+                if requested_status.is_none() || requested_status == Some(market.status) {
+                    markets.push(market);
+                }
+            }
+            return Ok((markets, None));
+        }
+
         self.fetch_markets_page(params).await
     }
 
@@ -1057,23 +1121,19 @@ impl Exchange for Opinion {
             )));
         }
 
-        match params
+        let opinion_order_type = match params
             .get("order_type")
             .map(|s| s.as_str())
             .unwrap_or("gtc")
         {
-            "gtc" => {}
-            other_type @ ("ioc" | "fok") => {
-                return Err(OpenPxError::Exchange(px_core::ExchangeError::NotSupported(
-                    format!("{other_type} not supported on opinion"),
-                )));
-            }
+            "gtc" => "LIMIT",
+            "ioc" | "fok" => "MARKET_ORDER",
             other => {
                 return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                    format!("invalid order_type '{other}' (allowed: gtc)"),
+                    format!("invalid order_type '{other}' (allowed: gtc, ioc, fok)"),
                 )));
             }
-        }
+        };
 
         let order_data = serde_json::json!({
             "market_id": market_id.parse::<i64>().unwrap_or(0),
@@ -1081,7 +1141,7 @@ impl Exchange for Opinion {
             "side": if side == OrderSide::Buy { 1 } else { 2 },
             "price": price.to_string(),
             "size": size.to_string(),
-            "order_type": "LIMIT",
+            "order_type": opinion_order_type,
             "chain_id": self.config.chain_id,
         });
 

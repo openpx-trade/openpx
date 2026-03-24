@@ -139,7 +139,7 @@ Place a limit order on a market.
 | `side` | `OrderSide` | **Yes** | `Buy` or `Sell` |
 | `price` | `float` | **Yes** | Limit price (0.0 – 1.0) |
 | `size` | `float` | **Yes** | Number of contracts |
-| `params` | `map[string, string]` | No | Exchange-specific parameters (e.g. order type, time-in-force) |
+| `params` | `map[string, string]` | No | Optional parameters. `order_type`: `gtc` (default), `ioc`, or `fok`. All three exchanges support all three order types |
 
 **Returns:** [`Order`](/reference/models/#order)
 
@@ -1509,6 +1509,15 @@ Fetch a page of markets.
 openpx kalshi fetch-markets
 openpx kalshi fetch-markets --status active --limit 10
 openpx polymarket fetch-markets --cursor "next_page_token"
+
+# Filter by series
+openpx kalshi fetch-markets --series-id KXBTC
+openpx polymarket fetch-markets --series-id 10345
+
+# All markets within a specific event
+openpx kalshi fetch-markets --event-id KXBTC-25MAR14
+openpx polymarket fetch-markets --event-id 903
+openpx opinion fetch-markets --event-id btc-price-daily
 ```
 
 | Flag | Description |
@@ -1516,6 +1525,8 @@ openpx polymarket fetch-markets --cursor "next_page_token"
 | `--status` | Filter by status: `active`, `closed`, `resolved`, `all` |
 | `--cursor` | Pagination cursor from a previous response |
 | `--limit` | Max markets to return |
+| `--series-id` | Filter by series (Kalshi series ticker or Polymarket series ID) |
+| `--event-id` | Fetch all markets within an event (Kalshi event ticker, Polymarket event ID or slug, or Opinion market slug) |
 
 #### fetch-market
 
@@ -2816,17 +2827,19 @@ A fill event received via WebSocket, representing a trade execution on one of yo
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `asset_id` | `string` | Yes | K P | Token ID that was traded |
-| `fill_id` | `string \| null` | No | K P | Unique fill identifier |
-| `liquidity_role` | `LiquidityRole \| null` | No | K P | Whether you were `maker` or `taker` on this fill |
-| `market_id` | `string` | Yes | K P | Native market ID |
-| `order_id` | `string \| null` | No | K P | Parent order ID |
-| `outcome` | `string \| null` | No | K P | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
-| `side` | `string \| null` | No | K P | `"buy"` or `"sell"` |
-| `size` | `number` | Yes | K P | Number of contracts filled |
-| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"websocket"`) |
-| `timestamp` | `string \| null` | No | K P | Fill timestamp (ISO 8601) |
+| `asset_id` | `string` | Yes | K P O | Token ID that was traded |
+| `fee` | `number \| null` | No | O | Fee charged for this fill (from on-chain confirmation) |
+| `fill_id` | `string \| null` | No | K P O | Unique fill identifier. Opinion: `tradeNo` from `trade.record.new` |
+| `liquidity_role` | `LiquidityRole \| null` | No | K P O | Whether you were `maker` or `taker` on this fill |
+| `market_id` | `string` | Yes | K P O | Native market ID |
+| `order_id` | `string \| null` | No | K P O | Parent order ID |
+| `outcome` | `string \| null` | No | K P O | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P O | Execution price, normalized 0-1 |
+| `side` | `string \| null` | No | K P O | `"buy"` or `"sell"` |
+| `size` | `number` | Yes | K P O | Number of contracts filled |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"kalshi_user_fill"`, `"trade.record.new"`) |
+| `timestamp` | `string \| null` | No | K P O | Fill timestamp (ISO 8601) |
+| `tx_hash` | `string \| null` | No | O | On-chain transaction hash (from on-chain confirmation) |
 
 
 
@@ -2843,6 +2856,8 @@ pub struct ActivityFill {
     pub size: f64,
     pub side: Option<String>,
     pub outcome: Option<String>,
+    pub tx_hash: Option<String>,
+    pub fee: Option<f64>,
     pub timestamp: Option<DateTime<Utc>>,
     pub source_channel: Cow<'static, str>,
     pub liquidity_role: Option<LiquidityRole>,
@@ -2857,6 +2872,7 @@ pub struct ActivityFill {
 ```python
 class ActivityFill(BaseModel):
     asset_id: str
+    fee: Optional[float]
     fill_id: Optional[str]
     liquidity_role: Optional[LiquidityRole]
     market_id: str
@@ -2867,6 +2883,7 @@ class ActivityFill(BaseModel):
     size: float
     source_channel: str
     timestamp: Optional[datetime]
+    tx_hash: Optional[str]
 ```
 
 
@@ -2877,6 +2894,7 @@ class ActivityFill(BaseModel):
 ```typescript
 interface ActivityFill {
   asset_id: string;
+  fee?: number | null;
   fill_id?: string | null;
   liquidity_role?: LiquidityRole | null;
   market_id: string;
@@ -2887,6 +2905,7 @@ interface ActivityFill {
   size: number;
   source_channel: string;
   timestamp?: string | null;
+  tx_hash?: string | null;
 }
 ```
 

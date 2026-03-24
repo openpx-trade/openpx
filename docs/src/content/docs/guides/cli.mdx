@@ -67,6 +67,15 @@ Fetch a page of markets.
 openpx kalshi fetch-markets
 openpx kalshi fetch-markets --status active --limit 10
 openpx polymarket fetch-markets --cursor "next_page_token"
+
+# Filter by series
+openpx kalshi fetch-markets --series-id KXBTC
+openpx polymarket fetch-markets --series-id 10345
+
+# All markets within a specific event
+openpx kalshi fetch-markets --event-id KXBTC-25MAR14
+openpx polymarket fetch-markets --event-id 903
+openpx opinion fetch-markets --event-id btc-price-daily
 ```
 
 | Flag | Description |
@@ -74,6 +83,8 @@ openpx polymarket fetch-markets --cursor "next_page_token"
 | `--status` | Filter by status: `active`, `closed`, `resolved`, `all` |
 | `--cursor` | Pagination cursor from a previous response |
 | `--limit` | Max markets to return |
+| `--series-id` | Filter by series (Kalshi series ticker or Polymarket series ID) |
+| `--event-id` | Fetch all markets within an event (Kalshi event ticker, Polymarket event ID or slug, or Opinion market slug) |
 
 #### fetch-market
 

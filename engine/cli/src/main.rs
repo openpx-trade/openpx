@@ -4,8 +4,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
 use openpx::{ExchangeInner, WebSocketInner};
 use px_core::models::{CryptoPriceSource, PriceHistoryInterval};
-use px_core::MarketStatusFilter;
 use px_core::websocket::OrderBookWebSocket;
+use px_core::MarketStatusFilter;
 use px_core::{
     FetchMarketsParams, FetchOrdersParams, OrderbookHistoryRequest, OrderbookRequest,
     PriceHistoryRequest, TradesRequest,
@@ -74,6 +74,12 @@ enum Command {
         /// Max markets to return
         #[arg(long)]
         limit: Option<usize>,
+        /// Filter by series (Kalshi series ticker or Polymarket series ID)
+        #[arg(long)]
+        series_id: Option<String>,
+        /// Fetch all markets within an event (Kalshi event ticker or Polymarket event ID)
+        #[arg(long)]
+        event_id: Option<String>,
     },
     /// Fetch a single market by ID
     FetchMarket { market_id: String },
@@ -322,11 +328,15 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 status,
                 cursor,
                 limit,
+                series_id,
+                event_id,
             } => {
                 let params = FetchMarketsParams {
                     status: status.map(Into::into),
                     cursor,
                     limit,
+                    series_id,
+                    event_id,
                 };
                 let (markets, next_cursor) = exchange.fetch_markets(&params).await?;
                 print_json(&serde_json::json!({
@@ -531,17 +541,38 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
     eprintln!("streaming orderbook for {market_id} (Ctrl+C to stop)...");
     while let Some(update) = stream.next().await {
         match update {
-            Ok(data) => print_json(&data),
+            Ok(msg) => print_json(&msg),
             Err(e) => eprintln!("error: {e}"),
         }
     }
 }
 
 async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
-    let mut ws = WebSocketInner::new(id, config).unwrap_or_else(|e| {
+    let mut ws = WebSocketInner::new(id, config.clone()).unwrap_or_else(|e| {
         eprintln!("error: failed to create {id} websocket: {e}");
         std::process::exit(1);
     });
+
+    // Auto-register outcome tokens so activity events include "Yes"/"No".
+    // Best-effort: if the REST fetch fails, we continue without outcomes.
+    if let Ok(exchange) = ExchangeInner::new(id, config) {
+        match exchange.fetch_market(market_id).await {
+            Ok(market) => {
+                let tokens = market.get_outcome_tokens();
+                let yes = tokens
+                    .iter()
+                    .find(|t| t.outcome.eq_ignore_ascii_case("yes"));
+                let no = tokens.iter().find(|t| t.outcome.eq_ignore_ascii_case("no"));
+                if let (Some(y), Some(n)) = (yes, no) {
+                    ws.register_outcomes(&y.token_id, &n.token_id).await;
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: could not fetch market metadata for outcomes: {e}");
+            }
+        }
+    }
+
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
         std::process::exit(1);
@@ -557,7 +588,7 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
     eprintln!("streaming activity for {market_id} (Ctrl+C to stop)...");
     while let Some(event) = stream.next().await {
         match event {
-            Ok(data) => print_json(&data),
+            Ok(msg) => print_json(&msg),
             Err(e) => eprintln!("error: {e}"),
         }
     }

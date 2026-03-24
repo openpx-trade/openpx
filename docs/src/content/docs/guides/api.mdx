@@ -165,6 +165,8 @@ for the next page.
 | `status` | `string` | No | Filter by status: `"active"`, `"closed"`, `"resolved"`, `"all"`. Defaults to `"active"` |
 | `cursor` | `string` | No | Opaque cursor from a previous response for pagination |
 | `limit` | `int` | No | Max markets to return per page |
+| `series_id` | `string` | No | Filter by series (Kalshi and Polymarket). Pass a Kalshi series ticker (e.g., `"KXBTC"`) or Polymarket series ID (e.g., `"10345"`) |
+| `event_id` | `string` | No | Fetch all markets within a specific event. Kalshi event ticker (e.g., `"KXBTC-25MAR14"`), Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`), or Opinion market slug (e.g., `"btc-price-daily"`). When set, `series_id`/`cursor`/`limit` are ignored |
 
 **Returns:** `{ markets: Market[], cursor: string | null }` — see [`Market`](/reference/models/#market)
 
@@ -187,6 +189,14 @@ result = exchange.fetch_markets()
 for m in result["markets"]:
     print(f"[{m.id}] {m.title}")
 # Paginate: exchange.fetch_markets(cursor=result["cursor"])
+
+# Filter by series (Kalshi)
+result = exchange.fetch_markets(series_id="KXBTC")  # Kalshi
+result = exchange.fetch_markets(series_id="10345")  # Polymarket
+
+# All markets within a specific event
+result = exchange.fetch_markets(event_id="KXBTC-25MAR14")  # Kalshi
+result = exchange.fetch_markets(event_id="will-trump-win-2024")  # Polymarket slug
 ```
 </TabItem>
 <TabItem label="TypeScript">
@@ -196,6 +206,12 @@ for (const m of result.markets) {
   console.log(`[${m.id}] ${m.title}`);
 }
 // Paginate: await exchange.fetchMarkets(null, result.cursor)
+
+// Filter by series (Kalshi)
+const btc = await exchange.fetchMarkets(null, null, "KXBTC"); // Kalshi
+
+// All markets within a specific event
+const event = await exchange.fetchMarkets(null, null, null, "KXBTC-25MAR14");
 ```
 </TabItem>
 <TabItem label="CLI">
@@ -203,6 +219,16 @@ for (const m of result.markets) {
 openpx kalshi fetch-markets
 openpx kalshi fetch-markets --status active --limit 10
 openpx polymarket fetch-markets --cursor "next_page_token"
+
+# Filter by series
+openpx kalshi fetch-markets --series-id KXBTC
+openpx polymarket fetch-markets --series-id 10345
+
+# All markets within a specific event
+openpx kalshi fetch-markets --event-id KXBTC-25MAR14
+openpx polymarket fetch-markets --event-id 903  # by ID
+openpx polymarket fetch-markets --event-id will-trump-win-2024  # by slug
+openpx opinion fetch-markets --event-id btc-price-daily  # Opinion child markets
 
 # Pretty-print first market
 openpx kalshi fetch-markets --limit 1 | jq '.markets[0]'
@@ -262,7 +288,7 @@ Place a limit order on a market.
 | `side` | `OrderSide` | **Yes** | `Buy` or `Sell` |
 | `price` | `float` | **Yes** | Limit price (0.0 – 1.0) |
 | `size` | `float` | **Yes** | Number of contracts |
-| `params` | `map[string, string]` | No | Exchange-specific parameters (e.g. order type, time-in-force) |
+| `params` | `map[string, string]` | No | Optional parameters. `order_type`: `gtc` (default), `ioc`, or `fok`. See [Support Matrix](/reference/support-matrix/#order-types) |
 
 **Returns:** [`Order`](/reference/models/#order)
 

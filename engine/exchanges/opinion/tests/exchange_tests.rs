@@ -652,8 +652,7 @@ async fn test_fetch_markets_status_all_returns_all_statuses() {
     Mock::given(method("GET"))
         .and(path("/openapi/market"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(sample_mixed_status_markets_response()),
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets_response()),
         )
         .mount(&mock_server)
         .await;
@@ -685,8 +684,7 @@ async fn test_fetch_markets_status_active_filters_correctly() {
     Mock::given(method("GET"))
         .and(path("/openapi/market"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(sample_mixed_status_markets_response()),
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets_response()),
         )
         .mount(&mock_server)
         .await;
@@ -716,8 +714,7 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     Mock::given(method("GET"))
         .and(path("/openapi/market"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(sample_mixed_status_markets_response()),
+            ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets_response()),
         )
         .mount(&mock_server)
         .await;
@@ -738,4 +735,94 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "op-resolved");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_markets: event_id fetches child markets by slug
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_markets_with_event_id_slug() {
+    // given — categorical market with child markets
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openapi/market/slug/btc-price-daily"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0,
+            "msg": "success",
+            "result": {
+                "data": {
+                    "marketId": 100,
+                    "marketTitle": "BTC Daily Price",
+                    "status": 2,
+                    "statusEnum": "Activated",
+                    "marketType": 1,
+                    "childMarkets": [
+                        {
+                            "marketId": 101,
+                            "marketTitle": "BTC above 85000?",
+                            "status": 2,
+                            "statusEnum": "Activated",
+                            "yesLabel": "Yes",
+                            "noLabel": "No",
+                            "yesTokenId": "0xyes101",
+                            "noTokenId": "0xno101",
+                            "conditionId": "cond101",
+                            "volume": "5000",
+                            "quoteToken": "0xUSDC",
+                            "chainId": "137",
+                            "questionId": "q101",
+                            "createdAt": 1700000000,
+                            "cutoffAt": 1700100000,
+                            "resolvedAt": 0
+                        },
+                        {
+                            "marketId": 102,
+                            "marketTitle": "BTC above 90000?",
+                            "status": 4,
+                            "statusEnum": "Resolved",
+                            "yesLabel": "Yes",
+                            "noLabel": "No",
+                            "yesTokenId": "0xyes102",
+                            "noTokenId": "0xno102",
+                            "conditionId": "cond102",
+                            "volume": "3000",
+                            "quoteToken": "0xUSDC",
+                            "chainId": "137",
+                            "questionId": "q102",
+                            "createdAt": 1700000000,
+                            "cutoffAt": 1700100000,
+                            "resolvedAt": 1700090000
+                        }
+                    ],
+                    "rules": "BTC daily price markets",
+                    "volume": "8000",
+                    "quoteToken": "0xUSDC",
+                    "chainId": "137",
+                    "createdAt": 1700000000,
+                    "cutoffAt": 1700100000,
+                    "resolvedAt": 0
+                }
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = OpinionConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Opinion::new(config).unwrap();
+
+    // when — default status=Active filters out resolved child
+    let params = FetchMarketsParams {
+        event_id: Some("btc-price-daily".to_string()),
+        ..Default::default()
+    };
+    let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
+
+    // then
+    assert_eq!(markets.len(), 1);
+    assert!(cursor.is_none());
+    assert_eq!(markets[0].id, "101");
+    assert_eq!(markets[0].group_id, Some("100".to_string()));
 }

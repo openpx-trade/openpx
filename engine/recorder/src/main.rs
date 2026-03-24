@@ -13,9 +13,9 @@ use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
 use px_core::models::OrderbookUpdate;
-use px_core::MarketStatusFilter;
 use px_core::websocket::{OrderBookWebSocket, OrderbookStream};
 use px_core::FetchMarketsParams;
+use px_core::MarketStatusFilter;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 
@@ -159,6 +159,8 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
             status: Some(MarketStatusFilter::Active),
             cursor: cursor.clone(),
             limit: Some(MARKET_FETCH_LIMIT),
+            series_id: None,
+            event_id: None,
         };
         match exchange.fetch_markets(&params).await {
             Ok((markets, next_cursor)) => {
@@ -192,69 +194,75 @@ async fn record_from_stream(
     market_id: &str,
     mut stream: OrderbookStream,
     rows: Arc<Mutex<Vec<ObRow>>>,
-    seq: Arc<std::sync::atomic::AtomicU64>,
 ) {
     // Track asset_id from the most recent snapshot so deltas can carry it
     let mut last_asset_id = String::new();
 
     while let Some(result) = stream.next().await {
-        let now = Utc::now().timestamp_micros();
-        let sequence = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         match result {
-            Ok(OrderbookUpdate::Snapshot(ob)) => {
-                last_asset_id = ob.asset_id.clone();
-                let ts = ob.timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
+            Ok(ws_msg) => {
+                let now = ws_msg.received_at.timestamp_micros();
+                let sequence = ws_msg.seq;
 
-                let mut buf = rows.lock().await;
-                for level in &ob.bids {
-                    buf.push(ObRow {
-                        timestamp_us: ts,
-                        exchange: exchange_id.to_string(),
-                        market_id: ob.market_id.clone(),
-                        asset_id: ob.asset_id.clone(),
-                        update_type: "snapshot".into(),
-                        side: "bid".into(),
-                        price: level.price.to_f64(),
-                        size: level.size,
-                        last_update_id: ob.last_update_id,
-                        sequence,
-                    });
-                }
-                for level in &ob.asks {
-                    buf.push(ObRow {
-                        timestamp_us: ts,
-                        exchange: exchange_id.to_string(),
-                        market_id: ob.market_id.clone(),
-                        asset_id: ob.asset_id.clone(),
-                        update_type: "snapshot".into(),
-                        side: "ask".into(),
-                        price: level.price.to_f64(),
-                        size: level.size,
-                        last_update_id: ob.last_update_id,
-                        sequence,
-                    });
-                }
-            }
-            Ok(OrderbookUpdate::Delta { changes, timestamp }) => {
-                let ts = timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
-                let mut buf = rows.lock().await;
-                for change in changes.iter() {
-                    buf.push(ObRow {
-                        timestamp_us: ts,
-                        exchange: exchange_id.to_string(),
-                        market_id: market_id.to_string(),
-                        asset_id: last_asset_id.clone(),
-                        update_type: "delta".into(),
-                        side: match change.side {
-                            px_core::models::PriceLevelSide::Bid => "bid".into(),
-                            px_core::models::PriceLevelSide::Ask => "ask".into(),
-                        },
-                        price: change.price.to_f64(),
-                        size: change.size,
-                        last_update_id: None,
-                        sequence,
-                    });
+                match ws_msg.data {
+                    OrderbookUpdate::Snapshot(ob) => {
+                        last_asset_id = ob.asset_id.clone();
+                        let ts = ob.timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
+
+                        let mut buf = rows.lock().await;
+                        for level in &ob.bids {
+                            buf.push(ObRow {
+                                timestamp_us: ts,
+                                exchange: exchange_id.to_string(),
+                                market_id: ob.market_id.clone(),
+                                asset_id: ob.asset_id.clone(),
+                                update_type: "snapshot".into(),
+                                side: "bid".into(),
+                                price: level.price.to_f64(),
+                                size: level.size,
+                                last_update_id: ob.last_update_id,
+                                sequence,
+                            });
+                        }
+                        for level in &ob.asks {
+                            buf.push(ObRow {
+                                timestamp_us: ts,
+                                exchange: exchange_id.to_string(),
+                                market_id: ob.market_id.clone(),
+                                asset_id: ob.asset_id.clone(),
+                                update_type: "snapshot".into(),
+                                side: "ask".into(),
+                                price: level.price.to_f64(),
+                                size: level.size,
+                                last_update_id: ob.last_update_id,
+                                sequence,
+                            });
+                        }
+                    }
+                    OrderbookUpdate::Delta { changes, timestamp } => {
+                        let ts = timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
+                        let mut buf = rows.lock().await;
+                        for change in changes.iter() {
+                            buf.push(ObRow {
+                                timestamp_us: ts,
+                                exchange: exchange_id.to_string(),
+                                market_id: market_id.to_string(),
+                                asset_id: last_asset_id.clone(),
+                                update_type: "delta".into(),
+                                side: match change.side {
+                                    px_core::models::PriceLevelSide::Bid => "bid".into(),
+                                    px_core::models::PriceLevelSide::Ask => "ask".into(),
+                                },
+                                price: change.price.to_f64(),
+                                size: change.size,
+                                last_update_id: None,
+                                sequence,
+                            });
+                        }
+                    }
+                    OrderbookUpdate::Reconnected => {
+                        eprintln!("[{exchange_id}] reconnected on {market_id}");
+                    }
                 }
             }
             Err(e) => {
@@ -302,7 +310,6 @@ async fn main() {
     );
 
     let rows: Arc<Mutex<Vec<ObRow>>> = Arc::new(Mutex::new(Vec::new()));
-    let seq = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
     // Create a single shared WebSocket connection for all markets
     let ws_config = make_exchange_config(&exchange_id);
@@ -345,11 +352,10 @@ async fn main() {
     let mut handles = Vec::new();
     for (market_id, stream) in market_streams {
         let rows = rows.clone();
-        let seq = seq.clone();
         let eid = exchange_id.clone();
 
         handles.push(tokio::spawn(async move {
-            record_from_stream(&eid, &market_id, stream, rows, seq).await;
+            record_from_stream(&eid, &market_id, stream, rows).await;
         }));
     }
 

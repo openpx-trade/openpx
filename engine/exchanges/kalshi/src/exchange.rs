@@ -875,11 +875,9 @@ fn kalshi_time_in_force(params: &HashMap<String, String>) -> Result<Option<Strin
     match order_type {
         "gtc" => Ok(None),
         "ioc" => Ok(Some("immediate_or_cancel".to_string())),
-        "fok" => Err(OpenPxError::Exchange(px_core::ExchangeError::NotSupported(
-            "fok not supported on kalshi".into(),
-        ))),
+        "fok" => Ok(Some("fill_or_kill".to_string())),
         _ => Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-            format!("invalid order_type '{order_type}' (allowed: gtc, ioc)"),
+            format!("invalid order_type '{order_type}' (allowed: gtc, ioc, fok)"),
         ))),
     }
 }
@@ -901,11 +899,74 @@ impl Exchange for Kalshi {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // ── event_id short-circuit: fetch a single event's nested markets ──
+        if let Some(ref event_ticker) = params.event_id {
+            #[derive(serde::Deserialize)]
+            struct SingleEventResponse {
+                #[allow(dead_code)]
+                event: serde_json::Value,
+                markets: Vec<serde_json::Value>,
+            }
+
+            let path = format!("/events/{event_ticker}");
+            let resp: SingleEventResponse = self.get(&path).await.map_err(to_openpx)?;
+
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+            let requested_status = match filter {
+                MarketStatusFilter::Active => Some(MarketStatus::Active),
+                MarketStatusFilter::Closed => Some(MarketStatus::Closed),
+                MarketStatusFilter::Resolved => Some(MarketStatus::Resolved),
+                MarketStatusFilter::All => None,
+            };
+
+            let markets: Vec<Market> = resp
+                .markets
+                .iter()
+                .filter_map(|raw| {
+                    let market = self.parse_market(raw)?;
+                    if let Some(ref req) = requested_status {
+                        if market.status != *req {
+                            return None;
+                        }
+                    }
+                    Some(market)
+                })
+                .collect();
+
+            return Ok((markets, None));
+        }
+
         #[derive(serde::Deserialize)]
         struct EventsResponse {
             events: Vec<serde_json::Value>,
             cursor: Option<String>,
         }
+
+        /// Compound cursor tracking pagination for both regular and multivariate
+        /// event endpoints. `None` means that source is exhausted.
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct CursorState {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            r: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            m: Option<String>,
+        }
+
+        // Parse incoming cursor into compound state.
+        let mut state = match params.cursor.as_deref() {
+            None => CursorState {
+                r: Some(String::new()),
+                m: Some(String::new()),
+            },
+            Some(s) if s.starts_with('{') => serde_json::from_str(s).unwrap_or(CursorState {
+                r: Some(String::new()),
+                m: Some(String::new()),
+            }),
+            Some(s) => CursorState {
+                r: Some(s.to_string()),
+                m: Some(String::new()),
+            },
+        };
 
         let status_str = match params.status {
             Some(MarketStatusFilter::Active) | None => Some("open"),
@@ -914,41 +975,93 @@ impl Exchange for Kalshi {
             Some(MarketStatusFilter::All) => None,
         };
 
-        let mut endpoint = match status_str {
-            Some(s) => format!("/events?limit=200&with_nested_markets=true&status={s}"),
-            None => "/events?limit=200&with_nested_markets=true".to_string(),
+        // Build endpoint URLs for sources that still have pages remaining.
+        let regular_endpoint = state.r.as_ref().map(|cursor| {
+            let mut ep = match status_str {
+                Some(s) => format!("/events?limit=200&with_nested_markets=true&status={s}"),
+                None => "/events?limit=200&with_nested_markets=true".to_string(),
+            };
+            if let Some(ref st) = params.series_id {
+                ep.push_str(&format!("&series_ticker={st}"));
+            }
+            if !cursor.is_empty() {
+                ep.push_str(&format!("&cursor={cursor}"));
+            }
+            ep
+        });
+
+        let multivariate_endpoint = state.m.as_ref().map(|cursor| {
+            let mut ep = "/events/multivariate?limit=200&with_nested_markets=true".to_string();
+            if let Some(ref st) = params.series_id {
+                ep.push_str(&format!("&series_ticker={st}"));
+            }
+            if !cursor.is_empty() {
+                ep.push_str(&format!("&cursor={cursor}"));
+            }
+            ep
+        });
+
+        // Fetch both endpoints in parallel.
+        let regular_fut = async {
+            match regular_endpoint {
+                Some(ref ep) => self.get::<EventsResponse>(ep).await.map(Some),
+                None => Ok(None),
+            }
         };
-        if let Some(ref c) = params.cursor {
-            endpoint.push_str(&format!("&cursor={c}"));
-        }
+        let multivariate_fut = async {
+            match multivariate_endpoint {
+                Some(ref ep) => self.get::<EventsResponse>(ep).await.map(Some),
+                None => Ok(None),
+            }
+        };
 
-        let resp: EventsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
+        let (regular_res, multivariate_res) = tokio::join!(regular_fut, multivariate_fut);
+        let regular_resp = regular_res.map_err(to_openpx)?;
+        let multivariate_resp = multivariate_res.map_err(to_openpx)?;
 
+        // Extract and filter markets from event responses.
         let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+        let requested_status = match filter {
+            MarketStatusFilter::Active => Some(MarketStatus::Active),
+            MarketStatusFilter::Closed => Some(MarketStatus::Closed),
+            MarketStatusFilter::Resolved => Some(MarketStatus::Resolved),
+            MarketStatusFilter::All => None,
+        };
+
         let mut all_markets = Vec::new();
         let map_start = Instant::now();
-        for event in &resp.events {
-            if let Some(markets_arr) = event.get("markets").and_then(|v| v.as_array()) {
-                for raw in markets_arr {
-                    if let Some(market) = self.parse_market(raw) {
-                        // Events can contain markets with mixed statuses — filter to
-                        // only return markets matching the requested status.
-                        if filter != MarketStatusFilter::All {
-                            let requested = match filter {
-                                MarketStatusFilter::Active => MarketStatus::Active,
-                                MarketStatusFilter::Closed => MarketStatus::Closed,
-                                MarketStatusFilter::Resolved => MarketStatus::Resolved,
-                                MarketStatusFilter::All => unreachable!(),
-                            };
-                            if market.status != requested {
-                                continue;
+
+        let extract_markets = |events: &[serde_json::Value], markets: &mut Vec<Market>| {
+            for event in events {
+                if let Some(arr) = event.get("markets").and_then(|v| v.as_array()) {
+                    for raw in arr {
+                        if let Some(market) = self.parse_market(raw) {
+                            if let Some(ref req) = requested_status {
+                                if market.status != *req {
+                                    continue;
+                                }
                             }
+                            markets.push(market);
                         }
-                        all_markets.push(market);
                     }
                 }
             }
+        };
+
+        if let Some(ref resp) = regular_resp {
+            extract_markets(&resp.events, &mut all_markets);
+            state.r = resp.cursor.clone();
+        } else {
+            state.r = None;
         }
+
+        if let Some(ref resp) = multivariate_resp {
+            extract_markets(&resp.events, &mut all_markets);
+            state.m = resp.cursor.clone();
+        } else {
+            state.m = None;
+        }
+
         let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
         histogram!(
             "openpx.exchange.mapping_us",
@@ -957,7 +1070,12 @@ impl Exchange for Kalshi {
         )
         .record(map_us);
 
-        Ok((all_markets, resp.cursor))
+        let next_cursor = match (&state.r, &state.m) {
+            (None, None) => None,
+            _ => Some(serde_json::to_string(&state).unwrap_or_default()),
+        };
+
+        Ok((all_markets, next_cursor))
     }
 
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
@@ -1016,6 +1134,7 @@ impl Exchange for Kalshi {
             asks,
             last_update_id: None,
             timestamp: Some(chrono::Utc::now()),
+            hash: None,
         })
     }
 
@@ -1506,11 +1625,13 @@ mod tests {
     }
 
     #[test]
-    fn order_type_fok_returns_not_supported() {
+    fn order_type_fok_maps_to_fill_or_kill() {
         let mut params = HashMap::new();
         params.insert("order_type".to_string(), "fok".to_string());
-        let err = kalshi_time_in_force(&params).unwrap_err();
-        assert!(err.to_string().contains("not supported"));
+        assert_eq!(
+            kalshi_time_in_force(&params).unwrap(),
+            Some("fill_or_kill".to_string())
+        );
     }
 
     #[test]

@@ -554,6 +554,7 @@ impl Polymarket {
             asks,
             last_update_id: None,
             timestamp: Some(chrono::Utc::now()),
+            hash: None,
         })
     }
 
@@ -1640,6 +1641,64 @@ impl Exchange for Polymarket {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // ── event_id short-circuit: fetch a single event's nested markets ──
+        if let Some(ref eid) = params.event_id {
+            // Numeric → /events/{id}, otherwise → /events/slug/{slug}
+            let endpoint = if eid.chars().all(|c| c.is_ascii_digit()) {
+                format!("/events/{eid}")
+            } else {
+                format!("/events/slug/{eid}")
+            };
+            self.rate_limit().await;
+
+            let event: serde_json::Value = self
+                .client
+                .get_gamma(&endpoint)
+                .await
+                .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+            let native_event_id = event
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+            let mut markets = Vec::new();
+
+            if let Some(market_array) = event.get("markets").and_then(|v| v.as_array()) {
+                for market_raw in market_array {
+                    let raw = market_raw.clone();
+                    if let Some(mut parsed) = self.parse_market(raw) {
+                        if filter != MarketStatusFilter::All {
+                            let status_matches = match filter {
+                                MarketStatusFilter::Active => parsed.status == MarketStatus::Active,
+                                MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
+                                    matches!(
+                                        parsed.status,
+                                        MarketStatus::Closed | MarketStatus::Resolved
+                                    )
+                                }
+                                MarketStatusFilter::All => unreachable!(),
+                            };
+                            if !status_matches {
+                                continue;
+                            }
+                        }
+                        if parsed.group_id.is_none() {
+                            parsed.group_id = Some(native_event_id.clone());
+                        }
+                        if parsed.event_id.is_none() {
+                            parsed.event_id = canonical_event_id("polymarket", &native_event_id);
+                        }
+                        markets.push(parsed);
+                    }
+                }
+            }
+
+            return Ok((markets, None));
+        }
+
         // Polymarket events use boolean query params. The events endpoint
         // filters at the event level, so we need closed=false to avoid
         // getting events whose markets are all closed.
@@ -1658,10 +1717,13 @@ impl Exchange for Polymarket {
             .and_then(|c| c.parse::<usize>().ok())
             .unwrap_or(0);
 
-        let endpoint = match status_param {
+        let mut endpoint = match status_param {
             Some(sp) => format!("/events?limit=200&{sp}&offset={offset}"),
             None => format!("/events?limit=200&offset={offset}"),
         };
+        if let Some(ref sid) = params.series_id {
+            endpoint.push_str(&format!("&series_id={sid}"));
+        }
 
         self.rate_limit().await;
 
@@ -1696,9 +1758,7 @@ impl Exchange for Polymarket {
                     // accept Resolved for both Closed and Resolved requests.
                     if filter != MarketStatusFilter::All {
                         let status_matches = match filter {
-                            MarketStatusFilter::Active => {
-                                parsed.status == MarketStatus::Active
-                            }
+                            MarketStatusFilter::Active => parsed.status == MarketStatus::Active,
                             MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
                                 matches!(
                                     parsed.status,

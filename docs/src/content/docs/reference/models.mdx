@@ -782,6 +782,7 @@ interface Position {
 | `asks` | `PriceLevel[]` | Yes | K P O | Ask-side price levels, sorted ascending by price (lowest first) |
 | `asset_id` | `string` | Yes | K P O | Token ID this orderbook represents |
 | `bids` | `PriceLevel[]` | Yes | K P O | Bid-side price levels, sorted descending by price (highest first) |
+| `hash` | `string \| null` | No | P | Exchange-provided book-state hash for integrity verification during replay |
 | `last_update_id` | `number \| null` | No | — | Sequence number for delta ordering (not currently populated) |
 | `market_id` | `string` | Yes | K | Native market ID. Polymarket and Opinion set this to the `market_id` from the request |
 | `timestamp` | `string \| null` | No | K P O | When this snapshot was captured (ISO 8601) |
@@ -797,6 +798,7 @@ pub struct Orderbook {
     pub asks: Vec<PriceLevel>,
     pub last_update_id: Option<u64>,
     pub timestamp: Option<DateTime<Utc>>,
+    pub hash: Option<String>,
 }
 ```
 
@@ -811,6 +813,7 @@ class Orderbook(BaseModel):
     asks: list[PriceLevel]
     last_update_id: Optional[int]
     timestamp: Optional[datetime]
+    hash: Optional[str]
 ```
 
 </TabItem>
@@ -824,6 +827,7 @@ interface Orderbook {
   asks: PriceLevel[];
   last_update_id?: number | null;
   timestamp?: string | null;
+  hash?: string | null;
 }
 ```
 
@@ -1247,17 +1251,19 @@ A fill event received via WebSocket, representing a trade execution on one of yo
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `asset_id` | `string` | Yes | K P | Token ID that was traded |
-| `fill_id` | `string \| null` | No | K P | Unique fill identifier |
-| `liquidity_role` | `LiquidityRole \| null` | No | K P | Whether you were `maker` or `taker` on this fill |
-| `market_id` | `string` | Yes | K P | Native market ID |
-| `order_id` | `string \| null` | No | K P | Parent order ID |
-| `outcome` | `string \| null` | No | K P | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
-| `side` | `string \| null` | No | K P | `"buy"` or `"sell"` |
-| `size` | `number` | Yes | K P | Number of contracts filled |
-| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"websocket"`) |
-| `timestamp` | `string \| null` | No | K P | Fill timestamp (ISO 8601) |
+| `asset_id` | `string` | Yes | K P O | Token ID that was traded |
+| `fee` | `number \| null` | No | O | Fee charged for this fill (from on-chain confirmation) |
+| `fill_id` | `string \| null` | No | K P O | Unique fill identifier. Opinion: `tradeNo` from `trade.record.new` |
+| `liquidity_role` | `LiquidityRole \| null` | No | K P O | Whether you were `maker` or `taker` on this fill |
+| `market_id` | `string` | Yes | K P O | Native market ID |
+| `order_id` | `string \| null` | No | K P O | Parent order ID |
+| `outcome` | `string \| null` | No | K P O | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P O | Execution price, normalized 0-1 |
+| `side` | `string \| null` | No | K P O | `"buy"` or `"sell"` |
+| `size` | `number` | Yes | K P O | Number of contracts filled |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"kalshi_user_fill"`, `"trade.record.new"`) |
+| `timestamp` | `string \| null` | No | K P O | Fill timestamp (ISO 8601) |
+| `tx_hash` | `string \| null` | No | O | On-chain transaction hash (from on-chain confirmation) |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1272,6 +1278,8 @@ pub struct ActivityFill {
     pub size: f64,
     pub side: Option<String>,
     pub outcome: Option<String>,
+    pub tx_hash: Option<String>,
+    pub fee: Option<f64>,
     pub timestamp: Option<DateTime<Utc>>,
     pub source_channel: Cow<'static, str>,
     pub liquidity_role: Option<LiquidityRole>,
@@ -1284,6 +1292,7 @@ pub struct ActivityFill {
 ```python
 class ActivityFill(BaseModel):
     asset_id: str
+    fee: Optional[float]
     fill_id: Optional[str]
     liquidity_role: Optional[LiquidityRole]
     market_id: str
@@ -1294,6 +1303,7 @@ class ActivityFill(BaseModel):
     size: float
     source_channel: str
     timestamp: Optional[datetime]
+    tx_hash: Optional[str]
 ```
 
 </TabItem>
@@ -1302,6 +1312,7 @@ class ActivityFill(BaseModel):
 ```typescript
 interface ActivityFill {
   asset_id: string;
+  fee?: number | null;
   fill_id?: string | null;
   liquidity_role?: LiquidityRole | null;
   market_id: string;
@@ -1312,6 +1323,7 @@ interface ActivityFill {
   size: number;
   source_channel: string;
   timestamp?: string | null;
+  tx_hash?: string | null;
 }
 ```
 
@@ -1327,15 +1339,16 @@ A public trade event received via WebSocket.
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
 | `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
-| `asset_id` | `string` | Yes | K P | Token ID that was traded |
-| `market_id` | `string` | Yes | K P | Native market ID |
-| `outcome` | `string \| null` | No | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Trade price, normalized 0-1 |
-| `side` | `string \| null` | No | K P | Trade side label |
-| `size` | `number` | Yes | K P | Number of contracts traded |
-| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"websocket"`) |
-| `timestamp` | `string \| null` | No | K P | Trade timestamp (ISO 8601) |
-| `trade_id` | `string \| null` | No | K P | Exchange-assigned trade identifier |
+| `asset_id` | `string` | Yes | K P O | Token ID that was traded |
+| `fee_rate_bps` | `number \| null` | No | P | Fee rate in basis points (e.g., `0` = no fee, `200` = 2%) |
+| `market_id` | `string` | Yes | K P O | Native market ID |
+| `outcome` | `string \| null` | No | K P O | Outcome that was traded (e.g., `"Yes"`, `"No"`). Polymarket: requires `register_outcomes` |
+| `price` | `number` | Yes | K P O | Trade price, normalized 0-1 |
+| `side` | `string \| null` | No | K P O | Trade side label |
+| `size` | `number` | Yes | K P O | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"kalshi_public_trade"`, `"polymarket_last_trade_price"`) |
+| `timestamp` | `string \| null` | No | K P O | Trade timestamp (ISO 8601) |
+| `trade_id` | `string \| null` | No | K | Exchange-assigned trade identifier |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1350,6 +1363,7 @@ pub struct ActivityTrade {
     pub side: Option<String>,
     pub aggressor_side: Option<String>,
     pub outcome: Option<String>,
+    pub fee_rate_bps: Option<u32>,
     pub timestamp: Option<DateTime<Utc>>,
     pub source_channel: Cow<'static, str>,
 }
@@ -1362,6 +1376,7 @@ pub struct ActivityTrade {
 class ActivityTrade(BaseModel):
     aggressor_side: Optional[str]
     asset_id: str
+    fee_rate_bps: Optional[int]
     market_id: str
     outcome: Optional[str]
     price: float
@@ -1379,6 +1394,7 @@ class ActivityTrade(BaseModel):
 interface ActivityTrade {
   aggressor_side?: string | null;
   asset_id: string;
+  fee_rate_bps?: number | null;
   market_id: string;
   outcome?: string | null;
   price: number;
@@ -1502,6 +1518,8 @@ interface ExchangeInfo {
 |-------|------|----------|-----------|-------------|
 | `cursor` | `string \| null` | No | K P O | Exchange-specific cursor (offset, page number, or cursor string) for pagination |
 | `limit` | `number \| null` | No | K P O | Maximum number of markets to return per page |
+| `series_id` | `string \| null` | No | K P | Filter by series. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series |
+| `event_id` | `string \| null` | No | K P O | Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`), Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`), or Opinion market slug (e.g., `"btc-price-daily"`) to get child markets. When set, `series_id`, `cursor`, and `limit` are ignored |
 | `status` | `MarketStatusFilter \| null` | No | K P O | Filter by market status. Defaults to `active` when omitted. Use `all` to fetch markets of any status |
 
 <Tabs syncKey="lang">
@@ -1512,6 +1530,8 @@ pub struct FetchMarketsParams {
     pub limit: Option<usize>,
     pub cursor: Option<String>,
     pub status: Option<MarketStatusFilter>,
+    pub series_id: Option<String>,
+    pub event_id: Option<String>,
 }
 ```
 
@@ -1523,6 +1543,8 @@ class FetchMarketsParams(BaseModel):
     limit: Optional[int]
     cursor: Optional[str]
     status: Optional[MarketStatusFilter]
+    series_id: Optional[str]
+    event_id: Optional[str]
 ```
 
 </TabItem>
@@ -1533,6 +1555,8 @@ interface FetchMarketsParams {
   limit?: number | null;
   cursor?: string | null;
   status?: MarketStatusFilter | null;
+  series_id?: string | null;
+  event_id?: string | null;
 }
 ```
 

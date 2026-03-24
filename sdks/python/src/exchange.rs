@@ -42,12 +42,14 @@ impl NativeExchange {
         pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (status=None, cursor=None))]
+    #[pyo3(signature = (status=None, cursor=None, series_id=None, event_id=None))]
     fn fetch_markets<'py>(
         &self,
         py: Python<'py>,
         status: Option<&str>,
         cursor: Option<&str>,
+        series_id: Option<&str>,
+        event_id: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -57,6 +59,8 @@ impl NativeExchange {
                 .transpose()
                 .map_err(to_py_err)?,
             cursor: cursor.map(String::from),
+            series_id: series_id.map(String::from),
+            event_id: event_id.map(String::from),
             ..Default::default()
         };
         let result = py.detach(|| rt.block_on(inner.fetch_markets(&fetch_params)));
