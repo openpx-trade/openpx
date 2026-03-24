@@ -168,6 +168,9 @@ pub struct Polymarket {
     preset_api_creds: Option<ApiCredentials>,
     /// External signer for Privy-managed wallets (bypasses local k256 signing)
     external_signer: Option<Arc<dyn crate::signer::ExternalSigner>>,
+    /// Background heartbeat task handle. Polymarket auto-cancels all open orders
+    /// if heartbeats stop arriving. Posts `POST /heartbeats` every ~10 seconds.
+    heartbeat_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl Polymarket {
@@ -213,6 +216,7 @@ impl Polymarket {
             signer,
             preset_api_creds,
             external_signer: None,
+            heartbeat_handle: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -251,6 +255,45 @@ impl Polymarket {
     pub async fn init_trading(&self) -> Result<ApiCredentials, PolymarketError> {
         let state = self.ensure_sdk_client().await?;
         Ok(state.creds.clone())
+    }
+
+    /// Start the background heartbeat task. Polymarket auto-cancels all open orders
+    /// if heartbeats stop arriving. Posts `POST /heartbeats` every ~10 seconds.
+    /// Requires the SDK client to be initialized (call `init_trading` first).
+    pub async fn start_heartbeat(&self) -> Result<(), PolymarketError> {
+        let state = self.ensure_sdk_client().await?;
+        let client = Arc::clone(&state.client);
+        let handle_lock = Arc::clone(&self.heartbeat_handle);
+
+        // Cancel existing heartbeat if running
+        if let Some(h) = handle_lock.lock().await.take() {
+            h.abort();
+        }
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                let guard = client.read().await;
+                let result = sdk_dispatch!(&*guard, post_heartbeat(None).await);
+                match result {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("Polymarket heartbeat failed: {e}");
+                    }
+                }
+            }
+        });
+
+        *handle_lock.lock().await = Some(handle);
+        Ok(())
+    }
+
+    /// Stop the background heartbeat task.
+    pub async fn stop_heartbeat(&self) {
+        if let Some(h) = self.heartbeat_handle.lock().await.take() {
+            h.abort();
+        }
     }
 
     /// Lazily initialize the SDK client, deriving CLOB credentials from the private key
@@ -547,13 +590,21 @@ impl Polymarket {
         sort_bids(&mut bids);
         sort_asks(&mut asks);
 
+        // Prefer server timestamp, fall back to local time
+        let timestamp = data
+            .get("timestamp")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .or_else(|| Some(chrono::Utc::now()));
+
         Ok(Orderbook {
             market_id: String::new(),
             asset_id: token_id.to_string(),
             bids,
             asks,
             last_update_id: None,
-            timestamp: Some(chrono::Utc::now()),
+            timestamp,
             hash: None,
         })
     }
@@ -679,7 +730,7 @@ impl Polymarket {
     ) -> Result<Vec<PublicTrade>, PolymarketError> {
         self.rate_limit().await;
 
-        const DATA_API_URL: &str = "https://data-api.polymarket.com";
+        let data_api_url = &self.config.data_api_url;
         const PAGE_SIZE: usize = 500;
 
         let total_limit = limit.unwrap_or(100);
@@ -696,7 +747,7 @@ impl Polymarket {
             }
 
             let mut url = format!(
-                "{DATA_API_URL}/trades?limit={page_limit}&offset={current_offset}&takerOnly={taker}"
+                "{data_api_url}/trades?limit={page_limit}&offset={current_offset}&takerOnly={taker}"
             );
 
             if let Some(m) = market {
@@ -879,9 +930,9 @@ impl Polymarket {
     }
 
     async fn fetch_all_positions(&self, user: &str) -> Result<Vec<Position>, OpenPxError> {
-        const DATA_API_URL: &str = "https://data-api.polymarket.com";
+        let data_api_url = &self.config.data_api_url;
 
-        let url = format!("{DATA_API_URL}/positions?user={user}&sizeThreshold=0.01&limit=500");
+        let url = format!("{data_api_url}/positions?user={user}&sizeThreshold=0.01&limit=500");
         let response = reqwest::get(&url)
             .await
             .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
@@ -959,8 +1010,8 @@ impl Polymarket {
         &self,
         condition_id: &str,
     ) -> Result<Option<f64>, PolymarketError> {
-        const DATA_API_URL: &str = "https://data-api.polymarket.com";
-        let url = format!("{DATA_API_URL}/oi?market={condition_id}");
+        let data_api_url = &self.config.data_api_url;
+        let url = format!("{data_api_url}/oi?market={condition_id}");
         let response = reqwest::get(&url)
             .await
             .map_err(|e| PolymarketError::Network(e.to_string()))?;
@@ -2648,9 +2699,9 @@ impl Exchange for Polymarket {
         let market = self.fetch_market(market_id).await?;
         let condition_id = market.condition_id.as_deref();
         if let Some(cid) = condition_id {
-            const DATA_API_URL: &str = "https://data-api.polymarket.com";
+            let data_api_url = &self.config.data_api_url;
             let url =
-                format!("{DATA_API_URL}/positions?user={owner}&market={cid}&sizeThreshold=0.01");
+                format!("{data_api_url}/positions?user={owner}&market={cid}&sizeThreshold=0.01");
             if let Ok(response) = reqwest::get(&url).await {
                 if response.status().is_success() {
                     if let Ok(data) = response.json::<Vec<serde_json::Value>>().await {
@@ -2902,7 +2953,7 @@ impl Exchange for Polymarket {
         &self,
         params: FetchUserActivityParams,
     ) -> Result<serde_json::Value, OpenPxError> {
-        const DATA_API_URL: &str = "https://data-api.polymarket.com";
+        let data_api_url = &self.config.data_api_url;
 
         let address = &params.address;
         if address.len() != 42
@@ -2918,8 +2969,8 @@ impl Exchange for Polymarket {
 
         let profile_url = format!("{}/public-profile?address={address}", self.config.gamma_url);
         let positions_url =
-            format!("{DATA_API_URL}/positions?user={address}&limit={limit}&sizeThreshold=0");
-        let trades_url = format!("{DATA_API_URL}/trades?user={address}&limit={limit}");
+            format!("{data_api_url}/positions?user={address}&limit={limit}&sizeThreshold=0");
+        let trades_url = format!("{data_api_url}/trades?user={address}&limit={limit}");
 
         let (profile_result, positions_result, trades_result) = tokio::join!(
             reqwest::get(&profile_url),

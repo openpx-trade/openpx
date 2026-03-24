@@ -77,12 +77,70 @@ pub enum PaginationStyle {
     None,
 }
 
+/// Endpoint category for per-endpoint rate limiting.
+/// Each exchange maps these to its actual documented API rate limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum RateLimitCategory {
+    /// Read operations: fetch markets, orderbook, positions, balance, trades, price history
+    Read = 0,
+    /// Write operations: create order, cancel order
+    Write = 1,
+    /// Bulk/data operations: market fetcher, paginated full-catalog fetches
+    Bulk = 2,
+}
+
+impl RateLimitCategory {
+    pub const COUNT: usize = 3;
+    pub const ALL: [RateLimitCategory; 3] = [
+        RateLimitCategory::Read,
+        RateLimitCategory::Write,
+        RateLimitCategory::Bulk,
+    ];
+}
+
+/// Rate limit for a single endpoint category.
+#[derive(Debug, Clone, Copy)]
+pub struct EndpointRateLimit {
+    pub category: RateLimitCategory,
+    pub requests_per_second: u32,
+    pub burst: u32,
+}
+
+/// Per-category rate limiting configuration for an exchange.
+/// Categories not listed in `limits` inherit from `default_rps`/`default_burst`.
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimitConfig {
-    /// Requests per second
-    pub requests_per_second: u32,
-    /// Burst limit
-    pub burst: u32,
+    /// Fallback rate for any category not explicitly listed.
+    pub default_rps: u32,
+    /// Default burst for any category not explicitly listed.
+    pub default_burst: u32,
+    /// Per-category overrides (searched linearly; at most 3 entries).
+    pub limits: &'static [EndpointRateLimit],
+}
+
+impl RateLimitConfig {
+    /// Look up (rps, burst) for a given category.
+    pub const fn get(&self, category: RateLimitCategory) -> (u32, u32) {
+        let mut i = 0;
+        while i < self.limits.len() {
+            if self.limits[i].category as u8 == category as u8 {
+                return (self.limits[i].requests_per_second, self.limits[i].burst);
+            }
+            i += 1;
+        }
+        (self.default_rps, self.default_burst)
+    }
+
+    /// Convenience: get requests_per_second for a category.
+    pub const fn rps(&self, category: RateLimitCategory) -> u32 {
+        self.get(category).0
+    }
+
+    /// Backwards-compat: overall requests_per_second (uses Read category).
+    pub const fn requests_per_second(&self) -> u32 {
+        self.default_rps
+    }
 }
 
 /// Mapping from raw exchange JSON field to unified field.

@@ -2,6 +2,7 @@ use px_core::ExchangeConfig;
 
 pub const GAMMA_API_URL: &str = "https://gamma-api.polymarket.com";
 pub const CLOB_API_URL: &str = "https://clob.polymarket.com";
+pub const DATA_API_URL: &str = "https://data-api.polymarket.com";
 pub const DEFAULT_POLYGON_RPC: &str = "https://polygon-bor-rpc.publicnode.com";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,6 +34,7 @@ pub struct PolymarketConfig {
     pub base: ExchangeConfig,
     pub gamma_url: String,
     pub clob_url: String,
+    pub data_api_url: String,
     pub private_key: Option<String>,
     /// The funder address (Safe or Proxy wallet). Can be auto-detected from EOA.
     pub funder: Option<String>,
@@ -60,6 +62,7 @@ impl Default for PolymarketConfig {
             },
             gamma_url: GAMMA_API_URL.into(),
             clob_url: CLOB_API_URL.into(),
+            data_api_url: DATA_API_URL.into(),
             private_key: None,
             funder: None,
             signature_type: PolymarketSignatureType::default(),

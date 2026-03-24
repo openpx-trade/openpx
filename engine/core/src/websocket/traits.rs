@@ -16,11 +16,17 @@ pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
 
-/// Envelope wrapping every WebSocket stream item with a monotonic sequence
-/// number and a local receive timestamp for HFT feed-latency measurement.
+/// Envelope wrapping every WebSocket stream item for HFT feed-latency measurement.
+///
+/// - `exchange_time` — server-authoritative UTC timestamp for event ordering.
+///   Always prefer this for trade sequencing and cross-exchange correlation.
+/// - `received_at` — local UTC timestamp captured at socket read for measuring
+///   wire-to-process latency. Compare `received_at - exchange_time` for feed lag.
+/// - `seq` — per-market monotonic sequence number for gap detection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsMessage<T> {
     pub seq: u64,
+    pub exchange_time: Option<DateTime<Utc>>,
     pub received_at: DateTime<Utc>,
     pub data: T,
 }

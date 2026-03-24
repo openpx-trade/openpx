@@ -25,7 +25,7 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 regex = { workspace = true }
-polymarket-client-sdk = { version = "0.4.1", features = ["clob"] }
+polymarket-client-sdk = { version = "0.4.1", features = ["clob", "heartbeats"] }
 k256 = "0.13"
 uuid = "1"
 alloy = { version = "1.5", features = ["providers", "signers", "contract", "network", "sol-types"] }

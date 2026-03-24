@@ -1,5 +1,7 @@
 use px_core::ExchangeConfig;
 
+/// Note: Official docs reference `https://proxy.opinion.trade:8443` but this
+/// domain is a working alias. Update if the alias stops resolving.
 pub const BASE_URL: &str = "https://openapi.opinion.trade";
 pub const WS_URL: &str = "wss://ws.opinion.trade";
 pub const CHAIN_ID: u64 = 56;

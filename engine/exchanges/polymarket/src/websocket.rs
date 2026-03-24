@@ -342,6 +342,7 @@ impl PolymarketWebSocket {
         };
 
         let market_id = msg.market.clone().unwrap_or_default();
+        let server_timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
 
         let bids: Vec<PriceLevel> = msg
             .bids
@@ -385,7 +386,7 @@ impl PolymarketWebSocket {
             bids,
             asks,
             last_update_id: None,
-            timestamp: Some(chrono::Utc::now()),
+            timestamp: server_timestamp.or(Some(chrono::Utc::now())),
             hash: msg.hash.clone(),
         };
 
@@ -408,7 +409,9 @@ impl PolymarketWebSocket {
             self.ensure_user_market_subscription(&market_id).await;
         }
 
-        self.broadcast_orderbook(&asset_id, orderbook).await;
+        let exchange_time = orderbook.timestamp;
+        self.broadcast_orderbook(&asset_id, orderbook, exchange_time)
+            .await;
     }
 
     async fn handle_price_change(&self, msg: &RawWsMessage) {
@@ -416,6 +419,7 @@ impl PolymarketWebSocket {
             Some(c) => c,
             None => return,
         };
+        let server_timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
 
         let mut obs = self.orderbooks.write().await;
         // Group changes by asset_id
@@ -487,7 +491,7 @@ impl PolymarketWebSocket {
         let mut to_broadcast: SmallVec<[BroadcastEntry; 2]> = SmallVec::new();
         for (asset_id, changes) in asset_changes {
             if let Some(ob) = obs.get_mut(&asset_id) {
-                ob.timestamp = Some(Utc::now());
+                ob.timestamp = server_timestamp.or(Some(Utc::now()));
                 to_broadcast.push((asset_id, ob.timestamp, changes));
             }
         }
@@ -500,6 +504,7 @@ impl PolymarketWebSocket {
             if let Some((sender, seq)) = senders.get(&asset_id) {
                 let msg = WsMessage {
                     seq: seq.fetch_add(1, Ordering::Relaxed),
+                    exchange_time: timestamp,
                     received_at: chrono::Utc::now(),
                     data: OrderbookUpdate::Delta { changes, timestamp },
                 };
@@ -551,7 +556,7 @@ impl PolymarketWebSocket {
             timestamp,
             source_channel: Cow::Borrowed("polymarket_last_trade_price"),
         });
-        self.broadcast_activity(&asset_id, event).await;
+        self.broadcast_activity(&asset_id, event, timestamp).await;
     }
 
     async fn handle_user_trade(&self, msg: &RawWsMessage) {
@@ -635,7 +640,7 @@ impl PolymarketWebSocket {
         });
 
         if let Some(asset_id) = asset_id {
-            self.broadcast_activity(&asset_id, fill).await;
+            self.broadcast_activity(&asset_id, fill, timestamp).await;
             return;
         }
 
@@ -645,17 +650,24 @@ impl PolymarketWebSocket {
                 map.get(&market_id).cloned().unwrap_or_default()
             };
             for asset in assets {
-                self.broadcast_activity(&asset, fill.clone()).await;
+                self.broadcast_activity(&asset, fill.clone(), timestamp)
+                    .await;
             }
         }
     }
 
-    async fn broadcast_orderbook(&self, asset_id: &str, orderbook: Orderbook) {
+    async fn broadcast_orderbook(
+        &self,
+        asset_id: &str,
+        orderbook: Orderbook,
+        exchange_time: Option<DateTime<Utc>>,
+    ) {
         let senders = self.orderbook_senders.read().await;
         if let Some((sender, seq)) = senders.get(asset_id) {
             let receivers = sender.receiver_count();
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time,
                 received_at: chrono::Utc::now(),
                 data: OrderbookUpdate::Snapshot(orderbook),
             };
@@ -687,11 +699,17 @@ impl PolymarketWebSocket {
         }
     }
 
-    async fn broadcast_activity(&self, asset_id: &str, activity: ActivityEvent) {
+    async fn broadcast_activity(
+        &self,
+        asset_id: &str,
+        activity: ActivityEvent,
+        exchange_time: Option<DateTime<Utc>>,
+    ) {
         let senders = self.activity_senders.read().await;
         if let Some((sender, seq)) = senders.get(asset_id) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time,
                 received_at: chrono::Utc::now(),
                 data: activity,
             };
@@ -842,7 +860,7 @@ impl PolymarketWebSocket {
                 loop {
                     ping_interval.tick().await;
                     if let Some(ref tx) = *ws_self.user_write_tx.lock().await {
-                        let _ = tx.unbounded_send(Message::Ping(vec![]));
+                        let _ = tx.unbounded_send(Message::Text("PING".into()));
                     }
                 }
             };
@@ -1065,7 +1083,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                 loop {
                     ping_interval.tick().await;
                     if let Some(ref tx) = *ws_self.write_tx.lock().await {
-                        let _ = tx.unbounded_send(Message::Ping(vec![]));
+                        let _ = tx.unbounded_send(Message::Text("PING".into()));
                     }
                 }
             };
@@ -1131,6 +1149,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                 for (sender, seq) in senders.values() {
                                     let msg = WsMessage {
                                         seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        exchange_time: None,
                                         received_at: chrono::Utc::now(),
                                         data: OrderbookUpdate::Reconnected,
                                     };
@@ -1316,8 +1335,10 @@ impl OrderBookWebSocket for PolymarketWebSocket {
         // This prevents "delta-only" streams where a late subscriber never sees a
         // full snapshot (common when subscribing via paired tokens).
         if let Some(cached) = self.orderbooks.read().await.get(market_id).cloned() {
+            let exchange_time = cached.timestamp;
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time,
                 received_at: chrono::Utc::now(),
                 data: OrderbookUpdate::Snapshot(cached),
             };

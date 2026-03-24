@@ -113,6 +113,30 @@ impl ConcurrentRateLimiter {
     }
 }
 
+use crate::exchange::manifest::{RateLimitCategory, RateLimitConfig};
+
+/// Holds one `RateLimiter` per endpoint category for per-category rate limiting.
+/// Indexed by `RateLimitCategory` discriminant for O(1) lookup.
+pub struct CategoryRateLimiter {
+    limiters: [tokio::sync::Mutex<RateLimiter>; RateLimitCategory::COUNT],
+}
+
+impl CategoryRateLimiter {
+    /// Build from a manifest's `RateLimitConfig`.
+    pub fn from_config(config: &RateLimitConfig) -> Self {
+        let limiters = RateLimitCategory::ALL.map(|cat| {
+            let rps = config.rps(cat);
+            tokio::sync::Mutex::new(RateLimiter::new(rps))
+        });
+        Self { limiters }
+    }
+
+    /// Wait for the rate limiter of the given category.
+    pub async fn wait(&self, category: RateLimitCategory) {
+        self.limiters[category as usize].lock().await.wait().await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

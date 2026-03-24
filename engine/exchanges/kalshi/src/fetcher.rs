@@ -14,9 +14,10 @@ use tracing::{error, info, warn};
 use crate::error::KalshiError;
 use crate::exchange::to_openpx;
 
-/// Conservative rate limit to avoid hitting Kalshi's longer-window limits.
-/// Kalshi's API allows 20 req/s but may have per-minute/hour limits.
-const CONSERVATIVE_RATE: u32 = 10;
+/// Bulk rate limit from Kalshi manifest (10 req/s for full-catalog fetches).
+const BULK_RATE: u32 = KALSHI_MANIFEST
+    .rate_limit
+    .rps(px_core::RateLimitCategory::Bulk);
 
 /// Maximum retry attempts for rate limit errors.
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
@@ -86,7 +87,11 @@ impl MarketFetcher for KalshiMarketFetcher {
 
     async fn fetch_markets(&self) -> Result<Vec<serde_json::Value>, OpenPxError> {
         let client = Self::create_client().map_err(to_openpx)?;
-        let mut rate_limiter = RateLimiter::new(KALSHI_MANIFEST.rate_limit.requests_per_second);
+        let mut rate_limiter = RateLimiter::new(
+            KALSHI_MANIFEST
+                .rate_limit
+                .rps(px_core::RateLimitCategory::Bulk),
+        );
 
         let mut all_markets = Vec::new();
         let mut cursor: Option<String> = None;
@@ -179,10 +184,7 @@ impl MarketFetcher for KalshiMarketFetcher {
 
         // Shared state for parallel fetching
         // Use conservative rate to avoid hitting Kalshi's longer-window limits
-        let rate_limiter = Arc::new(ConcurrentRateLimiter::new(
-            CONSERVATIVE_RATE,
-            KALSHI_STATUSES.len(),
-        ));
+        let rate_limiter = Arc::new(ConcurrentRateLimiter::new(BULK_RATE, KALSHI_STATUSES.len()));
         let buffer = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let total_fetched = Arc::new(AtomicUsize::new(0));
         let current_cursors = Arc::new(tokio::sync::Mutex::new(status_cursors.clone()));

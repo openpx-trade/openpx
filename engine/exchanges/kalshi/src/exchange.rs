@@ -32,6 +32,30 @@ fn parse_fp(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Opti
         .and_then(|s| s.parse().ok())
 }
 
+/// Parse a price value that may be a dollar string ("0.65") or cents integer (65).
+/// Dollar strings are used as-is; integers are divided by 100.
+fn parse_price_value(val: &Option<serde_json::Value>) -> Option<f64> {
+    let v = val.as_ref()?;
+    if let Some(s) = v.as_str() {
+        s.parse::<f64>().ok()
+    } else if let Some(i) = v.as_i64() {
+        Some(i as f64 / 100.0)
+    } else {
+        v.as_f64()
+    }
+}
+
+/// Parse a numeric value that may be a string ("1500.5") or number (1500).
+/// No cent-to-dollar conversion — used for volume, open interest, etc.
+fn parse_numeric_value(val: &Option<serde_json::Value>) -> Option<f64> {
+    let v = val.as_ref()?;
+    if let Some(s) = v.as_str() {
+        s.parse::<f64>().ok()
+    } else {
+        v.as_f64()
+    }
+}
+
 pub(crate) fn to_openpx(e: KalshiError) -> OpenPxError {
     OpenPxError::Exchange(e.into())
 }
@@ -61,17 +85,22 @@ struct KalshiCandlestick {
     #[serde(alias = "endPeriodTs")]
     end_period_ts: i64,
     price: KalshiOhlc,
-    volume: Option<i64>,
-    #[serde(alias = "openInterest")]
-    open_interest: Option<f64>,
+    #[serde(alias = "volume")]
+    volume_fp: Option<serde_json::Value>,
+    #[serde(alias = "openInterest", alias = "open_interest")]
+    open_interest_fp: Option<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct KalshiOhlc {
-    open: Option<i64>,  // cents
-    high: Option<i64>,  // cents
-    low: Option<i64>,   // cents
-    close: Option<i64>, // cents
+    #[serde(alias = "open")]
+    open_dollars: Option<serde_json::Value>,
+    #[serde(alias = "high")]
+    high_dollars: Option<serde_json::Value>,
+    #[serde(alias = "low")]
+    low_dollars: Option<serde_json::Value>,
+    #[serde(alias = "close")]
+    close_dollars: Option<serde_json::Value>,
 }
 
 impl Kalshi {
@@ -405,10 +434,16 @@ impl Kalshi {
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono::Utc));
 
-        let settlement_time = obj
-            .get("settlement_ts")
-            .and_then(|v| v.as_i64())
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+        // settlement_ts: may be RFC3339 string (new API) or unix timestamp (legacy)
+        let settlement_time = obj.get("settlement_ts").and_then(|v| {
+            v.as_str()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .or_else(|| {
+                    v.as_i64()
+                        .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+                })
+        });
 
         // ── Kalshi-specific fields ──
 
@@ -442,6 +477,15 @@ impl Kalshi {
 
         let openpx_id = Market::make_openpx_id("kalshi", &id);
 
+        let market_type = obj
+            .get("market_type")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
+                "scalar" => MarketType::Scalar,
+                _ => MarketType::Binary,
+            })
+            .unwrap_or(MarketType::Binary);
+
         Some(Market {
             openpx_id,
             exchange: "kalshi".into(),
@@ -452,7 +496,7 @@ impl Kalshi {
             description,
             rules,
             status,
-            market_type: MarketType::Binary,
+            market_type,
             accepting_orders,
             outcomes,
             outcome_prices,
@@ -523,21 +567,39 @@ impl Kalshi {
             })
             .unwrap_or(OrderStatus::Open);
 
-        // Price in cents, convert to decimal
+        // Price: prefer dollar strings, fall back to cents integer / 100
         let price = obj
-            .and_then(|o| o.get("yes_price").or(o.get("no_price")))
-            .and_then(|v| v.as_f64())
-            .map(|p| p / 100.0)
+            .and_then(|o| {
+                parse_dollars(o, "yes_price_dollars")
+                    .or_else(|| parse_dollars(o, "no_price_dollars"))
+                    .or_else(|| {
+                        o.get("yes_price")
+                            .or(o.get("no_price"))
+                            .and_then(|v| v.as_f64())
+                            .map(|p| p / 100.0)
+                    })
+            })
             .unwrap_or(0.0);
 
+        // Size: prefer fp string, fall back to integer
         let size = obj
-            .and_then(|o| o.get("count").or(o.get("remaining_count")))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                parse_fp(o, "remaining_count_fp")
+                    .or_else(|| parse_fp(o, "initial_count_fp"))
+                    .or_else(|| {
+                        o.get("remaining_count")
+                            .or(o.get("count"))
+                            .and_then(|v| v.as_f64())
+                    })
+            })
             .unwrap_or(0.0);
 
+        // Filled: prefer fp string, fall back to integer
         let filled = obj
-            .and_then(|o| o.get("filled_count"))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                parse_fp(o, "fill_count_fp")
+                    .or_else(|| o.get("filled_count").and_then(|v| v.as_f64()))
+            })
             .unwrap_or(0.0);
 
         let created_at = obj
@@ -548,7 +610,7 @@ impl Kalshi {
             .unwrap_or_else(chrono::Utc::now);
 
         let updated_at = obj
-            .and_then(|o| o.get("updated_time"))
+            .and_then(|o| o.get("last_update_time").or(o.get("updated_time")))
             .and_then(|v| v.as_str())
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono::Utc));
@@ -577,9 +639,11 @@ impl Kalshi {
             .to_string();
 
         // Kalshi positions: positive = Yes, negative = No
+        // Prefer fp string, fall back to integer
         let yes_count = obj
-            .and_then(|o| o.get("position"))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                parse_fp(o, "position_fp").or_else(|| o.get("position").and_then(|v| v.as_f64()))
+            })
             .unwrap_or(0.0);
 
         let (outcome, size) = if yes_count >= 0.0 {
@@ -588,25 +652,31 @@ impl Kalshi {
             ("No".to_string(), -yes_count)
         };
 
-        // total_traded = cost basis in cents; market_exposure = current value in cents
-        let total_traded_cents = obj
-            .and_then(|o| o.get("total_traded"))
-            .and_then(|v| v.as_f64())
+        // Cost basis and current value: prefer dollar strings, fall back to cents / 100
+        let total_traded = obj
+            .and_then(|o| {
+                parse_dollars(o, "total_traded_dollars").or_else(|| {
+                    o.get("total_traded")
+                        .and_then(|v| v.as_f64())
+                        .map(|c| c / 100.0)
+                })
+            })
             .unwrap_or(0.0);
 
-        let market_exposure_cents = obj
-            .and_then(|o| o.get("market_exposure"))
-            .and_then(|v| v.as_f64())
+        let market_exposure = obj
+            .and_then(|o| {
+                parse_dollars(o, "market_exposure_dollars").or_else(|| {
+                    o.get("market_exposure")
+                        .and_then(|v| v.as_f64())
+                        .map(|c| c / 100.0)
+                })
+            })
             .unwrap_or(0.0);
 
-        let average_price = if size > 0.0 {
-            total_traded_cents / size / 100.0
-        } else {
-            0.0
-        };
+        let average_price = if size > 0.0 { total_traded / size } else { 0.0 };
 
         let current_price = if size > 0.0 {
-            market_exposure_cents / size / 100.0
+            market_exposure / size
         } else {
             0.0
         };
@@ -703,35 +773,34 @@ impl Kalshi {
 
         #[derive(serde::Deserialize)]
         struct OrderbookResponse {
-            orderbook: OrderbookData,
+            #[serde(alias = "orderbook")]
+            orderbook_fp: OrderbookData,
         }
 
         #[derive(serde::Deserialize)]
         struct OrderbookData {
-            yes: Option<Vec<Vec<f64>>>,
-            no: Option<Vec<Vec<f64>>>,
+            #[serde(alias = "yes")]
+            yes_dollars: Option<Vec<[String; 2]>>,
+            #[serde(alias = "no")]
+            no_dollars: Option<Vec<[String; 2]>>,
         }
 
         let path = format!("/markets/{ticker}/orderbook");
         let resp: OrderbookResponse = self.get(&path).await?;
 
         let mut yes = Vec::new();
-        if let Some(yes_levels) = resp.orderbook.yes {
-            for level in yes_levels {
-                if level.len() >= 2 {
-                    let price = level[0] / 100.0; // Convert cents to decimal
-                    let size = level[1];
+        if let Some(yes_levels) = resp.orderbook_fp.yes_dollars {
+            for [price_str, size_str] in yes_levels {
+                if let (Ok(price), Ok(size)) = (price_str.parse::<f64>(), size_str.parse::<f64>()) {
                     yes.push(PriceLevel::new(price, size));
                 }
             }
         }
 
         let mut no = Vec::new();
-        if let Some(no_levels) = resp.orderbook.no {
-            for level in no_levels {
-                if level.len() >= 2 {
-                    let price = level[0] / 100.0;
-                    let size = level[1];
+        if let Some(no_levels) = resp.orderbook_fp.no_dollars {
+            for [price_str, size_str] in no_levels {
+                if let (Ok(price), Ok(size)) = (price_str.parse::<f64>(), size_str.parse::<f64>()) {
                     no.push(PriceLevel::new(price, size));
                 }
             }
@@ -1182,8 +1251,8 @@ impl Exchange for Kalshi {
             .candlesticks
             .into_iter()
             .filter_map(|c| {
-                // Skip synthetic padding candles (null OHLC from include_latest_before_start)
-                let open_cents = c.price.open?;
+                // Parse OHLC prices: dollar strings or cents integers (÷100)
+                let open = parse_price_value(&c.price.open_dollars)?;
 
                 // CRITICAL: end_period_ts is the END of the period.
                 // Subtract interval to get period START (what lightweight-charts expects).
@@ -1192,12 +1261,12 @@ impl Exchange for Kalshi {
 
                 Some(Candlestick {
                     timestamp,
-                    open: open_cents as f64 / 100.0,
-                    high: c.price.high.unwrap_or(open_cents) as f64 / 100.0,
-                    low: c.price.low.unwrap_or(open_cents) as f64 / 100.0,
-                    close: c.price.close.unwrap_or(open_cents) as f64 / 100.0,
-                    volume: c.volume.unwrap_or(0) as f64,
-                    open_interest: c.open_interest,
+                    open,
+                    high: parse_price_value(&c.price.high_dollars).unwrap_or(open),
+                    low: parse_price_value(&c.price.low_dollars).unwrap_or(open),
+                    close: parse_price_value(&c.price.close_dollars).unwrap_or(open),
+                    volume: parse_numeric_value(&c.volume_fp).unwrap_or(0.0),
+                    open_interest: parse_numeric_value(&c.open_interest_fp),
                 })
             })
             .collect();
@@ -1377,8 +1446,9 @@ impl Exchange for Kalshi {
             OrderSide::Sell => "sell",
         };
 
-        // Price in cents
-        let price_cents = (price * 100.0).round() as i64;
+        // Format price as dollar string (e.g. 0.65 → "0.65") and size as fp string
+        let price_dollars = format!("{:.2}", price);
+        let count_fp = format!("{:.2}", size);
 
         #[derive(serde::Serialize)]
         struct CreateOrderRequest {
@@ -1389,17 +1459,19 @@ impl Exchange for Kalshi {
             order_type: String,
             #[serde(skip_serializing_if = "Option::is_none")]
             time_in_force: Option<String>,
-            count: i64,
-            yes_price: Option<i64>,
-            no_price: Option<i64>,
+            count_fp: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            yes_price_dollars: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            no_price_dollars: Option<String>,
         }
 
         let time_in_force = kalshi_time_in_force(&params)?;
 
-        let (yes_price, no_price) = if kalshi_side == "yes" {
-            (Some(price_cents), None)
+        let (yes_price_dollars, no_price_dollars) = if kalshi_side == "yes" {
+            (Some(price_dollars), None)
         } else {
-            (None, Some(price_cents))
+            (None, Some(price_dollars))
         };
 
         let request = CreateOrderRequest {
@@ -1408,9 +1480,9 @@ impl Exchange for Kalshi {
             side: kalshi_side.clone(),
             order_type: "limit".to_string(),
             time_in_force,
-            count: size as i64,
-            yes_price,
-            no_price,
+            count_fp,
+            yes_price_dollars,
+            no_price_dollars,
         };
 
         #[derive(serde::Deserialize)]
@@ -1516,15 +1588,19 @@ impl Exchange for Kalshi {
 
         #[derive(serde::Deserialize)]
         struct BalanceResponse {
-            balance: f64, // In cents
+            balance: i64, // In cents
+            #[serde(default)]
+            portfolio_value: Option<i64>,
         }
 
         let path = "/portfolio/balance";
         let resp: BalanceResponse = self.get(path).await.map_err(to_openpx)?;
 
         let mut result = HashMap::new();
-        // Convert cents to dollars
-        result.insert("USD".to_string(), resp.balance / 100.0);
+        result.insert("USD".to_string(), resp.balance as f64 / 100.0);
+        if let Some(pv) = resp.portfolio_value {
+            result.insert("portfolio_value".to_string(), pv as f64 / 100.0);
+        }
         Ok(result)
     }
 

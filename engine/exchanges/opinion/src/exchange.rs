@@ -438,7 +438,12 @@ impl Opinion {
         let obj = data.as_object();
 
         let id = obj
-            .and_then(|o| o.get("order_id").or(o.get("id")).or(o.get("orderID")))
+            .and_then(|o| {
+                o.get("orderId")
+                    .or(o.get("order_id"))
+                    .or(o.get("id"))
+                    .or(o.get("orderID"))
+            })
             .and_then(|v| {
                 v.as_str()
                     .map(String::from)
@@ -447,7 +452,11 @@ impl Opinion {
             .unwrap_or_default();
 
         let market_id = obj
-            .and_then(|o| o.get("topic_id").or(o.get("market_id")))
+            .and_then(|o| {
+                o.get("marketId")
+                    .or(o.get("topic_id"))
+                    .or(o.get("market_id"))
+            })
             .and_then(|v| {
                 v.as_str()
                     .map(String::from)
@@ -456,7 +465,7 @@ impl Opinion {
             .unwrap_or_default();
 
         let side = obj
-            .and_then(|o| o.get("side_enum").or(o.get("side")))
+            .and_then(|o| o.get("sideEnum").or(o.get("side_enum")).or(o.get("side")))
             .map(|v| {
                 if let Some(s) = v.as_str() {
                     if s.to_lowercase() == "buy" {
@@ -476,24 +485,26 @@ impl Opinion {
             })
             .unwrap_or(OrderSide::Buy);
 
+        // Opinion API status codes: 1=Pending, 2=Filled, 3=Canceled, 4=Expired, 5=Failed
         let status = obj
             .and_then(|o| o.get("status"))
             .map(|v| {
                 if let Some(n) = v.as_i64() {
                     match n {
-                        0 => OrderStatus::Pending,
-                        1 => OrderStatus::Open,
+                        1 => OrderStatus::Pending,
                         2 => OrderStatus::Filled,
-                        3 => OrderStatus::PartiallyFilled,
-                        4 => OrderStatus::Cancelled,
+                        3 => OrderStatus::Cancelled,
+                        4 => OrderStatus::Cancelled, // Expired → Cancelled
+                        5 => OrderStatus::Rejected,  // Failed → Rejected
                         _ => OrderStatus::Open,
                     }
                 } else if let Some(s) = v.as_str() {
                     match s.to_lowercase().as_str() {
                         "filled" | "matched" => OrderStatus::Filled,
-                        "cancelled" | "canceled" => OrderStatus::Cancelled,
+                        "cancelled" | "canceled" | "expired" => OrderStatus::Cancelled,
                         "partially_filled" => OrderStatus::PartiallyFilled,
                         "pending" => OrderStatus::Pending,
+                        "failed" => OrderStatus::Rejected,
                         _ => OrderStatus::Open,
                     }
                 } else {
@@ -502,27 +513,42 @@ impl Opinion {
             })
             .unwrap_or(OrderStatus::Open);
 
+        // Opinion API returns price as string (e.g., "0.65"); fall back to f64
         let price = obj
             .and_then(|o| o.get("price"))
-            .and_then(|v| v.as_f64())
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         let size = obj
             .and_then(|o| {
-                o.get("order_shares")
+                o.get("orderShares")
+                    .or(o.get("order_shares"))
                     .or(o.get("maker_amount"))
                     .or(o.get("size"))
             })
-            .and_then(|v| v.as_f64())
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         let filled = obj
             .and_then(|o| {
-                o.get("filled_shares")
+                o.get("filledShares")
+                    .or(o.get("filled_shares"))
                     .or(o.get("matched_amount"))
                     .or(o.get("filled"))
             })
-            .and_then(|v| v.as_f64())
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         let outcome = obj
@@ -532,7 +558,7 @@ impl Opinion {
             .to_string();
 
         let created_at = obj
-            .and_then(|o| o.get("created_at"))
+            .and_then(|o| o.get("createdAt").or(o.get("created_at")))
             .and_then(|v| {
                 v.as_i64()
                     .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
@@ -562,7 +588,11 @@ impl Opinion {
         let obj = data.as_object();
 
         let market_id = obj
-            .and_then(|o| o.get("topic_id").or(o.get("market_id")))
+            .and_then(|o| {
+                o.get("marketId")
+                    .or(o.get("topic_id"))
+                    .or(o.get("market_id"))
+            })
             .and_then(|v| {
                 v.as_str()
                     .map(String::from)
@@ -577,18 +607,43 @@ impl Opinion {
             .to_string();
 
         let size = obj
-            .and_then(|o| o.get("shares_owned").or(o.get("size")).or(o.get("balance")))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                o.get("sharesOwned")
+                    .or(o.get("shares_owned"))
+                    .or(o.get("size"))
+                    .or(o.get("balance"))
+            })
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         let average_price = obj
-            .and_then(|o| o.get("avg_entry_price").or(o.get("average_price")))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                o.get("avgEntryPrice")
+                    .or(o.get("avg_entry_price"))
+                    .or(o.get("average_price"))
+            })
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         let current_price = obj
-            .and_then(|o| o.get("current_price").or(o.get("price")))
-            .and_then(|v| v.as_f64())
+            .and_then(|o| {
+                o.get("currentPrice")
+                    .or(o.get("current_price"))
+                    .or(o.get("price"))
+            })
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
             .unwrap_or(0.0);
 
         Position {
@@ -601,7 +656,7 @@ impl Opinion {
     }
 
     pub async fn get_orderbook(&self, token_id: &str) -> Result<Orderbook, OpinionError> {
-        let endpoint = format!("/openapi/token/orderbook?tokenId={}", token_id);
+        let endpoint = format!("/openapi/token/orderbook?token_id={}", token_id);
         let resp: ApiResponse<serde_json::Value> = self.get(&endpoint).await?;
 
         let mut bids = Vec::new();
@@ -680,7 +735,7 @@ impl Opinion {
         self.ensure_auth()?;
 
         let mut endpoint = format!(
-            "/openapi/token/price-history?tokenId={}&interval={}",
+            "/openapi/token/price-history?token_id={}&interval={}",
             token_id,
             interval.as_str()
         );
@@ -1249,7 +1304,7 @@ impl Exchange for Opinion {
         self.ensure_auth()
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let endpoint = "/openapi/order?status=1&page=1&limit=100".to_string();
+        let endpoint = "/openapi/order?status=1&page=1&limit=20".to_string();
         let resp: ApiResponse<serde_json::Value> = self
             .get(&endpoint)
             .await
@@ -1270,21 +1325,16 @@ impl Exchange for Opinion {
         self.ensure_auth()
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let endpoint = "/openapi/positions?page=1&limit=100".to_string();
-        let resp: ApiResponse<serde_json::Value> = self
-            .get(&endpoint)
+        let address = self.config.multi_sig_addr.as_deref().ok_or_else(|| {
+            OpenPxError::InvalidInput("multi_sig_addr required for Opinion positions".into())
+        })?;
+
+        let items = self
+            .fetch_user_positions_all(address)
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        if resp.code != 0 {
-            return Ok(vec![]);
-        }
-
-        let positions_list = resp.result.and_then(|r| r.list).unwrap_or_default();
-        Ok(positions_list
-            .iter()
-            .map(|p| self.parse_position(p))
-            .collect())
+        Ok(items.iter().map(|p| self.parse_position(p)).collect())
     }
 
     async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError> {

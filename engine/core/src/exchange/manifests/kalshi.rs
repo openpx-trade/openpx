@@ -1,5 +1,6 @@
 use crate::exchange::manifest::{
-    ExchangeManifest, FieldMapping, PaginationConfig, PaginationStyle, RateLimitConfig, Transform,
+    EndpointRateLimit, ExchangeManifest, FieldMapping, PaginationConfig, PaginationStyle,
+    RateLimitCategory, RateLimitConfig, Transform,
 };
 use crate::models::MarketStatus;
 
@@ -16,8 +17,20 @@ pub const KALSHI_MANIFEST: ExchangeManifest = ExchangeManifest {
         cursor_param: "cursor",
     },
     rate_limit: RateLimitConfig {
-        requests_per_second: 20,
-        burst: 5,
+        default_rps: 20,
+        default_burst: 5,
+        limits: &[
+            EndpointRateLimit {
+                category: RateLimitCategory::Write,
+                requests_per_second: 10,
+                burst: 3,
+            },
+            EndpointRateLimit {
+                category: RateLimitCategory::Bulk,
+                requests_per_second: 10,
+                burst: 3,
+            },
+        ],
     },
 
     // ====== DATA AUDIT ======
@@ -48,14 +61,14 @@ pub const KALSHI_MANIFEST: ExchangeManifest = ExchangeManifest {
         },
         FieldMapping {
             unified_field: "volume",
-            source_paths: &["volume"],
-            transform: Transform::ParseInt,
+            source_paths: &["volume_fp", "volume"],
+            transform: Transform::ParseFloat,
             nullable: false,
         },
         FieldMapping {
-            unified_field: "liquidity",
-            source_paths: &["liquidity"],
-            transform: Transform::ParseInt,
+            unified_field: "open_interest",
+            source_paths: &["open_interest_fp", "open_interest"],
+            transform: Transform::ParseFloat,
             nullable: true,
         },
         FieldMapping {

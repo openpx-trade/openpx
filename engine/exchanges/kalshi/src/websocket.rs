@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -343,7 +344,8 @@ impl KalshiWebSocket {
             obs.insert(payload.market_ticker.clone(), orderbook.clone());
         }
 
-        self.broadcast_orderbook(&payload.market_ticker, orderbook)
+        let exchange_time = orderbook.timestamp;
+        self.broadcast_orderbook(&payload.market_ticker, orderbook, exchange_time)
             .await;
     }
 
@@ -416,10 +418,12 @@ impl KalshiWebSocket {
             let mut changes = ChangeVec::new();
             changes.push(change);
 
+            let exchange_time = timestamp;
             let senders = self.orderbook_senders.read().await;
             if let Some((sender, seq)) = senders.get(&payload.market_ticker) {
                 let msg = WsMessage {
                     seq: seq.fetch_add(1, Ordering::Relaxed),
+                    exchange_time,
                     received_at: chrono::Utc::now(),
                     data: OrderbookUpdate::Delta { changes, timestamp },
                 };
@@ -472,7 +476,8 @@ impl KalshiWebSocket {
             timestamp,
             source_channel: Cow::Borrowed("kalshi_public_trade"),
         });
-        self.broadcast_activity(&market_ticker, event).await;
+        self.broadcast_activity(&market_ticker, event, timestamp)
+            .await;
     }
 
     async fn handle_fill(&self, value: &serde_json::Value) {
@@ -526,7 +531,8 @@ impl KalshiWebSocket {
             source_channel: Cow::Borrowed("kalshi_user_fill"),
             liquidity_role,
         });
-        self.broadcast_activity(&market_ticker, event).await;
+        self.broadcast_activity(&market_ticker, event, timestamp)
+            .await;
     }
 
     async fn handle_subscribed(&self, value: &serde_json::Value) {
@@ -591,11 +597,17 @@ impl KalshiWebSocket {
         }
     }
 
-    async fn broadcast_orderbook(&self, market_ticker: &str, orderbook: Orderbook) {
+    async fn broadcast_orderbook(
+        &self,
+        market_ticker: &str,
+        orderbook: Orderbook,
+        exchange_time: Option<DateTime<Utc>>,
+    ) {
         let senders = self.orderbook_senders.read().await;
         if let Some((sender, seq)) = senders.get(market_ticker) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time,
                 received_at: chrono::Utc::now(),
                 data: OrderbookUpdate::Snapshot(orderbook),
             };
@@ -606,11 +618,17 @@ impl KalshiWebSocket {
         }
     }
 
-    async fn broadcast_activity(&self, market_ticker: &str, activity: ActivityEvent) {
+    async fn broadcast_activity(
+        &self,
+        market_ticker: &str,
+        activity: ActivityEvent,
+        exchange_time: Option<DateTime<Utc>>,
+    ) {
         let senders = self.activity_senders.read().await;
         if let Some((sender, seq)) = senders.get(market_ticker) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time,
                 received_at: chrono::Utc::now(),
                 data: activity,
             };
@@ -860,6 +878,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 for (sender, seq) in senders.values() {
                                     let msg = WsMessage {
                                         seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        exchange_time: None,
                                         received_at: chrono::Utc::now(),
                                         data: OrderbookUpdate::Reconnected,
                                     };

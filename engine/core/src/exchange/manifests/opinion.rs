@@ -16,8 +16,9 @@ pub const OPINION_MANIFEST: ExchangeManifest = ExchangeManifest {
         cursor_param: "page",
     },
     rate_limit: RateLimitConfig {
-        requests_per_second: 5,
-        burst: 2,
+        default_rps: 15,
+        default_burst: 5,
+        limits: &[], // All endpoints share the same 15 req/s limit
     },
 
     // ====== DATA AUDIT ======

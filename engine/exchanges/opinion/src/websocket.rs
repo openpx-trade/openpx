@@ -102,6 +102,7 @@ impl OpinionWebSocket {
         let channels = [
             "market.depth.diff",
             "market.last.trade",
+            "market.last.price",
             "trade.order.update",
             "trade.record.new",
         ];
@@ -124,6 +125,7 @@ impl OpinionWebSocket {
         let channels = [
             "market.depth.diff",
             "market.last.trade",
+            "market.last.price",
             "trade.order.update",
             "trade.record.new",
         ];
@@ -148,7 +150,7 @@ impl OpinionWebSocket {
 
         match msg_type {
             "market.depth.diff" => self.handle_depth_diff(&value).await,
-            "market.last.trade" => self.handle_last_trade(&value).await,
+            "market.last.trade" | "market.last.price" => self.handle_last_trade(&value).await,
             "trade.order.update" => self.handle_order_update(&value).await,
             "trade.record.new" => self.handle_trade_executed(&value).await,
             _ => {}
@@ -228,6 +230,7 @@ impl OpinionWebSocket {
         if let Some((sender, seq)) = senders.get(&market_id) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time: timestamp,
                 received_at: chrono::Utc::now(),
                 data: OrderbookUpdate::Delta { changes, timestamp },
             };
@@ -301,6 +304,7 @@ impl OpinionWebSocket {
         if let Some((sender, seq)) = senders.get(&market_id) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time: timestamp,
                 received_at: chrono::Utc::now(),
                 data: event,
             };
@@ -367,10 +371,17 @@ impl OpinionWebSocket {
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        // createdAt may be seconds or milliseconds; if > 1e12, treat as millis
         let timestamp = value
             .get("createdAt")
             .and_then(|v| v.as_i64())
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+            .and_then(|ts| {
+                if ts > 1_000_000_000_000 {
+                    chrono::DateTime::from_timestamp_millis(ts)
+                } else {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                }
+            });
 
         let event = ActivityEvent::Fill(ActivityFill {
             market_id: market_id.clone(),
@@ -392,6 +403,7 @@ impl OpinionWebSocket {
         if let Some((sender, seq)) = senders.get(&market_id) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time: timestamp,
                 received_at: chrono::Utc::now(),
                 data: event,
             };
@@ -467,10 +479,17 @@ impl OpinionWebSocket {
                 .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
         });
 
+        // createdAt may be seconds or milliseconds; if > 1e12, treat as millis
         let timestamp = value
             .get("createdAt")
             .and_then(|v| v.as_i64())
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+            .and_then(|ts| {
+                if ts > 1_000_000_000_000 {
+                    chrono::DateTime::from_timestamp_millis(ts)
+                } else {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                }
+            });
 
         let event = ActivityEvent::Fill(ActivityFill {
             market_id: market_id.clone(),
@@ -492,6 +511,7 @@ impl OpinionWebSocket {
         if let Some((sender, seq)) = senders.get(&market_id) {
             let msg = WsMessage {
                 seq: seq.fetch_add(1, Ordering::Relaxed),
+                exchange_time: timestamp,
                 received_at: chrono::Utc::now(),
                 data: event,
             };
@@ -668,6 +688,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                 for (sender, seq) in senders.values() {
                                     let msg = WsMessage {
                                         seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        exchange_time: None,
                                         received_at: chrono::Utc::now(),
                                         data: OrderbookUpdate::Reconnected,
                                     };

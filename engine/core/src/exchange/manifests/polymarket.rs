@@ -1,5 +1,6 @@
 use crate::exchange::manifest::{
-    ExchangeManifest, FieldMapping, PaginationConfig, PaginationStyle, RateLimitConfig, Transform,
+    EndpointRateLimit, ExchangeManifest, FieldMapping, PaginationConfig, PaginationStyle,
+    RateLimitCategory, RateLimitConfig, Transform,
 };
 
 pub const POLYMARKET_MANIFEST: ExchangeManifest = ExchangeManifest {
@@ -15,8 +16,20 @@ pub const POLYMARKET_MANIFEST: ExchangeManifest = ExchangeManifest {
         cursor_param: "offset",
     },
     rate_limit: RateLimitConfig {
-        requests_per_second: 30,
-        burst: 5,
+        default_rps: 150,
+        default_burst: 10,
+        limits: &[
+            EndpointRateLimit {
+                category: RateLimitCategory::Write,
+                requests_per_second: 350,
+                burst: 20,
+            },
+            EndpointRateLimit {
+                category: RateLimitCategory::Bulk,
+                requests_per_second: 20,
+                burst: 5,
+            },
+        ],
     },
 
     // ====== DATA AUDIT ======
