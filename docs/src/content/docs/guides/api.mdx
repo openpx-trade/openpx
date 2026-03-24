@@ -902,15 +902,20 @@ ws.connect().await?;
 ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
-while let Some(update) = stream.next().await {
-    match update? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    match msg.data {
         OrderbookUpdate::Snapshot(book) => {
-            println!("Snapshot: {} bids, {} asks", book.bids.len(), book.asks.len());
+            println!("[seq={}] Snapshot: {} bids, {} asks",
+                msg.seq, book.bids.len(), book.asks.len());
         }
         OrderbookUpdate::Delta { changes, .. } => {
             for c in &changes {
                 println!("  {:?} {:.2} x {}", c.side, c.price, c.size);
             }
+        }
+        OrderbookUpdate::Reconnected => {
+            println!("Reconnected — awaiting fresh snapshot");
         }
     }
 }
@@ -922,13 +927,16 @@ ws = exchange.websocket()
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for update in ws.orderbook_stream("KXBTC-25MAR14"):
+for msg in ws.orderbook_stream("KXBTC-25MAR14"):
+    update = msg["data"]
     if update["type"] == "Snapshot":
         book = update["Snapshot"]
-        print(f"Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
+        print(f"[seq={msg['seq']}] Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
     elif update["type"] == "Delta":
         for c in update["Delta"]["changes"]:
             print(f"  {c['side']} {c['price']:.2f} x {c['size']}")
+    elif update["type"] == "Reconnected":
+        print("Reconnected — awaiting fresh snapshot")
 
 ws.disconnect()
 ```
@@ -939,21 +947,24 @@ const ws = exchange.websocket();
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  const update = msg.data;
   if (update.type === "Snapshot") {
-    console.log(`Snapshot: ${update.Snapshot.bids.length} bids`);
-  } else {
+    console.log(`[seq=${msg.seq}] Snapshot: ${update.Snapshot.bids.length} bids`);
+  } else if (update.type === "Delta") {
     for (const c of update.Delta.changes) {
       console.log(`  ${c.side} ${c.price} x ${c.size}`);
     }
+  } else if (update.type === "Reconnected") {
+    console.log("Reconnected — awaiting fresh snapshot");
   }
 });
 ```
 </TabItem>
 <TabItem label="CLI">
 ```bash
-# Stream live orderbook updates (JSON per line)
+# Stream live orderbook updates (each line is a WsMessage JSON envelope)
 openpx kalshi ws-orderbook KXBTC-25MAR14
 openpx polymarket ws-orderbook "0x1234..."
 
@@ -962,9 +973,10 @@ openpx kalshi ws-activity KXBTC-25MAR14
 openpx polymarket ws-activity "0x1234..."
 
 # Extract snapshots with jq
-openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
-  best_bid: .Snapshot.bids[0].price,
-  best_ask: .Snapshot.asks[0].price
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.data.type == "Snapshot") | {
+  seq: .seq,
+  best_bid: .data.Snapshot.bids[0].price,
+  best_ask: .data.Snapshot.asks[0].price
 }'
 ```
 </TabItem>

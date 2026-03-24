@@ -50,18 +50,42 @@ class WebSocket:
         return self._native.state()
 
     def orderbook_stream(self, market_id: str) -> Iterator[dict[str, Any]]:
-        """Returns a blocking iterator of orderbook updates.
+        """Returns a blocking iterator of WsMessage-wrapped orderbook updates.
 
-        Each update is a dict with either:
+        Each item is a ``WsMessage`` envelope dict::
+
+            {
+                "seq": 1,              # per-market monotonic sequence number
+                "exchange_time": ...,  # server timestamp (use for ordering)
+                "received_at": ...,    # local capture time (use for latency)
+                "data": {              # OrderbookUpdate payload
+                    "type": "Snapshot",
+                    "Snapshot": {...}
+                }
+            }
+
+        The ``data`` field contains one of:
         - ``{"type": "Snapshot", "Snapshot": {...}}`` — full orderbook
         - ``{"type": "Delta", "Delta": {"changes": [...], "timestamp": "..."}}`` — incremental
+        - ``{"type": "Reconnected"}`` — connection was re-established, state is stale
         """
         return self._native.orderbook_stream(market_id)
 
     def activity_stream(self, market_id: str) -> Iterator[dict[str, Any]]:
-        """Returns a blocking iterator of activity events (trades, fills).
+        """Returns a blocking iterator of WsMessage-wrapped activity events.
 
-        Each event is a dict with either:
+        Each item is a ``WsMessage`` envelope dict::
+
+            {
+                "seq": 1,              # per-market monotonic sequence number
+                "exchange_time": ...,  # server timestamp (use for ordering)
+                "received_at": ...,    # local capture time (use for latency)
+                "data": {              # ActivityEvent payload
+                    "Trade": {...}
+                }
+            }
+
+        The ``data`` field contains one of:
         - ``{"Trade": {...}}`` — market trade
         - ``{"Fill": {...}}`` — user fill (requires authenticated config)
         """

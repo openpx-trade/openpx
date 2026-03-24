@@ -192,7 +192,7 @@ updates. You must call `subscribe` before opening a stream.
 |-----------|------|----------|-------------|
 | `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
 
-**Returns:** `Stream[OrderbookUpdate]` — yields `Snapshot` or `Delta` events.
+**Returns:** `Stream[WsMessage[OrderbookUpdate]]` — each message is a [`WsMessage`](/reference/models/#wsmessage) envelope containing an `OrderbookUpdate` in its `data` field.
 
 <Tabs>
 <TabItem label="Rust">
@@ -205,10 +205,14 @@ ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
 
-while let Some(update) = stream.next().await {
-    match update? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    // msg.seq — per-market monotonic sequence number
+    // msg.exchange_time — server timestamp (use for ordering)
+    // msg.received_at — local capture time (use for latency)
+    match msg.data {
         OrderbookUpdate::Snapshot(book) => {
-            println!("Full snapshot:");
+            println!("[seq={}] Full snapshot:", msg.seq);
             println!("  Best bid: {:?}", book.bids.first());
             println!("  Best ask: {:?}", book.asks.first());
             println!("  {} bids, {} asks", book.bids.len(), book.asks.len());
@@ -220,6 +224,9 @@ while let Some(update) = stream.next().await {
                     action, change.side, change.price, change.size);
             }
         }
+        OrderbookUpdate::Reconnected => {
+            println!("Reconnected — orderbook state is stale, awaiting fresh snapshot");
+        }
     }
 }
 ```
@@ -229,10 +236,14 @@ while let Some(update) = stream.next().await {
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for update in ws.orderbook_stream("KXBTC-25MAR14"):
+for msg in ws.orderbook_stream("KXBTC-25MAR14"):
+    # msg["seq"] — per-market monotonic sequence number
+    # msg["exchange_time"] — server timestamp (use for ordering)
+    # msg["received_at"] — local capture time (use for latency)
+    update = msg["data"]
     if update["type"] == "Snapshot":
         book = update["Snapshot"]
-        print(f"Full snapshot:")
+        print(f"[seq={msg['seq']}] Full snapshot:")
         print(f"  Best bid: {book['bids'][0]}")
         print(f"  Best ask: {book['asks'][0]}")
         print(f"  {len(book['bids'])} bids, {len(book['asks'])} asks")
@@ -241,6 +252,8 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
         for change in delta["changes"]:
             action = "REMOVE" if change["size"] == 0 else "UPDATE"
             print(f"  {action} {change['side']} {change['price']:.2f} x {change['size']}")
+    elif update["type"] == "Reconnected":
+        print("Reconnected — awaiting fresh snapshot")
 ```
 </TabItem>
 <TabItem label="TypeScript">
@@ -248,11 +261,15 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  // msg.seq — per-market monotonic sequence number
+  // msg.exchange_time — server timestamp (use for ordering)
+  // msg.received_at — local capture time (use for latency)
+  const update = msg.data;
   if (update.type === "Snapshot") {
     const book = update.Snapshot;
-    console.log(`Full snapshot:`);
+    console.log(`[seq=${msg.seq}] Full snapshot:`);
     console.log(`  Best bid: ${JSON.stringify(book.bids[0])}`);
     console.log(`  Best ask: ${JSON.stringify(book.asks[0])}`);
     console.log(`  ${book.bids.length} bids, ${book.asks.length} asks`);
@@ -261,20 +278,23 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
       const action = change.size === 0 ? "REMOVE" : "UPDATE";
       console.log(`  ${action} ${change.side} ${change.price} x ${change.size}`);
     }
+  } else if (update.type === "Reconnected") {
+    console.log("Reconnected — awaiting fresh snapshot");
   }
 });
 ```
 </TabItem>
 <TabItem label="CLI">
 ```bash
-# Stream live orderbook updates
+# Stream live orderbook updates (each line is a WsMessage JSON envelope)
 openpx kalshi ws-orderbook KXBTC-25MAR14
 openpx polymarket ws-orderbook "0x1234..."
 
 # Extract best bid/ask from snapshots
-openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
-  best_bid: .Snapshot.bids[0].price,
-  best_ask: .Snapshot.asks[0].price
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.data.type == "Snapshot") | {
+  seq: .seq,
+  best_bid: .data.Snapshot.bids[0].price,
+  best_ask: .data.Snapshot.asks[0].price
 }'
 ```
 </TabItem>
@@ -282,12 +302,16 @@ openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
 
 #### Update Types
 
+Every stream item is a [`WsMessage`](/reference/models/#wsmessage) envelope with `seq`, `exchange_time`, `received_at`, and `data`. The `data` field contains one of:
+
 | Type | Description |
 |------|-------------|
 | **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. Polymarket snapshots include a `hash` for book-state integrity verification. |
 | **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+| **Reconnected** | Connection was lost and re-established. All orderbook state is potentially stale. The next Snapshot for each market is a full reset, not a continuation. |
 
-See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
+See the [Type Reference](/reference/models/#wsmessage) for the `WsMessage` envelope and
+[Orderbook types](/reference/models/#orderbook) for the full `Orderbook`,
 `PriceLevel`, and `PriceLevelChange` type definitions.
 
 ### activity_stream
@@ -300,7 +324,7 @@ You must call `subscribe` before opening a stream.
 |-----------|------|----------|-------------|
 | `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
 
-**Returns:** `Stream[ActivityEvent]` — yields `Trade` or `Fill` events.
+**Returns:** `Stream[WsMessage[ActivityEvent]]` — each message is a [`WsMessage`](/reference/models/#wsmessage) envelope containing an `ActivityEvent` in its `data` field.
 
 <Tabs>
 <TabItem label="Rust">
@@ -313,16 +337,19 @@ ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.activity_stream("KXBTC-25MAR14").await?;
 
-while let Some(event) = stream.next().await {
-    match event? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    match msg.data {
         ActivityEvent::Trade(trade) => {
-            println!("TRADE: {} x {} @ {:.2} [{}]",
+            println!("[seq={}] TRADE: {} x {} @ {:.2} [{}]",
+                msg.seq,
                 trade.outcome.unwrap_or_default(),
                 trade.size, trade.price,
                 trade.source_channel);
         }
         ActivityEvent::Fill(fill) => {
-            println!("FILL: {} x {} @ {:.2} ({})",
+            println!("[seq={}] FILL: {} x {} @ {:.2} ({})",
+                msg.seq,
                 fill.outcome.unwrap_or_default(),
                 fill.size, fill.price,
                 fill.liquidity_role
@@ -338,13 +365,14 @@ while let Some(event) = stream.next().await {
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for event in ws.activity_stream("KXBTC-25MAR14"):
+for msg in ws.activity_stream("KXBTC-25MAR14"):
+    event = msg["data"]
     if "Trade" in event:
         t = event["Trade"]
-        print(f"TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
+        print(f"[seq={msg['seq']}] TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
     elif "Fill" in event:
         f = event["Fill"]
-        print(f"FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
+        print(f"[seq={msg['seq']}] FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
 ```
 </TabItem>
 <TabItem label="TypeScript">
@@ -352,14 +380,15 @@ for event in ws.activity_stream("KXBTC-25MAR14"):
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
+await ws.onActivityUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  const event = msg.data;
   if (event.Trade) {
     const t = event.Trade;
-    console.log(`TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
+    console.log(`[seq=${msg.seq}] TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
   } else if (event.Fill) {
     const f = event.Fill;
-    console.log(`FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
+    console.log(`[seq=${msg.seq}] FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
   }
 });
 ```

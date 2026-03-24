@@ -422,16 +422,16 @@ interface OutcomeToken {
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `created_at` | `string` | Yes | K P | Fill execution timestamp (ISO 8601) |
-| `fee` | `number` | Yes | K | Fee charged for this fill in USD. Polymarket: always `0.0` via REST |
-| `fill_id` | `string` | Yes | K P | Unique fill identifier |
-| `is_taker` | `boolean` | Yes | K | Whether this fill was on the taker side. Polymarket: always `false` via REST |
-| `market_id` | `string` | Yes | K P | Native market ID the fill occurred on |
-| `order_id` | `string` | Yes | K | Parent order ID that generated this fill. Polymarket: empty string via REST |
-| `outcome` | `string` | Yes | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
-| `side` | `OrderSide` | Yes | K P | Whether the order was a `buy` or `sell` |
-| `size` | `number` | Yes | K P | Number of contracts filled |
+| `created_at` | `string` | Yes | K P O | Fill execution timestamp (ISO 8601) |
+| `fee` | `number` | Yes | K O | Fee charged for this fill in USD. Polymarket: always `0.0` via REST |
+| `fill_id` | `string` | Yes | K P O | Unique fill identifier |
+| `is_taker` | `boolean` | Yes | K | Whether this fill was on the taker side. Polymarket/Opinion: always `false` via REST |
+| `market_id` | `string` | Yes | K P O | Native market ID the fill occurred on |
+| `order_id` | `string` | Yes | K O | Parent order ID that generated this fill. Polymarket: empty string via REST |
+| `outcome` | `string` | Yes | K P O | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P O | Execution price, normalized 0-1 |
+| `side` | `OrderSide` | Yes | K P O | Whether the order was a `buy` or `sell` |
+| `size` | `number` | Yes | K P O | Number of contracts filled |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1024,13 +1024,13 @@ OHLCV candlestick data. All prices are normalized 0-1. Timestamp is the period *
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `close` | `number` | Yes | K P | Closing price for this period, normalized 0-1 |
-| `high` | `number` | Yes | K P | Highest price during this period, normalized 0-1 |
-| `low` | `number` | Yes | K P | Lowest price during this period, normalized 0-1 |
-| `open` | `number` | Yes | K P | Opening price for this period, normalized 0-1 |
+| `close` | `number` | Yes | K P O | Closing price for this period, normalized 0-1 |
+| `high` | `number` | Yes | K P O | Highest price during this period, normalized 0-1 |
+| `low` | `number` | Yes | K P O | Lowest price during this period, normalized 0-1 |
+| `open` | `number` | Yes | K P O | Opening price for this period, normalized 0-1 |
 | `open_interest` | `number \| null` | No | K | Open interest at this candle's close. Only available from Kalshi |
-| `timestamp` | `string` | Yes | K P | Period start timestamp (ISO 8601, UTC) |
-| `volume` | `number` | Yes | K | Trade volume in contracts for this period. Polymarket: always `0.0` |
+| `timestamp` | `string` | Yes | K P O | Period start timestamp (ISO 8601, UTC) |
+| `volume` | `number` | Yes | K O | Trade volume in contracts for this period. Polymarket: always `0.0` |
 
 <Tabs syncKey="lang">
 <TabItem label="Rust">
@@ -1088,15 +1088,15 @@ Normalized public market trade, suitable for trade tape UIs. Prices are normaliz
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
 | `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
-| `id` | `string \| null` | No | K P | Exchange-assigned trade identifier |
+| `id` | `string \| null` | No | K P O | Exchange-assigned trade identifier |
 | `no_price` | `number \| null` | No | K P | Implied No outcome price at time of trade, normalized 0-1 |
-| `outcome` | `string \| null` | No | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
-| `side` | `string \| null` | No | P | Trade side label |
-| `size` | `number` | Yes | K P | Number of contracts traded |
-| `source_channel` | `string` | Yes | K P | Data source identifier (e.g., `"rest"`, `"websocket"`) |
+| `outcome` | `string \| null` | No | K P O | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
+| `price` | `number` | Yes | K P O | Execution price, normalized 0-1 |
+| `side` | `string \| null` | No | P O | Trade side label |
+| `size` | `number` | Yes | K P O | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"rest"`, `"websocket"`) |
 | `taker_address` | `string \| null` | No | P | Taker's wallet address (on-chain markets only) |
-| `timestamp` | `string` | Yes | K P | Exchange-reported trade timestamp (ISO 8601, UTC) |
+| `timestamp` | `string` | Yes | K P O | Exchange-reported trade timestamp (ISO 8601, UTC) |
 | `tx_hash` | `string \| null` | No | P | On-chain transaction hash |
 | `yes_price` | `number \| null` | No | K P | Implied Yes outcome price at time of trade, normalized 0-1 |
 
@@ -1208,6 +1208,112 @@ type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
 ---
 
 ## WebSocket & Streaming
+
+### WsMessage
+
+Envelope wrapping every WebSocket stream item. Provides per-market sequence numbers for gap detection and timestamps for feed-latency measurement.
+
+- **`exchange_time`** — server-authoritative UTC timestamp. Always prefer this for trade sequencing and cross-exchange correlation.
+- **`received_at`** — local UTC timestamp captured at socket read. Compare `received_at - exchange_time` for feed lag.
+- **`seq`** — per-market monotonic sequence number. Use for gap detection.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `seq` | `number` | Yes | Per-market monotonic sequence number for gap detection |
+| `exchange_time` | `string \| null` | No | Server-authoritative event timestamp (ISO 8601, UTC) |
+| `received_at` | `string` | Yes | Local capture timestamp (ISO 8601, UTC) |
+| `data` | `T` | Yes | The inner payload — `OrderbookUpdate` or `ActivityEvent` |
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub struct WsMessage<T> {
+    pub seq: u64,
+    pub exchange_time: Option<DateTime<Utc>>,
+    pub received_at: DateTime<Utc>,
+    pub data: T,
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Deserialized as a dict:
+# {
+#     "seq": 1,
+#     "exchange_time": "2025-03-14T12:00:00Z",  # or None
+#     "received_at": "2025-03-14T12:00:00.123Z",
+#     "data": { ... }  # OrderbookUpdate or ActivityEvent
+# }
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+interface WsMessage<T> {
+  seq: number;
+  exchange_time?: string | null;
+  received_at: string;
+  data: T;
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+### OrderbookUpdate
+
+Tagged enum emitted inside `WsMessage.data` on orderbook streams.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+pub enum OrderbookUpdate {
+    Snapshot(Orderbook),
+    Delta {
+        changes: ChangeVec,
+        timestamp: Option<DateTime<Utc>>,
+    },
+    Reconnected,
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+# Deserialized as a dict with a "type" discriminator:
+# {"type": "Snapshot", "Snapshot": {...}}
+# {"type": "Delta", "Delta": {"changes": [...], "timestamp": "..."}}
+# {"type": "Reconnected"}
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+type OrderbookUpdate =
+  | { type: "Snapshot"; Snapshot: Orderbook }
+  | { type: "Delta"; Delta: { changes: PriceLevelChange[]; timestamp?: string | null } }
+  | { type: "Reconnected" };
+```
+
+</TabItem>
+</Tabs>
+
+| Variant | Description |
+|---------|-------------|
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. Polymarket snapshots include a `hash` for integrity verification. |
+| **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+| **Reconnected** | Connection was lost and re-established. All orderbook state is potentially stale. The next Snapshot for each market is a full reset, not a continuation. |
+
+---
 
 ### ActivityEvent
 
@@ -1423,13 +1529,13 @@ Describes the capabilities of an exchange instance. Boolean fields indicate whic
 | `has_cancel_order` | `boolean` | Yes | K P O | Whether order cancellation is supported |
 | `has_create_order` | `boolean` | Yes | K P O | Whether order placement is supported (requires auth) |
 | `has_fetch_balance` | `boolean` | Yes | K P O | Whether account balance queries are supported |
-| `has_fetch_fills` | `boolean` | Yes | K P | Whether fill/trade history queries are supported |
+| `has_fetch_fills` | `boolean` | Yes | K P O | Whether fill/trade history queries are supported |
 | `has_fetch_markets` | `boolean` | Yes | K P O | Whether market listing is supported |
 | `has_fetch_orderbook` | `boolean` | Yes | K P O | Whether L2 orderbook snapshots are available |
-| `has_fetch_orderbook_history` | `boolean` | Yes | — | Whether historical orderbook snapshots are available (not currently supported) |
+| `has_fetch_orderbook_history` | `boolean` | Yes | P | Whether historical orderbook snapshots are available. Polymarket serves this via S3 Parquet pipeline, but `describe()` returns `false` because data is not proxied through CLOB |
 | `has_fetch_positions` | `boolean` | Yes | K P O | Whether position queries are supported |
-| `has_fetch_price_history` | `boolean` | Yes | K P | Whether OHLCV candlestick data is available |
-| `has_fetch_trades` | `boolean` | Yes | K P | Whether public trade tape queries are supported |
+| `has_fetch_price_history` | `boolean` | Yes | K P O | Whether OHLCV candlestick data is available |
+| `has_fetch_trades` | `boolean` | Yes | K P O | Whether public trade tape queries are supported |
 | `has_fetch_user_activity` | `boolean` | Yes | P O | Whether user activity feed is available |
 | `has_refresh_balance` | `boolean` | Yes | P | Whether cached balance refresh is available |
 | `has_websocket` | `boolean` | Yes | K P O | Whether real-time WebSocket streaming is supported (may require auth) |

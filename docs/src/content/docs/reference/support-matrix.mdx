@@ -20,7 +20,7 @@ Feature support across all exchanges. **Auth** = requires authentication credent
 | `fetch_price_history` | Yes | Yes | Yes | |
 | `fetch_trades` | Yes | Yes | Auth | |
 | `fetch_fills` | Auth | Auth | Auth | |
-| `fetch_orderbook_history` | — | Yes | — | Polymarket only; served from historical data pipeline |
+| `fetch_orderbook_history` | — | Yes | — | Polymarket only; served from S3 Parquet via historical data pipeline. Note: `describe()` returns `has_fetch_orderbook_history: false` because data is not proxied through CLOB |
 | `fetch_user_activity` | — | Yes | Auth | Raw exchange activity feed |
 | `fetch_balance_raw` | Auth | Auth | — | Raw JSON from exchange API |
 | `refresh_balance` | — | Auth | — | Refresh cached balance/allowance state |
@@ -30,7 +30,7 @@ Feature support across all exchanges. **Auth** = requires authentication credent
 
 | Stream | Kalshi | Polymarket | Opinion | Notes |
 |--------|:------:|:----------:|:-------:|-------|
-| `orderbook_stream` | Auth | Yes | Auth | Kalshi and Opinion require auth to connect |
+| `orderbook_stream` | Auth | Yes | Auth | Kalshi and Opinion require auth to connect. Kalshi WebSocket is not available in demo mode |
 | `activity_stream` | Auth | Yes | Auth | Trades (public) + Fills (private) |
 
 ## Standalone WebSocket Streams

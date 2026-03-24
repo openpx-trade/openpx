@@ -139,7 +139,7 @@ Place a limit order on a market.
 | `side` | `OrderSide` | **Yes** | `Buy` or `Sell` |
 | `price` | `float` | **Yes** | Limit price (0.0 – 1.0) |
 | `size` | `float` | **Yes** | Number of contracts |
-| `params` | `map[string, string]` | No | Optional parameters. `order_type`: `gtc` (default), `ioc`, or `fok`. All three exchanges support all three order types |
+| `params` | `map[string, string]` | No | Optional parameters. `order_type`: `gtc` (default), `ioc`, or `fok`. See [Support Matrix](/reference/support-matrix/#order-types) |
 
 **Returns:** [`Order`](/reference/models/#order)
 
@@ -534,15 +534,23 @@ ws.connect().await?;
 ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
-while let Some(update) = stream.next().await {
-    match update? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    // msg.seq — per-market monotonic sequence number
+    // msg.exchange_time — server timestamp (use for ordering)
+    // msg.received_at — local capture time (use for latency)
+    match msg.data {
         OrderbookUpdate::Snapshot(book) => {
-            println!("Snapshot: {} bids, {} asks", book.bids.len(), book.asks.len());
+            println!("[seq={}] Snapshot: {} bids, {} asks",
+                msg.seq, book.bids.len(), book.asks.len());
         }
         OrderbookUpdate::Delta { changes, .. } => {
             for c in &changes {
                 println!("  {:?} {:.2} x {}", c.side, c.price, c.size);
             }
+        }
+        OrderbookUpdate::Reconnected => {
+            println!("Reconnected — awaiting fresh snapshot");
         }
     }
 }
@@ -556,13 +564,19 @@ ws = exchange.websocket()
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for update in ws.orderbook_stream("KXBTC-25MAR14"):
+for msg in ws.orderbook_stream("KXBTC-25MAR14"):
+    # msg["seq"] — per-market monotonic sequence number
+    # msg["exchange_time"] — server timestamp (use for ordering)
+    # msg["received_at"] — local capture time (use for latency)
+    update = msg["data"]
     if update["type"] == "Snapshot":
         book = update["Snapshot"]
-        print(f"Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
+        print(f"[seq={msg['seq']}] Snapshot: {len(book['bids'])} bids, {len(book['asks'])} asks")
     elif update["type"] == "Delta":
         for c in update["Delta"]["changes"]:
             print(f"  {c['side']} {c['price']:.2f} x {c['size']}")
+    elif update["type"] == "Reconnected":
+        print("Reconnected — awaiting fresh snapshot")
 
 ws.disconnect()
 ```
@@ -575,14 +589,20 @@ const ws = exchange.websocket();
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  // msg.seq — per-market monotonic sequence number
+  // msg.exchange_time — server timestamp (use for ordering)
+  // msg.received_at — local capture time (use for latency)
+  const update = msg.data;
   if (update.type === "Snapshot") {
-    console.log(`Snapshot: ${update.Snapshot.bids.length} bids`);
-  } else {
+    console.log(`[seq=${msg.seq}] Snapshot: ${update.Snapshot.bids.length} bids`);
+  } else if (update.type === "Delta") {
     for (const c of update.Delta.changes) {
       console.log(`  ${c.side} ${c.price} x ${c.size}`);
     }
+  } else if (update.type === "Reconnected") {
+    console.log("Reconnected — awaiting fresh snapshot");
   }
 });
 ```
@@ -591,7 +611,7 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
 **CLI**
 
 ```bash
-# Stream live orderbook updates (JSON per line)
+# Stream live orderbook updates (each line is a WsMessage JSON envelope)
 openpx kalshi ws-orderbook KXBTC-25MAR14
 openpx polymarket ws-orderbook "0x1234..."
 
@@ -600,9 +620,10 @@ openpx kalshi ws-activity KXBTC-25MAR14
 openpx polymarket ws-activity "0x1234..."
 
 # Extract snapshots with jq
-openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
-  best_bid: .Snapshot.bids[0].price,
-  best_ask: .Snapshot.asks[0].price
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.data.type == "Snapshot") | {
+  seq: .seq,
+  best_bid: .data.Snapshot.bids[0].price,
+  best_ask: .data.Snapshot.asks[0].price
 }'
 ```
 
@@ -810,7 +831,7 @@ updates. You must call `subscribe` before opening a stream.
 |-----------|------|----------|-------------|
 | `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
 
-**Returns:** `Stream[OrderbookUpdate]` — yields `Snapshot` or `Delta` events.
+**Returns:** `Stream[WsMessage[OrderbookUpdate]]` — each message is a `WsMessage` envelope containing an `OrderbookUpdate` in its `data` field. See [WsMessage](#wsmessage) for the envelope fields (`seq`, `exchange_time`, `received_at`).
 
 
 
@@ -825,10 +846,11 @@ ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
 
-while let Some(update) = stream.next().await {
-    match update? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    match msg.data {
         OrderbookUpdate::Snapshot(book) => {
-            println!("Full snapshot:");
+            println!("[seq={}] Full snapshot:", msg.seq);
             println!("  Best bid: {:?}", book.bids.first());
             println!("  Best ask: {:?}", book.asks.first());
             println!("  {} bids, {} asks", book.bids.len(), book.asks.len());
@@ -839,6 +861,9 @@ while let Some(update) = stream.next().await {
                 println!("  {} {:?} {:.2} x {}",
                     action, change.side, change.price, change.size);
             }
+        }
+        OrderbookUpdate::Reconnected => {
+            println!("Reconnected — orderbook state is stale, awaiting fresh snapshot");
         }
     }
 }
@@ -851,10 +876,11 @@ while let Some(update) = stream.next().await {
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for update in ws.orderbook_stream("KXBTC-25MAR14"):
+for msg in ws.orderbook_stream("KXBTC-25MAR14"):
+    update = msg["data"]
     if update["type"] == "Snapshot":
         book = update["Snapshot"]
-        print(f"Full snapshot:")
+        print(f"[seq={msg['seq']}] Full snapshot:")
         print(f"  Best bid: {book['bids'][0]}")
         print(f"  Best ask: {book['asks'][0]}")
         print(f"  {len(book['bids'])} bids, {len(book['asks'])} asks")
@@ -863,6 +889,8 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
         for change in delta["changes"]:
             action = "REMOVE" if change["size"] == 0 else "UPDATE"
             print(f"  {action} {change['side']} {change['price']:.2f} x {change['size']}")
+    elif update["type"] == "Reconnected":
+        print("Reconnected — awaiting fresh snapshot")
 ```
 
 
@@ -872,11 +900,12 @@ for update in ws.orderbook_stream("KXBTC-25MAR14"):
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  const update = msg.data;
   if (update.type === "Snapshot") {
     const book = update.Snapshot;
-    console.log(`Full snapshot:`);
+    console.log(`[seq=${msg.seq}] Full snapshot:`);
     console.log(`  Best bid: ${JSON.stringify(book.bids[0])}`);
     console.log(`  Best ask: ${JSON.stringify(book.asks[0])}`);
     console.log(`  ${book.bids.length} bids, ${book.asks.length} asks`);
@@ -885,6 +914,8 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
       const action = change.size === 0 ? "REMOVE" : "UPDATE";
       console.log(`  ${action} ${change.side} ${change.price} x ${change.size}`);
     }
+  } else if (update.type === "Reconnected") {
+    console.log("Reconnected — awaiting fresh snapshot");
   }
 });
 ```
@@ -893,14 +924,15 @@ await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
 **CLI**
 
 ```bash
-# Stream live orderbook updates
+# Stream live orderbook updates (each line is a WsMessage JSON envelope)
 openpx kalshi ws-orderbook KXBTC-25MAR14
 openpx polymarket ws-orderbook "0x1234..."
 
 # Extract best bid/ask from snapshots
-openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
-  best_bid: .Snapshot.bids[0].price,
-  best_ask: .Snapshot.asks[0].price
+openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.data.type == "Snapshot") | {
+  seq: .seq,
+  best_bid: .data.Snapshot.bids[0].price,
+  best_ask: .data.Snapshot.asks[0].price
 }'
 ```
 
@@ -908,12 +940,16 @@ openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
 
 #### Update Types
 
+Every stream item is a `WsMessage` envelope with `seq`, `exchange_time`, `received_at`, and `data`. The `data` field contains one of:
+
 | Type | Description |
 |------|-------------|
-| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. Polymarket snapshots include a `hash` for book-state integrity verification. |
 | **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+| **Reconnected** | Connection was lost and re-established. All orderbook state is potentially stale. The next Snapshot for each market is a full reset, not a continuation. |
 
-See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
+See the [Type Reference](/reference/models/#wsmessage) for the `WsMessage` envelope and
+[Orderbook types](/reference/models/#orderbook) for the full `Orderbook`,
 `PriceLevel`, and `PriceLevelChange` type definitions.
 
 ### activity_stream
@@ -926,7 +962,7 @@ You must call `subscribe` before opening a stream.
 |-----------|------|----------|-------------|
 | `market_id` | `string` | **Yes** | Market to stream (must be already subscribed) |
 
-**Returns:** `Stream[ActivityEvent]` — yields `Trade` or `Fill` events.
+**Returns:** `Stream[WsMessage[ActivityEvent]]` — each message is a `WsMessage` envelope containing an `ActivityEvent` in its `data` field. See [WsMessage](#wsmessage) for the envelope fields (`seq`, `exchange_time`, `received_at`).
 
 
 
@@ -941,16 +977,19 @@ ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.activity_stream("KXBTC-25MAR14").await?;
 
-while let Some(event) = stream.next().await {
-    match event? {
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    match msg.data {
         ActivityEvent::Trade(trade) => {
-            println!("TRADE: {} x {} @ {:.2} [{}]",
+            println!("[seq={}] TRADE: {} x {} @ {:.2} [{}]",
+                msg.seq,
                 trade.outcome.unwrap_or_default(),
                 trade.size, trade.price,
                 trade.source_channel);
         }
         ActivityEvent::Fill(fill) => {
-            println!("FILL: {} x {} @ {:.2} ({})",
+            println!("[seq={}] FILL: {} x {} @ {:.2} ({})",
+                msg.seq,
                 fill.outcome.unwrap_or_default(),
                 fill.size, fill.price,
                 fill.liquidity_role
@@ -968,13 +1007,14 @@ while let Some(event) = stream.next().await {
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for event in ws.activity_stream("KXBTC-25MAR14"):
+for msg in ws.activity_stream("KXBTC-25MAR14"):
+    event = msg["data"]
     if "Trade" in event:
         t = event["Trade"]
-        print(f"TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
+        print(f"[seq={msg['seq']}] TRADE: {t.get('outcome', '')} x {t['size']} @ {t['price']:.2f}")
     elif "Fill" in event:
         f = event["Fill"]
-        print(f"FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
+        print(f"[seq={msg['seq']}] FILL: {f.get('outcome', '')} x {f['size']} @ {f['price']:.2f}")
 ```
 
 
@@ -984,14 +1024,15 @@ for event in ws.activity_stream("KXBTC-25MAR14"):
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onActivityUpdate("KXBTC-25MAR14", (err, event) => {
+await ws.onActivityUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
+  const event = msg.data;
   if (event.Trade) {
     const t = event.Trade;
-    console.log(`TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
+    console.log(`[seq=${msg.seq}] TRADE: ${t.outcome} x ${t.size} @ ${t.price}`);
   } else if (event.Fill) {
     const f = event.Fill;
-    console.log(`FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
+    console.log(`[seq=${msg.seq}] FILL: ${f.outcome} x ${f.size} @ ${f.price}`);
   }
 });
 ```
@@ -1014,8 +1055,8 @@ See [`ActivityTrade`](/reference/models/#activitytrade) and
 
 | Event | Description | Exchanges |
 |-------|-------------|-----------|
-| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket, Opinion |
-| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion |
+| **Trade** | Public market trade. Includes price, size, aggressor side, outcome, and fee rate (Polymarket). | Kalshi, Polymarket, Opinion |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), on-chain tx hash and fee (Opinion). | Kalshi, Polymarket, Opinion |
 
 ## Auto-Reconnect
 
@@ -1921,8 +1962,10 @@ ws.connect().await?;
 ws.subscribe("KXBTC-25MAR14").await?;
 
 let mut stream = ws.orderbook_stream("KXBTC-25MAR14").await?;
-while let Some(update) = stream.next().await {
-    println!("{:?}", update?);
+while let Some(result) = stream.next().await {
+    let msg = result?;
+    // msg.seq, msg.exchange_time, msg.received_at, msg.data
+    println!("[seq={}] {:?}", msg.seq, msg.data);
 }
 
 ws.disconnect().await?;
@@ -1942,8 +1985,9 @@ ws = exchange.websocket()
 ws.connect()
 ws.subscribe("KXBTC-25MAR14")
 
-for update in ws.orderbook_stream("KXBTC-25MAR14"):
-    print(update)
+for msg in ws.orderbook_stream("KXBTC-25MAR14"):
+    # msg["seq"], msg["exchange_time"], msg["received_at"], msg["data"]
+    print(f"[seq={msg['seq']}]", msg["data"])
 
 ws.disconnect()
 ```
@@ -1961,9 +2005,10 @@ const ws = exchange.websocket();
 await ws.connect();
 await ws.subscribe("KXBTC-25MAR14");
 
-await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, update) => {
+await ws.onOrderbookUpdate("KXBTC-25MAR14", (err, msg) => {
   if (err) { console.error(err); return; }
-  console.log(update);
+  // msg.seq, msg.exchange_time, msg.received_at, msg.data
+  console.log(`[seq=${msg.seq}]`, msg.data);
 });
 ```
 
@@ -2283,9 +2328,11 @@ interface Market {
 
 
 
-### MarketType
+### MarketStatusFilter
 
-Enum with variants: `binary`, `categorical`, `scalar`
+Filter enum for `fetch_markets` queries. Includes all `MarketStatus` variants plus `all` to fetch markets regardless of status.
+
+Enum with variants: `active`, `closed`, `resolved`, `all`
 
 
 
@@ -2293,10 +2340,11 @@ Enum with variants: `binary`, `categorical`, `scalar`
 
 
 ```rust
-pub enum MarketType {
-    Binary,
-    Categorical,
-    Scalar,
+pub enum MarketStatusFilter {
+    Active,
+    Closed,
+    Resolved,
+    All,
 }
 ```
 
@@ -2306,10 +2354,11 @@ pub enum MarketType {
 
 
 ```python
-class MarketType(str, Enum):
-    BINARY = "binary"
-    CATEGORICAL = "categorical"
-    SCALAR = "scalar"
+class MarketStatusFilter(str, Enum):
+    ACTIVE = "active"
+    CLOSED = "closed"
+    RESOLVED = "resolved"
+    ALL = "all"
 ```
 
 
@@ -2318,29 +2367,19 @@ class MarketType(str, Enum):
 
 
 ```typescript
-type MarketType = "binary" | "categorical" | "scalar";
+type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
 ```
 
 
 
 
 
-## Orders & Trading
-
-### Fill
+### OutcomeToken
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `created_at` | `string` | Yes | K P | Fill execution timestamp (ISO 8601) |
-| `fee` | `number` | Yes | K | Fee charged for this fill in USD. Polymarket: always `0.0` via REST |
-| `fill_id` | `string` | Yes | K P | Unique fill identifier |
-| `is_taker` | `boolean` | Yes | K | Whether this fill was on the taker side. Polymarket: always `false` via REST |
-| `market_id` | `string` | Yes | K P | Native market ID the fill occurred on |
-| `order_id` | `string` | Yes | K | Parent order ID that generated this fill. Polymarket: empty string via REST |
-| `outcome` | `string` | Yes | K P | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P | Execution price, normalized 0-1 |
-| `side` | `OrderSide` | Yes | K P | Whether the order was a `buy` or `sell` |
-| `size` | `number` | Yes | K P | Number of contracts filled |
+| `outcome` | `string` | Yes | P O | Outcome label (e.g., `"Yes"`, `"No"`, or a named outcome for categorical markets) |
+| `token_id` | `string` | Yes | P O | On-chain token identifier used for orderbook subscriptions and CLOB trading |
 
 
 
@@ -2348,17 +2387,9 @@ type MarketType = "binary" | "categorical" | "scalar";
 
 
 ```rust
-pub struct Fill {
-    pub fill_id: String,
-    pub order_id: String,
-    pub market_id: String,
+pub struct OutcomeToken {
     pub outcome: String,
-    pub side: OrderSide,
-    pub price: f64,
-    pub size: f64,
-    pub is_taker: bool,
-    pub fee: f64,
-    pub created_at: DateTime<Utc>,
+    pub token_id: String,
 }
 ```
 
@@ -2368,17 +2399,9 @@ pub struct Fill {
 
 
 ```python
-class Fill(BaseModel):
-    fill_id: str
-    order_id: str
-    market_id: str
+class OutcomeToken(BaseModel):
     outcome: str
-    side: OrderSide
-    price: float
-    size: float
-    is_taker: bool
-    fee: float
-    created_at: datetime
+    token_id: str
 ```
 
 
@@ -2387,17 +2410,9 @@ class Fill(BaseModel):
 
 
 ```typescript
-interface Fill {
-  fill_id: string;
-  order_id: string;
-  market_id: string;
+interface OutcomeToken {
   outcome: string;
-  side: OrderSide;
-  price: number;
-  size: number;
-  is_taker: boolean;
-  fee: number;
-  created_at: string;
+  token_id: string;
 }
 ```
 
@@ -2405,20 +2420,9 @@ interface Fill {
 
 
 
-### Order
+### LiquidityRole
 
-| Field | Type | Required | Exchanges | Description |
-|-------|------|----------|-----------|-------------|
-| `created_at` | `string` | Yes | K P O | When the order was placed (ISO 8601) |
-| `filled` | `number` | Yes | K P O | Number of contracts filled so far |
-| `id` | `string` | Yes | K P O | Exchange-assigned order identifier |
-| `market_id` | `string` | Yes | K P O | Native market ID this order belongs to |
-| `outcome` | `string` | Yes | K P O | Outcome being traded (e.g., `"Yes"`, `"No"`) |
-| `price` | `number` | Yes | K P O | Limit price, normalized 0-1 |
-| `side` | `OrderSide` | Yes | K P O | Whether the order is a `buy` or `sell` |
-| `size` | `number` | Yes | K P O | Total order size in contracts |
-| `status` | `OrderStatus` | Yes | K P O | Current lifecycle state of the order |
-| `updated_at` | `string \| null` | No | K | When the order was last modified (ISO 8601) |
+Enum with variants: `maker`, `taker`
 
 
 
@@ -2426,195 +2430,150 @@ interface Fill {
 
 
 ```rust
-pub struct Order {
-    pub id: String,
+pub enum LiquidityRole {
+    Maker,
+    Taker,
+}
+```
+
+
+
+**Python**
+
+
+```python
+class LiquidityRole(str, Enum):
+    MAKER = "maker"
+    TAKER = "taker"
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+type LiquidityRole = "maker" | "taker";
+```
+
+
+
+
+
+### OrderSide
+
+Enum with variants: `buy`, `sell`
+
+
+
+**Rust**
+
+
+```rust
+pub enum OrderSide {
+    Buy,
+    Sell,
+}
+```
+
+
+
+**Python**
+
+
+```python
+class OrderSide(str, Enum):
+    BUY = "buy"
+    SELL = "sell"
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+type OrderSide = "buy" | "sell";
+```
+
+
+
+
+
+### OrderType
+
+Enum with variants: `gtc`, `ioc`, `fok`
+
+- **GTC** (good-til-cancelled) — rests on the book until filled or cancelled
+- **IOC** (immediate-or-cancel) — fills what it can immediately, cancels the rest
+- **FOK** (fill-or-kill) — must fill entirely in one shot or is cancelled
+
+
+
+**Rust**
+
+
+```rust
+pub enum OrderType {
+    Gtc,
+    Ioc,
+    Fok,
+}
+```
+
+
+
+**Python**
+
+
+```python
+class OrderType(str, Enum):
+    GTC = "gtc"
+    IOC = "ioc"
+    FOK = "fok"
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+type OrderType = "gtc" | "ioc" | "fok";
+```
+
+
+
+
+
+## Orderbook
+
+### Orderbook
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `asks` | `PriceLevel[]` | Yes | K P O | Ask-side price levels, sorted ascending by price (lowest first) |
+| `asset_id` | `string` | Yes | K P O | Token ID this orderbook represents |
+| `bids` | `PriceLevel[]` | Yes | K P O | Bid-side price levels, sorted descending by price (highest first) |
+| `hash` | `string \| null` | No | P | Exchange-provided book-state hash for integrity verification during replay |
+| `last_update_id` | `number \| null` | No | — | Sequence number for delta ordering (not currently populated) |
+| `market_id` | `string` | Yes | K | Native market ID. Polymarket and Opinion set this to the `market_id` from the request |
+| `timestamp` | `string \| null` | No | K P O | When this snapshot was captured (ISO 8601) |
+
+
+
+**Rust**
+
+
+```rust
+pub struct Orderbook {
     pub market_id: String,
-    pub outcome: String,
-    pub side: OrderSide,
-    pub price: f64,
-    pub size: f64,
-    pub filled: f64,
-    pub status: OrderStatus,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-```
-
-
-
-**Python**
-
-
-```python
-class Order(BaseModel):
-    id: str
-    market_id: str
-    outcome: str
-    side: OrderSide
-    price: float
-    size: float
-    filled: float
-    status: OrderStatus
-    created_at: datetime
-    updated_at: Optional[datetime]
-```
-
-
-
-**TypeScript**
-
-
-```typescript
-interface Order {
-  id: string;
-  market_id: string;
-  outcome: string;
-  side: OrderSide;
-  price: number;
-  size: number;
-  filled: number;
-  status: OrderStatus;
-  created_at: string;
-  updated_at?: string | null;
-}
-```
-
-
-
-
-
-### OrderStatus
-
-Enum with variants: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`
-
-
-
-**Rust**
-
-
-```rust
-pub enum OrderStatus {
-    Pending,
-    Open,
-    Filled,
-    PartiallyFilled,
-    Cancelled,
-    Rejected,
-}
-```
-
-
-
-**Python**
-
-
-```python
-class OrderStatus(str, Enum):
-    PENDING = "pending"
-    OPEN = "open"
-    FILLED = "filled"
-    PARTIALLY_FILLED = "partially_filled"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
-```
-
-
-
-**TypeScript**
-
-
-```typescript
-type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancelled" | "rejected";
-```
-
-
-
-
-
-## Account & Positions
-
-### Position
-
-| Field | Type | Required | Exchanges | Description |
-|-------|------|----------|-----------|-------------|
-| `average_price` | `number` | Yes | K P O | Volume-weighted average entry price, normalized 0-1 |
-| `current_price` | `number` | Yes | K P O | Current market price for this outcome, normalized 0-1 |
-| `market_id` | `string` | Yes | K P O | Native market ID this position belongs to |
-| `outcome` | `string` | Yes | K P O | Outcome held (e.g., `"Yes"`, `"No"`) |
-| `size` | `number` | Yes | K P O | Number of contracts held |
-
-
-
-**Rust**
-
-
-```rust
-pub struct Position {
-    pub market_id: String,
-    pub outcome: String,
-    pub size: f64,
-    pub average_price: f64,
-    pub current_price: f64,
-}
-```
-
-
-
-**Python**
-
-
-```python
-class Position(BaseModel):
-    market_id: str
-    outcome: str
-    size: float
-    average_price: float
-    current_price: float
-```
-
-
-
-**TypeScript**
-
-
-```typescript
-interface Position {
-  market_id: string;
-  outcome: string;
-  size: number;
-  average_price: number;
-  current_price: number;
-}
-```
-
-
-
-
-
-### OrderbookSnapshot
-
-A point-in-time L2 orderbook snapshot, used for historical orderbook data.
-
-| Field | Type | Required | Exchanges | Description |
-|-------|------|----------|-----------|-------------|
-| `asks` | `PriceLevel[]` | Yes | P | Ask-side price levels |
-| `bids` | `PriceLevel[]` | Yes | P | Bid-side price levels |
-| `hash` | `string \| null` | No | P | Content hash for deduplication |
-| `recorded_at` | `string \| null` | No | P | When this snapshot was recorded by the collector (ISO 8601) |
-| `timestamp` | `string` | Yes | P | Exchange-reported snapshot timestamp (ISO 8601) |
-
-
-
-**Rust**
-
-
-```rust
-pub struct OrderbookSnapshot {
-    pub timestamp: DateTime<Utc>,
-    pub recorded_at: Option<DateTime<Utc>>,
-    pub hash: Option<String>,
+    pub asset_id: String,
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
+    pub last_update_id: Option<u64>,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub hash: Option<String>,
 }
 ```
 
@@ -2624,12 +2583,14 @@ pub struct OrderbookSnapshot {
 
 
 ```python
-class OrderbookSnapshot(BaseModel):
-    timestamp: datetime
-    recorded_at: Optional[datetime]
-    hash: Optional[str]
+class Orderbook(BaseModel):
+    market_id: str
+    asset_id: str
     bids: list[PriceLevel]
     asks: list[PriceLevel]
+    last_update_id: Optional[int]
+    timestamp: Optional[datetime]
+    hash: Optional[str]
 ```
 
 
@@ -2638,12 +2599,14 @@ class OrderbookSnapshot(BaseModel):
 
 
 ```typescript
-interface OrderbookSnapshot {
-  timestamp: string;
-  recorded_at?: string | null;
-  hash?: string | null;
+interface Orderbook {
+  market_id: string;
+  asset_id: string;
   bids: PriceLevel[];
   asks: PriceLevel[];
+  last_update_id?: number | null;
+  timestamp?: string | null;
+  hash?: string | null;
 }
 ```
 
@@ -2651,15 +2614,14 @@ interface OrderbookSnapshot {
 
 
 
-### PriceLevelChange
+### PriceLevel
 
-Incremental orderbook update with absolute replacement semantics: `size > 0` sets the level to this size, `size == 0` removes the level.
+A single price/size pair in the orderbook. Price uses `FixedPrice` internally (integer-backed, scale factor 10,000) but serializes as a plain `number` on the wire.
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `price` | `number` | Yes | K P | Price level being updated, normalized 0-1 |
-| `side` | `PriceLevelSide` | Yes | K P | Whether this change applies to the `bid` or `ask` side |
-| `size` | `number` | Yes | K P | New size at this price level (0 = remove level) |
+| `price` | `number` | Yes | K P O | Price level, normalized 0-1 |
+| `size` | `number` | Yes | K P O | Number of contracts available at this price |
 
 
 
@@ -2667,8 +2629,7 @@ Incremental orderbook update with absolute replacement semantics: `size > 0` set
 
 
 ```rust
-pub struct PriceLevelChange {
-    pub side: PriceLevelSide,
+pub struct PriceLevel {
     pub price: FixedPrice, // serializes as f64
     pub size: f64,
 }
@@ -2680,8 +2641,7 @@ pub struct PriceLevelChange {
 
 
 ```python
-class PriceLevelChange(BaseModel):
-    side: PriceLevelSide
+class PriceLevel(BaseModel):
     price: float
     size: float
 ```
@@ -2692,8 +2652,7 @@ class PriceLevelChange(BaseModel):
 
 
 ```typescript
-interface PriceLevelChange {
-  side: PriceLevelSide;
+interface PriceLevel {
   price: number;
   size: number;
 }
@@ -2703,21 +2662,9 @@ interface PriceLevelChange {
 
 
 
-## Trades & History
+### PriceLevelSide
 
-### Candlestick
-
-OHLCV candlestick data. All prices are normalized 0-1. Timestamp is the period **start** (not end).
-
-| Field | Type | Required | Exchanges | Description |
-|-------|------|----------|-----------|-------------|
-| `close` | `number` | Yes | K P | Closing price for this period, normalized 0-1 |
-| `high` | `number` | Yes | K P | Highest price during this period, normalized 0-1 |
-| `low` | `number` | Yes | K P | Lowest price during this period, normalized 0-1 |
-| `open` | `number` | Yes | K P | Opening price for this period, normalized 0-1 |
-| `open_interest` | `number \| null` | No | K | Open interest at this candle's close. Only available from Kalshi |
-| `timestamp` | `string` | Yes | K P | Period start timestamp (ISO 8601, UTC) |
-| `volume` | `number` | Yes | K | Trade volume in contracts for this period. Polymarket: always `0.0` |
+Enum with variants: `bid`, `ask`
 
 
 
@@ -2725,14 +2672,9 @@ OHLCV candlestick data. All prices are normalized 0-1. Timestamp is the period *
 
 
 ```rust
-pub struct Candlestick {
-    pub timestamp: DateTime<Utc>,
-    pub open: f64,
-    pub high: f64,
-    pub low: f64,
-    pub close: f64,
-    pub volume: f64,
-    pub open_interest: Option<f64>,
+pub enum PriceLevelSide {
+    Bid,
+    Ask,
 }
 ```
 
@@ -2742,14 +2684,9 @@ pub struct Candlestick {
 
 
 ```python
-class Candlestick(BaseModel):
-    timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-    open_interest: Optional[float]
+class PriceLevelSide(str, Enum):
+    BID = "bid"
+    ASK = "ask"
 ```
 
 
@@ -2758,88 +2695,31 @@ class Candlestick(BaseModel):
 
 
 ```typescript
-interface Candlestick {
-  timestamp: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  open_interest?: number | null;
-}
+type PriceLevelSide = "bid" | "ask";
 ```
 
 
 
 
 
-### PriceHistoryInterval
+### MarketTrade
 
-Enum with variants: `1m`, `1h`, `6h`, `1d`, `1w`, `max`
-
-
-
-**Rust**
-
-
-```rust
-pub enum PriceHistoryInterval {
-    #[serde(rename = "1m")] OneMinute,
-    #[serde(rename = "1h")] OneHour,
-    #[serde(rename = "6h")] SixHours,
-    #[serde(rename = "1d")] OneDay,
-    #[serde(rename = "1w")] OneWeek,
-    #[serde(rename = "max")] Max,
-}
-```
-
-
-
-**Python**
-
-
-```python
-class PriceHistoryInterval(str, Enum):
-    ONE_MINUTE = "1m"
-    ONE_HOUR = "1h"
-    SIX_HOURS = "6h"
-    ONE_DAY = "1d"
-    ONE_WEEK = "1w"
-    MAX = "max"
-```
-
-
-
-**TypeScript**
-
-
-```typescript
-type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
-```
-
-
-
-
-
-### ActivityFill
-
-A fill event received via WebSocket, representing a trade execution on one of your orders.
+Normalized public market trade, suitable for trade tape UIs. Prices are normalized 0-1.
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `asset_id` | `string` | Yes | K P O | Token ID that was traded |
-| `fee` | `number \| null` | No | O | Fee charged for this fill (from on-chain confirmation) |
-| `fill_id` | `string \| null` | No | K P O | Unique fill identifier. Opinion: `tradeNo` from `trade.record.new` |
-| `liquidity_role` | `LiquidityRole \| null` | No | K P O | Whether you were `maker` or `taker` on this fill |
-| `market_id` | `string` | Yes | K P O | Native market ID |
-| `order_id` | `string \| null` | No | K P O | Parent order ID |
-| `outcome` | `string \| null` | No | K P O | Outcome that was filled (e.g., `"Yes"`, `"No"`) |
+| `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
+| `id` | `string \| null` | No | K P O | Exchange-assigned trade identifier |
+| `no_price` | `number \| null` | No | K P | Implied No outcome price at time of trade, normalized 0-1 |
+| `outcome` | `string \| null` | No | K P O | Outcome that was traded (e.g., `"Yes"`, `"No"`) |
 | `price` | `number` | Yes | K P O | Execution price, normalized 0-1 |
-| `side` | `string \| null` | No | K P O | `"buy"` or `"sell"` |
-| `size` | `number` | Yes | K P O | Number of contracts filled |
-| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"kalshi_user_fill"`, `"trade.record.new"`) |
-| `timestamp` | `string \| null` | No | K P O | Fill timestamp (ISO 8601) |
-| `tx_hash` | `string \| null` | No | O | On-chain transaction hash (from on-chain confirmation) |
+| `side` | `string \| null` | No | P O | Trade side label |
+| `size` | `number` | Yes | K P O | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"rest"`, `"websocket"`) |
+| `taker_address` | `string \| null` | No | P | Taker's wallet address (on-chain markets only) |
+| `timestamp` | `string` | Yes | K P O | Exchange-reported trade timestamp (ISO 8601, UTC) |
+| `tx_hash` | `string \| null` | No | P | On-chain transaction hash |
+| `yes_price` | `number \| null` | No | K P | Implied Yes outcome price at time of trade, normalized 0-1 |
 
 
 
@@ -2847,20 +2727,19 @@ A fill event received via WebSocket, representing a trade execution on one of yo
 
 
 ```rust
-pub struct ActivityFill {
-    pub market_id: String,
-    pub asset_id: String,
-    pub fill_id: Option<String>,
-    pub order_id: Option<String>,
+pub struct MarketTrade {
+    pub id: Option<String>,
     pub price: f64,
     pub size: f64,
     pub side: Option<String>,
-    pub outcome: Option<String>,
-    pub tx_hash: Option<String>,
-    pub fee: Option<f64>,
-    pub timestamp: Option<DateTime<Utc>>,
+    pub aggressor_side: Option<String>,
+    pub timestamp: DateTime<Utc>,
     pub source_channel: Cow<'static, str>,
-    pub liquidity_role: Option<LiquidityRole>,
+    pub tx_hash: Option<String>,
+    pub outcome: Option<String>,
+    pub yes_price: Option<f64>,
+    pub no_price: Option<f64>,
+    pub taker_address: Option<String>,
 }
 ```
 
@@ -2870,20 +2749,227 @@ pub struct ActivityFill {
 
 
 ```python
-class ActivityFill(BaseModel):
+class MarketTrade(BaseModel):
+    id: Optional[str]
+    price: float
+    size: float
+    side: Optional[str]
+    aggressor_side: Optional[str]
+    timestamp: datetime
+    source_channel: str
+    tx_hash: Optional[str]
+    outcome: Optional[str]
+    yes_price: Optional[float]
+    no_price: Optional[float]
+    taker_address: Optional[str]
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+interface MarketTrade {
+  id?: string | null;
+  price: number;
+  size: number;
+  side?: string | null;
+  aggressor_side?: string | null;
+  timestamp: string;
+  source_channel: string;
+  tx_hash?: string | null;
+  outcome?: string | null;
+  yes_price?: number | null;
+  no_price?: number | null;
+  taker_address?: string | null;
+}
+```
+
+
+
+
+
+## WebSocket & Streaming
+
+### WsMessage
+
+Envelope wrapping every WebSocket stream item. Provides per-market sequence numbers for gap detection and timestamps for feed-latency measurement.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `seq` | `number` | Yes | Per-market monotonic sequence number for gap detection |
+| `exchange_time` | `string \| null` | No | Server-authoritative event timestamp (ISO 8601, UTC). Always prefer this for trade sequencing and cross-exchange correlation |
+| `received_at` | `string` | Yes | Local capture timestamp (ISO 8601, UTC). Compare `received_at - exchange_time` for feed lag |
+| `data` | `T` | Yes | The inner payload — `OrderbookUpdate` or `ActivityEvent` |
+
+**Rust**
+
+```rust
+pub struct WsMessage<T> {
+    pub seq: u64,
+    pub exchange_time: Option<DateTime<Utc>>,
+    pub received_at: DateTime<Utc>,
+    pub data: T,
+}
+```
+
+**Python**
+
+```python
+# Deserialized as a dict:
+# {"seq": 1, "exchange_time": "...", "received_at": "...", "data": {...}}
+```
+
+**TypeScript**
+
+```typescript
+interface WsMessage<T> {
+  seq: number;
+  exchange_time?: string | null;
+  received_at: string;
+  data: T;
+}
+```
+
+
+### OrderbookUpdate
+
+Tagged enum emitted inside `WsMessage.data` on orderbook streams.
+
+| Variant | Description |
+|---------|-------------|
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
+| **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
+| **Reconnected** | Connection was lost and re-established. All orderbook state is potentially stale. The next Snapshot is a full reset. |
+
+**Rust**
+
+```rust
+pub enum OrderbookUpdate {
+    Snapshot(Orderbook),
+    Delta { changes: ChangeVec, timestamp: Option<DateTime<Utc>> },
+    Reconnected,
+}
+```
+
+**Python**
+
+```python
+# Deserialized as a dict with a "type" discriminator:
+# {"type": "Snapshot", "Snapshot": {...}}
+# {"type": "Delta", "Delta": {"changes": [...], "timestamp": "..."}}
+# {"type": "Reconnected"}
+```
+
+**TypeScript**
+
+```typescript
+type OrderbookUpdate =
+  | { type: "Snapshot"; Snapshot: Orderbook }
+  | { type: "Delta"; Delta: { changes: PriceLevelChange[]; timestamp?: string | null } }
+  | { type: "Reconnected" };
+```
+
+
+### ActivityEvent
+
+Tagged enum — each variant wraps its payload type.
+
+
+
+**Rust**
+
+
+```rust
+pub enum ActivityEvent {
+    Trade(ActivityTrade),
+    Fill(ActivityFill),
+}
+```
+
+
+
+**Python**
+
+
+```python
+# Deserialized as a dict with a single key: "Trade" or "Fill"
+# e.g. {"Trade": { ... }} or {"Fill": { ... }}
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+type ActivityEvent =
+  | { Trade: ActivityTrade }
+  | { Fill: ActivityFill };
+```
+
+
+
+
+
+### ActivityTrade
+
+A public trade event received via WebSocket.
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `aggressor_side` | `string \| null` | No | K P | Which side initiated the trade (`"buy"` or `"sell"`) |
+| `asset_id` | `string` | Yes | K P O | Token ID that was traded |
+| `fee_rate_bps` | `number \| null` | No | P | Fee rate in basis points (e.g., `0` = no fee, `200` = 2%) |
+| `market_id` | `string` | Yes | K P O | Native market ID |
+| `outcome` | `string \| null` | No | K P O | Outcome that was traded (e.g., `"Yes"`, `"No"`). Polymarket: requires `register_outcomes` |
+| `price` | `number` | Yes | K P O | Trade price, normalized 0-1 |
+| `side` | `string \| null` | No | K P O | Trade side label |
+| `size` | `number` | Yes | K P O | Number of contracts traded |
+| `source_channel` | `string` | Yes | K P O | Data source identifier (e.g., `"kalshi_public_trade"`, `"polymarket_last_trade_price"`) |
+| `timestamp` | `string \| null` | No | K P O | Trade timestamp (ISO 8601) |
+| `trade_id` | `string \| null` | No | K | Exchange-assigned trade identifier |
+
+
+
+**Rust**
+
+
+```rust
+pub struct ActivityTrade {
+    pub market_id: String,
+    pub asset_id: String,
+    pub trade_id: Option<String>,
+    pub price: f64,
+    pub size: f64,
+    pub side: Option<String>,
+    pub aggressor_side: Option<String>,
+    pub outcome: Option<String>,
+    pub fee_rate_bps: Option<u32>,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub source_channel: Cow<'static, str>,
+}
+```
+
+
+
+**Python**
+
+
+```python
+class ActivityTrade(BaseModel):
+    aggressor_side: Optional[str]
     asset_id: str
-    fee: Optional[float]
-    fill_id: Optional[str]
-    liquidity_role: Optional[LiquidityRole]
+    fee_rate_bps: Optional[int]
     market_id: str
-    order_id: Optional[str]
     outcome: Optional[str]
     price: float
     side: Optional[str]
     size: float
     source_channel: str
     timestamp: Optional[datetime]
-    tx_hash: Optional[str]
+    trade_id: Optional[str]
 ```
 
 
@@ -2892,20 +2978,18 @@ class ActivityFill(BaseModel):
 
 
 ```typescript
-interface ActivityFill {
+interface ActivityTrade {
+  aggressor_side?: string | null;
   asset_id: string;
-  fee?: number | null;
-  fill_id?: string | null;
-  liquidity_role?: LiquidityRole | null;
+  fee_rate_bps?: number | null;
   market_id: string;
-  order_id?: string | null;
   outcome?: string | null;
   price: number;
   side?: string | null;
   size: number;
   source_channel: string;
   timestamp?: string | null;
-  tx_hash?: string | null;
+  trade_id?: string | null;
 }
 ```
 
@@ -2913,30 +2997,15 @@ interface ActivityFill {
 
 
 
-## Configuration & Requests
-
-### ExchangeInfo
-
-Describes the capabilities of an exchange instance. Boolean fields indicate which operations are available (some depend on authentication).
+### FetchMarketsParams
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `has_approvals` | `boolean` | Yes | P | Whether on-chain token approval management is available |
-| `has_cancel_order` | `boolean` | Yes | K P O | Whether order cancellation is supported |
-| `has_create_order` | `boolean` | Yes | K P O | Whether order placement is supported (requires auth) |
-| `has_fetch_balance` | `boolean` | Yes | K P O | Whether account balance queries are supported |
-| `has_fetch_fills` | `boolean` | Yes | K P | Whether fill/trade history queries are supported |
-| `has_fetch_markets` | `boolean` | Yes | K P O | Whether market listing is supported |
-| `has_fetch_orderbook` | `boolean` | Yes | K P O | Whether L2 orderbook snapshots are available |
-| `has_fetch_orderbook_history` | `boolean` | Yes | — | Whether historical orderbook snapshots are available (not currently supported) |
-| `has_fetch_positions` | `boolean` | Yes | K P O | Whether position queries are supported |
-| `has_fetch_price_history` | `boolean` | Yes | K P | Whether OHLCV candlestick data is available |
-| `has_fetch_trades` | `boolean` | Yes | K P | Whether public trade tape queries are supported |
-| `has_fetch_user_activity` | `boolean` | Yes | P O | Whether user activity feed is available |
-| `has_refresh_balance` | `boolean` | Yes | P | Whether cached balance refresh is available |
-| `has_websocket` | `boolean` | Yes | K P O | Whether real-time WebSocket streaming is supported (may require auth) |
-| `id` | `string` | Yes | K P O | Exchange identifier (e.g., `"kalshi"`, `"polymarket"`, `"opinion"`) |
-| `name` | `string` | Yes | K P O | Human-readable exchange name (e.g., `"Kalshi"`, `"Polymarket"`, `"Opinion"`) |
+| `cursor` | `string \| null` | No | K P O | Exchange-specific cursor (offset, page number, or cursor string) for pagination |
+| `limit` | `number \| null` | No | K P O | Maximum number of markets to return per page |
+| `series_id` | `string \| null` | No | K P | Filter by series. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series |
+| `event_id` | `string \| null` | No | K P O | Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`), Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`), or Opinion market slug (e.g., `"btc-price-daily"`) to get child markets. When set, `series_id`, `cursor`, and `limit` are ignored |
+| `status` | `MarketStatusFilter \| null` | No | K P O | Filter by market status. Defaults to `active` when omitted. Use `all` to fetch markets of any status |
 
 
 
@@ -2944,23 +3013,12 @@ Describes the capabilities of an exchange instance. Boolean fields indicate whic
 
 
 ```rust
-pub struct ExchangeInfo {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub has_fetch_markets: bool,
-    pub has_create_order: bool,
-    pub has_cancel_order: bool,
-    pub has_fetch_positions: bool,
-    pub has_fetch_balance: bool,
-    pub has_fetch_orderbook: bool,
-    pub has_fetch_price_history: bool,
-    pub has_fetch_trades: bool,
-    pub has_fetch_user_activity: bool,
-    pub has_fetch_fills: bool,
-    pub has_approvals: bool,
-    pub has_refresh_balance: bool,
-    pub has_websocket: bool,
-    pub has_fetch_orderbook_history: bool,
+pub struct FetchMarketsParams {
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+    pub status: Option<MarketStatusFilter>,
+    pub series_id: Option<String>,
+    pub event_id: Option<String>,
 }
 ```
 
@@ -2970,23 +3028,12 @@ pub struct ExchangeInfo {
 
 
 ```python
-class ExchangeInfo(BaseModel):
-    id: str
-    name: str
-    has_fetch_markets: bool
-    has_create_order: bool
-    has_cancel_order: bool
-    has_fetch_positions: bool
-    has_fetch_balance: bool
-    has_fetch_orderbook: bool
-    has_fetch_price_history: bool
-    has_fetch_trades: bool
-    has_fetch_user_activity: bool
-    has_fetch_fills: bool
-    has_approvals: bool
-    has_refresh_balance: bool
-    has_websocket: bool
-    has_fetch_orderbook_history: bool
+class FetchMarketsParams(BaseModel):
+    limit: Optional[int]
+    cursor: Optional[str]
+    status: Optional[MarketStatusFilter]
+    series_id: Optional[str]
+    event_id: Optional[str]
 ```
 
 
@@ -2995,23 +3042,12 @@ class ExchangeInfo(BaseModel):
 
 
 ```typescript
-interface ExchangeInfo {
-  id: string;
-  name: string;
-  has_fetch_markets: boolean;
-  has_create_order: boolean;
-  has_cancel_order: boolean;
-  has_fetch_positions: boolean;
-  has_fetch_balance: boolean;
-  has_fetch_orderbook: boolean;
-  has_fetch_price_history: boolean;
-  has_fetch_trades: boolean;
-  has_fetch_user_activity: boolean;
-  has_fetch_fills: boolean;
-  has_approvals: boolean;
-  has_refresh_balance: boolean;
-  has_websocket: boolean;
-  has_fetch_orderbook_history: boolean;
+interface FetchMarketsParams {
+  limit?: number | null;
+  cursor?: string | null;
+  status?: MarketStatusFilter | null;
+  series_id?: string | null;
+  event_id?: string | null;
 }
 ```
 
@@ -3019,11 +3055,12 @@ interface ExchangeInfo {
 
 
 
-### FetchOrdersParams
+### FetchUserActivityParams
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `market_id` | `string \| null` | No | K P O | Filter orders to a specific market |
+| `address` | `string` | Yes | P O | User wallet address to query activity for |
+| `limit` | `number \| null` | No | P O | Maximum number of results to return |
 
 
 
@@ -3031,8 +3068,9 @@ interface ExchangeInfo {
 
 
 ```rust
-pub struct FetchOrdersParams {
-    pub market_id: Option<String>,
+pub struct FetchUserActivityParams {
+    pub address: String,
+    pub limit: Option<usize>,
 }
 ```
 
@@ -3042,8 +3080,9 @@ pub struct FetchOrdersParams {
 
 
 ```python
-class FetchOrdersParams(BaseModel):
-    market_id: Optional[str]
+class FetchUserActivityParams(BaseModel):
+    address: str
+    limit: Optional[int]
 ```
 
 
@@ -3052,8 +3091,9 @@ class FetchOrdersParams(BaseModel):
 
 
 ```typescript
-interface FetchOrdersParams {
-  market_id?: string | null;
+interface FetchUserActivityParams {
+  address: string;
+  limit?: number | null;
 }
 ```
 
@@ -3061,16 +3101,13 @@ interface FetchOrdersParams {
 
 
 
-### OrderbookHistoryRequest
+### OrderbookRequest
 
 | Field | Type | Required | Exchanges | Description |
 |-------|------|----------|-----------|-------------|
-| `cursor` | `string \| null` | No | P | Opaque pagination cursor from a previous response |
-| `end_ts` | `number \| null` | No | P | End time filter (Unix seconds) |
-| `limit` | `number \| null` | No | P | Maximum number of snapshots per page |
-| `market_id` | `string` | Yes | P | Native market ID to fetch history for |
-| `start_ts` | `number \| null` | No | P | Start time filter (Unix seconds) |
-| `token_id` | `string \| null` | No | P | Filter to a specific token ID |
+| `market_id` | `string` | Yes | K P O | Native market ID to fetch the orderbook for |
+| `outcome` | `string \| null` | No | K O | Filter by outcome name (e.g., `"Yes"`). Required for non-binary Opinion markets |
+| `token_id` | `string \| null` | No | P | Directly specify the token ID to fetch. Bypasses outcome resolution |
 
 
 
@@ -3078,8 +3115,65 @@ interface FetchOrdersParams {
 
 
 ```rust
-pub struct OrderbookHistoryRequest {
+pub struct OrderbookRequest {
     pub market_id: String,
+    pub outcome: Option<String>,
+    pub token_id: Option<String>,
+}
+```
+
+
+
+**Python**
+
+
+```python
+class OrderbookRequest(BaseModel):
+    market_id: str
+    outcome: Optional[str]
+    token_id: Optional[str]
+```
+
+
+
+**TypeScript**
+
+
+```typescript
+interface OrderbookRequest {
+  market_id: string;
+  outcome?: string | null;
+  token_id?: string | null;
+}
+```
+
+
+
+
+
+### TradesRequest
+
+| Field | Type | Required | Exchanges | Description |
+|-------|------|----------|-----------|-------------|
+| `cursor` | `string \| null` | No | K P | Opaque pagination cursor from a previous response |
+| `end_ts` | `number \| null` | No | K P | End time filter (Unix seconds, inclusive) |
+| `limit` | `number \| null` | No | K P | Maximum number of trades to return |
+| `market_id` | `string` | Yes | K P | Native market ID to fetch trades for |
+| `market_ref` | `string \| null` | No | P | Alternate market identifier (e.g., Polymarket `conditionId`) |
+| `outcome` | `string \| null` | No | K | Filter by outcome name (Kalshi only) |
+| `start_ts` | `number \| null` | No | K P | Start time filter (Unix seconds, inclusive) |
+| `token_id` | `string \| null` | No | P | Filter by token ID (Polymarket only) |
+
+
+
+**Rust**
+
+
+```rust
+pub struct TradesRequest {
+    pub market_id: String,
+    pub market_ref: Option<String>,
+    pub outcome: Option<String>,
     pub token_id: Option<String>,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
@@ -3094,13 +3188,15 @@ pub struct OrderbookHistoryRequest {
 
 
 ```python
-class OrderbookHistoryRequest(BaseModel):
+class TradesRequest(BaseModel):
     market_id: str
     token_id: Optional[str]
+    market_ref: Optional[str]
     start_ts: Optional[int]
     end_ts: Optional[int]
     limit: Optional[int]
     cursor: Optional[str]
+    outcome: Optional[str]
 ```
 
 
@@ -3109,217 +3205,20 @@ class OrderbookHistoryRequest(BaseModel):
 
 
 ```typescript
-interface OrderbookHistoryRequest {
+interface TradesRequest {
   market_id: string;
   token_id?: string | null;
+  market_ref?: string | null;
   start_ts?: number | null;
   end_ts?: number | null;
   limit?: number | null;
   cursor?: string | null;
-}
-```
-
-
-
-
-
-### PriceHistoryRequest
-
-| Field | Type | Required | Exchanges | Description |
-|-------|------|----------|-----------|-------------|
-| `condition_id` | `string \| null` | No | P | Condition ID for open interest enrichment (Polymarket only) |
-| `end_ts` | `number \| null` | No | K P | End time filter (Unix seconds, inclusive) |
-| `interval` | `PriceHistoryInterval` | Yes | K P | Candle interval (e.g., `"1h"`, `"1d"`) |
-| `market_id` | `string` | Yes | K P | Native market ID to fetch candles for |
-| `outcome` | `string \| null` | No | K | Filter by outcome name (Kalshi only) |
-| `start_ts` | `number \| null` | No | K P | Start time filter (Unix seconds, inclusive) |
-| `token_id` | `string \| null` | No | P | Filter by token ID (Polymarket only) |
-
-
-
-**Rust**
-
-
-```rust
-pub struct PriceHistoryRequest {
-    pub market_id: String,
-    pub outcome: Option<String>,
-    pub token_id: Option<String>,
-    pub condition_id: Option<String>,
-    pub interval: PriceHistoryInterval,
-    pub start_ts: Option<i64>,
-    pub end_ts: Option<i64>,
-}
-```
-
-
-
-**Python**
-
-
-```python
-class PriceHistoryRequest(BaseModel):
-    market_id: str
-    interval: PriceHistoryInterval
-    token_id: Optional[str]
-    start_ts: Optional[int]
-    end_ts: Optional[int]
-    outcome: Optional[str]
-    condition_id: Optional[str]
-```
-
-
-
-**TypeScript**
-
-
-```typescript
-interface PriceHistoryRequest {
-  market_id: string;
-  interval: PriceHistoryInterval;
-  token_id?: string | null;
-  start_ts?: number | null;
-  end_ts?: number | null;
   outcome?: string | null;
-  condition_id?: string | null;
 }
 ```
 
 
 
 
-
-## Supported Exchanges
-
-### Kalshi
-
-- **ID:** `kalshi`
-- **Website:** [kalshi.com](https://kalshi.com)
-- **API Docs:** [docs.kalshi.com](https://docs.kalshi.com)
-- **Auth:** RSA key pair (`api_key_id` + `private_key_pem`)
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades, WebSocket
-
-### Polymarket
-
-- **ID:** `polymarket`
-- **Website:** [polymarket.com](https://polymarket.com)
-- **API Docs:** [docs.polymarket.com](https://docs.polymarket.com/developers/)
-- **Auth:** Private key + optional CLOB API credentials
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, Price History, Trades, WebSocket
-
-### Opinion
-
-- **ID:** `opinion`
-- **Website:** [opinion.trade](https://opinion.trade)
-- **API Docs:** [docs.opinion.trade](https://docs.opinion.trade/developer-guide/opinion-open-api)
-- **Auth:** API key + private key + multi-sig address
-- **Features:** Markets, Orders, Positions, Balance, Orderbook, WebSocket (requires auth)
-
-## Configuration
-
-All exchanges accept a JSON config object. Pass exchange-specific fields:
-
-```json
-{
-  "kalshi": {
-    "api_key_id": "...",
-    "private_key_pem": "...",
-    "demo": false
-  },
-  "polymarket": {
-    "private_key": "0x...",
-    "funder": "0x...",
-    "api_key": "...",
-    "api_secret": "...",
-    "api_passphrase": "..."
-  },
-  "opinion": {
-    "api_key": "...",
-    "private_key": "0x...",
-    "multi_sig_addr": "0x..."
-  }
-}
-```
-
-
-## Error Hierarchy
-
-```
-OpenPxError
-├── Network
-│   ├── Http(String)
-│   ├── Timeout(u64)
-│   └── Connection(String)
-├── Exchange
-│   ├── MarketNotFound(String)
-│   ├── InvalidOrder(String)
-│   ├── OrderRejected(String)
-│   ├── InsufficientFunds(String)
-│   ├── Authentication(String)
-│   ├── NotSupported(String)
-│   └── Api(String)
-├── WebSocket
-│   ├── Connection(String)
-│   ├── Closed
-│   ├── Protocol(String)
-│   └── Subscription(String)
-├── Signing
-│   ├── InvalidKey
-│   ├── SigningFailed(String)
-│   └── Unsupported(String)
-├── RateLimitExceeded
-├── Serialization(Error)
-├── Config(String)
-├── InvalidInput(String)
-└── Other(String)
-```
-
-## Language Mapping
-
-
-
-**Rust**
-
-```rust
-use px_core::{OpenPxError, ExchangeError};
-
-match result {
-    Err(OpenPxError::Exchange(ExchangeError::Authentication(msg))) => {
-        eprintln!("Auth failed: {msg}");
-    }
-    Err(OpenPxError::Network(e)) => {
-        eprintln!("Network error: {e}");
-    }
-    Err(e) => eprintln!("Error: {e}"),
-    Ok(v) => { /* success */ }
-}
-```
-
-
-**Python**
-
-```python
-from openpx import Exchange, OpenPxError, AuthenticationError, NetworkError
-
-try:
-    exchange.fetch_balance()
-except AuthenticationError as e:
-    print(f"Auth failed: {e}")
-except NetworkError as e:
-    print(f"Network error: {e}")
-except OpenPxError as e:
-    print(f"Error: {e}")
-```
-
-
-**TypeScript**
-
-```typescript
-try {
-  await exchange.fetchBalance();
-} catch (e) {
-  console.error(e.message);
-}
-```
-
-
+title: Exchanges
+title: Error Handling
