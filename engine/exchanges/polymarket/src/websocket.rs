@@ -1,18 +1,20 @@
 use futures::StreamExt;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use chrono::{DateTime, Utc};
+use px_core::websocket::ndjson::NdjsonWriter;
 use px_core::{
     insert_ask, insert_bid, ActivityEvent, ActivityFill, ActivityStream, ActivityTrade,
     AtomicWebSocketState, ChangeVec, FixedPrice, LiquidityRole, OrderBookWebSocket, Orderbook,
     OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide, WebSocketError,
-    WebSocketState, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
-    WS_RECONNECT_MAX_DELAY,
+    WebSocketState, WsMessage, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
+    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 use smallvec::SmallVec;
 
@@ -51,7 +53,7 @@ struct DynamicSubscribeMessage {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct WsMessage {
+struct RawWsMessage {
     event_type: Option<String>,
     asset_id: Option<String>,
     market: Option<String>,
@@ -70,6 +72,11 @@ struct WsMessage {
     trade_owner: Option<String>,
     #[serde(default, alias = "makerOrders")]
     maker_orders: Option<Vec<WsMakerOrder>>,
+    /// Book-state hash from `book` events, used for integrity verification.
+    hash: Option<String>,
+    /// Fee rate in basis points from `last_trade_price` events.
+    #[serde(alias = "fee_rate_bps")]
+    fee_rate_bps: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -96,15 +103,17 @@ struct WsMakerOrder {
     owner: Option<String>,
 }
 
-type OrderbookSender = broadcast::Sender<Result<OrderbookUpdate, WebSocketError>>;
-type ActivitySender = broadcast::Sender<Result<ActivityEvent, WebSocketError>>;
+type OrderbookSender = broadcast::Sender<Result<WsMessage<OrderbookUpdate>, WebSocketError>>;
+type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSocketError>>;
+type OrderbookSenderMap = Arc<RwLock<HashMap<String, (OrderbookSender, Arc<AtomicU64>)>>>;
+type ActivitySenderMap = Arc<RwLock<HashMap<String, (ActivitySender, Arc<AtomicU64>)>>>;
 type BroadcastEntry = (String, Option<DateTime<Utc>>, ChangeVec);
 
 pub struct PolymarketWebSocket {
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashMap<String, Vec<String>>>>,
-    orderbook_senders: Arc<RwLock<HashMap<String, OrderbookSender>>>,
-    activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
+    orderbook_senders: OrderbookSenderMap,
+    activity_senders: ActivitySenderMap,
     orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
     asset_to_market: Arc<RwLock<HashMap<String, String>>>,
     market_to_assets: Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -119,9 +128,12 @@ pub struct PolymarketWebSocket {
     /// Tracks companion relationships: primary -> companion and vice versa.
     /// When a pair is subscribed, both directions are stored.
     companions: Arc<RwLock<HashMap<String, String>>>,
+    /// Maps asset_id → outcome name ("Yes" / "No"). Populated via `register_outcomes`.
+    outcome_map: Arc<RwLock<HashMap<String, String>>>,
     /// True once the initial `type: "market"` subscribe message has been sent.
     /// Subsequent subscriptions must use `operation: "subscribe"` instead.
     initial_subscribed: Arc<std::sync::atomic::AtomicBool>,
+    ndjson_writer: Option<Arc<NdjsonWriter>>,
 }
 
 impl PolymarketWebSocket {
@@ -162,8 +174,23 @@ impl PolymarketWebSocket {
             reconnect_attempts: Arc::new(Mutex::new(0)),
             user_auth,
             companions: Arc::new(RwLock::new(HashMap::new())),
+            outcome_map: Arc::new(RwLock::new(HashMap::new())),
             initial_subscribed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            ndjson_writer: None,
         }
+    }
+
+    pub fn with_ndjson_writer(mut self, writer: impl std::io::Write + Send + 'static) -> Self {
+        self.ndjson_writer = Some(Arc::new(NdjsonWriter::new(writer)));
+        self
+    }
+
+    /// Register outcome names for asset IDs so activity events include "Yes"/"No".
+    /// Call with the two token IDs from the market's `clob_token_ids` and `outcomes`.
+    pub async fn register_outcomes(&self, yes_token_id: &str, no_token_id: &str) {
+        let mut map = self.outcome_map.write().await;
+        map.insert(yes_token_id.to_string(), "Yes".to_string());
+        map.insert(no_token_id.to_string(), "No".to_string());
     }
 
     async fn reset_reconnect_attempts(&self) {
@@ -274,10 +301,10 @@ impl PolymarketWebSocket {
     }
 
     async fn handle_single_message(&self, value: &serde_json::Value) {
-        let msg: WsMessage = match serde_json::from_value(value.clone()) {
+        let msg: RawWsMessage = match serde_json::from_value(value.clone()) {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("Failed to parse WsMessage: {}", e);
+                tracing::warn!("Failed to parse RawWsMessage: {}", e);
                 return;
             }
         };
@@ -308,7 +335,7 @@ impl PolymarketWebSocket {
         }
     }
 
-    async fn handle_book_message(&self, msg: &WsMessage) {
+    async fn handle_book_message(&self, msg: &RawWsMessage) {
         let asset_id = match &msg.asset_id {
             Some(id) => id.clone(),
             None => return,
@@ -359,6 +386,7 @@ impl PolymarketWebSocket {
             asks,
             last_update_id: None,
             timestamp: Some(chrono::Utc::now()),
+            hash: msg.hash.clone(),
         };
 
         {
@@ -383,7 +411,7 @@ impl PolymarketWebSocket {
         self.broadcast_orderbook(&asset_id, orderbook).await;
     }
 
-    async fn handle_price_change(&self, msg: &WsMessage) {
+    async fn handle_price_change(&self, msg: &RawWsMessage) {
         let raw_changes = match &msg.price_changes {
             Some(c) => c,
             None => return,
@@ -469,13 +497,21 @@ impl PolymarketWebSocket {
 
         let senders = self.orderbook_senders.read().await;
         for (asset_id, timestamp, changes) in to_broadcast {
-            if let Some(sender) = senders.get(&asset_id) {
-                let _ = sender.send(Ok(OrderbookUpdate::Delta { changes, timestamp }));
+            if let Some((sender, seq)) = senders.get(&asset_id) {
+                let msg = WsMessage {
+                    seq: seq.fetch_add(1, Ordering::Relaxed),
+                    received_at: chrono::Utc::now(),
+                    data: OrderbookUpdate::Delta { changes, timestamp },
+                };
+                if let Some(ref writer) = self.ndjson_writer {
+                    writer.write_record(&msg);
+                }
+                let _ = sender.send(Ok(msg));
             }
         }
     }
 
-    async fn handle_last_trade_price(&self, msg: &WsMessage) {
+    async fn handle_last_trade_price(&self, msg: &RawWsMessage) {
         let Some(asset_id) = msg.asset_id.clone() else {
             return;
         };
@@ -492,6 +528,16 @@ impl PolymarketWebSocket {
         }
 
         let timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
+        let fee_rate_bps = msg
+            .fee_rate_bps
+            .as_deref()
+            .and_then(|s| s.parse::<u32>().ok());
+
+        let outcome = {
+            let map = self.outcome_map.read().await;
+            map.get(&asset_id).cloned()
+        };
+
         let event = ActivityEvent::Trade(ActivityTrade {
             market_id: msg.market.clone().unwrap_or_default(),
             asset_id: asset_id.clone(),
@@ -500,14 +546,15 @@ impl PolymarketWebSocket {
             size,
             side: msg.side.clone(),
             aggressor_side: msg.side.clone(),
-            outcome: None,
+            outcome,
+            fee_rate_bps,
             timestamp,
             source_channel: Cow::Borrowed("polymarket_last_trade_price"),
         });
         self.broadcast_activity(&asset_id, event).await;
     }
 
-    async fn handle_user_trade(&self, msg: &WsMessage) {
+    async fn handle_user_trade(&self, msg: &RawWsMessage) {
         let asset_id = msg.asset_id.clone();
         let market_id = msg.market.clone();
         let price = msg
@@ -564,6 +611,13 @@ impl PolymarketWebSocket {
         });
 
         let timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
+        let outcome = if let Some(ref aid) = asset_id {
+            let map = self.outcome_map.read().await;
+            map.get(aid).cloned()
+        } else {
+            None
+        };
+
         let fill = ActivityEvent::Fill(ActivityFill {
             market_id: market_id.clone().unwrap_or_default(),
             asset_id: asset_id.clone().unwrap_or_default(),
@@ -572,7 +626,9 @@ impl PolymarketWebSocket {
             price,
             size,
             side: msg.side.clone(),
-            outcome: None,
+            outcome,
+            tx_hash: None,
+            fee: None,
             timestamp,
             source_channel: Cow::Borrowed("polymarket_user_trade"),
             liquidity_role,
@@ -596,9 +652,17 @@ impl PolymarketWebSocket {
 
     async fn broadcast_orderbook(&self, asset_id: &str, orderbook: Orderbook) {
         let senders = self.orderbook_senders.read().await;
-        if let Some(sender) = senders.get(asset_id) {
+        if let Some((sender, seq)) = senders.get(asset_id) {
             let receivers = sender.receiver_count();
-            match sender.send(Ok(OrderbookUpdate::Snapshot(orderbook))) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: OrderbookUpdate::Snapshot(orderbook),
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            match sender.send(Ok(msg)) {
                 Ok(n) => {
                     tracing::debug!(
                         asset_id = %asset_id,
@@ -625,8 +689,16 @@ impl PolymarketWebSocket {
 
     async fn broadcast_activity(&self, asset_id: &str, activity: ActivityEvent) {
         let senders = self.activity_senders.read().await;
-        if let Some(sender) = senders.get(asset_id) {
-            let _ = sender.send(Ok(activity));
+        if let Some((sender, seq)) = senders.get(asset_id) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: activity,
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -739,7 +811,9 @@ impl PolymarketWebSocket {
             reconnect_attempts: self.reconnect_attempts.clone(),
             user_auth: self.user_auth.clone(),
             companions: self.companions.clone(),
+            outcome_map: self.outcome_map.clone(),
             initial_subscribed: self.initial_subscribed.clone(),
+            ndjson_writer: self.ndjson_writer.clone(),
         };
 
         tokio::spawn(async move {
@@ -819,14 +893,14 @@ impl PolymarketWebSocket {
                 let mut senders = self.orderbook_senders.write().await;
                 if !senders.contains_key(token_id.as_str()) {
                     let (tx, _) = broadcast::channel(16_384);
-                    senders.insert(token_id.clone(), tx);
+                    senders.insert(token_id.clone(), (tx, Arc::new(AtomicU64::new(0))));
                 }
             }
             {
                 let mut senders = self.activity_senders.write().await;
                 if !senders.contains_key(token_id.as_str()) {
                     let (tx, _) = broadcast::channel(16_384);
-                    senders.insert(token_id.clone(), tx);
+                    senders.insert(token_id.clone(), (tx, Arc::new(AtomicU64::new(0))));
                 }
             }
         }
@@ -866,7 +940,7 @@ impl PolymarketWebSocket {
                 let senders = self.orderbook_senders.read().await;
                 senders
                     .get(&comp)
-                    .map(|s| s.receiver_count() > 0)
+                    .map(|(s, _)| s.receiver_count() > 0)
                     .unwrap_or(false)
             };
             if !has_receivers {
@@ -938,6 +1012,8 @@ impl OrderBookWebSocket for PolymarketWebSocket {
         let user_write_tx_clone = self.user_write_tx.clone();
         let user_auth = self.user_auth.clone();
 
+        let ndjson_writer = self.ndjson_writer.clone();
+
         let ws_self = PolymarketWebSocket {
             state: state.clone(),
             subscriptions: subscriptions.clone(),
@@ -955,7 +1031,9 @@ impl OrderBookWebSocket for PolymarketWebSocket {
             reconnect_attempts: self.reconnect_attempts.clone(),
             user_auth,
             companions: self.companions.clone(),
+            outcome_map: self.outcome_map.clone(),
             initial_subscribed: self.initial_subscribed.clone(),
+            ndjson_writer: ndjson_writer.clone(),
         };
 
         let auto_reconnect = self.auto_reconnect;
@@ -1011,10 +1089,23 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                     *a
                 };
 
+                tracing::warn!(
+                    exchange = "polymarket",
+                    attempt,
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "websocket connection lost, starting reconnect"
+                );
+
                 while attempt <= WS_MAX_RECONNECT_ATTEMPTS {
                     state.store(WebSocketState::Reconnecting);
 
                     let delay = Self::calculate_reconnect_delay(attempt);
+                    tracing::info!(
+                        exchange = "polymarket",
+                        attempt,
+                        delay_ms = delay.as_millis() as u64,
+                        "reconnect attempt starting"
+                    );
                     tokio::time::sleep(delay).await;
 
                     match connect_async(WS_MARKET_URL).await {
@@ -1034,7 +1125,35 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                 *a = 0;
                             }
 
-                            let _ = ws_self.resubscribe_all().await;
+                            // Broadcast reconnect event to all orderbook subscribers
+                            {
+                                let senders = orderbook_senders.read().await;
+                                for (sender, seq) in senders.values() {
+                                    let msg = WsMessage {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        received_at: chrono::Utc::now(),
+                                        data: OrderbookUpdate::Reconnected,
+                                    };
+                                    if let Some(ref writer) = ndjson_writer {
+                                        writer.write_record(&msg);
+                                    }
+                                    let _ = sender.send(Ok(msg));
+                                }
+                            }
+
+                            match ws_self.resubscribe_all().await {
+                                Ok(()) => {
+                                    let market_count = ws_self.subscriptions.read().await.len();
+                                    tracing::info!(
+                                        exchange = "polymarket",
+                                        markets = market_count,
+                                        "reconnected and resubscribed to all markets"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(exchange = "polymarket", error = %e, "resubscription failed after reconnect");
+                                }
+                            }
                             let _ = ws_self.connect_user_channel().await;
 
                             let write_future = new_rx.map(Ok).forward(new_write);
@@ -1072,7 +1191,8 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                 *a
                             };
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            tracing::warn!(exchange = "polymarket", attempt, error = %e, "reconnect attempt failed");
                             attempt = {
                                 let mut a = reconnect_attempts_clone.lock().await;
                                 *a += 1;
@@ -1082,6 +1202,11 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                     }
                 }
 
+                tracing::error!(
+                    exchange = "polymarket",
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "max reconnect attempts exhausted, giving up"
+                );
                 state.store(WebSocketState::Disconnected);
             }
         });
@@ -1117,7 +1242,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
             let mut senders = self.orderbook_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -1125,7 +1250,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -1173,14 +1298,15 @@ impl OrderBookWebSocket for PolymarketWebSocket {
     ) -> Result<OrderbookStream, WebSocketError> {
         // Ensure sender exists — may be called before subscribe() to avoid the race where
         // an initial snapshot is broadcast with no receivers.
-        let sender = {
+        let (sender, seq) = {
             let mut senders = self.orderbook_senders.write().await;
-            if let Some(sender) = senders.get(market_id) {
-                sender.clone()
+            if let Some((sender, seq)) = senders.get(market_id) {
+                (sender.clone(), seq.clone())
             } else {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx.clone());
-                tx
+                let seq = Arc::new(AtomicU64::new(0));
+                senders.insert(market_id.to_string(), (tx.clone(), seq.clone()));
+                (tx, seq)
             }
         };
 
@@ -1190,7 +1316,15 @@ impl OrderBookWebSocket for PolymarketWebSocket {
         // This prevents "delta-only" streams where a late subscriber never sees a
         // full snapshot (common when subscribing via paired tokens).
         if let Some(cached) = self.orderbooks.read().await.get(market_id).cloned() {
-            let _ = sender.send(Ok(OrderbookUpdate::Snapshot(cached)));
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: OrderbookUpdate::Snapshot(cached),
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
 
         Ok(Box::pin(
@@ -1204,11 +1338,11 @@ impl OrderBookWebSocket for PolymarketWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
         let senders = self.activity_senders.read().await;
-        let sender = senders.get(market_id).ok_or_else(|| {
+        let (sender, _seq) = senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no activity sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();
@@ -1253,13 +1387,13 @@ mod tests {
         }"#;
         ws.handle_message(msg).await;
 
-        let event = timeout(Duration::from_millis(300), stream.next())
+        let ws_msg = timeout(Duration::from_millis(300), stream.next())
             .await
             .expect("expected fill event")
             .expect("stream unexpectedly closed")
             .expect("stream event should be ok");
 
-        match event {
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert_eq!(fill.market_id, "market-1");
                 assert_eq!(fill.asset_id, "asset-1");
@@ -1304,13 +1438,13 @@ mod tests {
         }"#;
         ws.handle_message(msg).await;
 
-        let event = timeout(Duration::from_millis(300), stream.next())
+        let ws_msg = timeout(Duration::from_millis(300), stream.next())
             .await
             .expect("expected fill event")
             .expect("stream unexpectedly closed")
             .expect("stream event should be ok");
 
-        match event {
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert_eq!(fill.order_id.as_deref(), Some("maker-2"));
                 assert_eq!(fill.liquidity_role, Some(LiquidityRole::Maker));
@@ -1351,13 +1485,13 @@ mod tests {
         }"#;
         ws.handle_message(msg).await;
 
-        let event = timeout(Duration::from_millis(300), stream.next())
+        let ws_msg = timeout(Duration::from_millis(300), stream.next())
             .await
             .expect("expected fill event")
             .expect("stream unexpectedly closed")
             .expect("stream event should be ok");
 
-        match event {
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert_eq!(fill.liquidity_role, Some(LiquidityRole::Taker));
                 assert_eq!(fill.order_id.as_deref(), Some("taker-3"));
@@ -1394,13 +1528,13 @@ mod tests {
         }"#;
         ws.handle_message(msg).await;
 
-        let event = timeout(Duration::from_millis(300), stream.next())
+        let ws_msg = timeout(Duration::from_millis(300), stream.next())
             .await
             .expect("expected fill event")
             .expect("stream unexpectedly closed")
             .expect("stream event should be ok");
 
-        match event {
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert!(fill.liquidity_role.is_none());
             }
@@ -1468,13 +1602,13 @@ mod tests {
         ws.handle_message(book_msg).await;
 
         // Step 4: Verify the stream receives the snapshot
-        let event = timeout(Duration::from_millis(500), stream.next())
+        let ws_msg = timeout(Duration::from_millis(500), stream.next())
             .await
             .expect("should receive snapshot within timeout")
             .expect("stream should not be closed")
             .expect("event should be Ok");
 
-        match event {
+        match ws_msg.data {
             OrderbookUpdate::Snapshot(ob) => {
                 assert_eq!(ob.bids.len(), 2);
                 assert_eq!(ob.asks.len(), 2);
@@ -1511,13 +1645,13 @@ mod tests {
         ws.handle_message(book_msg).await;
 
         // Step 4: Verify snapshot arrives
-        let event = timeout(Duration::from_millis(500), stream.next())
+        let ws_msg = timeout(Duration::from_millis(500), stream.next())
             .await
             .expect("should receive snapshot")
             .expect("stream not closed")
             .expect("event ok");
 
-        match event {
+        match ws_msg.data {
             OrderbookUpdate::Snapshot(ob) => {
                 assert_eq!(ob.bids.len(), 1);
                 assert_eq!(ob.asks.len(), 1);
@@ -1571,13 +1705,13 @@ mod tests {
         }
 
         // Wait for snapshot
-        let event = timeout(Duration::from_secs(10), stream.next())
+        let ws_msg = timeout(Duration::from_secs(10), stream.next())
             .await
             .expect("should receive snapshot within 10s")
             .expect("stream not closed")
             .expect("event ok");
 
-        match event {
+        match ws_msg.data {
             OrderbookUpdate::Snapshot(ob) => {
                 eprintln!(
                     "Received snapshot: {} bids, {} asks",

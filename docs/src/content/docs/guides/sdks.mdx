@@ -77,13 +77,16 @@ with NAPI-RS.
 <TabItem label="Rust">
 ```rust
 use px_sdk::ExchangeInner;
+use px_core::FetchMarketsParams;
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let exchange = ExchangeInner::new("polymarket", json!({}))?;
 
-    let markets = exchange.fetch_markets().await?;
+    let (markets, _cursor) = exchange
+        .fetch_markets(&FetchMarketsParams::default())
+        .await?;
     for m in &markets {
         println!("[{}] {} — {:?}", m.id, m.title, m.outcome_prices);
     }

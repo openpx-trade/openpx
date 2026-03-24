@@ -284,7 +284,7 @@ openpx kalshi ws-orderbook KXBTC-25MAR14 | jq 'select(.type == "Snapshot") | {
 
 | Type | Description |
 |------|-------------|
-| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. |
+| **Snapshot** | Full orderbook state. Sent on first subscribe and after reconnection. Contains complete `bids` and `asks` arrays. Polymarket snapshots include a `hash` for book-state integrity verification. |
 | **Delta** | Incremental change. Each change has `side` (Bid/Ask), `price`, and `size`. A `size` of `0` means remove that price level. |
 
 See the [Type Reference](/reference/models/#orderbook) for the full `Orderbook`,
@@ -380,8 +380,8 @@ See [`ActivityTrade`](/reference/models/#activitytrade) and
 
 | Event | Description | Exchanges |
 |-------|-------------|-----------|
-| **Trade** | Public market trade. Includes price, size, aggressor side, and outcome. | Kalshi, Polymarket, Opinion |
-| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), and fee info. | Kalshi, Polymarket, Opinion |
+| **Trade** | Public market trade. Includes price, size, aggressor side, outcome, and fee rate (Polymarket). | Kalshi, Polymarket, Opinion |
+| **Fill** | Your order was filled. Includes fill ID, order ID, liquidity role (maker/taker), on-chain tx hash and fee (Opinion). | Kalshi, Polymarket, Opinion |
 
 ## Auto-Reconnect
 

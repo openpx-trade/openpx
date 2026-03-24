@@ -145,6 +145,9 @@ pub enum OrderbookUpdate {
         changes: ChangeVec,
         timestamp: Option<DateTime<Utc>>,
     },
+    /// Connection was lost and re-established. All orderbook state is potentially stale.
+    /// The next Snapshot for each market is a full reset, not a continuation.
+    Reconnected,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -180,6 +183,10 @@ pub struct Orderbook {
     pub last_update_id: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<DateTime<Utc>>,
+    /// Exchange-provided hash for verifying book state integrity during replay.
+    /// Polymarket: present on `book` snapshot events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
 }
 
 impl Orderbook {
@@ -261,6 +268,7 @@ impl Orderbook {
             asks: parsed_asks,
             last_update_id: None,
             timestamp: Some(Utc::now()),
+            hash: None,
         }
     }
 }

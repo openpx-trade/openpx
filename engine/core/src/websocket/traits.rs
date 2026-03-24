@@ -16,9 +16,19 @@ pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
 
+/// Envelope wrapping every WebSocket stream item with a monotonic sequence
+/// number and a local receive timestamp for HFT feed-latency measurement.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WsMessage<T> {
+    pub seq: u64,
+    pub received_at: DateTime<Utc>,
+    pub data: T,
+}
+
 pub type OrderbookStream =
-    Pin<Box<dyn Stream<Item = Result<OrderbookUpdate, WebSocketError>> + Send>>;
-pub type ActivityStream = Pin<Box<dyn Stream<Item = Result<ActivityEvent, WebSocketError>> + Send>>;
+    Pin<Box<dyn Stream<Item = Result<WsMessage<OrderbookUpdate>, WebSocketError>> + Send>>;
+pub type ActivityStream =
+    Pin<Box<dyn Stream<Item = Result<WsMessage<ActivityEvent>, WebSocketError>> + Send>>;
 pub type SportsStream = Pin<Box<dyn Stream<Item = Result<SportResult, WebSocketError>> + Send>>;
 pub type CryptoPriceStream =
     Pin<Box<dyn Stream<Item = Result<CryptoPrice, WebSocketError>> + Send>>;
@@ -83,6 +93,10 @@ pub struct ActivityTrade {
     pub side: Option<String>,
     pub aggressor_side: Option<String>,
     pub outcome: Option<String>,
+    /// Fee rate in basis points (e.g. 0 = no fee, 200 = 2%).
+    /// Polymarket: present on `last_trade_price` events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_rate_bps: Option<u32>,
     pub timestamp: Option<DateTime<Utc>>,
     pub source_channel: Cow<'static, str>,
 }
@@ -98,6 +112,12 @@ pub struct ActivityFill {
     pub size: f64,
     pub side: Option<String>,
     pub outcome: Option<String>,
+    /// On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx_hash: Option<String>,
+    /// Fee charged for this fill. Opinion: `fee` from `trade.record.new`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee: Option<f64>,
     pub timestamp: Option<DateTime<Utc>>,
     pub source_channel: Cow<'static, str>,
     pub liquidity_role: Option<LiquidityRole>,

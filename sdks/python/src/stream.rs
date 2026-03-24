@@ -6,20 +6,23 @@ use tokio::sync::{mpsc, Mutex};
 
 use px_core::error::WebSocketError;
 use px_core::models::OrderbookUpdate;
-use px_core::websocket::ActivityEvent;
+use px_core::websocket::{ActivityEvent, WsMessage};
 
 use crate::error::to_py_err;
 use crate::get_runtime;
+
+type ObReceiver = mpsc::Receiver<Result<WsMessage<OrderbookUpdate>, WebSocketError>>;
+type ActivityReceiver = mpsc::Receiver<Result<WsMessage<ActivityEvent>, WebSocketError>>;
 
 /// Blocking iterator over orderbook updates.
 /// Each `__next__` call releases the GIL and waits for the next update.
 #[pyclass]
 pub struct NativeOrderbookStream {
-    rx: Arc<Mutex<mpsc::Receiver<Result<OrderbookUpdate, WebSocketError>>>>,
+    rx: Arc<Mutex<ObReceiver>>,
 }
 
 impl NativeOrderbookStream {
-    pub fn new(rx: mpsc::Receiver<Result<OrderbookUpdate, WebSocketError>>) -> Self {
+    pub fn new(rx: ObReceiver) -> Self {
         Self {
             rx: Arc::new(Mutex::new(rx)),
         }
@@ -39,8 +42,8 @@ impl NativeOrderbookStream {
         let result = py.detach(|| rt.block_on(async { rx.lock().await.recv().await }));
 
         match result {
-            Some(Ok(update)) => {
-                let py_val = pythonize(py, &update).map_err(|e| to_py_err(e.to_string()))?;
+            Some(Ok(msg)) => {
+                let py_val = pythonize(py, &msg).map_err(|e| to_py_err(e.to_string()))?;
                 Ok(Some(py_val.into()))
             }
             Some(Err(e)) => Err(to_py_err(e.to_string())),
@@ -60,11 +63,11 @@ impl NativeOrderbookStream {
 /// Blocking iterator over activity events (trades, fills).
 #[pyclass]
 pub struct NativeActivityStream {
-    rx: Arc<Mutex<mpsc::Receiver<Result<ActivityEvent, WebSocketError>>>>,
+    rx: Arc<Mutex<ActivityReceiver>>,
 }
 
 impl NativeActivityStream {
-    pub fn new(rx: mpsc::Receiver<Result<ActivityEvent, WebSocketError>>) -> Self {
+    pub fn new(rx: ActivityReceiver) -> Self {
         Self {
             rx: Arc::new(Mutex::new(rx)),
         }
@@ -84,8 +87,8 @@ impl NativeActivityStream {
         let result = py.detach(|| rt.block_on(async { rx.lock().await.recv().await }));
 
         match result {
-            Some(Ok(event)) => {
-                let py_val = pythonize(py, &event).map_err(|e| to_py_err(e.to_string()))?;
+            Some(Ok(msg)) => {
+                let py_val = pythonize(py, &msg).map_err(|e| to_py_err(e.to_string()))?;
                 Ok(Some(py_val.into()))
             }
             Some(Err(e)) => Err(to_py_err(e.to_string())),

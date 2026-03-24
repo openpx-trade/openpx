@@ -1,0 +1,38 @@
+/* OpenPX docs theme — matches landing page (dark bg, green accent) */
+
+:root {
+  /* Green accent pulled from the landing page "Join the Alpha" button */
+  --sl-color-accent-low: hsl(142, 30%, 8%);
+  --sl-color-accent: hsl(142, 71%, 45%);
+  --sl-color-accent-high: hsl(142, 69%, 58%);
+
+  /* Text-accent used for links & highlights */
+  --sl-color-text-accent: var(--sl-color-accent-high);
+}
+
+/* ── Dark-mode overrides (Starlight default is dark) ────────────── */
+:root[data-theme='dark'],
+:root {
+  --sl-color-black: hsl(0, 0%, 4%);       /* #0a0a0a — near-black bg */
+  --sl-color-gray-6: hsl(0, 0%, 8%);      /* #141414 — sidebar / nav */
+  --sl-color-gray-5: hsl(0, 0%, 13%);     /* #212121 — borders, cards */
+  --sl-color-bg: var(--sl-color-black);
+  --sl-color-bg-nav: var(--sl-color-gray-6);
+  --sl-color-bg-sidebar: var(--sl-color-gray-6);
+  --sl-color-hairline-light: hsl(0, 0%, 14%);
+  --sl-color-hairline: hsl(0, 0%, 18%);
+}
+
+/* ── Sidebar active link — green text, no filled background ─────── */
+[data-theme='dark'] nav a[aria-current='page'],
+nav a[aria-current='page'] {
+  color: var(--sl-color-accent-high);
+  background-color: transparent !important;
+  border-color: var(--sl-color-accent);
+}
+
+/* ── Inline code styling ────────────────────────────────────────── */
+:not(pre) > code {
+  background: hsl(0, 0%, 12%);
+  border: 1px solid hsl(0, 0%, 18%);
+}

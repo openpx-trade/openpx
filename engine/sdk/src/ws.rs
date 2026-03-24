@@ -97,6 +97,16 @@ macro_rules! ws_dispatch {
     };
 }
 
+impl WebSocketInner {
+    /// Register outcome names for Polymarket token IDs so activity events
+    /// include "Yes"/"No". No-op for other exchanges.
+    pub async fn register_outcomes(&self, yes_token_id: &str, no_token_id: &str) {
+        if let Self::Polymarket(ws) = self {
+            ws.register_outcomes(yes_token_id, no_token_id).await;
+        }
+    }
+}
+
 impl OrderBookWebSocket for WebSocketInner {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
         ws_dispatch!(self, connect)

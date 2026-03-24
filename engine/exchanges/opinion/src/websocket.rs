@@ -6,11 +6,14 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use px_core::websocket::ndjson::NdjsonWriter;
 use px_core::{
     ActivityEvent, ActivityFill, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
     FixedPrice, LiquidityRole, OrderBookWebSocket, OrderbookStream, OrderbookUpdate,
-    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState, WS_MAX_RECONNECT_ATTEMPTS,
-    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
+    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState, WsMessage,
+    WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::config::OpinionConfig;
@@ -18,19 +21,22 @@ use crate::config::OpinionConfig;
 /// Opinion-specific heartbeat interval (30s per their WS protocol).
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
-type OrderbookSender = broadcast::Sender<Result<OrderbookUpdate, WebSocketError>>;
-type ActivitySender = broadcast::Sender<Result<ActivityEvent, WebSocketError>>;
+type OrderbookSender = broadcast::Sender<Result<WsMessage<OrderbookUpdate>, WebSocketError>>;
+type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSocketError>>;
+type OrderbookSenderMap = Arc<RwLock<HashMap<String, (OrderbookSender, Arc<AtomicU64>)>>>;
+type ActivitySenderMap = Arc<RwLock<HashMap<String, (ActivitySender, Arc<AtomicU64>)>>>;
 
 pub struct OpinionWebSocket {
     config: OpinionConfig,
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashSet<String>>>,
-    orderbook_senders: Arc<RwLock<HashMap<String, OrderbookSender>>>,
-    activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
+    orderbook_senders: OrderbookSenderMap,
+    activity_senders: ActivitySenderMap,
     write_tx: Arc<Mutex<Option<futures::channel::mpsc::UnboundedSender<Message>>>>,
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     auto_reconnect: bool,
     reconnect_attempts: Arc<Mutex<u32>>,
+    ndjson_writer: Option<Arc<NdjsonWriter>>,
 }
 
 impl OpinionWebSocket {
@@ -50,7 +56,13 @@ impl OpinionWebSocket {
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect: true,
             reconnect_attempts: Arc::new(Mutex::new(0)),
+            ndjson_writer: None,
         })
+    }
+
+    pub fn with_ndjson_writer(mut self, writer: impl std::io::Write + Send + 'static) -> Self {
+        self.ndjson_writer = Some(Arc::new(NdjsonWriter::new(writer)));
+        self
     }
 
     fn set_state(&self, new_state: WebSocketState) {
@@ -213,8 +225,16 @@ impl OpinionWebSocket {
             .and_then(chrono::DateTime::from_timestamp_millis);
 
         let senders = self.orderbook_senders.read().await;
-        if let Some(sender) = senders.get(&market_id) {
-            let _ = sender.send(Ok(OrderbookUpdate::Delta { changes, timestamp }));
+        if let Some((sender, seq)) = senders.get(&market_id) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: OrderbookUpdate::Delta { changes, timestamp },
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -272,13 +292,22 @@ impl OpinionWebSocket {
             side,
             aggressor_side: None,
             outcome: None,
+            fee_rate_bps: None,
             timestamp,
             source_channel: Cow::Borrowed("market.last.trade"),
         });
 
         let senders = self.activity_senders.read().await;
-        if let Some(sender) = senders.get(&market_id) {
-            let _ = sender.send(Ok(event));
+        if let Some((sender, seq)) = senders.get(&market_id) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: event,
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -352,14 +381,24 @@ impl OpinionWebSocket {
             size,
             side,
             outcome,
+            tx_hash: None,
+            fee: None,
             timestamp,
             source_channel: Cow::Borrowed("trade.order.update"),
             liquidity_role: None,
         });
 
         let senders = self.activity_senders.read().await;
-        if let Some(sender) = senders.get(&market_id) {
-            let _ = sender.send(Ok(event));
+        if let Some((sender, seq)) = senders.get(&market_id) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: event,
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -418,6 +457,16 @@ impl OpinionWebSocket {
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        let tx_hash = value
+            .get("txHash")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let fee = value.get("fee").and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        });
+
         let timestamp = value
             .get("createdAt")
             .and_then(|v| v.as_i64())
@@ -432,14 +481,24 @@ impl OpinionWebSocket {
             size,
             side: side_str,
             outcome,
+            tx_hash,
+            fee,
             timestamp,
             source_channel: Cow::Borrowed("trade.record.new"),
             liquidity_role,
         });
 
         let senders = self.activity_senders.read().await;
-        if let Some(sender) = senders.get(&market_id) {
-            let _ = sender.send(Ok(event));
+        if let Some((sender, seq)) = senders.get(&market_id) {
+            let msg = WsMessage {
+                seq: seq.fetch_add(1, Ordering::Relaxed),
+                received_at: chrono::Utc::now(),
+                data: event,
+            };
+            if let Some(ref writer) = self.ndjson_writer {
+                writer.write_record(&msg);
+            }
+            let _ = sender.send(Ok(msg));
         }
     }
 
@@ -495,6 +554,8 @@ impl OrderBookWebSocket for OpinionWebSocket {
         let auto_reconnect = self.auto_reconnect;
         let config = self.config.clone();
 
+        let ndjson_writer = self.ndjson_writer.clone();
+
         // Build a lightweight handle for the spawned task to dispatch messages
         let ws_handle = OpinionWebSocket {
             config: config.clone(),
@@ -506,6 +567,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect,
             reconnect_attempts: reconnect_attempts_clone.clone(),
+            ndjson_writer: ndjson_writer.clone(),
         };
 
         tokio::spawn(async move {
@@ -559,10 +621,23 @@ impl OrderBookWebSocket for OpinionWebSocket {
                     *a
                 };
 
+                tracing::warn!(
+                    exchange = "opinion",
+                    attempt,
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "websocket connection lost, starting reconnect"
+                );
+
                 while attempt <= WS_MAX_RECONNECT_ATTEMPTS {
                     state.store(WebSocketState::Reconnecting);
 
                     let delay = OpinionWebSocket::calculate_reconnect_delay(attempt);
+                    tracing::info!(
+                        exchange = "opinion",
+                        attempt,
+                        delay_ms = delay.as_millis() as u64,
+                        "reconnect attempt starting"
+                    );
                     tokio::time::sleep(delay).await;
 
                     let url = match ws_handle.ws_url() {
@@ -587,7 +662,35 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                 *a = 0;
                             }
 
-                            let _ = ws_handle.resubscribe_all().await;
+                            // Broadcast reconnect event to all orderbook subscribers
+                            {
+                                let senders = orderbook_senders.read().await;
+                                for (sender, seq) in senders.values() {
+                                    let msg = WsMessage {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        received_at: chrono::Utc::now(),
+                                        data: OrderbookUpdate::Reconnected,
+                                    };
+                                    if let Some(ref writer) = ndjson_writer {
+                                        writer.write_record(&msg);
+                                    }
+                                    let _ = sender.send(Ok(msg));
+                                }
+                            }
+
+                            match ws_handle.resubscribe_all().await {
+                                Ok(()) => {
+                                    let market_count = ws_handle.subscriptions.read().await.len();
+                                    tracing::info!(
+                                        exchange = "opinion",
+                                        markets = market_count,
+                                        "reconnected and resubscribed to all markets"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(exchange = "opinion", error = %e, "resubscription failed after reconnect");
+                                }
+                            }
 
                             let write_future = new_rx.map(Ok).forward(new_write);
                             let read_future = async {
@@ -636,7 +739,8 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                 *a
                             };
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            tracing::warn!(exchange = "opinion", attempt, error = %e, "reconnect attempt failed");
                             attempt = {
                                 let mut a = reconnect_attempts_clone.lock().await;
                                 *a += 1;
@@ -646,6 +750,11 @@ impl OrderBookWebSocket for OpinionWebSocket {
                     }
                 }
 
+                tracing::error!(
+                    exchange = "opinion",
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "max reconnect attempts exhausted, giving up"
+                );
                 state.store(WebSocketState::Disconnected);
             }
         });
@@ -677,7 +786,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
             let mut senders = self.orderbook_senders.write().await;
             if !senders.contains_key(&market) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market.clone(), tx);
+                senders.insert(market.clone(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -685,7 +794,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(&market) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market.clone(), tx);
+                senders.insert(market.clone(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -733,12 +842,12 @@ impl OrderBookWebSocket for OpinionWebSocket {
             let mut senders = self.orderbook_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
         let senders = self.orderbook_senders.read().await;
-        let sender = senders.get(market_id).ok_or_else(|| {
+        let (sender, _) = senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no orderbook sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();
@@ -754,12 +863,12 @@ impl OrderBookWebSocket for OpinionWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
         let senders = self.activity_senders.read().await;
-        let sender = senders.get(market_id).ok_or_else(|| {
+        let (sender, _) = senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no activity sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();
@@ -804,12 +913,12 @@ mod tests {
         {
             let mut senders = ws.orderbook_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.orderbook_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         let msg = serde_json::json!({
@@ -823,8 +932,8 @@ mod tests {
 
         ws.handle_depth_diff(&msg).await;
 
-        let update = rx.try_recv().unwrap().unwrap();
-        match update {
+        let ws_msg = rx.try_recv().unwrap().unwrap();
+        match ws_msg.data {
             OrderbookUpdate::Delta { changes, .. } => {
                 assert_eq!(changes.len(), 1);
                 assert_eq!(changes[0].side, PriceLevelSide::Bid);
@@ -843,12 +952,12 @@ mod tests {
         {
             let mut senders = ws.orderbook_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.orderbook_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         // outcomeSide 2 (no), side "bids" -> Ask at 1.0 - price
@@ -863,8 +972,8 @@ mod tests {
 
         ws.handle_depth_diff(&msg).await;
 
-        let update = rx.try_recv().unwrap().unwrap();
-        match update {
+        let ws_msg = rx.try_recv().unwrap().unwrap();
+        match ws_msg.data {
             OrderbookUpdate::Delta { changes, .. } => {
                 assert_eq!(changes[0].side, PriceLevelSide::Ask);
                 assert_eq!(changes[0].price, FixedPrice::from_f64(0.7));
@@ -882,12 +991,12 @@ mod tests {
         {
             let mut senders = ws.activity_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.activity_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         let msg = serde_json::json!({
@@ -901,8 +1010,8 @@ mod tests {
 
         ws.handle_last_trade(&msg).await;
 
-        let event = rx.try_recv().unwrap().unwrap();
-        match event {
+        let ws_msg = rx.try_recv().unwrap().unwrap();
+        match ws_msg.data {
             ActivityEvent::Trade(trade) => {
                 assert_eq!(trade.market_id, "789");
                 assert_eq!(trade.asset_id, "token_yes_789");
@@ -923,12 +1032,12 @@ mod tests {
         {
             let mut senders = ws.activity_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.activity_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         let msg = serde_json::json!({
@@ -946,8 +1055,8 @@ mod tests {
 
         ws.handle_order_update(&msg).await;
 
-        let event = rx.try_recv().unwrap().unwrap();
-        match event {
+        let ws_msg = rx.try_recv().unwrap().unwrap();
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert_eq!(fill.market_id, "111");
                 assert_eq!(fill.order_id.as_deref(), Some("order-abc"));
@@ -969,12 +1078,12 @@ mod tests {
         {
             let mut senders = ws.activity_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.activity_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         let msg = serde_json::json!({
@@ -1001,12 +1110,12 @@ mod tests {
         {
             let mut senders = ws.activity_senders.write().await;
             let (tx, _) = broadcast::channel(16_384);
-            senders.insert(market_id.to_string(), tx);
+            senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
         }
 
         let mut rx = {
             let senders = ws.activity_senders.read().await;
-            senders.get(market_id).unwrap().subscribe()
+            senders.get(market_id).unwrap().0.subscribe()
         };
 
         let msg = serde_json::json!({
@@ -1024,8 +1133,8 @@ mod tests {
 
         ws.handle_trade_executed(&msg).await;
 
-        let event = rx.try_recv().unwrap().unwrap();
-        match event {
+        let ws_msg = rx.try_recv().unwrap().unwrap();
+        match ws_msg.data {
             ActivityEvent::Fill(fill) => {
                 assert_eq!(fill.market_id, "333");
                 assert_eq!(fill.order_id.as_deref(), Some("order-def"));

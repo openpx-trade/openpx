@@ -9,6 +9,7 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/openpx/openpx' },
       ],
+      customCss: ['./src/styles/custom.css'],
       components: {
         SocialIcons: './src/components/SocialIcons.astro',
       },
@@ -35,6 +36,7 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            { label: 'Support Matrix', link: '/reference/support-matrix/' },
             { label: 'All Types', link: '/reference/models/' },
             { label: 'Exchanges', link: '/reference/exchanges/' },
             { label: 'Errors', link: '/reference/errors/' },

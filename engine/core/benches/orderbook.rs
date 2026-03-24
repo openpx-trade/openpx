@@ -19,6 +19,7 @@ fn make_orderbook(depth: usize) -> Orderbook {
         asks,
         last_update_id: None,
         timestamp: None,
+        hash: None,
     }
 }
 

@@ -26,6 +26,8 @@ const WS_PATH: &str = "/trade-api/ws/v2";
 
 type OrderbookSender = broadcast::Sender<Result<WsMessage<OrderbookUpdate>, WebSocketError>>;
 type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSocketError>>;
+type OrderbookSenderMap = Arc<RwLock<HashMap<String, (OrderbookSender, Arc<AtomicU64>)>>>;
+type ActivitySenderMap = Arc<RwLock<HashMap<String, (ActivitySender, Arc<AtomicU64>)>>>;
 
 #[derive(Debug, Deserialize)]
 struct SnapshotPayload {
@@ -63,8 +65,8 @@ pub struct KalshiWebSocket {
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashMap<String, Option<u64>>>>,
     pending: Arc<RwLock<HashMap<u64, String>>>,
-    orderbook_senders: Arc<RwLock<HashMap<String, OrderbookSender>>>,
-    activity_senders: Arc<RwLock<HashMap<String, ActivitySender>>>,
+    orderbook_senders: OrderbookSenderMap,
+    activity_senders: ActivitySenderMap,
     orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
     write_tx: Arc<Mutex<Option<futures::channel::mpsc::UnboundedSender<Message>>>>,
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
@@ -72,7 +74,6 @@ pub struct KalshiWebSocket {
     reconnect_attempts: Arc<Mutex<u32>>,
     command_id: Arc<AtomicU64>,
     enable_user_fills: bool,
-    seq: Arc<AtomicU64>,
     ndjson_writer: Option<Arc<NdjsonWriter>>,
 }
 
@@ -119,7 +120,6 @@ impl KalshiWebSocket {
             reconnect_attempts: Arc::new(Mutex::new(0)),
             command_id: Arc::new(AtomicU64::new(0)),
             enable_user_fills,
-            seq: Arc::new(AtomicU64::new(0)),
             ndjson_writer: None,
         })
     }
@@ -335,6 +335,7 @@ impl KalshiWebSocket {
             asks,
             last_update_id: value.get("seq").and_then(|v| v.as_u64()),
             timestamp: Some(chrono::Utc::now()),
+            hash: None,
         };
 
         {
@@ -416,9 +417,9 @@ impl KalshiWebSocket {
             changes.push(change);
 
             let senders = self.orderbook_senders.read().await;
-            if let Some(sender) = senders.get(&payload.market_ticker) {
+            if let Some((sender, seq)) = senders.get(&payload.market_ticker) {
                 let msg = WsMessage {
-                    seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                    seq: seq.fetch_add(1, Ordering::Relaxed),
                     received_at: chrono::Utc::now(),
                     data: OrderbookUpdate::Delta { changes, timestamp },
                 };
@@ -467,6 +468,7 @@ impl KalshiWebSocket {
             side: None,
             aggressor_side,
             outcome: None,
+            fee_rate_bps: None,
             timestamp,
             source_channel: Cow::Borrowed("kalshi_public_trade"),
         });
@@ -493,10 +495,7 @@ impl KalshiWebSocket {
             .get("action")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let outcome = msg
-            .get("side")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
+        let outcome = msg.get("side").and_then(|v| v.as_str()).map(str::to_string);
         let fill_id = Self::value_to_string(msg.get("trade_id"));
         let order_id = Self::value_to_string(msg.get("order_id"));
         let timestamp = Self::value_to_timestamp(msg.get("ts"));
@@ -521,6 +520,8 @@ impl KalshiWebSocket {
             size,
             side,
             outcome,
+            tx_hash: None,
+            fee: None,
             timestamp,
             source_channel: Cow::Borrowed("kalshi_user_fill"),
             liquidity_role,
@@ -592,9 +593,9 @@ impl KalshiWebSocket {
 
     async fn broadcast_orderbook(&self, market_ticker: &str, orderbook: Orderbook) {
         let senders = self.orderbook_senders.read().await;
-        if let Some(sender) = senders.get(market_ticker) {
+        if let Some((sender, seq)) = senders.get(market_ticker) {
             let msg = WsMessage {
-                seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                seq: seq.fetch_add(1, Ordering::Relaxed),
                 received_at: chrono::Utc::now(),
                 data: OrderbookUpdate::Snapshot(orderbook),
             };
@@ -607,9 +608,9 @@ impl KalshiWebSocket {
 
     async fn broadcast_activity(&self, market_ticker: &str, activity: ActivityEvent) {
         let senders = self.activity_senders.read().await;
-        if let Some(sender) = senders.get(market_ticker) {
+        if let Some((sender, seq)) = senders.get(market_ticker) {
             let msg = WsMessage {
-                seq: self.seq.fetch_add(1, Ordering::Relaxed),
+                seq: seq.fetch_add(1, Ordering::Relaxed),
                 received_at: chrono::Utc::now(),
                 data: activity,
             };
@@ -622,12 +623,12 @@ impl KalshiWebSocket {
 
     async fn broadcast_error(&self, market_ticker: &str, err: WebSocketError) {
         let senders = self.orderbook_senders.read().await;
-        if let Some(sender) = senders.get(market_ticker) {
+        if let Some((sender, _)) = senders.get(market_ticker) {
             let _ = sender.send(Err(err));
         }
 
         let activity_senders = self.activity_senders.read().await;
-        if let Some(sender) = activity_senders.get(market_ticker) {
+        if let Some((sender, _)) = activity_senders.get(market_ticker) {
             let _ = sender.send(Err(WebSocketError::Subscription(
                 "activity stream error".to_string(),
             )));
@@ -741,7 +742,6 @@ impl OrderBookWebSocket for KalshiWebSocket {
         let auth = self.auth.clone();
         let command_id = self.command_id.clone();
 
-        let seq = self.seq.clone();
         let ndjson_writer = self.ndjson_writer.clone();
 
         let ws_self = KalshiWebSocket {
@@ -760,7 +760,6 @@ impl OrderBookWebSocket for KalshiWebSocket {
             reconnect_attempts: reconnect_attempts_clone.clone(),
             command_id,
             enable_user_fills: self.enable_user_fills,
-            seq: seq.clone(),
             ndjson_writer: ndjson_writer.clone(),
         };
 
@@ -814,10 +813,23 @@ impl OrderBookWebSocket for KalshiWebSocket {
                     *a
                 };
 
+                tracing::warn!(
+                    exchange = "kalshi",
+                    attempt,
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "websocket connection lost, starting reconnect"
+                );
+
                 while attempt <= WS_MAX_RECONNECT_ATTEMPTS {
                     state.store(WebSocketState::Reconnecting);
 
                     let delay = KalshiWebSocket::calculate_reconnect_delay(attempt);
+                    tracing::info!(
+                        exchange = "kalshi",
+                        attempt,
+                        delay_ms = delay.as_millis() as u64,
+                        "reconnect attempt starting"
+                    );
                     tokio::time::sleep(delay).await;
 
                     let request = match ws_self.build_request() {
@@ -845,7 +857,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
                             // Broadcast reconnect event to all orderbook subscribers
                             {
                                 let senders = orderbook_senders.read().await;
-                                for sender in senders.values() {
+                                for (sender, seq) in senders.values() {
                                     let msg = WsMessage {
                                         seq: seq.fetch_add(1, Ordering::Relaxed),
                                         received_at: chrono::Utc::now(),
@@ -858,7 +870,19 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 }
                             }
 
-                            let _ = ws_self.resubscribe_all().await;
+                            match ws_self.resubscribe_all().await {
+                                Ok(()) => {
+                                    let market_count = ws_self.subscriptions.read().await.len();
+                                    tracing::info!(
+                                        exchange = "kalshi",
+                                        markets = market_count,
+                                        "reconnected and resubscribed to all markets"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(exchange = "kalshi", error = %e, "resubscription failed after reconnect");
+                                }
+                            }
 
                             let write_future = new_rx.map(Ok).forward(new_write);
                             let read_future = async {
@@ -895,7 +919,8 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 *a
                             };
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            tracing::warn!(exchange = "kalshi", attempt, error = %e, "reconnect attempt failed");
                             attempt = {
                                 let mut a = reconnect_attempts_clone.lock().await;
                                 *a += 1;
@@ -905,6 +930,11 @@ impl OrderBookWebSocket for KalshiWebSocket {
                     }
                 }
 
+                tracing::error!(
+                    exchange = "kalshi",
+                    max = WS_MAX_RECONNECT_ATTEMPTS,
+                    "max reconnect attempts exhausted, giving up"
+                );
                 state.store(WebSocketState::Disconnected);
             }
         });
@@ -936,7 +966,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let mut senders = self.orderbook_senders.write().await;
             if !senders.contains_key(&market_ticker) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_ticker.clone(), tx);
+                senders.insert(market_ticker.clone(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -944,7 +974,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(&market_ticker) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_ticker.clone(), tx);
+                senders.insert(market_ticker.clone(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
@@ -998,12 +1028,12 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let mut senders = self.orderbook_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
 
         let senders = self.orderbook_senders.read().await;
-        let sender = senders.get(market_id).ok_or_else(|| {
+        let (sender, _) = senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no orderbook sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();
@@ -1019,11 +1049,11 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let mut senders = self.activity_senders.write().await;
             if !senders.contains_key(market_id) {
                 let (tx, _) = broadcast::channel(16_384);
-                senders.insert(market_id.to_string(), tx);
+                senders.insert(market_id.to_string(), (tx, Arc::new(AtomicU64::new(0))));
             }
         }
         let senders = self.activity_senders.read().await;
-        let sender = senders.get(market_id).ok_or_else(|| {
+        let (sender, _) = senders.get(market_id).ok_or_else(|| {
             WebSocketError::Subscription(format!("no activity sender for market: {market_id}"))
         })?;
         let rx = sender.subscribe();

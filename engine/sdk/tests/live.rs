@@ -1143,7 +1143,7 @@ macro_rules! exchange_tests {
                 ws.disconnect().await.expect("ws disconnect failed");
 
                 match result {
-                    Ok(Some(Ok(update))) => match update {
+                    Ok(Some(Ok(ws_msg))) => match ws_msg.data {
                         px_core::OrderbookUpdate::Snapshot(book) => {
                             assert!(
                                 !book.bids.is_empty() || !book.asks.is_empty(),
@@ -1153,6 +1153,7 @@ macro_rules! exchange_tests {
                         px_core::OrderbookUpdate::Delta { changes, .. } => {
                             assert!(!changes.is_empty(), "delta should have at least one change");
                         }
+                        px_core::OrderbookUpdate::Reconnected => {}
                     },
                     Ok(Some(Err(e))) => panic!("ws stream error: {e:?}"),
                     Ok(None) => panic!("ws stream ended unexpectedly"),
