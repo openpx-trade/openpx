@@ -37,6 +37,8 @@ output/
 !sdks/typescript/package.json
 !release-please-config.json
 !.release-please-manifest.json
+!docs/package.json
+!docs/package-lock.json
 
 
 # Python
