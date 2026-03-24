@@ -1,15 +1,15 @@
 {
   "name": "openpx-docs",
+  "private": true,
   "type": "module",
-  "version": "0.0.1",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
+    "dev": "bash generate-llms.sh && astro dev",
+    "build": "bash generate-llms.sh && astro build",
+    "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.34.0",
-    "astro": "^5.7.0"
+    "astro": "^6.0.0",
+    "@astrojs/starlight": "^0.38.1",
+    "sharp": "^0.33.0"
   }
 }
