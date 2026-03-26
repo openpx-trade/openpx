@@ -35,6 +35,14 @@
         "asset_id": {
           "type": "string"
         },
+        "fee": {
+          "description": "Fee charged for this fill. Opinion: `fee` from `trade.record.new`.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "fill_id": {
           "type": [
             "string",
@@ -89,6 +97,13 @@
             "string",
             "null"
           ]
+        },
+        "tx_hash": {
+          "description": "On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -111,6 +126,15 @@
         },
         "asset_id": {
           "type": "string"
+        },
+        "fee_rate_bps": {
+          "description": "Fee rate in basis points (e.g. 0 = no fee, 200 = 2%). Polymarket: present on `last_trade_price` events.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "market_id": {
           "type": "string"
@@ -293,6 +317,14 @@
             "null"
           ]
         },
+        "event_id": {
+          "default": null,
+          "description": "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`), a Polymarket event ID or slug (e.g., `\"903\"` or `\"will-trump-win-2024\"`), or an Opinion market slug (e.g., `\"btc-price-daily\"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "limit": {
           "format": "uint",
           "minimum": 0.0,
@@ -301,17 +333,25 @@
             "null"
           ]
         },
+        "series_id": {
+          "default": null,
+          "description": "Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) or a Polymarket series ID (e.g., `\"10345\"`) to fetch only markets in that series.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "status": {
           "anyOf": [
             {
-              "$ref": "#/definitions/MarketStatus"
+              "$ref": "#/definitions/MarketStatusFilter"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Filter by market status. Defaults to Active at the exchange level when None."
+          "description": "Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All` to fetch markets of any status."
         }
       },
       "title": "FetchMarketsParams",
@@ -821,6 +861,17 @@
         "closed",
         "resolved"
       ],
+      "title": "MarketStatus",
+      "type": "string"
+    },
+    "MarketStatusFilter": {
+      "description": "Filter for market status in fetch queries.\n\nUnlike `MarketStatus` (which represents a market's actual status), this enum includes an `All` variant for fetching markets regardless of status.",
+      "enum": [
+        "active",
+        "closed",
+        "resolved",
+        "all"
+      ],
       "type": "string"
     },
     "MarketTrade": {
@@ -1012,6 +1063,13 @@
             "$ref": "#/definitions/PriceLevel"
           },
           "type": "array"
+        },
+        "hash": {
+          "description": "Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "last_update_id": {
           "format": "uint64",
