@@ -1,6 +1,6 @@
 {
   "name": "@openpx/sdk",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Node.js SDK for OpenPX prediction markets",
   "main": "index.js",
   "types": "index.d.ts",
