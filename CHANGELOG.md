@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7](https://github.com/openpx-trade/openpx/compare/v0.1.6...v0.1.7) (2026-03-27)
+
+
+### Bug Fixes
+
+* add npm platform package.json files for napi-rs publish ([7f37b74](https://github.com/openpx-trade/openpx/commit/7f37b74e4842ed54d12b9d2d58d311c4fbbeda45))
+* reorder napi prepublish before artifacts in publish workflow ([8550148](https://github.com/openpx-trade/openpx/commit/8550148cb72d2fbaff2ce08520c1cdb5ccb0a88f))
+
 ## [0.1.6](https://github.com/openpx-trade/openpx/compare/v0.1.5...v0.1.6) (2026-03-26)
 
 
