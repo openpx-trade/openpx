@@ -1,0 +1,30 @@
+{
+  "name": "@openpx/sdk-win32-x64-msvc",
+  "version": "0.1.6",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "openpx.win32-x64-msvc.node",
+  "files": [
+    "openpx.win32-x64-msvc.node"
+  ],
+  "description": "Node.js SDK for OpenPX prediction markets",
+  "keywords": [
+    "prediction-market",
+    "trading",
+    "polymarket",
+    "kalshi",
+    "sdk",
+    "napi-rs"
+  ],
+  "author": "Milind Pathiyal",
+  "homepage": "https://github.com/openpx/openpx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openpx/openpx"
+  }
+}

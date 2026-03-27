@@ -1,0 +1,30 @@
+{
+  "name": "@openpx/sdk-darwin-arm64",
+  "version": "0.1.6",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "main": "openpx.darwin-arm64.node",
+  "files": [
+    "openpx.darwin-arm64.node"
+  ],
+  "description": "Node.js SDK for OpenPX prediction markets",
+  "keywords": [
+    "prediction-market",
+    "trading",
+    "polymarket",
+    "kalshi",
+    "sdk",
+    "napi-rs"
+  ],
+  "author": "Milind Pathiyal",
+  "homepage": "https://github.com/openpx/openpx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openpx/openpx"
+  }
+}
