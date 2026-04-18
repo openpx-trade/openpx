@@ -289,13 +289,13 @@ pub struct OrderbookSnapshot {
 /// Sort price levels in descending order (highest price first) -- bid side ordering.
 /// Uses integer comparison via FixedPrice::Ord (no partial_cmp/NaN handling).
 pub fn sort_bids(levels: &mut [PriceLevel]) {
-    levels.sort_unstable_by(|a, b| b.price.cmp(&a.price));
+    levels.sort_unstable_by_key(|l| std::cmp::Reverse(l.price));
 }
 
 /// Sort price levels in ascending order (lowest price first) -- ask side ordering.
 /// Uses integer comparison via FixedPrice::Ord (no partial_cmp/NaN handling).
 pub fn sort_asks(levels: &mut [PriceLevel]) {
-    levels.sort_unstable_by(|a, b| a.price.cmp(&b.price));
+    levels.sort_unstable_by_key(|l| l.price);
 }
 
 /// Insert a price level into a bid-sorted (descending) list.
