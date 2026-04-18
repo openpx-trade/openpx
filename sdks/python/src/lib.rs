@@ -22,6 +22,8 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     m.add_class::<exchange::NativeExchange>()?;
     m.add_class::<websocket::NativeWebSocket>()?;
     m.add_class::<stream::NativeOrderbookStream>()?;
