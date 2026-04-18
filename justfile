@@ -22,7 +22,8 @@ python-models: schema
         --output sdks/python/python/openpx/_models.py \
         --output-model-type pydantic_v2.BaseModel \
         --target-python-version 3.10 \
-        --use-double-quotes
+        --use-double-quotes \
+        --disable-timestamp
 
 python-build: python-models
     cd sdks/python && PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 ../../{{venv}}/bin/maturin develop --release
