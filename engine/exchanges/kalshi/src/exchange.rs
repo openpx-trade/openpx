@@ -1271,7 +1271,7 @@ impl Exchange for Kalshi {
             })
             .collect();
 
-        candles.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        candles.sort_by_key(|c| c.timestamp);
         Ok(candles)
     }
 

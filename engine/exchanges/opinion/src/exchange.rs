@@ -786,7 +786,7 @@ impl Opinion {
             }
         }
 
-        points.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        points.sort_by_key(|p| p.timestamp);
         Ok(points)
     }
 

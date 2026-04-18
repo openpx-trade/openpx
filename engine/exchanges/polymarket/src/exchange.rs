@@ -1358,7 +1358,7 @@ impl Polymarket {
             }
         }
 
-        all_points.sort_by(|a, b| a.0.cmp(&b.0));
+        all_points.sort_by_key(|p| p.0);
         all_points.dedup_by(|a, b| a.0 == b.0);
         Ok(all_points)
     }
