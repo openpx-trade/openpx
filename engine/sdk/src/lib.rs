@@ -10,7 +10,7 @@ pub use px_sports::SportsWebSocket;
 // Exchange implementations (re-export for direct construction)
 pub use px_exchange_kalshi::{Kalshi, KalshiConfig};
 pub use px_exchange_opinion::{Opinion, OpinionConfig};
-pub use px_exchange_polymarket::{Polymarket, PolymarketConfig};
+pub use px_exchange_polymarket::{Polymarket, PolymarketConfig, PolymarketSignatureType};
 
 use std::collections::HashMap;
 
@@ -92,6 +92,24 @@ impl ExchangeInner {
                     if let Some(v) = obj.get("funder").and_then(|v| v.as_str()) {
                         cfg = cfg.with_funder(v);
                     }
+                    let explicit_sig_type = obj.get("signature_type").and_then(|v| {
+                        v.as_str()
+                            .map(PolymarketSignatureType::from)
+                            .or_else(|| match v.as_u64()? {
+                                0 => Some(PolymarketSignatureType::Eoa),
+                                1 => Some(PolymarketSignatureType::Proxy),
+                                2 => Some(PolymarketSignatureType::GnosisSafe),
+                                _ => None,
+                            })
+                    });
+                    let sig_type = explicit_sig_type.unwrap_or_else(|| {
+                        if cfg.funder.is_some() {
+                            PolymarketSignatureType::GnosisSafe
+                        } else {
+                            PolymarketSignatureType::Eoa
+                        }
+                    });
+                    cfg = cfg.with_signature_type(sig_type);
                     if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
                         if let (Some(secret), Some(passphrase)) = (
                             obj.get("api_secret").and_then(|v| v.as_str()),

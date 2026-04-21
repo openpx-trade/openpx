@@ -22,8 +22,10 @@ impl From<PolymarketSignatureType> for u8 {
 impl From<&str> for PolymarketSignatureType {
     fn from(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "proxy" | "1" => Self::Proxy,
-            "gnosis" | "gnosissafe" | "safe" | "2" => Self::GnosisSafe,
+            "proxy" | "browser" | "poly_proxy" | "1" => Self::Proxy,
+            "gnosis" | "gnosissafe" | "gnosis_safe" | "safe" | "poly_gnosis_safe" | "2" => {
+                Self::GnosisSafe
+            }
             _ => Self::Eoa,
         }
     }
@@ -167,5 +169,51 @@ impl PolymarketConfig {
 
     pub fn is_authenticated(&self) -> bool {
         self.private_key.is_some() || self.has_api_credentials()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signature_type_parses_gnosis_safe_variants() {
+        for s in [
+            "gnosis",
+            "gnosissafe",
+            "gnosis_safe",
+            "safe",
+            "poly_gnosis_safe",
+            "2",
+            "GNOSIS_SAFE",
+        ] {
+            assert_eq!(
+                PolymarketSignatureType::from(s),
+                PolymarketSignatureType::GnosisSafe,
+                "expected {s:?} → GnosisSafe"
+            );
+        }
+    }
+
+    #[test]
+    fn signature_type_parses_proxy_variants() {
+        for s in ["proxy", "browser", "poly_proxy", "1"] {
+            assert_eq!(
+                PolymarketSignatureType::from(s),
+                PolymarketSignatureType::Proxy,
+                "expected {s:?} → Proxy"
+            );
+        }
+    }
+
+    #[test]
+    fn signature_type_defaults_to_eoa() {
+        for s in ["eoa", "0", "", "nonsense"] {
+            assert_eq!(
+                PolymarketSignatureType::from(s),
+                PolymarketSignatureType::Eoa,
+                "expected {s:?} → Eoa"
+            );
+        }
     }
 }
