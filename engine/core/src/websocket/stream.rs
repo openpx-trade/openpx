@@ -104,9 +104,18 @@ impl SessionStream {
 /// Producer handle held by exchange WS implementations. Owns both channels
 /// so the implementation can emit updates and session events without a
 /// second routing layer.
+///
+/// The dispatcher also retains the receiver halves so the trait method
+/// `updates()` can hand out cloned receivers on demand. Cloned receivers
+/// are co-consumers of the same queue (each message goes to one
+/// receiver, first-grabbed) — this is the documented single-consumer
+/// pattern. Callers that need fan-out should run one consumer that
+/// re-broadcasts.
 pub struct WsDispatcher {
     updates_tx: async_channel::Sender<WsUpdate>,
+    updates_rx: Receiver<WsUpdate>,
     session_tx: async_channel::Sender<SessionEvent>,
+    session_rx: Receiver<SessionEvent>,
 }
 
 /// Configuration for the dispatcher's bounded channels.
@@ -131,24 +140,31 @@ impl Default for WsDispatcherConfig {
 }
 
 impl WsDispatcher {
-    /// Create a new dispatcher alongside the consumer-side streams.
-    ///
-    /// Exchange WS implementations hold the returned `WsDispatcher` and
-    /// hand the streams to end-user code. Cloning the underlying receivers
-    /// (for multi-subscriber fan-out) is done via
-    /// `UpdateStream::into_stream().clone()` — `async-channel` receivers are
-    /// reference-counted.
-    pub fn new(config: WsDispatcherConfig) -> (Self, UpdateStream, SessionStream) {
+    /// Create a new dispatcher. The returned dispatcher owns both send and
+    /// receive halves of its channels; consumers fetch streams via
+    /// `updates()` / `session_events()`, which clone the receivers.
+    pub fn new(config: WsDispatcherConfig) -> Self {
         let (updates_tx, updates_rx) = async_channel::bounded(config.updates_capacity);
         let (session_tx, session_rx) = async_channel::bounded(config.session_capacity);
-        (
-            Self {
-                updates_tx,
-                session_tx,
-            },
-            UpdateStream::new(updates_rx),
-            SessionStream::new(session_rx),
-        )
+        Self {
+            updates_tx,
+            updates_rx,
+            session_tx,
+            session_rx,
+        }
+    }
+
+    /// Hand out a consumer-side update stream. Cheap (cloning an
+    /// `async-channel::Receiver` is an atomic-refcount bump).
+    #[inline]
+    pub fn updates(&self) -> UpdateStream {
+        UpdateStream::new(self.updates_rx.clone())
+    }
+
+    /// Hand out a consumer-side session stream.
+    #[inline]
+    pub fn session_events(&self) -> SessionStream {
+        SessionStream::new(self.session_rx.clone())
     }
 
     /// Emit an update. Returns `true` if delivered. On `Err(TrySendError::Full)`

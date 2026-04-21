@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::error::WebSocketError;
 use crate::models::{CryptoPrice, LiquidityRole, OrderbookUpdate, SportResult};
+use crate::websocket::stream::{SessionStream, UpdateStream};
 
 /// Shared WebSocket reconnect/keepalive constants for all exchange implementations.
 pub const WS_PING_INTERVAL: Duration = Duration::from_secs(20);
@@ -16,13 +17,9 @@ pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
 
-/// Envelope wrapping every WebSocket stream item for HFT feed-latency measurement.
-///
-/// - `exchange_time` — server-authoritative UTC timestamp for event ordering.
-///   Always prefer this for trade sequencing and cross-exchange correlation.
-/// - `received_at` — local UTC timestamp captured at socket read for measuring
-///   wire-to-process latency. Compare `received_at - exchange_time` for feed lag.
-/// - `seq` — per-market monotonic sequence number for gap detection.
+/// 0.1-era envelope wrapping every WebSocket stream item. Deprecated — the
+/// 0.2 surface uses `WsUpdate` directly via `UpdateStream`. Retained only
+/// while migrating the exchange implementations and consumers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsMessage<T> {
     pub seq: u64,
@@ -129,6 +126,19 @@ pub struct ActivityFill {
     pub liquidity_role: Option<LiquidityRole>,
 }
 
+/// Trait implemented by every exchange's WebSocket driver.
+///
+/// During the 0.2 migration this trait carries both the 0.1 per-token
+/// streams (`orderbook_stream` / `activity_stream`) and the 0.2
+/// multiplexed surface (`updates` / `session_events`). The 0.2 surface
+/// uses bounded `async-channel` dispatch with explicit lag signaling
+/// — a correctness fix over the 0.1 `tokio::sync::broadcast` which
+/// silently skipped deltas under slow consumers.
+///
+/// Exchange implementations that have been ported to 0.2 override
+/// `updates()` / `session_events()` with real implementations backed by
+/// a `WsDispatcher`. Until every exchange is ported and the 0.1 methods
+/// are removed, the 0.2 methods default to `unimplemented!()`.
 #[allow(async_fn_in_trait)]
 pub trait OrderBookWebSocket: Send + Sync {
     async fn connect(&mut self) -> Result<(), WebSocketError>;
@@ -153,5 +163,20 @@ pub trait OrderBookWebSocket: Send + Sync {
         Err(WebSocketError::Subscription(
             "activity stream not supported".to_string(),
         ))
+    }
+
+    /// 0.2 multiplexed update stream. Ready immediately after
+    /// construction; reading blocks until the first event is dispatched.
+    /// Defaults to `unimplemented!()` until the exchange is ported.
+    fn updates(&self) -> UpdateStream {
+        unimplemented!("0.2 updates() stream not yet implemented for this exchange")
+    }
+
+    /// 0.2 connection-level event stream (Connected, Reconnected, Lagged,
+    /// BookInvalidated, Error). One reconnect observable globally, not
+    /// per-market. Defaults to `unimplemented!()` until the exchange is
+    /// ported.
+    fn session_events(&self) -> SessionStream {
+        unimplemented!("0.2 session_events() stream not yet implemented for this exchange")
     }
 }

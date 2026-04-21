@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::{
@@ -15,10 +16,11 @@ use tokio_tungstenite::{
 use px_core::websocket::ndjson::NdjsonWriter;
 use px_core::{
     insert_ask, insert_bid, sort_asks, sort_bids, ActivityEvent, ActivityFill, ActivityStream,
-    ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, LiquidityRole, OrderBookWebSocket,
-    Orderbook, OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange, PriceLevelSide,
-    WebSocketError, WebSocketState, WsMessage, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
-    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
+    ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
+    OrderBookWebSocket, Orderbook, OrderbookStream, OrderbookUpdate, PriceLevel, PriceLevelChange,
+    PriceLevelSide, SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState,
+    WsDispatcher, WsDispatcherConfig, WsMessage, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS,
+    WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
@@ -29,6 +31,11 @@ type OrderbookSender = broadcast::Sender<Result<WsMessage<OrderbookUpdate>, WebS
 type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSocketError>>;
 type OrderbookSenderMap = Arc<RwLock<HashMap<String, (OrderbookSender, Arc<AtomicU64>)>>>;
 type ActivitySenderMap = Arc<RwLock<HashMap<String, (ActivitySender, Arc<AtomicU64>)>>>;
+
+/// Per-market sequence counter map for the 0.2 dispatch path. Independent of
+/// the per-market broadcast `seq` to keep migration isolated; the cleanup
+/// commit collapses these once the broadcast path is removed.
+type SeqMap = Arc<RwLock<HashMap<String, Arc<AtomicU64>>>>;
 
 #[derive(Debug, Deserialize)]
 struct SnapshotPayload {
@@ -69,6 +76,15 @@ pub struct KalshiWebSocket {
     orderbook_senders: OrderbookSenderMap,
     activity_senders: ActivitySenderMap,
     orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
+    /// 0.2 multiplexed dispatch path. Runs in parallel with the per-market
+    /// broadcast senders during the 0.2 migration; cleanup commit collapses
+    /// to dispatcher-only.
+    dispatcher: Arc<WsDispatcher>,
+    /// Per-market 0.2 sequence counters.
+    seqs: SeqMap,
+    /// Wall-clock of the last successfully received WS message; powers the
+    /// `gap` field on `SessionEvent::Reconnected`.
+    last_message_at: Arc<RwLock<Option<DateTime<Utc>>>>,
     write_tx: Arc<Mutex<Option<futures::channel::mpsc::UnboundedSender<Message>>>>,
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     auto_reconnect: bool,
@@ -115,6 +131,9 @@ impl KalshiWebSocket {
             orderbook_senders: Arc::new(RwLock::new(HashMap::new())),
             activity_senders: Arc::new(RwLock::new(HashMap::new())),
             orderbooks: Arc::new(RwLock::new(HashMap::new())),
+            dispatcher: Arc::new(WsDispatcher::new(WsDispatcherConfig::default())),
+            seqs: Arc::new(RwLock::new(HashMap::new())),
+            last_message_at: Arc::new(RwLock::new(None)),
             write_tx: Arc::new(Mutex::new(None)),
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect,
@@ -123,6 +142,46 @@ impl KalshiWebSocket {
             enable_user_fills,
             ndjson_writer: None,
         })
+    }
+
+    /// Allocate-or-fetch the per-market sequence counter for the 0.2 dispatch
+    /// path. Lazy: created on first emit so subscribe stays a pure protocol op.
+    async fn dispatcher_seq(&self, market_id: &str) -> Arc<AtomicU64> {
+        {
+            let map = self.seqs.read().await;
+            if let Some(s) = map.get(market_id) {
+                return s.clone();
+            }
+        }
+        let mut map = self.seqs.write().await;
+        map.entry(market_id.to_string())
+            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+            .clone()
+    }
+
+    /// Emit a `WsUpdate` through the 0.2 dispatcher. On overflow raises
+    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` so callers can
+    /// invalidate their cached books instead of silently diverging — the
+    /// correctness fix vs. tokio broadcast's lag-and-skip.
+    async fn dispatch(&self, update: WsUpdate) {
+        let market = update.market_id().map(str::to_string);
+        if !self.dispatcher.try_send_update(update) {
+            self.dispatcher
+                .send_session(SessionEvent::Lagged {
+                    dropped: 1,
+                    first_seq: 0,
+                    last_seq: 0,
+                })
+                .await;
+            if let Some(market_id) = market {
+                self.dispatcher
+                    .send_session(SessionEvent::BookInvalidated {
+                        market_id,
+                        reason: InvalidationReason::Lag,
+                    })
+                    .await;
+            }
+        }
     }
 
     pub fn with_ndjson_writer(mut self, writer: impl std::io::Write + Send + 'static) -> Self {
@@ -247,7 +306,7 @@ impl KalshiWebSocket {
         }
     }
 
-    async fn handle_message(&self, text: &str) {
+    async fn handle_message(&self, text: &str, local_ts: Instant) {
         let value: serde_json::Value = match serde_json::from_str(text) {
             Ok(v) => v,
             Err(_) => return,
@@ -256,10 +315,10 @@ impl KalshiWebSocket {
         let msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         match msg_type {
-            "orderbook_snapshot" => self.handle_snapshot(&value).await,
-            "orderbook_delta" => self.handle_delta(&value).await,
-            "trade" => self.handle_trade(&value).await,
-            "fill" => self.handle_fill(&value).await,
+            "orderbook_snapshot" => self.handle_snapshot(&value, local_ts).await,
+            "orderbook_delta" => self.handle_delta(&value, local_ts).await,
+            "trade" => self.handle_trade(&value, local_ts).await,
+            "fill" => self.handle_fill(&value, local_ts).await,
             "subscribed" => self.handle_subscribed(&value).await,
             "unsubscribed" => self.handle_unsubscribed(&value).await,
             "error" => self.handle_error(&value).await,
@@ -311,7 +370,7 @@ impl KalshiWebSocket {
         chrono::DateTime::from_timestamp(raw, 0)
     }
 
-    async fn handle_snapshot(&self, value: &serde_json::Value) {
+    async fn handle_snapshot(&self, value: &serde_json::Value, local_ts: Instant) {
         let payload: SnapshotPayload = match value.get("msg") {
             Some(msg) => match serde_json::from_value(msg.clone()) {
                 Ok(parsed) => parsed,
@@ -345,11 +404,27 @@ impl KalshiWebSocket {
         }
 
         let exchange_time = orderbook.timestamp;
+
+        // 0.2 dispatch path: emit a typed Snapshot through the multiplexed
+        // dispatcher in addition to the per-market broadcast below.
+        let seq = self
+            .dispatcher_seq(&payload.market_ticker)
+            .await
+            .fetch_add(1, Ordering::Relaxed);
+        self.dispatch(WsUpdate::Snapshot {
+            market_id: payload.market_ticker.clone(),
+            book: Arc::new(orderbook.clone()),
+            exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
+            local_ts,
+            seq,
+        })
+        .await;
+
         self.broadcast_orderbook(&payload.market_ticker, orderbook, exchange_time)
             .await;
     }
 
-    async fn handle_delta(&self, value: &serde_json::Value) {
+    async fn handle_delta(&self, value: &serde_json::Value, local_ts: Instant) {
         let payload: DeltaPayload = match value.get("msg") {
             Some(msg) => match serde_json::from_value(msg.clone()) {
                 Ok(parsed) => parsed,
@@ -419,6 +494,22 @@ impl KalshiWebSocket {
             changes.push(change);
 
             let exchange_time = timestamp;
+
+            // 0.2 dispatch path. ChangeVec is SmallVec<[..; 4]> — clone is
+            // stack-only at typical kalshi width (1 change per delta).
+            let dispatch_seq = self
+                .dispatcher_seq(&payload.market_ticker)
+                .await
+                .fetch_add(1, Ordering::Relaxed);
+            self.dispatch(WsUpdate::Delta {
+                market_id: payload.market_ticker.clone(),
+                changes: changes.clone(),
+                exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
+                local_ts,
+                seq: dispatch_seq,
+            })
+            .await;
+
             let senders = self.orderbook_senders.read().await;
             if let Some((sender, seq)) = senders.get(&payload.market_ticker) {
                 let msg = WsMessage {
@@ -435,7 +526,7 @@ impl KalshiWebSocket {
         }
     }
 
-    async fn handle_trade(&self, value: &serde_json::Value) {
+    async fn handle_trade(&self, value: &serde_json::Value, local_ts: Instant) {
         let msg = value.get("msg").unwrap_or(value);
 
         let market_ticker = msg
@@ -463,7 +554,7 @@ impl KalshiWebSocket {
         let trade_id = Self::value_to_string(msg.get("trade_id"));
         let timestamp = Self::value_to_timestamp(msg.get("ts"));
 
-        let event = ActivityEvent::Trade(ActivityTrade {
+        let trade = ActivityTrade {
             market_id: market_ticker.clone(),
             asset_id: market_ticker.clone(),
             trade_id,
@@ -475,12 +566,21 @@ impl KalshiWebSocket {
             fee_rate_bps: None,
             timestamp,
             source_channel: Cow::Borrowed("kalshi_public_trade"),
-        });
+        };
+
+        // 0.2 dispatch path.
+        self.dispatch(WsUpdate::Trade {
+            trade: trade.clone(),
+            local_ts,
+        })
+        .await;
+
+        let event = ActivityEvent::Trade(trade);
         self.broadcast_activity(&market_ticker, event, timestamp)
             .await;
     }
 
-    async fn handle_fill(&self, value: &serde_json::Value) {
+    async fn handle_fill(&self, value: &serde_json::Value, local_ts: Instant) {
         let msg = value.get("msg").unwrap_or(value);
         let market_ticker = msg
             .get("market_ticker")
@@ -516,7 +616,7 @@ impl KalshiWebSocket {
                 }
             });
 
-        let event = ActivityEvent::Fill(ActivityFill {
+        let fill = ActivityFill {
             market_id: market_ticker.clone(),
             asset_id: market_ticker.clone(),
             fill_id,
@@ -530,7 +630,16 @@ impl KalshiWebSocket {
             timestamp,
             source_channel: Cow::Borrowed("kalshi_user_fill"),
             liquidity_role,
-        });
+        };
+
+        // 0.2 dispatch path.
+        self.dispatch(WsUpdate::Fill {
+            fill: fill.clone(),
+            local_ts,
+        })
+        .await;
+
+        let event = ActivityEvent::Fill(fill);
         self.broadcast_activity(&market_ticker, event, timestamp)
             .await;
     }
@@ -762,6 +871,10 @@ impl OrderBookWebSocket for KalshiWebSocket {
 
         let ndjson_writer = self.ndjson_writer.clone();
 
+        let dispatcher = self.dispatcher.clone();
+        let seqs = self.seqs.clone();
+        let last_message_at = self.last_message_at.clone();
+
         let ws_self = KalshiWebSocket {
             config,
             auth,
@@ -772,6 +885,9 @@ impl OrderBookWebSocket for KalshiWebSocket {
             orderbook_senders: orderbook_senders.clone(),
             activity_senders: activity_senders.clone(),
             orderbooks: orderbooks.clone(),
+            dispatcher: dispatcher.clone(),
+            seqs: seqs.clone(),
+            last_message_at: last_message_at.clone(),
             write_tx: write_tx_clone.clone(),
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect,
@@ -786,9 +902,14 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let read_future = async {
                 let mut read = read;
                 while let Some(msg) = read.next().await {
+                    // Capture the monotonic timestamp the moment the socket
+                    // returns, before parse — this is what makes the 0.2
+                    // local_ts honest under NTP adjustments.
+                    let local_ts = Instant::now();
                     match msg {
                         Ok(Message::Text(text)) => {
-                            ws_self.handle_message(&text).await;
+                            *ws_self.last_message_at.write().await = Some(chrono::Utc::now());
+                            ws_self.handle_message(&text, local_ts).await;
                         }
                         Ok(Message::Ping(data)) => {
                             if let Some(ref tx) = *ws_self.write_tx.lock().await {
@@ -796,7 +917,15 @@ impl OrderBookWebSocket for KalshiWebSocket {
                             }
                         }
                         Ok(Message::Close(_)) => break,
-                        Err(_) => break,
+                        Err(e) => {
+                            ws_self
+                                .dispatcher
+                                .send_session(SessionEvent::Error(WebSocketError::Connection(
+                                    e.to_string(),
+                                )))
+                                .await;
+                            break;
+                        }
                         _ => {}
                     }
                 }
@@ -872,7 +1001,34 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 *a = 0;
                             }
 
-                            // Broadcast reconnect event to all orderbook subscribers
+                            // 0.2 dispatch path: ONE Reconnected event globally
+                            // (with the wall-clock gap), plus one BookInvalidated
+                            // per subscribed market so callers can reset caches.
+                            {
+                                let now = chrono::Utc::now();
+                                let gap = ws_self
+                                    .last_message_at
+                                    .read()
+                                    .await
+                                    .and_then(|t| (now - t).to_std().ok())
+                                    .unwrap_or_else(|| Duration::from_secs(0));
+                                ws_self
+                                    .dispatcher
+                                    .send_session(SessionEvent::Reconnected { gap })
+                                    .await;
+                                let subs = ws_self.subscriptions.read().await;
+                                for market_id in subs.keys() {
+                                    ws_self
+                                        .dispatcher
+                                        .send_session(SessionEvent::BookInvalidated {
+                                            market_id: market_id.clone(),
+                                            reason: InvalidationReason::Reconnect,
+                                        })
+                                        .await;
+                                }
+                            }
+
+                            // 0.1 broadcast path (parallel during migration).
                             {
                                 let senders = orderbook_senders.read().await;
                                 for (sender, seq) in senders.values() {
@@ -907,9 +1063,12 @@ impl OrderBookWebSocket for KalshiWebSocket {
                             let read_future = async {
                                 let mut read = new_read;
                                 while let Some(msg) = read.next().await {
+                                    let local_ts = Instant::now();
                                     match msg {
                                         Ok(Message::Text(text)) => {
-                                            ws_self.handle_message(&text).await;
+                                            *ws_self.last_message_at.write().await =
+                                                Some(chrono::Utc::now());
+                                            ws_self.handle_message(&text, local_ts).await;
                                         }
                                         Ok(Message::Ping(data)) => {
                                             if let Some(ref tx) = *ws_self.write_tx.lock().await {
@@ -917,7 +1076,15 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                             }
                                         }
                                         Ok(Message::Close(_)) => break,
-                                        Err(_) => break,
+                                        Err(e) => {
+                                            ws_self
+                                                .dispatcher
+                                                .send_session(SessionEvent::Error(
+                                                    WebSocketError::Connection(e.to_string()),
+                                                ))
+                                                .await;
+                                            break;
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -960,6 +1127,10 @@ impl OrderBookWebSocket for KalshiWebSocket {
 
         self.set_state(WebSocketState::Connected);
         self.reset_reconnect_attempts().await;
+        *self.last_message_at.write().await = Some(chrono::Utc::now());
+        self.dispatcher
+            .send_session(SessionEvent::Connected)
+            .await;
         self.resubscribe_all().await?;
 
         Ok(())
@@ -1080,6 +1251,14 @@ impl OrderBookWebSocket for KalshiWebSocket {
             tokio_stream::wrappers::BroadcastStream::new(rx)
                 .filter_map(|result| async move { result.ok() }),
         ))
+    }
+
+    fn updates(&self) -> UpdateStream {
+        self.dispatcher.updates()
+    }
+
+    fn session_events(&self) -> SessionStream {
+        self.dispatcher.session_events()
     }
 }
 
