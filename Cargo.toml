@@ -40,6 +40,7 @@ authors = ["Milind Pathiyal"]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
 async-trait = "0.1"
 futures = "0.3"
+async-channel = "2"
 
 # HTTP & WebSocket
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies", "http2"] }
