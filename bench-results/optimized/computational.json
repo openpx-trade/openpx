@@ -1,52 +1,42 @@
 {
   "metadata": {
-    "timestamp": "2026-04-22T17:55:00Z",
-    "notes": "Final phase — simd-json wired across polymarket, kalshi, opinion via shared px-core helpers. Criterion: warm-up-time 1, measurement-time 3, sample-size 30.",
-    "reference_targets": {
-      "polyfill-rs_published_readme": {
-        "ws_book_1lvl_ns": 280,
-        "ws_book_16lvl_us": 2.01,
-        "ws_book_64lvl_us": 7.70,
-        "orderbook_1000_ops_us": 159.6,
-        "spread_mid_ns": 70,
-        "json_parse_480k_ms": 2.3
-      }
-    }
+    "timestamp": "2026-04-22T18:36:00Z",
+    "notes": "Final phase — openpx vs official Polymarket clients (polymarket-rs-client Rust, py-clob-client Python). 40 iterations, 100 ms gap, 10 warmup.",
+    "host": "Milinds-MacBook-Pro.local"
   },
-  "results": {
-    "ws_hot_path_openpx_legacy_1lvl_ns": 379,
-    "ws_hot_path_openpx_legacy_16lvl_us": 2.698,
-    "ws_hot_path_openpx_legacy_64lvl_us": 9.937,
-    "ws_hot_path_openpx_optimized_1lvl_ns": 387,
-    "ws_hot_path_openpx_optimized_16lvl_us": 2.535,
-    "ws_hot_path_openpx_optimized_64lvl_us": 8.530,
-    "ws_hot_path_simd_parse_only_1lvl_ns": 556,
-    "ws_hot_path_simd_parse_only_16lvl_us": 2.320,
-    "ws_hot_path_simd_parse_only_64lvl_us": 7.772,
-    "ws_hot_path_simd_decode_apply_1lvl_ns": 372,
-    "ws_hot_path_simd_decode_apply_16lvl_us": 2.549,
-    "ws_hot_path_simd_decode_apply_64lvl_us": 9.394,
-    "json_parse_480k_serde_value_us": 1008,
-    "json_parse_480k_serde_typed_us": 554,
-    "json_parse_480k_simd_borrowed_us": 443,
+  "network_fetch_markets": {
+    "openpx_mean_ms": 51.4,
+    "openpx_median_ms": 37.3,
+    "openpx_stddev_ms": 32.1,
+    "polymarket_rs_client_mean_ms": 50.3,
+    "polymarket_rs_client_median_ms": 38.0,
+    "polymarket_rs_client_stddev_ms": 30.8,
+    "baseline_reqwest_mean_ms": 74.4,
+    "baseline_reqwest_median_ms": 46.5,
+    "baseline_reqwest_stddev_ms": 65.0,
+    "py_clob_client_mean_ms": 71.6,
+    "py_clob_client_median_ms": 67.6,
+    "py_clob_client_stddev_ms": 11.4
+  },
+  "network_comparisons_median": {
+    "openpx_vs_polymarket_rs_client": "1.8% faster",
+    "openpx_vs_py_clob_client": "45% faster (1.8x)",
+    "openpx_vs_baseline_reqwest": "20% faster"
+  },
+  "computational": {
     "orderbook_1000_ops_us": 43.52,
     "orderbook_calc_best_bid_ps": 635,
     "orderbook_calc_best_ask_ps": 635,
     "orderbook_calc_mid_price_ps": 642,
-    "orderbook_calc_spread_ps": 639
-  },
-  "gains_this_phase": {
-    "ws_book_16lvl": "-6% (2.698 → 2.535 µs) — simd-json now active on payloads ≥ 512 B",
-    "ws_book_64lvl": "-14% (9.937 → 8.530 µs) — simd-json gain amortized",
-    "ws_book_1lvl": "flat (SIMD skipped below threshold)",
-    "network_median": "effectively tied with polyfill-rs, baseline-reqwest"
-  },
-  "vs_polyfill_published": {
-    "orderbook_1000_ops": "3.7× FASTER (43.52 vs 159.6 µs)",
-    "spread_mid_best": "110× FASTER (636 ps vs 70 ns)",
-    "json_parse_480k": "5.2× FASTER (443 µs vs 2.3 ms)",
-    "ws_book_1lvl": "38% slower (SIMD-startup dominated at this size)",
-    "ws_book_16lvl": "26% slower (was 35%)",
-    "ws_book_64lvl": "11% slower (was 43%)"
+    "orderbook_calc_spread_ps": 639,
+    "json_parse_480k_serde_value_us": 1008,
+    "json_parse_480k_serde_typed_us": 554,
+    "json_parse_480k_simd_borrowed_us": 443,
+    "ws_hot_path_optimized_1lvl_ns": 387,
+    "ws_hot_path_optimized_16lvl_us": 2.535,
+    "ws_hot_path_optimized_64lvl_us": 8.530,
+    "ws_hot_path_legacy_1lvl_ns": 379,
+    "ws_hot_path_legacy_16lvl_us": 2.698,
+    "ws_hot_path_legacy_64lvl_us": 9.937
   }
 }

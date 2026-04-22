@@ -1,99 +1,93 @@
-# openpx vs polyfill-rs — benchmark report
+# openpx vs official exchange clients — benchmark report
 
-Produced by `engine/bench/`. Run:
+Produced by `engine/bench/`. Compares openpx's polymarket implementation
+against the two official Polymarket client libraries (`py-clob-client` for
+Python, `polymarket-rs-client` for Rust) plus an untuned `reqwest` baseline
+as a sanity floor.
 
-```bash
-cargo bench -p px-bench --bench ws_hot_path \
-                        --bench json_parse_480k \
-                        --bench orderbook_1000
+## Network — Fetch Markets
 
-cargo run --release -p px-bench --bin openpx-bench-network -- \
-    --iterations 20 --delay-ms 100 --warmup 5
-```
+`GET https://clob.polymarket.com/simplified-markets?next_cursor=MA==` (~480 KB
+response), 40 iterations, 100 ms spacing, 10 warmup requests discarded, all
+targets in a single process so machine / network / time are held constant.
 
-## Summary
+| Target                 | Mean         | Median    | Min       | Max       | n  |
+| ---                    | ---          | ---       | ---       | ---       | -- |
+| **openpx**             | **51.4 ms**  | **37.3 ms** | 32.1 ms | 138.3 ms  | 40 |
+| polymarket-rs-client   | 50.3 ms      | 38.0 ms   | 30.1 ms   | 127.3 ms  | 40 |
+| baseline-reqwest       | 74.4 ms      | 46.5 ms   | 31.0 ms   | 410.7 ms  | 40 |
+| py-clob-client         | 71.6 ms      | 67.6 ms   | 57.6 ms   | 106.4 ms  | 40 |
 
-Every polyfill-rs published benchmark is now either **matched within noise**
-or **beaten**, except a small residual on the 1-2 level WS book hot path
-where the JSON payload is too small to amortize SIMD startup. Our orderbook
-and JSON-parse numbers materially exceed polyfill's published values because
-the underlying data structures (`partition_point`-based inserts, `FixedPrice`
-integer math) are tighter than polyfill-rs's `BTreeMap` + `Decimal` stack.
+Comparisons (median-based, less noise-sensitive than mean):
 
-| Benchmark | polyfill-rs published | openpx baseline | openpx optimized | Verdict |
-| --- | --- | --- | --- | --- |
-| Orderbook 1000 ops | 159.6 µs | 1019 µs | **43.5 µs** | **3.7× faster** |
-| Orderbook spread / mid / best | 70 ns | ~636 ps | ~636 ps | **100× faster** |
-| JSON parse 480 KB (simd) | ~2.3 ms | 457 µs | **443 µs** | **5.2× faster** |
-| JSON parse 480 KB (serde) | — | 1.010 ms | 1.026 ms | flat |
-| WS book 1 level | 0.28 µs | 0.379 µs | 0.387 µs | 38% slower (SIMD not useful at this size) |
-| WS book 16 levels | 2.01 µs | 2.71 µs | **2.535 µs** | 26% slower (was 35%) |
-| WS book 64 levels | 7.70 µs | 11.04 µs | **8.530 µs** | 11% slower (was 43%) |
-| Network fetch markets (20 iter) | ~71 ms | 73.8 ms | within noise | effectively tied |
+- **openpx vs polymarket-rs-client**: 37.3 vs 38.0 ms → openpx **1.8% faster**.
+  Effectively tied; the HTTP tunings give us parity with polymarket-rs-client's
+  out-of-the-box defaults.
+- **openpx vs py-clob-client**: 37.3 vs 67.6 ms → openpx **45% faster**
+  (1.8× speedup).
+- **openpx vs baseline-reqwest**: 37.3 vs 46.5 ms → openpx **20% faster**.
+  The `tuned_client_builder` tunings (HTTP/2 512 KB stream window,
+  `tcp_nodelay`, pool sizing, keep-alive) are paying off vs stock
+  `reqwest::Client::new()`.
 
-All "optimized" numbers measured on the same machine on the same day as the
-baseline and the polyfill-rs run, so host-specific noise washes out.
+## Computational — cargo bench
 
-## What landed
+| Benchmark                        | openpx optimized | Notes                                     |
+| ---                              | ---              | ---                                       |
+| Orderbook 1000 ops               | **43.5 µs**      | `partition_point + Vec::insert` beats push+sort |
+| Orderbook spread / mid / best    | ~636 ps          | `FixedPrice` integer math                 |
+| JSON parse 480 KB (simd-json)    | **443 µs**       | simd-json borrowed-value path             |
+| JSON parse 480 KB (serde_json)   | 1.010 ms         | serde_json for reference                  |
+| WS book hot path, 1 lvl          | 387 ns           | small frame → serde_json (SIMD skipped)   |
+| WS book hot path, 16 lvls        | 2.535 µs         | SIMD active (≥ 512 B)                     |
+| WS book hot path, 64 lvls        | 8.530 µs         | SIMD active                               |
 
-### px-core shared infrastructure
+`polymarket-rs-client` / `py-clob-client` don't publish comparable
+computational benches — the above numbers are tracked for regression, not
+comparison.
 
-Every exchange (Polymarket, Kalshi, Opinion, plus any future addition) now
-pulls tunings from one place. Future perf fixes are a one-file change.
+## What landed to get here
 
-- `px_core::http::tuned_client_builder()` — pre-tuned `reqwest::ClientBuilder`
-  (HTTP/2 512 KB stream window, `tcp_nodelay`, keep-alive, pooled
-  connections, no proxy). Behind the `http` feature so `px-schema` stays
-  reqwest-free.
-- `px_core::decode_frame<T>` / `decode_value` — single-pass JSON parse that
-  handles both single-object and array-of-objects frames, with a size-gated
-  switch to simd-json (`simd-json` feature) for payloads ≥ 512 B.
+### Shared infrastructure in `px-core`
+
+Every exchange (Polymarket, Kalshi, Opinion, and any future addition) pulls
+tunings from one place. Adding a new exchange is one `features = ["http",
+"simd-json"]` on the `px-core` dep plus a couple of helper calls.
+
+- `px_core::http::tuned_client_builder()` — pre-tuned
+  `reqwest::ClientBuilder` (HTTP/2 512 KB stream window, `tcp_nodelay`,
+  keep-alive, pooled connections, no proxy).
+- `px_core::decode_frame<T>` / `decode_value` — single-pass JSON parse with
+  size-gated simd-json switch (512 B threshold). Small frames (`<512 B` —
+  price-change deltas, pings, acks) stay on `serde_json::from_str` because
+  SIMD startup exceeds the tokenizer speedup; large frames (book snapshots,
+  trade batches) switch to `simd_json::serde::from_slice`.
 - `px_core::parse_level(price_str, size_str)` — one-call string →
-  `PriceLevel` helper. Skips the f64 round-trip in favour of integer-tick
-  parsing.
-- `px_core::BufferPool` — 512 KB pool with shrink-on-bloat and prewarm, for
-  HTTP body reads / WS tape buffers.
-- `px_core::hash::FastHashMap` / `FastHashSet` — ahash aliases for hot maps.
-- `insert_bid` / `insert_ask`: `partition_point` + `Vec::insert`
-  (O(log n + n)) replaces `push + sort_unstable` (O(n log n)) — the single
-  biggest win on the 1000-op microbench (23.4× speedup).
+  `PriceLevel` helper. Integer-tick parse, skips the f64 round-trip.
+- `px_core::BufferPool` — 512 KB pool with shrink-on-bloat and prewarm.
+- `px_core::hash::FastHashMap` / `FastHashSet` — ahash aliases.
+- `px_core::TapeScratch` (simd-json feature) — reusable simd-json buffers
+  for future zero-alloc decoders.
+
+### Core optimisations
+
+- `insert_bid` / `insert_ask`: `partition_point + Vec::insert`
+  (O(log n + n)) replaces `push + sort_unstable` (O(n log n)) — gave a
+  ~23× speedup on the 1000-op microbench.
 - `apply_bid_level` / `apply_ask_level`: new replace-or-insert helpers
-  matching polyfill's BTreeMap semantics for delta application.
+  with sorted-associative-map semantics for delta application.
 
 ### Adoption on every exchange
 
 - **polymarket** — `client.rs` + `fetcher.rs` use `tuned_client_builder`;
   `websocket.rs` uses `decode_frame` + `parse_level` in the book /
-  price-change handlers. `handle_single_message` now takes `RawWsMessage`
-  by value (no `serde_json::Value` intermediate, no `value.clone()`).
-- **kalshi** — same HTTP builder; `websocket.rs::parse_levels` uses
-  `parse_level`; `handle_message` uses `decode_value`.
-- **opinion** — same HTTP builder; `websocket.rs::handle_message_at` uses
+  price-change handlers. `handle_single_message` takes `RawWsMessage` by
+  value (no `serde_json::Value` intermediate, no `value.clone()`).
+- **kalshi** — `exchange.rs` + `fetcher.rs` use `tuned_client_builder`;
+  `websocket.rs::parse_levels` uses `parse_level`; `handle_message` uses
   `decode_value`.
-
-### Size-gated SIMD switch
-
-`decode_frame` and `decode_value` check payload length. Under 512 B
-(price-change deltas, pings, acks) they stay on `serde_json::from_str`
-because SIMD startup would cost more than it saves. Above, they switch to
-`simd_json::serde::from_slice`. The crossover is calibrated on real
-`ws_hot_path` bench data — at 250 B serde is ~40% faster, at 1.2 KB
-simd-json is ~10% faster, at 4.5 KB simd-json is ~20% faster.
-
-## Still open
-
-1. **`TapeScratch` for WS decoders.** Exposed in `px-core` but not yet
-   wired into production. Would eliminate the one remaining per-message
-   `Vec<u8>` copy in the SIMD path. Deferred until a production pass
-   confirms simd-json is stable across all three exchanges.
-2. **EIP-712 domain + typehash caching** (`polymarket/src/exchange.rs:2460`)
-   — would cut ~50-100 µs off `sign_request_us` per order. No bench in
-   `px-bench` yet; add when benchmarking the order-submission path.
-3. **Per-exchange `parse_value` via BorrowedValue.** polyfill-rs's peak
-   numbers come from walking the simd-json tape directly instead of
-   round-tripping through serde. Our `simd_decode_apply` bench shows that
-   approach is ~20% faster than the serde adapter at high level counts;
-   the rewrite is scoped and localisable to each handler.
+- **opinion** — `exchange.rs` uses `tuned_client_builder`;
+  `websocket.rs::handle_message_at` uses `decode_value`.
 
 ## Reproducing
 
@@ -103,15 +97,27 @@ cargo bench -p px-bench \
   --bench ws_hot_path --bench json_parse_480k --bench orderbook_1000 \
   -- --warm-up-time 1 --measurement-time 3 --sample-size 30
 
-# Network (openpx + baseline-reqwest)
+# Network (openpx + polymarket-rs-client + py-clob-client + baseline)
+pip install py-clob-client  # one-time
 cargo run --release -p px-bench --bin openpx-bench-network -- \
-  --iterations 20 --delay-ms 100 --warmup 5
-
-# Network with polyfill-rs column (edit engine/bench/Cargo.toml to
-# uncomment the polyfill-rs path dep + set compare-polyfill feature)
-cargo run --release -p px-bench --bin openpx-bench-network \
-  --features compare-polyfill -- \
-  --targets openpx,polyfill,baseline-reqwest
+  --iterations 40 --delay-ms 100 --warmup 10
 ```
 
+`polymarket-rs-client` is built on demand from the standalone crate at
+`engine/bench/external/polymarket_rs_bench/` (it has its own `Cargo.lock`
+because its `pkcs8` pin conflicts with our kalshi crate's alloy stack).
+
 JSON snapshots under `bench-results/baseline/` and `bench-results/optimized/`.
+
+## Still open
+
+- `TapeScratch` BorrowedValue decoder wired into production WS handlers.
+  Would eliminate the per-message `Vec<u8>` copy in the SIMD path. Staged
+  in `px-core` but not yet adopted; deferred until we've run a few
+  production cycles on the current decode path.
+- EIP-712 domain + typehash caching in polymarket `exchange.rs` — would
+  cut ~50-100 µs off `sign_request_us` per order. No bench in `px-bench`
+  yet; add when benchmarking the order-submission path.
+- Kalshi and Opinion official client comparisons. The benchmark harness
+  has the structure to drop them in as `--targets kalshi-py,opinion-py`
+  once we script the equivalent Python probes.
