@@ -283,21 +283,61 @@ pub fn sort_asks(levels: &mut [PriceLevel]) {
 }
 
 /// Insert a price level into a bid-sorted (descending) list.
-/// Uses push + sort_unstable for prediction market books (typically < 100 levels).
-/// sort_unstable avoids the allocation of a merge-sort buffer and is faster
-/// on small, nearly-sorted arrays than Vec::insert's O(n) memcpy shift.
+/// Binary-search for the insert position (O(log n)), then Vec::insert
+/// (O(n) memcpy shift on average). Net O(log n + n) per op vs the old
+/// push+sort's O(n log n). Equal-price entries go AFTER existing entries.
 #[inline]
 pub fn insert_bid(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
-    levels.push(level);
-    sort_bids(levels);
+    let idx = levels.partition_point(|l| l.price > level.price);
+    levels.insert(idx, level);
 }
 
 /// Insert a price level into an ask-sorted (ascending) list.
-/// Uses push + sort_unstable for prediction market books (typically < 100 levels).
+/// Binary-search + Vec::insert; same complexity profile as `insert_bid`.
 #[inline]
 pub fn insert_ask(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
-    levels.push(level);
-    sort_asks(levels);
+    let idx = levels.partition_point(|l| l.price < level.price);
+    levels.insert(idx, level);
+}
+
+/// Apply a price-level delta to a bid-sorted list with replace-or-insert
+/// semantics matching polyfill-rs's BTreeMap behavior:
+///   - `size > 0.0` and price exists: replace in place (O(log n)).
+///   - `size > 0.0` and price is new: insert at sorted position (O(log n + n)).
+///   - `size == 0.0`: remove the level if present (no-op otherwise).
+pub fn apply_bid_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
+    match levels.binary_search_by(|l| level.price.cmp(&l.price)) {
+        Ok(idx) => {
+            if level.size > 0.0 {
+                levels[idx] = level;
+            } else {
+                levels.remove(idx);
+            }
+        }
+        Err(idx) => {
+            if level.size > 0.0 {
+                levels.insert(idx, level);
+            }
+        }
+    }
+}
+
+/// See `apply_bid_level`. Same semantics, ascending ordering.
+pub fn apply_ask_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
+    match levels.binary_search_by(|l| l.price.cmp(&level.price)) {
+        Ok(idx) => {
+            if level.size > 0.0 {
+                levels[idx] = level;
+            } else {
+                levels.remove(idx);
+            }
+        }
+        Err(idx) => {
+            if level.size > 0.0 {
+                levels.insert(idx, level);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

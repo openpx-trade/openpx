@@ -11,6 +11,7 @@ members = [
     "engine/sdk",
     "engine/cli",
     "engine/recorder",
+    "engine/bench",
     "sdks/python",
     "sdks/typescript",
 ]
@@ -51,6 +52,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# SIMD JSON parser — consumers enable behind a per-crate feature; used in the
+# WebSocket hot path where bytes are already owned and mutable.
+simd-json = "0.13"
 
 # Error handling
 thiserror = "2"
@@ -75,6 +79,10 @@ smallvec = { version = "1", features = ["serde"] }
 
 # Byte buffers
 bytes = "1"
+
+# Faster non-cryptographic hash map. SipHash (stdlib default) is ~3-5x slower
+# than ahash for short string keys, which dominate our WS state maps.
+ahash = "0.8"
 
 # Allocator
 tikv-jemallocator = "0.6"

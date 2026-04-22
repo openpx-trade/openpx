@@ -1,15 +1,21 @@
+pub mod buffer_pool;
 pub mod error;
 pub mod events;
 pub mod exchange;
+pub mod hash;
 pub mod models;
+pub mod price_fixed;
 pub mod timing;
 pub mod utils;
 pub mod websocket;
 
+pub use buffer_pool::BufferPool;
 pub use error::*;
 pub use events::*;
 pub use exchange::*;
+pub use hash::{FastHashMap, FastHashSet};
 pub use models::*;
+pub use price_fixed::{parse_price_str, parse_qty_str, Price, Qty, SCALE_FACTOR};
 pub use timing::*;
 pub use utils::*;
 pub use websocket::*;

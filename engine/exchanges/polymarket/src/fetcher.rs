@@ -41,6 +41,8 @@ impl PolymarketMarketFetcher {
         Client::builder()
             .pool_max_idle_per_host(CONCURRENCY)
             .http2_adaptive_window(true)
+            .http2_initial_stream_window_size(512 * 1024)
+            .tcp_nodelay(true)
             .http2_keep_alive_interval(Duration::from_secs(15))
             .timeout(Duration::from_secs(30))
             .build()

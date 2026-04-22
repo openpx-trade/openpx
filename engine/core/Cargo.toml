@@ -12,6 +12,7 @@ categories = ["api-bindings", "finance"]
 [features]
 default = []
 schema = ["dep:schemars"]
+simd-json = ["dep:simd-json"]
 
 [dependencies]
 tokio = { workspace = true }
@@ -20,11 +21,13 @@ futures = { workspace = true }
 async-channel = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
+simd-json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 metrics = { workspace = true }
 smallvec = { workspace = true }
+ahash = { workspace = true }
 schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true }
 
 [dev-dependencies]
