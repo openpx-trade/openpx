@@ -1,0 +1,51 @@
+[package]
+name = "px-bench"
+description = "Internal benchmark harness comparing openpx against polyfill-rs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = []
+# Compare against locally-checked-out polyfill-rs at ../../../polyfill-rs.
+# Off by default so CI (which doesn't have the sibling checkout) builds cleanly.
+compare-polyfill = ["dep:polyfill-rs"]
+# polymarket-rs-client 0.1 has a pkcs8 version conflict with our kalshi crate's
+# alloy pin, so direct comparison isn't feasible. polyfill-rs already publishes
+# its number against polymarket-rs-client (README: 409.3 ms ± 137.6 ms); if we
+# beat polyfill we transitively beat it.
+
+[dependencies]
+px-core = { workspace = true }
+px-exchange-polymarket = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process"] }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+chrono = { workspace = true }
+smallvec = { workspace = true }
+
+polyfill-rs = { path = "../../../polyfill-rs", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+simd-json = "0.13"
+
+[[bench]]
+name = "ws_hot_path"
+harness = false
+
+[[bench]]
+name = "json_parse_480k"
+harness = false
+
+[[bench]]
+name = "orderbook_1000"
+harness = false
+
+[[bin]]
+name = "openpx-bench-network"
+path = "src/bin/network_bench.rs"
