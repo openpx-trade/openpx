@@ -20,6 +20,12 @@ use smallvec::SmallVec;
 
 const WS_MARKET_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
 const WS_USER_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/user";
+/// Force a reconnect if no message has been received for this long. macOS TCP
+/// keepalive can take ~33 minutes to surface a silently-dead connection
+/// (observed in the 0.2 smoke test); at 800+ msg/s sustained, going 30s
+/// without anything is conclusive proof the socket is dead.
+const WS_STALL_TIMEOUT: Duration = Duration::from_secs(30);
+const WS_STALL_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 struct UserAuth {
@@ -195,6 +201,31 @@ impl PolymarketWebSocket {
             companions: Arc::new(RwLock::new(HashMap::new())),
             outcome_map: Arc::new(RwLock::new(HashMap::new())),
             initial_subscribed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    /// Returns once `last_message_at` is older than `WS_STALL_TIMEOUT`.
+    /// Drop into a `tokio::select!` alongside `read_future` to force the read
+    /// loop to exit when the socket goes silent (e.g. half-open connection
+    /// the OS hasn't surfaced yet) — the existing reconnect path then runs.
+    async fn stall_watchdog(last_message_at: Arc<RwLock<Option<DateTime<Utc>>>>) {
+        let mut tick = interval(WS_STALL_CHECK_INTERVAL);
+        tick.tick().await; // first tick fires immediately; skip
+        loop {
+            tick.tick().await;
+            let last = *last_message_at.read().await;
+            if let Some(last) = last {
+                let age = chrono::Utc::now() - last;
+                if age.to_std().is_ok_and(|d| d > WS_STALL_TIMEOUT) {
+                    tracing::warn!(
+                        exchange = "polymarket",
+                        stall_secs = age.num_seconds(),
+                        "no messages for >{}s; forcing reconnect",
+                        WS_STALL_TIMEOUT.as_secs()
+                    );
+                    return;
+                }
+            }
         }
     }
 
@@ -1087,10 +1118,13 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                 }
             };
 
+            let stall_future = Self::stall_watchdog(last_message_at.clone());
+
             tokio::select! {
                 _ = write_future => {},
                 _ = read_future => {},
                 _ = ping_future => {},
+                _ = stall_future => {},
                 _ = shutdown_rx => {},
             }
 
@@ -1221,9 +1255,12 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                 }
                             };
 
+                            let stall_future = Self::stall_watchdog(last_message_at.clone());
+
                             tokio::select! {
                                 _ = write_future => {},
                                 _ = read_future => {},
+                                _ = stall_future => {},
                             }
 
                             if state.load() == WebSocketState::Closed {
