@@ -20,11 +20,12 @@ pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
 
-/// Force a reconnect if no message has been received for this long. Set to
-/// 3× the ping interval — long enough to absorb a missed ping cycle, short
-/// enough to catch silent connection death well before OS keepalive (which
-/// can take ~30 minutes on macOS to surface a half-open socket).
-pub const WS_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// Force a reconnect if no message has been received for this long. Sized
+/// for the quietest live venue: a 50-market Kalshi subscription at
+/// ~0.5 msg/s hit a 40s max-quiet window in smoke testing, so 60s was
+/// only 33% above observed worst-case. 90s gives ~2× headroom while
+/// still shrinking macOS's ~30-minute silent-death window by ~20×.
+pub const WS_STALL_TIMEOUT: Duration = Duration::from_secs(90);
 pub const WS_STALL_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Returns once `last_message_at` is older than `WS_STALL_TIMEOUT`.
@@ -197,4 +198,81 @@ pub trait OrderBookWebSocket: Send + Sync {
     /// Take ownership of the connection-level session event stream. Returns
     /// `None` if already taken.
     fn session_events(&self) -> Option<SessionStream>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{sleep, Duration as TDuration};
+
+    /// Watchdog must fire after WS_STALL_TIMEOUT of silence even if
+    /// `last_message_at` was never written (stays `None`)? Actually no —
+    /// `None` means "we haven't received anything yet, so don't trigger";
+    /// fresh connections need a grace period before traffic starts.
+    #[tokio::test]
+    async fn watchdog_does_not_fire_when_last_message_is_none() {
+        let last = Arc::new(RwLock::new(None::<DateTime<Utc>>));
+        // Race the watchdog against a 1.5x check-interval timeout — the
+        // watchdog must NOT return in that window.
+        let result = tokio::time::timeout(
+            WS_STALL_CHECK_INTERVAL + TDuration::from_secs(5),
+            stall_watchdog(last),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "watchdog returned {result:?} despite last_message_at being None"
+        );
+    }
+
+    /// If a recent message has been recorded, watchdog stays asleep.
+    #[tokio::test]
+    async fn watchdog_does_not_fire_with_recent_activity() {
+        let last = Arc::new(RwLock::new(Some(Utc::now())));
+        let result = tokio::time::timeout(
+            WS_STALL_CHECK_INTERVAL + TDuration::from_secs(5),
+            stall_watchdog(last),
+        )
+        .await;
+        assert!(result.is_err(), "watchdog fired despite fresh activity");
+    }
+
+    /// If `last_message_at` is older than the threshold at the moment of the
+    /// next check tick, watchdog must return promptly. We pre-age the
+    /// timestamp by `WS_STALL_TIMEOUT + 5s` so the very first post-`tick`
+    /// read sees it as stale.
+    #[tokio::test]
+    async fn watchdog_fires_when_last_message_is_stale() {
+        let stale = Utc::now() - chrono::Duration::from_std(WS_STALL_TIMEOUT).unwrap()
+            - chrono::Duration::seconds(5);
+        let last = Arc::new(RwLock::new(Some(stale)));
+        // Should fire within one check interval (10s) plus slack.
+        let result = tokio::time::timeout(
+            WS_STALL_CHECK_INTERVAL + TDuration::from_secs(2),
+            stall_watchdog(last),
+        )
+        .await;
+        assert!(result.is_ok(), "watchdog did not fire on stale timestamp");
+    }
+
+    /// Continuous activity (refresh `last_message_at` every 1s) must keep
+    /// the watchdog asleep indefinitely. Models the "active market"
+    /// scenario.
+    #[tokio::test]
+    async fn watchdog_stays_asleep_under_continuous_activity() {
+        let last = Arc::new(RwLock::new(Some(Utc::now())));
+        let last_clone = last.clone();
+        let refresher = tokio::spawn(async move {
+            for _ in 0..15 {
+                sleep(TDuration::from_secs(1)).await;
+                *last_clone.write().await = Some(Utc::now());
+            }
+        });
+        let result = tokio::time::timeout(TDuration::from_secs(15), stall_watchdog(last)).await;
+        refresher.abort();
+        assert!(
+            result.is_err(),
+            "watchdog fired despite messages every 1s for 15s"
+        );
+    }
 }
