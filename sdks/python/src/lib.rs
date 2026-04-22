@@ -26,8 +26,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<exchange::NativeExchange>()?;
     m.add_class::<websocket::NativeWebSocket>()?;
-    m.add_class::<stream::NativeOrderbookStream>()?;
-    m.add_class::<stream::NativeActivityStream>()?;
+    m.add_class::<stream::NativeUpdateStream>()?;
+    m.add_class::<stream::NativeSessionStream>()?;
     m.add_class::<sports::NativeSportsWebSocket>()?;
     m.add_class::<sports::NativeSportsStream>()?;
     m.add_class::<crypto::NativeCryptoPriceWebSocket>()?;

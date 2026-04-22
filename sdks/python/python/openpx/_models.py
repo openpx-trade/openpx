@@ -22,7 +22,7 @@ class ActivityTrade(BaseModel):
     asset_id: str
     fee_rate_bps: conint(ge=0) | None = Field(
         None,
-        description="Fee rate in basis points (e.g. 0 = no fee, 200 = 2%). Polymarket: present on `last_trade_price` events.",
+        description="Fee rate in basis points (e.g. 0 = no fee, 200 = 2%). Polymarket `last_trade_price` events populate this.",
     )
     market_id: str
     outcome: str | None = None
@@ -79,6 +79,31 @@ class FetchOrdersParams(BaseModel):
 class FetchUserActivityParams(BaseModel):
     address: str
     limit: conint(ge=0) | None = None
+
+
+class InvalidationReason1(Enum):
+    Reconnect = "Reconnect"
+    Lag = "Lag"
+    ExchangeReset = "ExchangeReset"
+
+
+class SequenceGap(BaseModel):
+    expected: conint(ge=0)
+    received: conint(ge=0)
+
+
+class InvalidationReason2(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    SequenceGap_1: SequenceGap = Field(..., alias="SequenceGap")
+
+
+class InvalidationReason(RootModel[InvalidationReason1 | InvalidationReason2]):
+    root: InvalidationReason1 | InvalidationReason2 = Field(
+        ...,
+        description="Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
+    )
 
 
 class LiquidityRole(Enum):
@@ -194,6 +219,67 @@ class PriceLevelSide(Enum):
     ask = "ask"
 
 
+class Kind(Enum):
+    Connected = "Connected"
+
+
+class SessionEvent1(BaseModel):
+    kind: Kind
+
+
+class Kind1(Enum):
+    Reconnected = "Reconnected"
+
+
+class SessionEvent2(BaseModel):
+    gap_ms: conint(ge=0)
+    kind: Kind1
+
+
+class Kind2(Enum):
+    Lagged = "Lagged"
+
+
+class SessionEvent3(BaseModel):
+    dropped: conint(ge=0)
+    first_seq: conint(ge=0)
+    kind: Kind2
+    last_seq: conint(ge=0)
+
+
+class Kind3(Enum):
+    BookInvalidated = "BookInvalidated"
+
+
+class SessionEvent4(BaseModel):
+    kind: Kind3
+    market_id: str
+    reason: InvalidationReason
+
+
+class Kind4(Enum):
+    Error = "Error"
+
+
+class SessionEvent5(BaseModel):
+    kind: Kind4
+    message: str
+
+
+class SessionEvent(
+    RootModel[
+        SessionEvent1 | SessionEvent2 | SessionEvent3 | SessionEvent4 | SessionEvent5
+    ]
+):
+    root: (
+        SessionEvent1 | SessionEvent2 | SessionEvent3 | SessionEvent4 | SessionEvent5
+    ) = Field(
+        ...,
+        description="Connection-level events, emitted on a channel separate from `WsUpdate` so a reconnect is observable as a single global signal rather than per-market.",
+        title="SessionEvent",
+    )
+
+
 class TradesRequest(BaseModel):
     cursor: str | None = Field(
         None, description="Opaque pagination cursor from a previous response."
@@ -213,15 +299,41 @@ class TradesRequest(BaseModel):
     token_id: str | None = None
 
 
+class Kind5(Enum):
+    Snapshot = "Snapshot"
+
+
+class Kind6(Enum):
+    Delta = "Delta"
+
+
+class Kind7(Enum):
+    Trade = "Trade"
+
+
+class WsUpdate3(BaseModel):
+    kind: Kind7
+    local_ts_ms: conint(ge=0)
+    trade: ActivityTrade
+
+
+class Kind8(Enum):
+    Fill = "Fill"
+
+
+class Kind9(Enum):
+    Raw = "Raw"
+
+
+class WsUpdate5(BaseModel):
+    exchange: str
+    kind: Kind9
+    local_ts_ms: conint(ge=0)
+    value: Any
+
+
 class Number(RootModel[float]):
     root: float
-
-
-class ActivityEvent1(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    Trade: ActivityTrade
 
 
 class ActivityFill(BaseModel):
@@ -410,15 +522,19 @@ class PriceLevelChange(BaseModel):
     size: float
 
 
-class ActivityEvent2(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    Fill: ActivityFill
+class WsUpdate2(BaseModel):
+    changes: list[PriceLevelChange]
+    exchange_ts: conint(ge=0) | None = None
+    kind: Kind6
+    local_ts_ms: conint(ge=0)
+    market_id: str
+    seq: conint(ge=0)
 
 
-class ActivityEvent(RootModel[ActivityEvent1 | ActivityEvent2]):
-    root: ActivityEvent1 | ActivityEvent2 = Field(..., title="ActivityEvent")
+class WsUpdate4(BaseModel):
+    fill: ActivityFill
+    kind: Kind8
+    local_ts_ms: conint(ge=0)
 
 
 class Orderbook(BaseModel):
@@ -440,3 +556,20 @@ class OrderbookSnapshot(BaseModel):
     hash: str | None = None
     recorded_at: AwareDatetime | None = None
     timestamp: AwareDatetime
+
+
+class WsUpdate1(BaseModel):
+    book: Orderbook
+    exchange_ts: conint(ge=0) | None = None
+    kind: Kind5
+    local_ts_ms: conint(ge=0)
+    market_id: str
+    seq: conint(ge=0)
+
+
+class WsUpdate(RootModel[WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5]):
+    root: WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5 = Field(
+        ...,
+        description="Every per-market event the WebSocket surface emits. Tagged union with a single escape hatch (`Raw`) for exchange-specific payloads we haven't normalized yet.",
+        title="WsUpdate",
+    )

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::StreamExt;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tokio::sync::Mutex;
@@ -10,7 +9,7 @@ use px_core::websocket::OrderBookWebSocket;
 
 use crate::error::to_py_err;
 use crate::get_runtime;
-use crate::stream::{NativeActivityStream, NativeOrderbookStream};
+use crate::stream::{NativeSessionStream, NativeUpdateStream};
 
 /// Native WebSocket wrapper for Python.
 /// Created via `Exchange.websocket()` or standalone `WebSocket(id, config)`.
@@ -68,47 +67,21 @@ impl NativeWebSocket {
         format!("{state:?}")
     }
 
-    fn orderbook_stream(&self, py: Python<'_>, market_id: &str) -> PyResult<NativeOrderbookStream> {
+    /// Iterator over the multiplexed `WsUpdate` stream. Each item is one of:
+    /// Snapshot, Delta, Trade, Fill, Raw — distinguished by the `kind` field.
+    fn updates(&self, py: Python<'_>) -> PyResult<NativeUpdateStream> {
         let ws = self.ws.clone();
-        let market_id = market_id.to_string();
         let rt = get_runtime();
-
-        let stream = py
-            .detach(|| rt.block_on(async { ws.lock().await.orderbook_stream(&market_id).await }))
-            .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
-
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-        rt.spawn(async move {
-            let mut stream = stream;
-            while let Some(item) = stream.next().await {
-                if tx.send(item).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Ok(NativeOrderbookStream::new(rx))
+        let stream = py.detach(|| rt.block_on(async { ws.lock().await.updates() }));
+        Ok(NativeUpdateStream::new(stream))
     }
 
-    fn activity_stream(&self, py: Python<'_>, market_id: &str) -> PyResult<NativeActivityStream> {
+    /// Iterator over connection-level session events
+    /// (Connected, Reconnected, Lagged, BookInvalidated, Error).
+    fn session_events(&self, py: Python<'_>) -> PyResult<NativeSessionStream> {
         let ws = self.ws.clone();
-        let market_id = market_id.to_string();
         let rt = get_runtime();
-
-        let stream = py
-            .detach(|| rt.block_on(async { ws.lock().await.activity_stream(&market_id).await }))
-            .map_err(|e: px_core::error::WebSocketError| to_py_err(e.to_string()))?;
-
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-        rt.spawn(async move {
-            let mut stream = stream;
-            while let Some(item) = stream.next().await {
-                if tx.send(item).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Ok(NativeActivityStream::new(rx))
+        let stream = py.detach(|| rt.block_on(async { ws.lock().await.session_events() }));
+        Ok(NativeSessionStream::new(stream))
     }
 }

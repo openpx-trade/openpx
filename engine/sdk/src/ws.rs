@@ -1,7 +1,5 @@
 use px_core::error::{OpenPxError, WebSocketError};
-use px_core::websocket::{
-    ActivityStream, OrderBookWebSocket, OrderbookStream as CoreOrderbookStream, WebSocketState,
-};
+use px_core::websocket::{OrderBookWebSocket, SessionStream, UpdateStream, WebSocketState};
 use px_exchange_kalshi::{KalshiConfig, KalshiWebSocket};
 use px_exchange_opinion::{OpinionConfig, OpinionWebSocket};
 use px_exchange_polymarket::PolymarketWebSocket;
@@ -85,19 +83,7 @@ impl WebSocketInner {
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
     }
-}
 
-macro_rules! ws_dispatch {
-    ($self:expr, $method:ident $(, $arg:expr)*) => {
-        match $self {
-            WebSocketInner::Kalshi(ws) => ws.$method($($arg),*).await,
-            WebSocketInner::Polymarket(ws) => ws.$method($($arg),*).await,
-            WebSocketInner::Opinion(ws) => ws.$method($($arg),*).await,
-        }
-    };
-}
-
-impl WebSocketInner {
     /// Register outcome names for Polymarket token IDs so activity events
     /// include "Yes"/"No". No-op for other exchanges.
     pub async fn register_outcomes(&self, yes_token_id: &str, no_token_id: &str) {
@@ -107,21 +93,31 @@ impl WebSocketInner {
     }
 }
 
+macro_rules! ws_dispatch_async {
+    ($self:expr, $method:ident $(, $arg:expr)*) => {
+        match $self {
+            WebSocketInner::Kalshi(ws) => ws.$method($($arg),*).await,
+            WebSocketInner::Polymarket(ws) => ws.$method($($arg),*).await,
+            WebSocketInner::Opinion(ws) => ws.$method($($arg),*).await,
+        }
+    };
+}
+
 impl OrderBookWebSocket for WebSocketInner {
     async fn connect(&mut self) -> Result<(), WebSocketError> {
-        ws_dispatch!(self, connect)
+        ws_dispatch_async!(self, connect)
     }
 
     async fn disconnect(&mut self) -> Result<(), WebSocketError> {
-        ws_dispatch!(self, disconnect)
+        ws_dispatch_async!(self, disconnect)
     }
 
     async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        ws_dispatch!(self, subscribe, market_id)
+        ws_dispatch_async!(self, subscribe, market_id)
     }
 
     async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        ws_dispatch!(self, unsubscribe, market_id)
+        ws_dispatch_async!(self, unsubscribe, market_id)
     }
 
     fn state(&self) -> WebSocketState {
@@ -132,14 +128,19 @@ impl OrderBookWebSocket for WebSocketInner {
         }
     }
 
-    async fn orderbook_stream(
-        &mut self,
-        market_id: &str,
-    ) -> Result<CoreOrderbookStream, WebSocketError> {
-        ws_dispatch!(self, orderbook_stream, market_id)
+    fn updates(&self) -> UpdateStream {
+        match self {
+            Self::Kalshi(ws) => ws.updates(),
+            Self::Polymarket(ws) => ws.updates(),
+            Self::Opinion(ws) => ws.updates(),
+        }
     }
 
-    async fn activity_stream(&mut self, market_id: &str) -> Result<ActivityStream, WebSocketError> {
-        ws_dispatch!(self, activity_stream, market_id)
+    fn session_events(&self) -> SessionStream {
+        match self {
+            Self::Kalshi(ws) => ws.session_events(),
+            Self::Polymarket(ws) => ws.session_events(),
+            Self::Opinion(ws) => ws.session_events(),
+        }
     }
 }

@@ -19,8 +19,16 @@ class WebSocket:
         ws.connect()
         ws.subscribe("MARKETID")
 
-        for update in ws.orderbook_stream("MARKETID"):
-            print(update)
+        for update in ws.updates():
+            kind = update["kind"]
+            if kind == "Snapshot":
+                book = update["book"]
+                ...
+            elif kind == "Delta":
+                changes = update["changes"]
+                ...
+            elif kind in ("Trade", "Fill"):
+                ...
 
         ws.disconnect()
     """
@@ -49,44 +57,33 @@ class WebSocket:
         """Current connection state (Disconnected, Connecting, Connected, Reconnecting, Closed)."""
         return self._native.state()
 
-    def orderbook_stream(self, market_id: str) -> Iterator[dict[str, Any]]:
-        """Returns a blocking iterator of WsMessage-wrapped orderbook updates.
+    def updates(self) -> Iterator[dict[str, Any]]:
+        """Multiplexed iterator of `WsUpdate` events for all subscribed markets.
 
-        Each item is a ``WsMessage`` envelope dict::
+        Each item is a tagged dict with a ``kind`` discriminator::
 
-            {
-                "seq": 1,              # per-market monotonic sequence number
-                "exchange_time": ...,  # server timestamp (use for ordering)
-                "received_at": ...,    # local capture time (use for latency)
-                "data": {              # OrderbookUpdate payload
-                    "type": "Snapshot",
-                    "Snapshot": {...}
-                }
-            }
+            {"kind": "Snapshot", "market_id": "...", "book": {...}, "exchange_ts": 173..., "local_ts_ms": 173..., "seq": 0}
+            {"kind": "Delta",    "market_id": "...", "changes": [...],     "exchange_ts": ..., "local_ts_ms": ..., "seq": 1}
+            {"kind": "Trade",    "trade": {...}, "local_ts_ms": ...}
+            {"kind": "Fill",     "fill":  {...}, "local_ts_ms": ...}
+            {"kind": "Raw",      "exchange": "...", "value": {...}, "local_ts_ms": ...}
 
-        The ``data`` field contains one of:
-        - ``{"type": "Snapshot", "Snapshot": {...}}`` — full orderbook
-        - ``{"type": "Delta", "Delta": {"changes": [...], "timestamp": "..."}}`` — incremental
-        - ``{"type": "Reconnected"}`` — connection was re-established, state is stale
+        Multiple calls to `updates()` return co-consumers of the same queue —
+        each emitted update goes to one receiver, first-grabbed. For fan-out,
+        run a single consumer that re-broadcasts.
         """
-        return self._native.orderbook_stream(market_id)
+        return self._native.updates()
 
-    def activity_stream(self, market_id: str) -> Iterator[dict[str, Any]]:
-        """Returns a blocking iterator of WsMessage-wrapped activity events.
+    def session_events(self) -> Iterator[dict[str, Any]]:
+        """Iterator of connection-level events.
 
-        Each item is a ``WsMessage`` envelope dict::
+        Distinct from `updates()` so a reconnect is observable as one event,
+        not per-market. Items::
 
-            {
-                "seq": 1,              # per-market monotonic sequence number
-                "exchange_time": ...,  # server timestamp (use for ordering)
-                "received_at": ...,    # local capture time (use for latency)
-                "data": {              # ActivityEvent payload
-                    "Trade": {...}
-                }
-            }
-
-        The ``data`` field contains one of:
-        - ``{"Trade": {...}}`` — market trade
-        - ``{"Fill": {...}}`` — user fill (requires authenticated config)
+            {"kind": "Connected"}
+            {"kind": "Reconnected", "gap_ms": 12345}
+            {"kind": "Lagged", "dropped": 1, "first_seq": 0, "last_seq": 0}
+            {"kind": "BookInvalidated", "market_id": "...", "reason": "Reconnect"}
+            {"kind": "Error", "message": "..."}
         """
-        return self._native.activity_stream(market_id)
+        return self._native.session_events()

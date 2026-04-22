@@ -1,4 +1,4 @@
-//! Multiplexed WebSocket event types (openpx 0.2 surface).
+//! Multiplexed WebSocket event types.
 //!
 //! A single `WsUpdate` stream carries every per-market event — snapshots, deltas,
 //! fills, trades, and exchange-specific escape-hatch payloads. Connection-level
@@ -6,13 +6,18 @@
 //! `SessionEvent` stream so a reconnect is one event, not 576.
 //!
 //! Timestamps are dual-clock by design:
-//! - `exchange_ts` — exchange-authoritative millis since epoch for cross-stream
-//!   ordering and feed-lag measurement.
-//! - `local_ts` — `std::time::Instant` captured the moment the socket read
-//!   returned, before any parse. Monotonic; correct under NTP adjustments.
+//! - `exchange_ts: Option<u64>` — exchange-authoritative millis since epoch for
+//!   cross-stream ordering and feed-lag measurement.
+//! - `local_ts: Instant` — captured the moment the socket read returned, before
+//!   any parse. Monotonic; correct under NTP adjustments. Skipped during
+//!   serialization since `Instant` has no portable representation.
+//! - `local_ts_ms: u64` — wall-clock millis captured alongside `local_ts`,
+//!   suitable for FFI / NDJSON archival when serialization is required.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::WebSocketError;
 use crate::models::{ChangeVec, Orderbook};
@@ -21,16 +26,21 @@ use crate::websocket::traits::{ActivityFill, ActivityTrade};
 /// Every per-market event the WebSocket surface emits. Tagged union with a
 /// single escape hatch (`Raw`) for exchange-specific payloads we haven't
 /// normalized yet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(tag = "kind")]
 pub enum WsUpdate {
     /// Full orderbook snapshot. Caller should replace any cached book for this
-    /// `market_id`. Emitted on initial subscribe, after reconnect, and on any
+    /// `market_id`. Emitted on initial subscribe and after any
     /// `BookInvalidated` recovery path.
     Snapshot {
         market_id: String,
         book: Arc<Orderbook>,
         exchange_ts: Option<u64>,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
+        local_ts_ms: u64,
         seq: u64,
     },
     /// Incremental change to an existing book. Apply in-place, or discard if
@@ -40,50 +50,58 @@ pub enum WsUpdate {
         market_id: String,
         changes: ChangeVec,
         exchange_ts: Option<u64>,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
+        local_ts_ms: u64,
         seq: u64,
     },
     /// A public trade (any counterparty). Not tied to a local order.
     Trade {
         trade: ActivityTrade,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
+        local_ts_ms: u64,
     },
-    /// A fill on one of the authenticated user's orders. Emitted in addition
-    /// to any `OrderHandle` resolution — the stream is the source of truth for
-    /// passive observers; `OrderHandle.await` is the ergonomic path for the
-    /// submitter. We deliberately do not dedupe here based on local
-    /// attribution — hidden filtering is a debugging hazard in trading
-    /// systems.
+    /// A fill on one of the authenticated user's orders.
     Fill {
         fill: ActivityFill,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
+        local_ts_ms: u64,
     },
-    /// Exchange-specific payload that hasn't been normalized. Consumers should
-    /// treat this as best-effort debug surface; structure is not stable.
+    /// Exchange-specific payload that hasn't been normalized. Treat as
+    /// best-effort debug surface; structure is not stable.
     Raw {
-        exchange: &'static str,
+        exchange: String,
         value: serde_json::Value,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
+        local_ts_ms: u64,
     },
 }
 
 /// Connection-level events, emitted on a channel separate from `WsUpdate` so
-/// a reconnect is observable as a single global signal rather than 576
-/// per-market stale flags.
-#[derive(Debug, Clone)]
+/// a reconnect is observable as a single global signal rather than per-market.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(tag = "kind")]
 pub enum SessionEvent {
     /// Initial socket establishment.
     Connected,
-    /// Socket re-established after an observed outage. `gap` is the wall-clock
-    /// interval between the last received message and this event. Callers who
-    /// maintain per-market books should discard them and wait for the next
-    /// `WsUpdate::Snapshot` for each subscribed market.
+    /// Socket re-established after an observed outage. `gap_ms` is the
+    /// wall-clock interval between the last received message and this event.
+    /// Callers who maintain per-market books should discard them and wait for
+    /// the next `WsUpdate::Snapshot` for each subscribed market.
     Reconnected {
-        gap: Duration,
+        gap_ms: u64,
     },
     /// Outbound dispatch channel overflowed — a slow consumer missed deltas.
-    /// Unlike `tokio::sync::broadcast` which silently skips ahead, openpx 0.2
-    /// raises this explicitly and invalidates every subscribed book, because
+    /// Unlike `tokio::sync::broadcast` which silently skips ahead, openpx
+    /// raises this explicitly and invalidates every affected book, because
     /// a missed delta corrupts book state in a way the caller cannot detect
     /// from the stream alone.
     Lagged {
@@ -93,20 +111,41 @@ pub enum SessionEvent {
     },
     /// A specific market's book is no longer trustworthy. Caller should
     /// discard its cache for that `market_id` and wait for the next
-    /// `WsUpdate::Snapshot`. Emitted alongside `Lagged`, after reconnects
-    /// without auto-resync, or on exchange-side sequence resets.
+    /// `WsUpdate::Snapshot`.
     BookInvalidated {
         market_id: String,
         reason: InvalidationReason,
     },
-    /// A non-fatal error was observed. The session continues; the caller is
-    /// informed in case they want to log or alert.
-    Error(WebSocketError),
+    /// A non-fatal error observed on the connection. The session continues;
+    /// the caller is informed in case they want to log or alert.
+    Error {
+        message: String,
+    },
+}
+
+impl SessionEvent {
+    /// Construct a `Reconnected` event from a `Duration`-shaped gap. Saturating
+    /// cast at u64::MAX keeps the type stable for callers serializing to JSON.
+    #[inline]
+    pub fn reconnected(gap: Duration) -> Self {
+        Self::Reconnected {
+            gap_ms: u64::try_from(gap.as_millis()).unwrap_or(u64::MAX),
+        }
+    }
+
+    /// Convenience constructor that stringifies the upstream error.
+    #[inline]
+    pub fn error(err: WebSocketError) -> Self {
+        Self::Error {
+            message: err.to_string(),
+        }
+    }
 }
 
 /// Why a specific book was invalidated — handed to users so they can decide
 /// whether to alert, log, or handle it silently.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum InvalidationReason {
     Reconnect,
     Lag,
@@ -115,7 +154,7 @@ pub enum InvalidationReason {
 }
 
 impl WsUpdate {
-    /// Uniform accessor for the ingest-side monotonic timestamp. Useful for
+    /// Uniform accessor for the ingest-side monotonic timestamp. Use for
     /// metrics and cross-update ordering; for per-market sequencing prefer
     /// the `seq` field on `Snapshot` / `Delta`.
     #[inline]
@@ -129,11 +168,21 @@ impl WsUpdate {
         }
     }
 
-    /// Market ID for events that are scoped to a single market. `None` for
-    /// `Raw` payloads that haven't been normalized. `Fill` / `Trade` callers
-    /// should read the underlying `ActivityFill::market_id` /
-    /// `ActivityTrade::market_id` directly — this accessor stays narrow to
-    /// avoid false matches on multi-market events.
+    /// Wall-clock millis paired with `local_ts`. Use for serialization and
+    /// any cross-process correlation; not monotonic.
+    #[inline]
+    pub fn local_ts_ms(&self) -> u64 {
+        match self {
+            Self::Snapshot { local_ts_ms, .. }
+            | Self::Delta { local_ts_ms, .. }
+            | Self::Trade { local_ts_ms, .. }
+            | Self::Fill { local_ts_ms, .. }
+            | Self::Raw { local_ts_ms, .. } => *local_ts_ms,
+        }
+    }
+
+    /// Market ID for events scoped to a single market. `None` for `Raw`
+    /// payloads that haven't been normalized.
     #[inline]
     pub fn market_id(&self) -> Option<&str> {
         match self {
@@ -145,3 +194,12 @@ impl WsUpdate {
     }
 }
 
+/// Capture both clocks at the same call site. Use this at the socket-read
+/// boundary so every emitted update carries paired monotonic + wall-clock
+/// timestamps.
+#[inline]
+pub fn now_pair() -> (Instant, u64) {
+    let local_ts = Instant::now();
+    let local_ts_ms = chrono::Utc::now().timestamp_millis() as u64;
+    (local_ts, local_ts_ms)
+}

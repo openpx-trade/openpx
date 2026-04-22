@@ -134,22 +134,6 @@ pub struct PriceLevelChange {
 /// Falls back to heap only if > 4 changes in a single update (rare).
 pub type ChangeVec = SmallVec<[PriceLevelChange; 4]>;
 
-/// Emitted by exchange WS implementations through OrderbookStream.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OrderbookUpdate {
-    /// Full orderbook snapshot (initial connect, reconnect).
-    Snapshot(Orderbook),
-    /// Incremental change. Changes only — NO full book clone.
-    /// WsManager maintains its own cached book and applies changes in-place.
-    Delta {
-        changes: ChangeVec,
-        timestamp: Option<DateTime<Utc>>,
-    },
-    /// Connection was lost and re-established. All orderbook state is potentially stale.
-    /// The next Snapshot for each market is a full reset, not a continuation.
-    Reconnected,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevel {

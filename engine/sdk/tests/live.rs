@@ -1108,7 +1108,6 @@ macro_rules! exchange_tests {
                 };
                 let market_id = &markets[0].id;
 
-                use futures::StreamExt;
                 use px_core::OrderBookWebSocket;
 
                 // Install rustls crypto provider (needed for TLS connections in tests)
@@ -1123,6 +1122,9 @@ macro_rules! exchange_tests {
                     }
                 };
 
+                let updates = ws.updates();
+                let target = market_id.clone();
+
                 if let Err(e) = ws.connect().await {
                     eprintln!(
                         "SKIP {}/websocket: connect failed: {e}",
@@ -1132,38 +1134,44 @@ macro_rules! exchange_tests {
                 }
                 ws.subscribe(market_id).await.expect("ws subscribe failed");
 
-                let mut stream = ws
-                    .orderbook_stream(market_id)
-                    .await
-                    .expect("orderbook_stream failed");
-
-                // Wait for at least one update within 15 seconds
-                let result = tokio::time::timeout(Duration::from_secs(15), stream.next()).await;
-
-                ws.disconnect().await.expect("ws disconnect failed");
-
-                match result {
-                    Ok(Some(Ok(ws_msg))) => match ws_msg.data {
-                        px_core::OrderbookUpdate::Snapshot(book) => {
+                // Wait up to 15s for the next snapshot/delta on the requested market.
+                let deadline = std::time::Instant::now() + Duration::from_secs(15);
+                let mut got_book_event = false;
+                while std::time::Instant::now() < deadline {
+                    let remaining = deadline - std::time::Instant::now();
+                    let result = tokio::time::timeout(remaining, updates.next()).await;
+                    match result {
+                        Ok(Some(px_core::WsUpdate::Snapshot { market_id: m, book, .. }))
+                            if m == target =>
+                        {
                             assert!(
                                 !book.bids.is_empty() || !book.asks.is_empty(),
                                 "snapshot should have some levels"
                             );
+                            got_book_event = true;
+                            break;
                         }
-                        px_core::OrderbookUpdate::Delta { changes, .. } => {
+                        Ok(Some(px_core::WsUpdate::Delta { market_id: m, changes, .. }))
+                            if m == target =>
+                        {
                             assert!(!changes.is_empty(), "delta should have at least one change");
+                            got_book_event = true;
+                            break;
                         }
-                        px_core::OrderbookUpdate::Reconnected => {}
-                    },
-                    Ok(Some(Err(e))) => panic!("ws stream error: {e:?}"),
-                    Ok(None) => panic!("ws stream ended unexpectedly"),
-                    Err(_) => {
-                        eprintln!(
-                            "WARN: no orderbook update within 15s for {} market {}",
-                            stringify!($exchange_id),
-                            market_id
-                        );
+                        Ok(Some(_)) => continue, // other markets / event types
+                        Ok(None) => panic!("ws update stream ended unexpectedly"),
+                        Err(_) => break, // timed out
                     }
+                }
+
+                ws.disconnect().await.expect("ws disconnect failed");
+
+                if !got_book_event {
+                    eprintln!(
+                        "WARN: no orderbook update within 15s for {} market {}",
+                        stringify!($exchange_id),
+                        market_id
+                    );
                 }
             }
         }

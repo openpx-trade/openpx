@@ -526,12 +526,10 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
         eprintln!("error: failed to create {id} websocket: {e}");
         std::process::exit(1);
     });
+    let updates = ws.updates();
+    let target = market_id.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
-        std::process::exit(1);
-    });
-    let mut stream = ws.orderbook_stream(market_id).await.unwrap_or_else(|e| {
-        eprintln!("error: failed to subscribe to orderbook: {e}");
         std::process::exit(1);
     });
     ws.subscribe(market_id).await.unwrap_or_else(|e| {
@@ -539,10 +537,16 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
         std::process::exit(1);
     });
     eprintln!("streaming orderbook for {market_id} (Ctrl+C to stop)...");
-    while let Some(update) = stream.next().await {
-        match update {
-            Ok(msg) => print_json(&msg),
-            Err(e) => eprintln!("error: {e}"),
+    while let Some(update) = updates.next().await {
+        // Filter to snapshots/deltas for the requested market_id.
+        match &update {
+            px_core::WsUpdate::Snapshot { market_id: m, .. }
+            | px_core::WsUpdate::Delta { market_id: m, .. }
+                if m == &target =>
+            {
+                print_json(&update);
+            }
+            _ => {}
         }
     }
 }
@@ -573,12 +577,10 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
         }
     }
 
+    let updates = ws.updates();
+    let target = market_id.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
-        std::process::exit(1);
-    });
-    let mut stream = ws.activity_stream(market_id).await.unwrap_or_else(|e| {
-        eprintln!("error: failed to subscribe to activity: {e}");
         std::process::exit(1);
     });
     ws.subscribe(market_id).await.unwrap_or_else(|e| {
@@ -586,10 +588,15 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
         std::process::exit(1);
     });
     eprintln!("streaming activity for {market_id} (Ctrl+C to stop)...");
-    while let Some(event) = stream.next().await {
-        match event {
-            Ok(msg) => print_json(&msg),
-            Err(e) => eprintln!("error: {e}"),
+    while let Some(update) = updates.next().await {
+        match &update {
+            px_core::WsUpdate::Trade { trade, .. } if trade.market_id == target => {
+                print_json(&update);
+            }
+            px_core::WsUpdate::Fill { fill, .. } if fill.market_id == target => {
+                print_json(&update);
+            }
+            _ => {}
         }
     }
 }

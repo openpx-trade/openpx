@@ -48,8 +48,9 @@ fn main() {
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::OrderbookHistoryRequest),
         schema_for!(px_core::ExchangeInfo),
-        // WebSocket activity types
-        schema_for!(px_core::ActivityEvent),
+        // WebSocket types
+        schema_for!(px_core::WsUpdate),
+        schema_for!(px_core::SessionEvent),
         schema_for!(px_core::ActivityTrade),
         schema_for!(px_core::ActivityFill),
     ];

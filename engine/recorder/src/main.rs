@@ -7,13 +7,11 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use chrono::Utc;
 use clap::Parser;
-use futures::StreamExt;
 use openpx::{ExchangeInner, WebSocketInner};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use px_core::models::OrderbookUpdate;
-use px_core::websocket::{OrderBookWebSocket, OrderbookStream};
+use px_core::websocket::{OrderBookWebSocket, UpdateStream, WsUpdate};
 use px_core::FetchMarketsParams;
 use px_core::MarketStatusFilter;
 use tokio::sync::Mutex;
@@ -188,87 +186,95 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
     all
 }
 
-/// Read orderbook updates from a pre-created stream for a single market.
+/// Drain the multiplexed update stream and push orderbook snapshot/delta
+/// rows into the shared buffer. One task per WebSocket — the dispatcher
+/// already multiplexes all markets onto a single channel.
 async fn record_from_stream(
     exchange_id: &str,
-    market_id: &str,
-    mut stream: OrderbookStream,
+    stream: UpdateStream,
     rows: Arc<Mutex<Vec<ObRow>>>,
 ) {
-    // Track asset_id from the most recent snapshot so deltas can carry it
-    let mut last_asset_id = String::new();
+    use std::collections::HashMap;
+    // Per-market asset_id cache so deltas inherit the asset_id from the
+    // most-recent snapshot.
+    let mut last_asset_id: HashMap<String, String> = HashMap::new();
 
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(ws_msg) => {
-                let now = ws_msg.received_at.timestamp_micros();
-                let sequence = ws_msg.seq;
+    while let Some(update) = stream.next().await {
+        let now = chrono::Utc::now().timestamp_micros();
+        match update {
+            WsUpdate::Snapshot {
+                market_id,
+                book,
+                exchange_ts,
+                seq,
+                ..
+            } => {
+                last_asset_id.insert(market_id.clone(), book.asset_id.clone());
+                let ts = exchange_ts.map(|ms| (ms as i64) * 1000).unwrap_or(now);
 
-                match ws_msg.data {
-                    OrderbookUpdate::Snapshot(ob) => {
-                        last_asset_id = ob.asset_id.clone();
-                        let ts = ob.timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
-
-                        let mut buf = rows.lock().await;
-                        for level in &ob.bids {
-                            buf.push(ObRow {
-                                timestamp_us: ts,
-                                exchange: exchange_id.to_string(),
-                                market_id: ob.market_id.clone(),
-                                asset_id: ob.asset_id.clone(),
-                                update_type: "snapshot".into(),
-                                side: "bid".into(),
-                                price: level.price.to_f64(),
-                                size: level.size,
-                                last_update_id: ob.last_update_id,
-                                sequence,
-                            });
-                        }
-                        for level in &ob.asks {
-                            buf.push(ObRow {
-                                timestamp_us: ts,
-                                exchange: exchange_id.to_string(),
-                                market_id: ob.market_id.clone(),
-                                asset_id: ob.asset_id.clone(),
-                                update_type: "snapshot".into(),
-                                side: "ask".into(),
-                                price: level.price.to_f64(),
-                                size: level.size,
-                                last_update_id: ob.last_update_id,
-                                sequence,
-                            });
-                        }
-                    }
-                    OrderbookUpdate::Delta { changes, timestamp } => {
-                        let ts = timestamp.map(|t| t.timestamp_micros()).unwrap_or(now);
-                        let mut buf = rows.lock().await;
-                        for change in changes.iter() {
-                            buf.push(ObRow {
-                                timestamp_us: ts,
-                                exchange: exchange_id.to_string(),
-                                market_id: market_id.to_string(),
-                                asset_id: last_asset_id.clone(),
-                                update_type: "delta".into(),
-                                side: match change.side {
-                                    px_core::models::PriceLevelSide::Bid => "bid".into(),
-                                    px_core::models::PriceLevelSide::Ask => "ask".into(),
-                                },
-                                price: change.price.to_f64(),
-                                size: change.size,
-                                last_update_id: None,
-                                sequence,
-                            });
-                        }
-                    }
-                    OrderbookUpdate::Reconnected => {
-                        eprintln!("[{exchange_id}] reconnected on {market_id}");
-                    }
+                let mut buf = rows.lock().await;
+                for level in &book.bids {
+                    buf.push(ObRow {
+                        timestamp_us: ts,
+                        exchange: exchange_id.to_string(),
+                        market_id: book.market_id.clone(),
+                        asset_id: book.asset_id.clone(),
+                        update_type: "snapshot".into(),
+                        side: "bid".into(),
+                        price: level.price.to_f64(),
+                        size: level.size,
+                        last_update_id: book.last_update_id,
+                        sequence: seq,
+                    });
+                }
+                for level in &book.asks {
+                    buf.push(ObRow {
+                        timestamp_us: ts,
+                        exchange: exchange_id.to_string(),
+                        market_id: book.market_id.clone(),
+                        asset_id: book.asset_id.clone(),
+                        update_type: "snapshot".into(),
+                        side: "ask".into(),
+                        price: level.price.to_f64(),
+                        size: level.size,
+                        last_update_id: book.last_update_id,
+                        sequence: seq,
+                    });
                 }
             }
-            Err(e) => {
-                eprintln!("[{exchange_id}] ws error on {market_id}: {e}");
-                break;
+            WsUpdate::Delta {
+                market_id,
+                changes,
+                exchange_ts,
+                seq,
+                ..
+            } => {
+                let ts = exchange_ts.map(|ms| (ms as i64) * 1000).unwrap_or(now);
+                let asset = last_asset_id
+                    .get(&market_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut buf = rows.lock().await;
+                for change in changes.iter() {
+                    buf.push(ObRow {
+                        timestamp_us: ts,
+                        exchange: exchange_id.to_string(),
+                        market_id: market_id.clone(),
+                        asset_id: asset.clone(),
+                        update_type: "delta".into(),
+                        side: match change.side {
+                            px_core::models::PriceLevelSide::Bid => "bid".into(),
+                            px_core::models::PriceLevelSide::Ask => "ask".into(),
+                        },
+                        price: change.price.to_f64(),
+                        size: change.size,
+                        last_update_id: None,
+                        sequence: seq,
+                    });
+                }
             }
+            // Trade / Fill / Raw aren't recorded into the orderbook parquet.
+            _ => {}
         }
     }
 }
@@ -318,6 +324,10 @@ async fn main() {
         std::process::exit(1);
     });
 
+    // Acquire the multiplexed update stream BEFORE connecting so we don't miss
+    // the initial snapshots on a fast venue.
+    let updates = ws.updates();
+
     if let Err(e) = ws.connect().await {
         eprintln!("[{exchange_id}] failed to connect websocket: {e}");
         std::process::exit(1);
@@ -327,42 +337,29 @@ async fn main() {
         markets.len()
     );
 
-    // Sequentially create streams and subscribe (requires &mut self)
-    let mut market_streams = Vec::new();
+    let mut subscribed = 0usize;
     for (market_id, _token_ids) in &markets {
-        match ws.orderbook_stream(market_id).await {
-            Ok(stream) => {
-                if let Err(e) = ws.subscribe(market_id).await {
-                    eprintln!("[{exchange_id}] subscribe error for {market_id}: {e}");
-                    continue;
-                }
-                market_streams.push((market_id.clone(), stream));
-            }
-            Err(e) => {
-                eprintln!("[{exchange_id}] stream error for {market_id}: {e}");
-            }
+        match ws.subscribe(market_id).await {
+            Ok(()) => subscribed += 1,
+            Err(e) => eprintln!("[{exchange_id}] subscribe error for {market_id}: {e}"),
         }
     }
-    eprintln!(
-        "[{exchange_id}] subscribed to {} markets",
-        market_streams.len()
-    );
+    eprintln!("[{exchange_id}] subscribed to {subscribed} markets");
 
-    // Spawn one read task per market, each owning its stream
-    let mut handles = Vec::new();
-    for (market_id, stream) in market_streams {
+    // One reader task drains the dispatcher's multiplexed stream for all markets.
+    let reader = tokio::spawn({
         let rows = rows.clone();
         let eid = exchange_id.clone();
-
-        handles.push(tokio::spawn(async move {
-            record_from_stream(&eid, &market_id, stream, rows).await;
-        }));
-    }
+        async move {
+            record_from_stream(&eid, updates, rows).await;
+        }
+    });
 
     // Keep ws alive during recording, then clean up
     sleep(RECORD_DURATION + Duration::from_secs(2)).await;
     ws.disconnect().await.ok();
 
+    let handles = vec![reader];
     for h in &handles {
         h.abort();
     }

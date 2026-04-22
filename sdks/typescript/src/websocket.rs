@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::StreamExt;
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
@@ -78,13 +77,12 @@ impl WebSocket {
         format!("{state:?}")
     }
 
-    /// Subscribe to orderbook updates via callback.
-    /// The callback receives each update as a JSON object.
-    /// Returns when the stream ends or an error occurs.
+    /// Subscribe to the multiplexed update stream via callback. Each call
+    /// delivers one `WsUpdate` (Snapshot, Delta, Trade, Fill, or Raw) as a
+    /// JSON object with a `kind` discriminator.
     #[napi]
-    pub async fn on_orderbook_update(
+    pub async fn on_update(
         &self,
-        market_id: String,
         #[napi(ts_arg_type = "(err: Error | null, update: any) => void")]
         callback: ThreadsafeFunction<serde_json::Value, ErrorStrategy::CalleeHandled>,
     ) -> Result<()> {
@@ -92,38 +90,25 @@ impl WebSocket {
         let rt = get_runtime();
 
         let stream = rt
-            .spawn(async move { ws.lock().await.orderbook_stream(&market_id).await })
+            .spawn(async move { ws.lock().await.updates() })
             .await
-            .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
 
         rt.spawn(async move {
-            let mut stream = stream;
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(update) => {
-                        let val = serde_json::to_value(&update).unwrap_or_default();
-                        callback.call(Ok(val), ThreadsafeFunctionCallMode::NonBlocking);
-                    }
-                    Err(e) => {
-                        callback.call(
-                            Err(Error::from_reason(e.to_string())),
-                            ThreadsafeFunctionCallMode::NonBlocking,
-                        );
-                        break;
-                    }
-                }
+            while let Some(update) = stream.next().await {
+                let val = serde_json::to_value(&update).unwrap_or_default();
+                callback.call(Ok(val), ThreadsafeFunctionCallMode::NonBlocking);
             }
         });
 
         Ok(())
     }
 
-    /// Subscribe to activity events (trades, fills) via callback.
+    /// Subscribe to connection-level session events via callback
+    /// (Connected, Reconnected, Lagged, BookInvalidated, Error).
     #[napi]
-    pub async fn on_activity_update(
+    pub async fn on_session_event(
         &self,
-        market_id: String,
         #[napi(ts_arg_type = "(err: Error | null, event: any) => void")]
         callback: ThreadsafeFunction<serde_json::Value, ErrorStrategy::CalleeHandled>,
     ) -> Result<()> {
@@ -131,27 +116,14 @@ impl WebSocket {
         let rt = get_runtime();
 
         let stream = rt
-            .spawn(async move { ws.lock().await.activity_stream(&market_id).await })
+            .spawn(async move { ws.lock().await.session_events() })
             .await
-            .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
 
         rt.spawn(async move {
-            let mut stream = stream;
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(event) => {
-                        let val = serde_json::to_value(&event).unwrap_or_default();
-                        callback.call(Ok(val), ThreadsafeFunctionCallMode::NonBlocking);
-                    }
-                    Err(e) => {
-                        callback.call(
-                            Err(Error::from_reason(e.to_string())),
-                            ThreadsafeFunctionCallMode::NonBlocking,
-                        );
-                        break;
-                    }
-                }
+            while let Some(event) = stream.next().await {
+                let val = serde_json::to_value(&event).unwrap_or_default();
+                callback.call(Ok(val), ThreadsafeFunctionCallMode::NonBlocking);
             }
         });
 
