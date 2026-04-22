@@ -20,6 +20,9 @@ class OpenPX(RootModel[Any]):
 class ActivityTrade(BaseModel):
     aggressor_side: str | None = None
     asset_id: str
+    exchange_ts_ms: conint(ge=0) | None = Field(
+        None, description="Exchange-authoritative timestamp (millis since epoch)."
+    )
     fee_rate_bps: conint(ge=0) | None = Field(
         None,
         description="Fee rate in basis points (e.g. 0 = no fee, 200 = 2%). Polymarket `last_trade_price` events populate this.",
@@ -30,7 +33,6 @@ class ActivityTrade(BaseModel):
     side: str | None = None
     size: float
     source_channel: str
-    timestamp: AwareDatetime | None = None
     trade_id: str | None = None
 
 
@@ -321,23 +323,15 @@ class Kind8(Enum):
     Fill = "Fill"
 
 
-class Kind9(Enum):
-    Raw = "Raw"
-
-
-class WsUpdate5(BaseModel):
-    exchange: str
-    kind: Kind9
-    local_ts_ms: conint(ge=0)
-    value: Any
-
-
 class Number(RootModel[float]):
     root: float
 
 
 class ActivityFill(BaseModel):
     asset_id: str
+    exchange_ts_ms: conint(ge=0) | None = Field(
+        None, description="Exchange-authoritative timestamp (millis since epoch)."
+    )
     fee: float | None = Field(
         None,
         description="Fee charged for this fill. Opinion: `fee` from `trade.record.new`.",
@@ -351,7 +345,6 @@ class ActivityFill(BaseModel):
     side: str | None = None
     size: float
     source_channel: str
-    timestamp: AwareDatetime | None = None
     tx_hash: str | None = Field(
         None,
         description="On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.",
@@ -567,9 +560,9 @@ class WsUpdate1(BaseModel):
     seq: conint(ge=0)
 
 
-class WsUpdate(RootModel[WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5]):
-    root: WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5 = Field(
+class WsUpdate(RootModel[WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4]):
+    root: WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 = Field(
         ...,
-        description="Every per-market event the WebSocket surface emits. Tagged union with a single escape hatch (`Raw`) for exchange-specific payloads we haven't normalized yet.",
+        description="Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.",
         title="WsUpdate",
     )
