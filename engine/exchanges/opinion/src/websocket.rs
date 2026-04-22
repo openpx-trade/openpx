@@ -1,7 +1,9 @@
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -11,8 +13,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use px_core::websocket::ndjson::NdjsonWriter;
 use px_core::{
     ActivityEvent, ActivityFill, ActivityStream, ActivityTrade, AtomicWebSocketState, ChangeVec,
-    FixedPrice, LiquidityRole, OrderBookWebSocket, OrderbookStream, OrderbookUpdate,
-    PriceLevelChange, PriceLevelSide, WebSocketError, WebSocketState, WsMessage,
+    FixedPrice, InvalidationReason, LiquidityRole, OrderBookWebSocket, OrderbookStream,
+    OrderbookUpdate, PriceLevelChange, PriceLevelSide, SessionEvent, SessionStream, UpdateStream,
+    WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig, WsMessage, WsUpdate,
     WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
@@ -26,12 +29,21 @@ type ActivitySender = broadcast::Sender<Result<WsMessage<ActivityEvent>, WebSock
 type OrderbookSenderMap = Arc<RwLock<HashMap<String, (OrderbookSender, Arc<AtomicU64>)>>>;
 type ActivitySenderMap = Arc<RwLock<HashMap<String, (ActivitySender, Arc<AtomicU64>)>>>;
 
+/// Per-market sequence counter map for the 0.2 dispatch path.
+type SeqMap = Arc<RwLock<HashMap<String, Arc<AtomicU64>>>>;
+
 pub struct OpinionWebSocket {
     config: OpinionConfig,
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashSet<String>>>,
     orderbook_senders: OrderbookSenderMap,
     activity_senders: ActivitySenderMap,
+    /// 0.2 multiplexed dispatch path. Parallel with broadcast during migration.
+    dispatcher: Arc<WsDispatcher>,
+    /// Per-market 0.2 sequence counters.
+    seqs: SeqMap,
+    /// Wall-clock of the last successfully received WS message.
+    last_message_at: Arc<RwLock<Option<DateTime<Utc>>>>,
     write_tx: Arc<Mutex<Option<futures::channel::mpsc::UnboundedSender<Message>>>>,
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     auto_reconnect: bool,
@@ -52,12 +64,53 @@ impl OpinionWebSocket {
             subscriptions: Arc::new(RwLock::new(HashSet::new())),
             orderbook_senders: Arc::new(RwLock::new(HashMap::new())),
             activity_senders: Arc::new(RwLock::new(HashMap::new())),
+            dispatcher: Arc::new(WsDispatcher::new(WsDispatcherConfig::default())),
+            seqs: Arc::new(RwLock::new(HashMap::new())),
+            last_message_at: Arc::new(RwLock::new(None)),
             write_tx: Arc::new(Mutex::new(None)),
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect: true,
             reconnect_attempts: Arc::new(Mutex::new(0)),
             ndjson_writer: None,
         })
+    }
+
+    /// Allocate-or-fetch the per-market sequence counter for the 0.2 dispatch
+    /// path. Lazy on first emit.
+    async fn dispatcher_seq(&self, market_id: &str) -> Arc<AtomicU64> {
+        {
+            let map = self.seqs.read().await;
+            if let Some(s) = map.get(market_id) {
+                return s.clone();
+            }
+        }
+        let mut map = self.seqs.write().await;
+        map.entry(market_id.to_string())
+            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+            .clone()
+    }
+
+    /// Emit a `WsUpdate` through the 0.2 dispatcher. On overflow raises
+    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)`.
+    async fn dispatch(&self, update: WsUpdate) {
+        let market = update.market_id().map(str::to_string);
+        if !self.dispatcher.try_send_update(update) {
+            self.dispatcher
+                .send_session(SessionEvent::Lagged {
+                    dropped: 1,
+                    first_seq: 0,
+                    last_seq: 0,
+                })
+                .await;
+            if let Some(market_id) = market {
+                self.dispatcher
+                    .send_session(SessionEvent::BookInvalidated {
+                        market_id,
+                        reason: InvalidationReason::Lag,
+                    })
+                    .await;
+            }
+        }
     }
 
     pub fn with_ndjson_writer(mut self, writer: impl std::io::Write + Send + 'static) -> Self {
@@ -140,7 +193,14 @@ impl OpinionWebSocket {
         Ok(())
     }
 
-    async fn handle_message(&self, text: &str) {
+    /// Back-compat entry point for tests; production read loops call
+    /// `handle_message_at` with a monotonic receive timestamp.
+    #[cfg(test)]
+    pub(crate) async fn handle_message(&self, text: &str) {
+        self.handle_message_at(text, Instant::now()).await;
+    }
+
+    async fn handle_message_at(&self, text: &str, local_ts: Instant) {
         let value: serde_json::Value = match serde_json::from_str(text) {
             Ok(v) => v,
             Err(_) => return,
@@ -149,15 +209,17 @@ impl OpinionWebSocket {
         let msg_type = value.get("msgType").and_then(|v| v.as_str()).unwrap_or("");
 
         match msg_type {
-            "market.depth.diff" => self.handle_depth_diff(&value).await,
-            "market.last.trade" | "market.last.price" => self.handle_last_trade(&value).await,
-            "trade.order.update" => self.handle_order_update(&value).await,
-            "trade.record.new" => self.handle_trade_executed(&value).await,
+            "market.depth.diff" => self.handle_depth_diff(&value, local_ts).await,
+            "market.last.trade" | "market.last.price" => {
+                self.handle_last_trade(&value, local_ts).await
+            }
+            "trade.order.update" => self.handle_order_update(&value, local_ts).await,
+            "trade.record.new" => self.handle_trade_executed(&value, local_ts).await,
             _ => {}
         }
     }
 
-    async fn handle_depth_diff(&self, value: &serde_json::Value) {
+    async fn handle_depth_diff(&self, value: &serde_json::Value, local_ts: Instant) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -226,6 +288,20 @@ impl OpinionWebSocket {
             .and_then(|v| v.as_i64())
             .and_then(chrono::DateTime::from_timestamp_millis);
 
+        // 0.2 dispatch path.
+        let dispatch_seq = self
+            .dispatcher_seq(&market_id)
+            .await
+            .fetch_add(1, Ordering::Relaxed);
+        self.dispatch(WsUpdate::Delta {
+            market_id: market_id.clone(),
+            changes: changes.clone(),
+            exchange_ts: timestamp.map(|t| t.timestamp_millis() as u64),
+            local_ts,
+            seq: dispatch_seq,
+        })
+        .await;
+
         let senders = self.orderbook_senders.read().await;
         if let Some((sender, seq)) = senders.get(&market_id) {
             let msg = WsMessage {
@@ -241,7 +317,7 @@ impl OpinionWebSocket {
         }
     }
 
-    async fn handle_last_trade(&self, value: &serde_json::Value) {
+    async fn handle_last_trade(&self, value: &serde_json::Value, local_ts: Instant) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -286,7 +362,7 @@ impl OpinionWebSocket {
             .and_then(|v| v.as_i64())
             .and_then(chrono::DateTime::from_timestamp_millis);
 
-        let event = ActivityEvent::Trade(ActivityTrade {
+        let trade = ActivityTrade {
             market_id: market_id.clone(),
             asset_id: token_id,
             trade_id: None,
@@ -298,7 +374,16 @@ impl OpinionWebSocket {
             fee_rate_bps: None,
             timestamp,
             source_channel: Cow::Borrowed("market.last.trade"),
-        });
+        };
+
+        // 0.2 dispatch path
+        self.dispatch(WsUpdate::Trade {
+            trade: trade.clone(),
+            local_ts,
+        })
+        .await;
+
+        let event = ActivityEvent::Trade(trade);
 
         let senders = self.activity_senders.read().await;
         if let Some((sender, seq)) = senders.get(&market_id) {
@@ -318,7 +403,7 @@ impl OpinionWebSocket {
     /// Handle `trade.order.update` — user order fill notifications.
     /// Only emits for `orderFill` updates; other types (orderNew, orderCancel, orderConfirm)
     /// are informational and not mapped to ActivityEvent.
-    async fn handle_order_update(&self, value: &serde_json::Value) {
+    async fn handle_order_update(&self, value: &serde_json::Value, local_ts: Instant) {
         let update_type = value
             .get("orderUpdateType")
             .and_then(|v| v.as_str())
@@ -383,7 +468,7 @@ impl OpinionWebSocket {
                 }
             });
 
-        let event = ActivityEvent::Fill(ActivityFill {
+        let fill = ActivityFill {
             market_id: market_id.clone(),
             asset_id: String::new(),
             fill_id: None,
@@ -397,7 +482,16 @@ impl OpinionWebSocket {
             timestamp,
             source_channel: Cow::Borrowed("trade.order.update"),
             liquidity_role: None,
-        });
+        };
+
+        // 0.2 dispatch path
+        self.dispatch(WsUpdate::Fill {
+            fill: fill.clone(),
+            local_ts,
+        })
+        .await;
+
+        let event = ActivityEvent::Fill(fill);
 
         let senders = self.activity_senders.read().await;
         if let Some((sender, seq)) = senders.get(&market_id) {
@@ -416,7 +510,7 @@ impl OpinionWebSocket {
 
     /// Handle `trade.record.new` — confirmed on-chain trade execution.
     /// Each message is a single fill with final on-chain amounts and fee.
-    async fn handle_trade_executed(&self, value: &serde_json::Value) {
+    async fn handle_trade_executed(&self, value: &serde_json::Value, local_ts: Instant) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -491,7 +585,7 @@ impl OpinionWebSocket {
                 }
             });
 
-        let event = ActivityEvent::Fill(ActivityFill {
+        let fill = ActivityFill {
             market_id: market_id.clone(),
             asset_id: String::new(),
             fill_id,
@@ -505,7 +599,16 @@ impl OpinionWebSocket {
             timestamp,
             source_channel: Cow::Borrowed("trade.record.new"),
             liquidity_role,
-        });
+        };
+
+        // 0.2 dispatch path
+        self.dispatch(WsUpdate::Fill {
+            fill: fill.clone(),
+            local_ts,
+        })
+        .await;
+
+        let event = ActivityEvent::Fill(fill);
 
         let senders = self.activity_senders.read().await;
         if let Some((sender, seq)) = senders.get(&market_id) {
@@ -576,6 +679,10 @@ impl OrderBookWebSocket for OpinionWebSocket {
 
         let ndjson_writer = self.ndjson_writer.clone();
 
+        let dispatcher = self.dispatcher.clone();
+        let seqs = self.seqs.clone();
+        let last_message_at = self.last_message_at.clone();
+
         // Build a lightweight handle for the spawned task to dispatch messages
         let ws_handle = OpinionWebSocket {
             config: config.clone(),
@@ -583,6 +690,9 @@ impl OrderBookWebSocket for OpinionWebSocket {
             subscriptions: subscriptions.clone(),
             orderbook_senders: orderbook_senders.clone(),
             activity_senders: activity_senders.clone(),
+            dispatcher: dispatcher.clone(),
+            seqs: seqs.clone(),
+            last_message_at: last_message_at.clone(),
             write_tx: write_tx_clone.clone(),
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect,
@@ -595,9 +705,11 @@ impl OrderBookWebSocket for OpinionWebSocket {
             let read_future = async {
                 let mut read = read;
                 while let Some(msg) = read.next().await {
+                    let local_ts = Instant::now();
                     match msg {
                         Ok(Message::Text(text)) => {
-                            ws_handle.handle_message(&text).await;
+                            *ws_handle.last_message_at.write().await = Some(chrono::Utc::now());
+                            ws_handle.handle_message_at(&text, local_ts).await;
                         }
                         Ok(Message::Ping(data)) => {
                             if let Some(ref tx) = *ws_handle.write_tx.lock().await {
@@ -605,7 +717,15 @@ impl OrderBookWebSocket for OpinionWebSocket {
                             }
                         }
                         Ok(Message::Close(_)) => break,
-                        Err(_) => break,
+                        Err(e) => {
+                            ws_handle
+                                .dispatcher
+                                .send_session(SessionEvent::Error(WebSocketError::Connection(
+                                    e.to_string(),
+                                )))
+                                .await;
+                            break;
+                        }
                         _ => {}
                     }
                 }
@@ -682,7 +802,39 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                 *a = 0;
                             }
 
-                            // Broadcast reconnect event to all orderbook subscribers
+                            // 0.2 dispatch: one global Reconnected + per-market
+                            // BookInvalidated.
+                            {
+                                let now = chrono::Utc::now();
+                                let gap = ws_handle
+                                    .last_message_at
+                                    .read()
+                                    .await
+                                    .and_then(|t| (now - t).to_std().ok())
+                                    .unwrap_or_else(|| Duration::from_secs(0));
+                                ws_handle
+                                    .dispatcher
+                                    .send_session(SessionEvent::Reconnected { gap })
+                                    .await;
+                                let market_ids: Vec<String> = ws_handle
+                                    .subscriptions
+                                    .read()
+                                    .await
+                                    .iter()
+                                    .cloned()
+                                    .collect();
+                                for market_id in market_ids {
+                                    ws_handle
+                                        .dispatcher
+                                        .send_session(SessionEvent::BookInvalidated {
+                                            market_id,
+                                            reason: InvalidationReason::Reconnect,
+                                        })
+                                        .await;
+                                }
+                            }
+
+                            // 0.1 broadcast path (removed in cleanup commit).
                             {
                                 let senders = orderbook_senders.read().await;
                                 for (sender, seq) in senders.values() {
@@ -717,9 +869,12 @@ impl OrderBookWebSocket for OpinionWebSocket {
                             let read_future = async {
                                 let mut read = new_read;
                                 while let Some(msg) = read.next().await {
+                                    let local_ts = Instant::now();
                                     match msg {
                                         Ok(Message::Text(text)) => {
-                                            ws_handle.handle_message(&text).await;
+                                            *ws_handle.last_message_at.write().await =
+                                                Some(chrono::Utc::now());
+                                            ws_handle.handle_message_at(&text, local_ts).await;
                                         }
                                         Ok(Message::Ping(data)) => {
                                             if let Some(ref tx) = *ws_handle.write_tx.lock().await {
@@ -727,7 +882,15 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                             }
                                         }
                                         Ok(Message::Close(_)) => break,
-                                        Err(_) => break,
+                                        Err(e) => {
+                                            ws_handle
+                                                .dispatcher
+                                                .send_session(SessionEvent::Error(
+                                                    WebSocketError::Connection(e.to_string()),
+                                                ))
+                                                .await;
+                                            break;
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -782,6 +945,10 @@ impl OrderBookWebSocket for OpinionWebSocket {
 
         self.set_state(WebSocketState::Connected);
         self.reset_reconnect_attempts().await;
+        *self.last_message_at.write().await = Some(chrono::Utc::now());
+        self.dispatcher
+            .send_session(SessionEvent::Connected)
+            .await;
         self.resubscribe_all().await?;
 
         Ok(())
@@ -899,6 +1066,14 @@ impl OrderBookWebSocket for OpinionWebSocket {
                 .filter_map(|result| async move { result.ok() }),
         ))
     }
+
+    fn updates(&self) -> UpdateStream {
+        self.dispatcher.updates()
+    }
+
+    fn session_events(&self) -> SessionStream {
+        self.dispatcher.session_events()
+    }
 }
 
 #[cfg(test)]
@@ -951,7 +1126,7 @@ mod tests {
             "size": "100"
         });
 
-        ws.handle_depth_diff(&msg).await;
+        ws.handle_depth_diff(&msg, std::time::Instant::now()).await;
 
         let ws_msg = rx.try_recv().unwrap().unwrap();
         match ws_msg.data {
@@ -991,7 +1166,7 @@ mod tests {
             "size": 50
         });
 
-        ws.handle_depth_diff(&msg).await;
+        ws.handle_depth_diff(&msg, std::time::Instant::now()).await;
 
         let ws_msg = rx.try_recv().unwrap().unwrap();
         match ws_msg.data {
@@ -1029,7 +1204,7 @@ mod tests {
             "tokenId": "token_yes_789"
         });
 
-        ws.handle_last_trade(&msg).await;
+        ws.handle_last_trade(&msg, std::time::Instant::now()).await;
 
         let ws_msg = rx.try_recv().unwrap().unwrap();
         match ws_msg.data {
@@ -1074,7 +1249,7 @@ mod tests {
             "createdAt": 1700000000_i64
         });
 
-        ws.handle_order_update(&msg).await;
+        ws.handle_order_update(&msg, std::time::Instant::now()).await;
 
         let ws_msg = rx.try_recv().unwrap().unwrap();
         match ws_msg.data {
@@ -1118,7 +1293,7 @@ mod tests {
             "shares": "10"
         });
 
-        ws.handle_order_update(&msg).await;
+        ws.handle_order_update(&msg, std::time::Instant::now()).await;
 
         assert!(rx.try_recv().is_err());
     }
@@ -1152,7 +1327,7 @@ mod tests {
             "createdAt": 1700000100_i64
         });
 
-        ws.handle_trade_executed(&msg).await;
+        ws.handle_trade_executed(&msg, std::time::Instant::now()).await;
 
         let ws_msg = rx.try_recv().unwrap().unwrap();
         match ws_msg.data {
