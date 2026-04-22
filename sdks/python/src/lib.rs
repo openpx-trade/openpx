@@ -1,5 +1,6 @@
 mod crypto;
 mod error;
+mod events;
 mod exchange;
 mod sports;
 mod stream;
@@ -32,6 +33,20 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<sports::NativeSportsStream>()?;
     m.add_class::<crypto::NativeCryptoPriceWebSocket>()?;
     m.add_class::<crypto::NativeCryptoPriceStream>()?;
+
+    // WsUpdate variants — isinstance-matchable tagged union on the Python side.
+    m.add_class::<events::Snapshot>()?;
+    m.add_class::<events::Delta>()?;
+    m.add_class::<events::Trade>()?;
+    m.add_class::<events::Fill>()?;
+
+    // SessionEvent variants.
+    m.add_class::<events::Connected>()?;
+    m.add_class::<events::Reconnected>()?;
+    m.add_class::<events::Lagged>()?;
+    m.add_class::<events::BookInvalidated>()?;
+    m.add_class::<events::SessionErrorEvent>()?;
+
     error::register_exceptions(m)?;
     Ok(())
 }

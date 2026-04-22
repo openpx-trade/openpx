@@ -330,11 +330,11 @@ impl OpinionWebSocket {
             .unwrap_or("")
             .to_string();
 
-        let timestamp = value
+        let exchange_ts_ms = value
             .get("timestamp")
             .or_else(|| value.get("ts"))
             .and_then(|v| v.as_i64())
-            .and_then(chrono::DateTime::from_timestamp_millis);
+            .and_then(|ts| u64::try_from(ts).ok());
 
         let trade = ActivityTrade {
             market_id: market_id.clone(),
@@ -346,7 +346,7 @@ impl OpinionWebSocket {
             aggressor_side: None,
             outcome: None,
             fee_rate_bps: None,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("market.last.trade"),
         };
 
@@ -415,14 +415,14 @@ impl OpinionWebSocket {
             .map(String::from);
 
         // createdAt may be seconds or milliseconds; if > 1e12, treat as millis
-        let timestamp = value
+        let exchange_ts_ms = value
             .get("createdAt")
             .and_then(|v| v.as_i64())
             .and_then(|ts| {
                 if ts > 1_000_000_000_000 {
-                    chrono::DateTime::from_timestamp_millis(ts)
+                    u64::try_from(ts).ok()
                 } else {
-                    chrono::DateTime::from_timestamp(ts, 0)
+                    u64::try_from(ts).ok().and_then(|s| s.checked_mul(1000))
                 }
             });
 
@@ -437,7 +437,7 @@ impl OpinionWebSocket {
             outcome,
             tx_hash: None,
             fee: None,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("trade.order.update"),
             liquidity_role: None,
         };
@@ -516,14 +516,14 @@ impl OpinionWebSocket {
         });
 
         // createdAt may be seconds or milliseconds; if > 1e12, treat as millis
-        let timestamp = value
+        let exchange_ts_ms = value
             .get("createdAt")
             .and_then(|v| v.as_i64())
             .and_then(|ts| {
                 if ts > 1_000_000_000_000 {
-                    chrono::DateTime::from_timestamp_millis(ts)
+                    u64::try_from(ts).ok()
                 } else {
-                    chrono::DateTime::from_timestamp(ts, 0)
+                    u64::try_from(ts).ok().and_then(|s| s.checked_mul(1000))
                 }
             });
 
@@ -538,7 +538,7 @@ impl OpinionWebSocket {
             outcome,
             tx_hash,
             fee,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("trade.record.new"),
             liquidity_role,
         };

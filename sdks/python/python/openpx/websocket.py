@@ -10,9 +10,9 @@ from openpx._native import NativeWebSocket
 class WebSocket:
     """Real-time WebSocket connection to a prediction market exchange.
 
-    Usage::
+    Usage with structural pattern matching::
 
-        from openpx import Exchange
+        from openpx import Exchange, Snapshot, Delta, Trade, Fill
 
         exchange = Exchange("kalshi", {"api_key_id": "...", "private_key_pem": "..."})
         ws = exchange.websocket()
@@ -20,17 +20,22 @@ class WebSocket:
         ws.subscribe("MARKETID")
 
         for update in ws.updates():
-            kind = update["kind"]
-            if kind == "Snapshot":
-                book = update["book"]
-                ...
-            elif kind == "Delta":
-                changes = update["changes"]
-                ...
-            elif kind in ("Trade", "Fill"):
-                ...
+            match update:
+                case Snapshot(market_id, book, exchange_ts, local_ts_ms, seq):
+                    ...
+                case Delta(market_id, changes, exchange_ts, local_ts_ms, seq):
+                    ...
+                case Trade(trade, local_ts_ms):
+                    ...
+                case Fill(fill, local_ts_ms):
+                    ...
 
         ws.disconnect()
+
+    Or classic isinstance dispatch::
+
+        if isinstance(update, Snapshot):
+            book = update.book
     """
 
     def __init__(self, exchange_id: str, config: Optional[dict[str, Any]] = None) -> None:
@@ -57,15 +62,13 @@ class WebSocket:
         """Current connection state (Disconnected, Connecting, Connected, Reconnecting, Closed)."""
         return self._native.state()
 
-    def updates(self) -> Iterator[dict[str, Any]]:
-        """Multiplexed iterator of `WsUpdate` events for all subscribed markets.
+    def updates(self) -> Iterator[Any]:
+        """Iterator of `WsUpdate` events for all subscribed markets.
 
-        Each item is a tagged dict with a ``kind`` discriminator::
-
-            {"kind": "Snapshot", "market_id": "...", "book": {...}, "exchange_ts": 173..., "local_ts_ms": 173..., "seq": 0}
-            {"kind": "Delta",    "market_id": "...", "changes": [...],     "exchange_ts": ..., "local_ts_ms": ..., "seq": 1}
-            {"kind": "Trade",    "trade": {...}, "local_ts_ms": ...}
-            {"kind": "Fill",     "fill":  {...}, "local_ts_ms": ...}
+        Each item is an instance of `Snapshot`, `Delta`, `Trade`, or `Fill`
+        (importable from `openpx`). Use `match` or `isinstance` to
+        dispatch — every variant exposes the standard `__match_args__`
+        positional binding plus named attributes.
 
         Single-consumer: calling twice on the same WebSocket raises. The
         underlying channel is MPMC at the transport layer, but cloning a
@@ -75,16 +78,11 @@ class WebSocket:
         """
         return self._native.updates()
 
-    def session_events(self) -> Iterator[dict[str, Any]]:
+    def session_events(self) -> Iterator[Any]:
         """Iterator of connection-level events. Single-consumer, take-once.
 
-        Distinct from `updates()` so a reconnect is observable as one event,
-        not per-market. Items::
-
-            {"kind": "Connected"}
-            {"kind": "Reconnected", "gap_ms": 12345}
-            {"kind": "Lagged", "dropped": 1, "first_seq": 0, "last_seq": 0}
-            {"kind": "BookInvalidated", "market_id": "...", "reason": "Reconnect"}
-            {"kind": "Error", "message": "..."}
+        Items are instances of `Connected`, `Reconnected`, `Lagged`,
+        `BookInvalidated`, or `SessionError`. Distinct from `updates()`
+        so one reconnect is observable as one event, not per-market.
         """
         return self._native.session_events()

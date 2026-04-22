@@ -9,6 +9,17 @@ from openpx._native import (
     NetworkError,
     ExchangeError,
     AuthenticationError,
+    # WsUpdate variants — isinstance-matchable
+    Snapshot,
+    Delta,
+    Trade,
+    Fill,
+    # SessionEvent variants
+    Connected,
+    Reconnected,
+    Lagged,
+    BookInvalidated,
+    SessionError,
 )
 
 __all__ = [
@@ -20,4 +31,13 @@ __all__ = [
     "NetworkError",
     "ExchangeError",
     "AuthenticationError",
+    "Snapshot",
+    "Delta",
+    "Trade",
+    "Fill",
+    "Connected",
+    "Reconnected",
+    "Lagged",
+    "BookInvalidated",
+    "SessionError",
 ]

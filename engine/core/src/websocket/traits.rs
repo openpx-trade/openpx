@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -85,6 +84,11 @@ impl AtomicWebSocketState {
 /// Activity events still carried inside `WsUpdate::Trade` / `WsUpdate::Fill`.
 /// Retained as a typed payload alongside the stream rather than as a separate
 /// per-token surface.
+///
+/// `exchange_ts_ms` is exchange-authoritative millis since epoch — uniform
+/// with `WsUpdate::{Snapshot, Delta}::exchange_ts`, so every timestamp on
+/// the WS surface is the same type (`u64` millis). `chrono::DateTime` was
+/// more expressive but cost a representation mismatch at every FFI boundary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ActivityTrade {
@@ -100,7 +104,9 @@ pub struct ActivityTrade {
     /// `last_trade_price` events populate this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee_rate_bps: Option<u32>,
-    pub timestamp: Option<DateTime<Utc>>,
+    /// Exchange-authoritative timestamp (millis since epoch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exchange_ts_ms: Option<u64>,
     pub source_channel: Cow<'static, str>,
 }
 
@@ -121,7 +127,9 @@ pub struct ActivityFill {
     /// Fee charged for this fill. Opinion: `fee` from `trade.record.new`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee: Option<f64>,
-    pub timestamp: Option<DateTime<Utc>>,
+    /// Exchange-authoritative timestamp (millis since epoch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exchange_ts_ms: Option<u64>,
     pub source_channel: Cow<'static, str>,
     pub liquidity_role: Option<LiquidityRole>,
 }

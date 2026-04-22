@@ -337,6 +337,13 @@ impl PolymarketWebSocket {
         None
     }
 
+    /// Same as `parse_timestamp` but returns exchange-millis directly. Used
+    /// for `ActivityTrade`/`ActivityFill::exchange_ts_ms`, which keeps the WS
+    /// surface uniformly `Option<u64>` instead of mixing `DateTime`.
+    fn parse_timestamp_ms(value: Option<&serde_json::Value>) -> Option<u64> {
+        Self::parse_timestamp(value).and_then(|dt| u64::try_from(dt.timestamp_millis()).ok())
+    }
+
     /// Back-compat entry point for tests; production read loops call
     /// `handle_message_at` with paired monotonic + wall-clock timestamps.
     #[cfg(test)]
@@ -616,7 +623,7 @@ impl PolymarketWebSocket {
             return;
         }
 
-        let timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
+        let exchange_ts_ms = Self::parse_timestamp_ms(msg.timestamp.as_ref());
         let fee_rate_bps = msg
             .fee_rate_bps
             .as_deref()
@@ -637,7 +644,7 @@ impl PolymarketWebSocket {
             aggressor_side: msg.side.clone(),
             outcome,
             fee_rate_bps,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("polymarket_last_trade_price"),
         };
 
@@ -705,7 +712,7 @@ impl PolymarketWebSocket {
             }
         });
 
-        let timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
+        let exchange_ts_ms = Self::parse_timestamp_ms(msg.timestamp.as_ref());
         let outcome = if let Some(ref aid) = asset_id {
             let map = self.outcome_map.read().await;
             map.get(aid).cloned()
@@ -724,7 +731,7 @@ impl PolymarketWebSocket {
             outcome,
             tx_hash: None,
             fee: None,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("polymarket_user_trade"),
             liquidity_role,
         };

@@ -1,9 +1,8 @@
 use pyo3::prelude::*;
-use pythonize::pythonize;
 
 use px_core::websocket::{SessionStream, UpdateStream};
 
-use crate::error::to_py_err;
+use crate::events::{session_event_into_py, ws_update_into_py};
 use crate::get_runtime;
 
 /// Blocking iterator over the multiplexed WebSocket update stream.
@@ -29,10 +28,7 @@ impl NativeUpdateStream {
         let rt = get_runtime();
         let result = py.detach(|| rt.block_on(self.rx.next()));
         match result {
-            Some(update) => {
-                let py_val = pythonize(py, &update).map_err(|e| to_py_err(e.to_string()))?;
-                Ok(Some(py_val.into()))
-            }
+            Some(update) => ws_update_into_py(py, update).map(Some),
             None => Ok(None),
         }
     }
@@ -61,10 +57,7 @@ impl NativeSessionStream {
         let rt = get_runtime();
         let result = py.detach(|| rt.block_on(self.rx.next()));
         match result {
-            Some(event) => {
-                let py_val = pythonize(py, &event).map_err(|e| to_py_err(e.to_string()))?;
-                Ok(Some(py_val.into()))
-            }
+            Some(event) => session_event_into_py(py, event).map(Some),
             None => Ok(None),
         }
     }

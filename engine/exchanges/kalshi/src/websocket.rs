@@ -323,32 +323,34 @@ impl KalshiWebSocket {
         }
     }
 
-    fn value_to_timestamp(
-        value: Option<&serde_json::Value>,
-    ) -> Option<chrono::DateTime<chrono::Utc>> {
+    /// Normalize Kalshi `ts` into exchange millis since epoch. Accepts seconds,
+    /// millis, or RFC3339 strings.
+    fn value_to_ts_ms(value: Option<&serde_json::Value>) -> Option<u64> {
         let value = value?;
         if let Some(s) = value.as_str() {
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-                return Some(dt.with_timezone(&chrono::Utc));
+                return u64::try_from(dt.timestamp_millis()).ok();
             }
             if let Ok(raw) = s.parse::<i64>() {
-                if let Some(dt) = Self::unix_timestamp_to_datetime(raw) {
-                    return Some(dt);
-                }
+                return Self::raw_to_ms(raw);
             }
             return None;
         }
-
-        if let Some(raw) = value.as_i64() {
-            if let Some(dt) = Self::unix_timestamp_to_datetime(raw) {
-                return Some(dt);
-            }
-        }
-        None
+        value.as_i64().and_then(Self::raw_to_ms)
     }
 
-    fn unix_timestamp_to_datetime(raw: i64) -> Option<chrono::DateTime<chrono::Utc>> {
-        chrono::DateTime::from_timestamp(raw, 0)
+    /// Convert a Kalshi timestamp (seconds or millis) to millis. Kalshi emits
+    /// both; heuristic: a value < 10^12 is seconds, otherwise millis.
+    fn raw_to_ms(raw: i64) -> Option<u64> {
+        if raw < 0 {
+            return None;
+        }
+        let v = if raw < 1_000_000_000_000 {
+            raw.checked_mul(1000)?
+        } else {
+            raw
+        };
+        u64::try_from(v).ok()
     }
 
     async fn handle_snapshot(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
@@ -464,7 +466,9 @@ impl KalshiWebSocket {
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc));
             ob.timestamp = ts.or(ob.timestamp);
-            let timestamp = ob.timestamp;
+            let exchange_ts = ob
+                .timestamp
+                .and_then(|t| u64::try_from(t.timestamp_millis()).ok());
             drop(obs);
 
             let mut changes = ChangeVec::new();
@@ -477,7 +481,7 @@ impl KalshiWebSocket {
             self.dispatch(WsUpdate::Delta {
                 market_id: payload.market_ticker,
                 changes,
-                exchange_ts: timestamp.map(|t| t.timestamp_millis() as u64),
+                exchange_ts,
                 local_ts,
                 local_ts_ms,
                 seq: dispatch_seq,
@@ -512,7 +516,7 @@ impl KalshiWebSocket {
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let trade_id = Self::value_to_string(msg.get("trade_id"));
-        let timestamp = Self::value_to_timestamp(msg.get("ts"));
+        let exchange_ts_ms = Self::value_to_ts_ms(msg.get("ts"));
 
         let trade = ActivityTrade {
             market_id: market_ticker.clone(),
@@ -524,7 +528,7 @@ impl KalshiWebSocket {
             aggressor_side,
             outcome: None,
             fee_rate_bps: None,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("kalshi_public_trade"),
         };
 
@@ -559,7 +563,7 @@ impl KalshiWebSocket {
         let outcome = msg.get("side").and_then(|v| v.as_str()).map(str::to_string);
         let fill_id = Self::value_to_string(msg.get("trade_id"));
         let order_id = Self::value_to_string(msg.get("order_id"));
-        let timestamp = Self::value_to_timestamp(msg.get("ts"));
+        let exchange_ts_ms = Self::value_to_ts_ms(msg.get("ts"));
 
         let liquidity_role = msg
             .get("is_taker")
@@ -583,7 +587,7 @@ impl KalshiWebSocket {
             outcome,
             tx_hash: None,
             fee: None,
-            timestamp,
+            exchange_ts_ms,
             source_channel: Cow::Borrowed("kalshi_user_fill"),
             liquidity_role,
         };
@@ -1076,21 +1080,24 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn value_to_timestamp_parses_seconds_epoch() {
-        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!(1_770_241_151_i64)))
+    fn value_to_ts_ms_parses_seconds_epoch() {
+        let ts = KalshiWebSocket::value_to_ts_ms(Some(&json!(1_770_241_151_i64)))
             .expect("timestamp should parse");
-        assert_eq!(ts.timestamp(), 1_770_241_151_i64);
+        assert_eq!(ts, 1_770_241_151_000_u64);
     }
 
     #[test]
-    fn value_to_timestamp_parses_rfc3339_string() {
-        let ts = KalshiWebSocket::value_to_timestamp(Some(&json!("2026-02-05T18:19:11Z")))
+    fn value_to_ts_ms_parses_rfc3339_string() {
+        let ts = KalshiWebSocket::value_to_ts_ms(Some(&json!("2026-02-05T18:19:11Z")))
             .expect("timestamp should parse");
-        // Verify round-trip: the parsed timestamp formats back to the same string
-        assert_eq!(
-            ts.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            "2026-02-05T18:19:11Z"
-        );
+        assert_eq!(ts, 1_770_315_551_000_u64);
+    }
+
+    #[test]
+    fn value_to_ts_ms_passes_millis_through() {
+        let ts = KalshiWebSocket::value_to_ts_ms(Some(&json!(1_770_241_151_000_i64)))
+            .expect("timestamp should parse");
+        assert_eq!(ts, 1_770_241_151_000_u64);
     }
 
     /// Mirrors the liquidity_role extraction in handle_fill().
