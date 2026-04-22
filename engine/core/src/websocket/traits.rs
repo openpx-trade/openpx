@@ -41,6 +41,25 @@ impl WebSocketState {
             _ => Self::Disconnected,
         }
     }
+
+    /// Stable string label, matching the `Display` impl. Bindings should use
+    /// this rather than `Debug` formatting, which is not a stability guarantee.
+    #[inline]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disconnected => "Disconnected",
+            Self::Connecting => "Connecting",
+            Self::Connected => "Connected",
+            Self::Reconnecting => "Reconnecting",
+            Self::Closed => "Closed",
+        }
+    }
+}
+
+impl std::fmt::Display for WebSocketState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Lock-free atomic wrapper for WebSocketState. O(1) reads without acquiring

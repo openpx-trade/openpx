@@ -160,6 +160,20 @@ impl PolymarketWebSocket {
         )
     }
 
+    /// Construct from a full `PolymarketConfig`. Forwards CLOB API credentials
+    /// to the user-channel auth path; ignores `private_key`/`funder`/
+    /// `signature_type` (those drive the REST signer, not the WS).
+    pub fn from_config(cfg: &crate::PolymarketConfig) -> Self {
+        match (
+            cfg.api_key.clone(),
+            cfg.api_secret.clone(),
+            cfg.api_passphrase.clone(),
+        ) {
+            (Some(k), Some(s), Some(p)) => Self::with_auth(k, s, p),
+            _ => Self::new(),
+        }
+    }
+
     fn with_auth_config(auto_reconnect: bool, user_auth: Option<UserAuth>) -> Self {
         Self {
             state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),

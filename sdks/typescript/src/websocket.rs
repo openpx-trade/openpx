@@ -70,11 +70,10 @@ impl WebSocket {
     }
 
     #[napi(getter)]
-    pub fn state(&self) -> String {
+    pub fn state(&self) -> &'static str {
         let ws = self.inner.clone();
         let rt = get_runtime();
-        let state = rt.block_on(async { ws.lock().await.state() });
-        format!("{state:?}")
+        rt.block_on(async { ws.lock().await.state() }).as_str()
     }
 
     /// Subscribe to the multiplexed update stream via callback. Each call

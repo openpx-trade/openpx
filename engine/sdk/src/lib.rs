@@ -1,6 +1,7 @@
 // Re-export everything from px-core so users only need `openpx`.
 pub use px_core::*;
 
+mod config;
 mod ws;
 pub use ws::WebSocketInner;
 
@@ -51,110 +52,18 @@ impl ExchangeInner {
     /// Create an exchange instance from an ID string and a JSON config.
     pub fn new(id: &str, config: serde_json::Value) -> Result<Self, OpenPxError> {
         match id {
-            "kalshi" => {
-                let mut cfg = KalshiConfig::new();
-                if let Some(obj) = config.as_object() {
-                    if let Some(v) = obj.get("api_key_id").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key_id(v);
-                    }
-                    if let Some(v) = obj.get("private_key_pem").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key_pem(v);
-                    }
-                    if let Some(v) = obj.get("private_key_path").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key_path(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                    if obj.get("demo").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        cfg = KalshiConfig::demo();
-                        if let Some(v) = obj.get("api_key_id").and_then(|v| v.as_str()) {
-                            cfg = cfg.with_api_key_id(v);
-                        }
-                        if let Some(v) = obj.get("private_key_pem").and_then(|v| v.as_str()) {
-                            cfg = cfg.with_private_key_pem(v);
-                        }
-                    }
-                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
-                        cfg = cfg.with_verbose(v);
-                    }
-                }
-                Ok(Self::Kalshi(Box::new(
-                    Kalshi::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                )))
-            }
-            "polymarket" => {
-                let mut cfg = PolymarketConfig::new();
-                if let Some(obj) = config.as_object() {
-                    if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key(v);
-                    }
-                    if let Some(v) = obj.get("funder").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_funder(v);
-                    }
-                    let explicit_sig_type = obj.get("signature_type").and_then(|v| {
-                        v.as_str()
-                            .map(PolymarketSignatureType::from)
-                            .or_else(|| match v.as_u64()? {
-                                0 => Some(PolymarketSignatureType::Eoa),
-                                1 => Some(PolymarketSignatureType::Proxy),
-                                2 => Some(PolymarketSignatureType::GnosisSafe),
-                                _ => None,
-                            })
-                    });
-                    let sig_type = explicit_sig_type.unwrap_or_else(|| {
-                        if cfg.funder.is_some() {
-                            PolymarketSignatureType::GnosisSafe
-                        } else {
-                            PolymarketSignatureType::Eoa
-                        }
-                    });
-                    cfg = cfg.with_signature_type(sig_type);
-                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
-                        if let (Some(secret), Some(passphrase)) = (
-                            obj.get("api_secret").and_then(|v| v.as_str()),
-                            obj.get("api_passphrase").and_then(|v| v.as_str()),
-                        ) {
-                            cfg = cfg.with_api_credentials(v, secret, passphrase);
-                        }
-                    }
-                    if let Some(v) = obj.get("gamma_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_gamma_url(v);
-                    }
-                    if let Some(v) = obj.get("clob_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_clob_url(v);
-                    }
-                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
-                        cfg = cfg.with_verbose(v);
-                    }
-                }
-                Ok(Self::Polymarket(Box::new(
-                    Polymarket::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                )))
-            }
-            "opinion" => {
-                let mut cfg = OpinionConfig::new();
-                if let Some(obj) = config.as_object() {
-                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key(v);
-                    }
-                    if let Some(v) = obj.get("private_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key(v);
-                    }
-                    if let Some(v) = obj.get("multi_sig_addr").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_multi_sig(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                    if let Some(v) = obj.get("verbose").and_then(|v| v.as_bool()) {
-                        cfg = cfg.with_verbose(v);
-                    }
-                }
-                Ok(Self::Opinion(
-                    Opinion::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                ))
-            }
+            "kalshi" => Ok(Self::Kalshi(Box::new(
+                Kalshi::new(config::parse_kalshi(&config)?)
+                    .map_err(|e| OpenPxError::Config(e.to_string()))?,
+            ))),
+            "polymarket" => Ok(Self::Polymarket(Box::new(
+                Polymarket::new(config::parse_polymarket(&config)?)
+                    .map_err(|e| OpenPxError::Config(e.to_string()))?,
+            ))),
+            "opinion" => Ok(Self::Opinion(
+                Opinion::new(config::parse_opinion(&config)?)
+                    .map_err(|e| OpenPxError::Config(e.to_string()))?,
+            )),
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
     }

@@ -1,8 +1,10 @@
 use px_core::error::{OpenPxError, WebSocketError};
 use px_core::websocket::{OrderBookWebSocket, SessionStream, UpdateStream, WebSocketState};
-use px_exchange_kalshi::{KalshiConfig, KalshiWebSocket};
-use px_exchange_opinion::{OpinionConfig, OpinionWebSocket};
+use px_exchange_kalshi::KalshiWebSocket;
+use px_exchange_opinion::OpinionWebSocket;
 use px_exchange_polymarket::PolymarketWebSocket;
+
+use crate::config;
 
 /// Enum dispatch over exchange-specific WebSocket implementations.
 /// Mirrors `ExchangeInner` but for real-time streaming connections.
@@ -16,66 +18,19 @@ impl WebSocketInner {
     /// Create a WebSocket instance from an exchange ID and JSON config.
     /// Uses the same config format as `ExchangeInner::new()`.
     pub fn new(id: &str, config: serde_json::Value) -> Result<Self, OpenPxError> {
-        let obj = config.as_object();
         match id {
             "kalshi" => {
-                let mut cfg = KalshiConfig::new();
-                if let Some(obj) = obj {
-                    if let Some(v) = obj.get("api_key_id").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key_id(v);
-                    }
-                    if let Some(v) = obj.get("private_key_pem").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key_pem(v);
-                    }
-                    if let Some(v) = obj.get("private_key_path").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_private_key_path(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                    if obj.get("demo").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        cfg = KalshiConfig::demo();
-                        if let Some(v) = obj.get("api_key_id").and_then(|v| v.as_str()) {
-                            cfg = cfg.with_api_key_id(v);
-                        }
-                        if let Some(v) = obj.get("private_key_pem").and_then(|v| v.as_str()) {
-                            cfg = cfg.with_private_key_pem(v);
-                        }
-                    }
-                }
+                let cfg = config::parse_kalshi(&config)?;
                 Ok(Self::Kalshi(
                     KalshiWebSocket::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
                 ))
             }
             "polymarket" => {
-                if let Some(obj) = obj {
-                    if let (Some(key), Some(secret), Some(passphrase)) = (
-                        obj.get("api_key").and_then(|v| v.as_str()),
-                        obj.get("api_secret").and_then(|v| v.as_str()),
-                        obj.get("api_passphrase").and_then(|v| v.as_str()),
-                    ) {
-                        return Ok(Self::Polymarket(PolymarketWebSocket::with_auth(
-                            key.to_string(),
-                            secret.to_string(),
-                            passphrase.to_string(),
-                        )));
-                    }
-                }
-                Ok(Self::Polymarket(PolymarketWebSocket::new()))
+                let cfg = config::parse_polymarket(&config)?;
+                Ok(Self::Polymarket(PolymarketWebSocket::from_config(&cfg)))
             }
             "opinion" => {
-                let mut cfg = OpinionConfig::new();
-                if let Some(obj) = obj {
-                    if let Some(v) = obj.get("api_key").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_key(v);
-                    }
-                    if let Some(v) = obj.get("ws_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_ws_url(v);
-                    }
-                    if let Some(v) = obj.get("api_url").and_then(|v| v.as_str()) {
-                        cfg = cfg.with_api_url(v);
-                    }
-                }
+                let cfg = config::parse_opinion(&config)?;
                 Ok(Self::Opinion(
                     OpinionWebSocket::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
                 ))

@@ -60,11 +60,10 @@ impl NativeWebSocket {
             .map_err(|e| to_py_err(e.to_string()))
     }
 
-    fn state(&self) -> String {
+    fn state(&self) -> &'static str {
         let ws = self.ws.clone();
         let rt = get_runtime();
-        let state = rt.block_on(async { ws.lock().await.state() });
-        format!("{state:?}")
+        rt.block_on(async { ws.lock().await.state() }).as_str()
     }
 
     /// Iterator over the multiplexed `WsUpdate` stream. Each item is one of:
