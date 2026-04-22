@@ -14,8 +14,8 @@ use tokio_tungstenite::{
 };
 
 use px_core::{
-    insert_ask, insert_bid, now_pair, sort_asks, sort_bids, ActivityFill, ActivityTrade,
-    AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
+    insert_ask, insert_bid, now_pair, sort_asks, sort_bids, stall_watchdog, ActivityFill,
+    ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
     OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent,
     SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig,
     WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
@@ -840,10 +840,13 @@ impl OrderBookWebSocket for KalshiWebSocket {
                 }
             };
 
+            let stall_future = stall_watchdog(last_message_at.clone());
+
             tokio::select! {
                 _ = write_future => {},
                 _ = read_future => {},
                 _ = ping_future => {},
+                _ = stall_future => {},
                 _ = shutdown_rx => {},
             }
 
@@ -972,9 +975,12 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 }
                             };
 
+                            let stall_future = stall_watchdog(last_message_at.clone());
+
                             tokio::select! {
                                 _ = write_future => {},
                                 _ = read_future => {},
+                                _ = stall_future => {},
                             }
 
                             if state.load() == WebSocketState::Closed {

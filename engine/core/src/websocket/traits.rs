@@ -1,9 +1,13 @@
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
+use tokio::time::interval;
 
 use crate::error::WebSocketError;
 use crate::models::{CryptoPrice, LiquidityRole, SportResult};
@@ -15,6 +19,40 @@ pub const WS_CRYPTO_PING_INTERVAL: Duration = Duration::from_secs(5);
 pub const WS_RECONNECT_BASE_DELAY: Duration = Duration::from_millis(3000);
 pub const WS_RECONNECT_MAX_DELAY: Duration = Duration::from_millis(60000);
 pub const WS_MAX_RECONNECT_ATTEMPTS: u32 = 10;
+
+/// Force a reconnect if no message has been received for this long. Set to
+/// 3× the ping interval — long enough to absorb a missed ping cycle, short
+/// enough to catch silent connection death well before OS keepalive (which
+/// can take ~30 minutes on macOS to surface a half-open socket).
+pub const WS_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+pub const WS_STALL_CHECK_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Returns once `last_message_at` is older than `WS_STALL_TIMEOUT`.
+///
+/// Drop into a `tokio::select!` alongside the read loop to break out when
+/// the socket goes silent (half-open connection, server-side hang, NAT
+/// timeout). The existing reconnect path then handles it. Without this,
+/// a dead socket can sit there for 30+ minutes before OS keepalive
+/// surfaces an error — observed in production smoke tests.
+pub async fn stall_watchdog(last_message_at: Arc<RwLock<Option<DateTime<Utc>>>>) {
+    let mut tick = interval(WS_STALL_CHECK_INTERVAL);
+    tick.tick().await; // first tick fires immediately; skip
+    loop {
+        tick.tick().await;
+        let last = *last_message_at.read().await;
+        if let Some(last) = last {
+            let age = Utc::now() - last;
+            if age.to_std().is_ok_and(|d| d > WS_STALL_TIMEOUT) {
+                tracing::warn!(
+                    stall_secs = age.num_seconds(),
+                    "no messages for >{}s; forcing reconnect",
+                    WS_STALL_TIMEOUT.as_secs()
+                );
+                return;
+            }
+        }
+    }
+}
 
 pub type SportsStream = Pin<Box<dyn Stream<Item = Result<SportResult, WebSocketError>> + Send>>;
 pub type CryptoPriceStream =

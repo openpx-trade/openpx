@@ -11,10 +11,10 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use px_core::{
-    now_pair, ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice,
-    InvalidationReason, LiquidityRole, OrderBookWebSocket, PriceLevelChange, PriceLevelSide,
-    SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher,
-    WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY,
+    now_pair, stall_watchdog, ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec,
+    FixedPrice, InvalidationReason, LiquidityRole, OrderBookWebSocket, PriceLevelChange,
+    PriceLevelSide, SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState,
+    WsDispatcher, WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY,
     WS_RECONNECT_MAX_DELAY,
 };
 
@@ -660,10 +660,13 @@ impl OrderBookWebSocket for OpinionWebSocket {
                 }
             };
 
+            let stall_future = stall_watchdog(last_message_at.clone());
+
             tokio::select! {
                 _ = write_future => {},
                 _ = read_future => {},
                 _ = heartbeat_future => {},
+                _ = stall_future => {},
                 _ = shutdown_rx => {},
             }
 
@@ -808,10 +811,13 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                 }
                             };
 
+                            let stall_future = stall_watchdog(last_message_at.clone());
+
                             tokio::select! {
                                 _ = write_future => {},
                                 _ = read_future => {},
                                 _ = heartbeat_future => {},
+                                _ = stall_future => {},
                             }
 
                             if state.load() == WebSocketState::Closed {
