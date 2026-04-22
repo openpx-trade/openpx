@@ -67,20 +67,32 @@ impl NativeWebSocket {
     }
 
     /// Iterator over the multiplexed `WsUpdate` stream. Each item is one of:
-    /// Snapshot, Delta, Trade, Fill, Raw — distinguished by the `kind` field.
+    /// Snapshot, Delta, Trade, Fill — distinguished by the `kind` field.
+    /// Single-consumer: calling twice on the same WebSocket raises.
     fn updates(&self, py: Python<'_>) -> PyResult<NativeUpdateStream> {
         let ws = self.ws.clone();
         let rt = get_runtime();
         let stream = py.detach(|| rt.block_on(async { ws.lock().await.updates() }));
-        Ok(NativeUpdateStream::new(stream))
+        match stream {
+            Some(s) => Ok(NativeUpdateStream::new(s)),
+            None => Err(to_py_err(
+                "updates() already taken; the stream is single-consumer".to_string(),
+            )),
+        }
     }
 
     /// Iterator over connection-level session events
     /// (Connected, Reconnected, Lagged, BookInvalidated, Error).
+    /// Single-consumer: calling twice on the same WebSocket raises.
     fn session_events(&self, py: Python<'_>) -> PyResult<NativeSessionStream> {
         let ws = self.ws.clone();
         let rt = get_runtime();
         let stream = py.detach(|| rt.block_on(async { ws.lock().await.session_events() }));
-        Ok(NativeSessionStream::new(stream))
+        match stream {
+            Some(s) => Ok(NativeSessionStream::new(s)),
+            None => Err(to_py_err(
+                "session_events() already taken; the stream is single-consumer".to_string(),
+            )),
+        }
     }
 }

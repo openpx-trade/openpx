@@ -891,12 +891,12 @@ impl OrderBookWebSocket for OpinionWebSocket {
         self.state.load()
     }
 
-    fn updates(&self) -> UpdateStream {
-        self.dispatcher.updates()
+    fn updates(&self) -> Option<UpdateStream> {
+        self.dispatcher.take_updates()
     }
 
-    fn session_events(&self) -> SessionStream {
-        self.dispatcher.session_events()
+    fn session_events(&self) -> Option<SessionStream> {
+        self.dispatcher.take_session_events()
     }
 }
 
@@ -935,7 +935,7 @@ mod tests {
     #[tokio::test]
     async fn handle_depth_diff_yes_bid() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = serde_json::json!({
             "msgType": "market.depth.diff",
             "marketId": 123,
@@ -961,7 +961,7 @@ mod tests {
     #[tokio::test]
     async fn handle_depth_diff_no_bid_inverts() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         // outcomeSide 2 (no), side "bids" -> Ask at 1.0 - price
         let msg = serde_json::json!({
             "msgType": "market.depth.diff",
@@ -986,7 +986,7 @@ mod tests {
     #[tokio::test]
     async fn handle_last_trade_emits_trade() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = serde_json::json!({
             "msgType": "market.last.trade",
             "marketId": 789,
@@ -1013,7 +1013,7 @@ mod tests {
     #[tokio::test]
     async fn handle_order_update_fill() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = serde_json::json!({
             "msgType": "trade.order.update",
             "orderUpdateType": "orderFill",
@@ -1045,7 +1045,7 @@ mod tests {
     #[tokio::test]
     async fn handle_order_update_ignores_non_fill() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = serde_json::json!({
             "msgType": "trade.order.update",
             "orderUpdateType": "orderNew",
@@ -1065,7 +1065,7 @@ mod tests {
     #[tokio::test]
     async fn handle_trade_executed_emits_fill() {
         let ws = make_ws();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = serde_json::json!({
             "msgType": "trade.record.new",
             "marketId": 333,

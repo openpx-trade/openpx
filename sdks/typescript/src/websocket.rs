@@ -77,8 +77,9 @@ impl WebSocket {
     }
 
     /// Subscribe to the multiplexed update stream via callback. Each call
-    /// delivers one `WsUpdate` (Snapshot, Delta, Trade, Fill, or Raw) as a
-    /// JSON object with a `kind` discriminator.
+    /// delivers one `WsUpdate` (Snapshot, Delta, Trade, Fill) as a JSON
+    /// object with a `kind` discriminator. Single-consumer: registering a
+    /// second callback on the same WebSocket rejects.
     #[napi]
     pub async fn on_update(
         &self,
@@ -91,7 +92,10 @@ impl WebSocket {
         let stream = rt
             .spawn(async move { ws.lock().await.updates() })
             .await
-            .map_err(to_napi_err)?;
+            .map_err(to_napi_err)?
+            .ok_or_else(|| {
+                to_napi_err("updates() already taken; the stream is single-consumer")
+            })?;
 
         rt.spawn(async move {
             while let Some(update) = stream.next().await {
@@ -105,6 +109,8 @@ impl WebSocket {
 
     /// Subscribe to connection-level session events via callback
     /// (Connected, Reconnected, Lagged, BookInvalidated, Error).
+    /// Single-consumer: registering a second callback on the same WebSocket
+    /// rejects.
     #[napi]
     pub async fn on_session_event(
         &self,
@@ -117,7 +123,10 @@ impl WebSocket {
         let stream = rt
             .spawn(async move { ws.lock().await.session_events() })
             .await
-            .map_err(to_napi_err)?;
+            .map_err(to_napi_err)?
+            .ok_or_else(|| {
+                to_napi_err("session_events() already taken; the stream is single-consumer")
+            })?;
 
         rt.spawn(async move {
             while let Some(event) = stream.next().await {

@@ -83,7 +83,7 @@ impl OrderBookWebSocket for WebSocketInner {
         }
     }
 
-    fn updates(&self) -> UpdateStream {
+    fn updates(&self) -> Option<UpdateStream> {
         match self {
             Self::Kalshi(ws) => ws.updates(),
             Self::Polymarket(ws) => ws.updates(),
@@ -91,7 +91,7 @@ impl OrderBookWebSocket for WebSocketInner {
         }
     }
 
-    fn session_events(&self) -> SessionStream {
+    fn session_events(&self) -> Option<SessionStream> {
         match self {
             Self::Kalshi(ws) => ws.session_events(),
             Self::Polymarket(ws) => ws.session_events(),

@@ -23,9 +23,11 @@ use crate::error::WebSocketError;
 use crate::models::{ChangeVec, Orderbook};
 use crate::websocket::traits::{ActivityFill, ActivityTrade};
 
-/// Every per-market event the WebSocket surface emits. Tagged union with a
-/// single escape hatch (`Raw`) for exchange-specific payloads we haven't
-/// normalized yet.
+/// Every per-market event the WebSocket surface emits. Closed tagged union;
+/// no untyped escape hatch in the stable enum. If an exchange grows a
+/// payload we want to surface in raw form, add a separate `raw_events()`
+/// stream rather than another `WsUpdate` variant — keeps consumer
+/// `match` exhaustiveness honest.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind")]
@@ -67,16 +69,6 @@ pub enum WsUpdate {
     /// A fill on one of the authenticated user's orders.
     Fill {
         fill: ActivityFill,
-        #[serde(skip)]
-        #[cfg_attr(feature = "schema", schemars(skip))]
-        local_ts: Instant,
-        local_ts_ms: u64,
-    },
-    /// Exchange-specific payload that hasn't been normalized. Treat as
-    /// best-effort debug surface; structure is not stable.
-    Raw {
-        exchange: String,
-        value: serde_json::Value,
         #[serde(skip)]
         #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
@@ -163,8 +155,7 @@ impl WsUpdate {
             Self::Snapshot { local_ts, .. }
             | Self::Delta { local_ts, .. }
             | Self::Trade { local_ts, .. }
-            | Self::Fill { local_ts, .. }
-            | Self::Raw { local_ts, .. } => *local_ts,
+            | Self::Fill { local_ts, .. } => *local_ts,
         }
     }
 
@@ -176,20 +167,17 @@ impl WsUpdate {
             Self::Snapshot { local_ts_ms, .. }
             | Self::Delta { local_ts_ms, .. }
             | Self::Trade { local_ts_ms, .. }
-            | Self::Fill { local_ts_ms, .. }
-            | Self::Raw { local_ts_ms, .. } => *local_ts_ms,
+            | Self::Fill { local_ts_ms, .. } => *local_ts_ms,
         }
     }
 
-    /// Market ID for events scoped to a single market. `None` for `Raw`
-    /// payloads that haven't been normalized.
+    /// Market ID for events scoped to a single market.
     #[inline]
     pub fn market_id(&self) -> Option<&str> {
         match self {
             Self::Snapshot { market_id, .. } | Self::Delta { market_id, .. } => Some(market_id),
             Self::Trade { trade, .. } => Some(&trade.market_id),
             Self::Fill { fill, .. } => Some(&fill.market_id),
-            Self::Raw { .. } => None,
         }
     }
 }

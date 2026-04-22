@@ -66,16 +66,17 @@ class WebSocket:
             {"kind": "Delta",    "market_id": "...", "changes": [...],     "exchange_ts": ..., "local_ts_ms": ..., "seq": 1}
             {"kind": "Trade",    "trade": {...}, "local_ts_ms": ...}
             {"kind": "Fill",     "fill":  {...}, "local_ts_ms": ...}
-            {"kind": "Raw",      "exchange": "...", "value": {...}, "local_ts_ms": ...}
 
-        Multiple calls to `updates()` return co-consumers of the same queue —
-        each emitted update goes to one receiver, first-grabbed. For fan-out,
-        run a single consumer that re-broadcasts.
+        Single-consumer: calling twice on the same WebSocket raises. The
+        underlying channel is MPMC at the transport layer, but cloning a
+        receiver would silently split messages between holders — a second
+        "debug sidecar" reader would quietly eat half the stream. Run one
+        consumer that re-broadcasts if you need fan-out.
         """
         return self._native.updates()
 
     def session_events(self) -> Iterator[dict[str, Any]]:
-        """Iterator of connection-level events.
+        """Iterator of connection-level events. Single-consumer, take-once.
 
         Distinct from `updates()` so a reconnect is observable as one event,
         not per-market. Items::

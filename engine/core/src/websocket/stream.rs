@@ -5,12 +5,24 @@
 //! surface is `Stream<Item = T>` and a direct `recv().await` shortcut for
 //! hot-path callers that want to avoid `Stream` combinators entirely.
 
+use std::sync::Mutex;
+
 use async_channel::{Receiver, TryRecvError};
 
 use crate::websocket::events::{SessionEvent, WsUpdate};
 
-/// Multiplexed per-market update stream. One instance per subscriber. The
-/// underlying channel is bounded; when full the producer raises
+/// Multiplexed per-market update stream. There is exactly one `UpdateStream`
+/// per dispatcher; calling `OrderBookWebSocket::updates()` twice returns
+/// `None` the second time.
+///
+/// Why take-once semantics: the underlying channel is MPMC, so cloning the
+/// receiver and handing one out per call would split messages between
+/// receivers in a way callers cannot detect — every test harness or debug
+/// sidecar that "just adds a second consumer" would silently lose half the
+/// stream. Take-once turns that footgun into a compile-checked None at the
+/// call site.
+///
+/// The channel is bounded; when full the producer raises
 /// `SessionEvent::Lagged` + `SessionEvent::BookInvalidated` rather than
 /// dropping deltas silently.
 pub struct UpdateStream {
@@ -55,13 +67,6 @@ impl UpdateStream {
         self.rx.is_closed()
     }
 
-    /// Escape hatch for consumers that genuinely need `futures::Stream`
-    /// combinators. The receiver already implements `Stream`; returning it
-    /// by clone is cheap (channels are reference-counted).
-    #[inline]
-    pub fn into_stream(self) -> Receiver<WsUpdate> {
-        self.rx
-    }
 }
 
 /// Connection-level events. Separate from `UpdateStream` so one reconnect is
@@ -94,28 +99,20 @@ impl SessionStream {
     pub fn is_closed(&self) -> bool {
         self.rx.is_closed()
     }
-
-    #[inline]
-    pub fn into_stream(self) -> Receiver<SessionEvent> {
-        self.rx
-    }
 }
 
-/// Producer handle held by exchange WS implementations. Owns both channels
-/// so the implementation can emit updates and session events without a
-/// second routing layer.
+/// Producer handle held by exchange WS implementations. Owns the sender
+/// halves of both channels so the implementation can emit updates and
+/// session events directly.
 ///
-/// The dispatcher also retains the receiver halves so the trait method
-/// `updates()` can hand out cloned receivers on demand. Cloned receivers
-/// are co-consumers of the same queue (each message goes to one
-/// receiver, first-grabbed) — this is the documented single-consumer
-/// pattern. Callers that need fan-out should run one consumer that
-/// re-broadcasts.
+/// The receiver halves are held in `Mutex<Option<...>>` and handed out
+/// exactly once via `take_updates()` / `take_session_events()`. This
+/// enforces the take-once contract on the consumer side.
 pub struct WsDispatcher {
     updates_tx: async_channel::Sender<WsUpdate>,
-    updates_rx: Receiver<WsUpdate>,
+    updates_rx: Mutex<Option<Receiver<WsUpdate>>>,
     session_tx: async_channel::Sender<SessionEvent>,
-    session_rx: Receiver<SessionEvent>,
+    session_rx: Mutex<Option<Receiver<SessionEvent>>>,
 }
 
 /// Configuration for the dispatcher's bounded channels.
@@ -140,31 +137,40 @@ impl Default for WsDispatcherConfig {
 }
 
 impl WsDispatcher {
-    /// Create a new dispatcher. The returned dispatcher owns both send and
-    /// receive halves of its channels; consumers fetch streams via
-    /// `updates()` / `session_events()`, which clone the receivers.
+    /// Create a new dispatcher. The returned dispatcher owns the send halves
+    /// of both channels and the (one-shot) receive halves; consumers fetch
+    /// streams exactly once via `take_updates()` / `take_session_events()`.
     pub fn new(config: WsDispatcherConfig) -> Self {
         let (updates_tx, updates_rx) = async_channel::bounded(config.updates_capacity);
         let (session_tx, session_rx) = async_channel::bounded(config.session_capacity);
         Self {
             updates_tx,
-            updates_rx,
+            updates_rx: Mutex::new(Some(updates_rx)),
             session_tx,
-            session_rx,
+            session_rx: Mutex::new(Some(session_rx)),
         }
     }
 
-    /// Hand out a consumer-side update stream. Cheap (cloning an
-    /// `async-channel::Receiver` is an atomic-refcount bump).
+    /// Take ownership of the consumer-side update stream. Returns `None` if
+    /// already taken — the receiver is single-consumer by contract; cloning
+    /// would silently split messages between holders.
     #[inline]
-    pub fn updates(&self) -> UpdateStream {
-        UpdateStream::new(self.updates_rx.clone())
+    pub fn take_updates(&self) -> Option<UpdateStream> {
+        self.updates_rx
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
+            .map(UpdateStream::new)
     }
 
-    /// Hand out a consumer-side session stream.
+    /// Take ownership of the consumer-side session stream.
     #[inline]
-    pub fn session_events(&self) -> SessionStream {
-        SessionStream::new(self.session_rx.clone())
+    pub fn take_session_events(&self) -> Option<SessionStream> {
+        self.session_rx
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
+            .map(SessionStream::new)
     }
 
     /// Emit an update. Returns `true` if delivered. On `Err(TrySendError::Full)`

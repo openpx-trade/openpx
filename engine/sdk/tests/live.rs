@@ -1122,7 +1122,7 @@ macro_rules! exchange_tests {
                     }
                 };
 
-                let updates = ws.updates();
+                let updates = ws.updates().expect("updates() taken twice");
                 let target = market_id.clone();
 
                 if let Err(e) = ws.connect().await {

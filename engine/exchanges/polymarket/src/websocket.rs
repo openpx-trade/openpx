@@ -1308,12 +1308,12 @@ impl OrderBookWebSocket for PolymarketWebSocket {
         self.state.load()
     }
 
-    fn updates(&self) -> UpdateStream {
-        self.dispatcher.updates()
+    fn updates(&self) -> Option<UpdateStream> {
+        self.dispatcher.take_updates()
     }
 
-    fn session_events(&self) -> SessionStream {
-        self.dispatcher.session_events()
+    fn session_events(&self) -> Option<SessionStream> {
+        self.dispatcher.take_session_events()
     }
 }
 
@@ -1343,7 +1343,7 @@ mod tests {
     #[tokio::test]
     async fn user_trade_event_emits_fill_activity() {
         let ws = PolymarketWebSocket::new();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = r#"{
             "event_type":"trade",
             "asset_id":"asset-1",
@@ -1372,7 +1372,7 @@ mod tests {
             "secret".to_string(),
             "passphrase".to_string(),
         );
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = r#"{
             "event_type":"trade",
             "asset_id":"asset-2",
@@ -1401,7 +1401,7 @@ mod tests {
             "secret".to_string(),
             "passphrase".to_string(),
         );
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = r#"{
             "event_type":"trade",
             "asset_id":"asset-3",
@@ -1426,7 +1426,7 @@ mod tests {
     #[tokio::test]
     async fn user_trade_no_auth_has_no_liquidity_role() {
         let ws = PolymarketWebSocket::new();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = r#"{
             "event_type":"trade",
             "asset_id":"asset-4",
@@ -1450,7 +1450,7 @@ mod tests {
     #[tokio::test]
     async fn user_order_event_does_not_emit_fill_activity() {
         let ws = PolymarketWebSocket::new();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         let msg = r#"{
             "event_type":"order",
             "asset_id":"asset-1",
@@ -1478,7 +1478,7 @@ mod tests {
     #[tokio::test]
     async fn book_event_emits_snapshot() {
         let mut ws = PolymarketWebSocket::with_config(false);
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         ws.subscribe("token-yes").await.expect("subscribe ok");
 
         let book_msg = r#"{
@@ -1508,7 +1508,7 @@ mod tests {
     #[tokio::test]
     async fn subscribe_pair_dispatches_snapshot() {
         let mut ws = PolymarketWebSocket::with_config(false);
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         ws.subscribe_pair("token-yes", "token-no")
             .await
             .expect("subscribe_pair ok");
@@ -1541,7 +1541,7 @@ mod tests {
     #[ignore] // requires network access
     async fn live_polymarket_ws_delivers_snapshot() {
         let mut ws = PolymarketWebSocket::new();
-        let updates = ws.updates();
+        let updates = ws.updates().unwrap();
         ws.connect().await.expect("connect should succeed");
 
         let token_id =

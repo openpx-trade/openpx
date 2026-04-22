@@ -133,9 +133,11 @@ pub struct ActivityFill {
 /// carries connection-level signals that a consumer wants to observe exactly
 /// once regardless of how many markets are subscribed.
 ///
-/// Calling `updates()` / `session_events()` repeatedly yields co-consumers of
-/// the same queue — each emitted message goes to one receiver, first-grabbed.
-/// For fan-out, run a single consumer that re-dispatches.
+/// Both stream methods are take-once: subsequent calls return `None`. The
+/// underlying channel is single-consumer by contract — handing out cloned
+/// receivers would split messages silently between holders, so a second
+/// "debug sidecar" consumer is rejected at the call site instead. For
+/// fan-out, run one consumer that re-dispatches.
 #[allow(async_fn_in_trait)]
 pub trait OrderBookWebSocket: Send + Sync {
     async fn connect(&mut self) -> Result<(), WebSocketError>;
@@ -143,6 +145,10 @@ pub trait OrderBookWebSocket: Send + Sync {
     async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
     async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
     fn state(&self) -> WebSocketState;
-    fn updates(&self) -> UpdateStream;
-    fn session_events(&self) -> SessionStream;
+    /// Take ownership of the multiplexed update stream. Returns `None` if
+    /// already taken.
+    fn updates(&self) -> Option<UpdateStream>;
+    /// Take ownership of the connection-level session event stream. Returns
+    /// `None` if already taken.
+    fn session_events(&self) -> Option<SessionStream>;
 }

@@ -326,7 +326,7 @@ async fn main() {
 
     // Acquire the multiplexed update stream BEFORE connecting so we don't miss
     // the initial snapshots on a fast venue.
-    let updates = ws.updates();
+    let updates = ws.updates().expect("updates() taken twice");
 
     if let Err(e) = ws.connect().await {
         eprintln!("[{exchange_id}] failed to connect websocket: {e}");

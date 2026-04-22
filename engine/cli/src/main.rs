@@ -526,7 +526,7 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
         eprintln!("error: failed to create {id} websocket: {e}");
         std::process::exit(1);
     });
-    let updates = ws.updates();
+    let updates = ws.updates().expect("updates() taken twice");
     let target = market_id.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
@@ -577,7 +577,7 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
         }
     }
 
-    let updates = ws.updates();
+    let updates = ws.updates().expect("updates() taken twice");
     let target = market_id.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");

@@ -1060,12 +1060,12 @@ impl OrderBookWebSocket for KalshiWebSocket {
         self.state.load()
     }
 
-    fn updates(&self) -> UpdateStream {
-        self.dispatcher.updates()
+    fn updates(&self) -> Option<UpdateStream> {
+        self.dispatcher.take_updates()
     }
 
-    fn session_events(&self) -> SessionStream {
-        self.dispatcher.session_events()
+    fn session_events(&self) -> Option<SessionStream> {
+        self.dispatcher.take_session_events()
     }
 }
 
