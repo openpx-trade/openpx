@@ -437,9 +437,8 @@ class Market(BaseModel):
         description='Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})',
     )
     outcome_tokens: list[OutcomeToken] | None = Field(
-        [],
+        default_factory=list,
         description="Outcome-to-token mapping for orderbook subscriptions",
-        validate_default=True,
     )
     outcomes: list[str] | None = Field(
         [], description='Outcome labels (e.g., ["Yes", "No"] for binary markets)'
