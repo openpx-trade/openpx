@@ -10,8 +10,11 @@ publish = false
 [features]
 default = []
 # Compare against locally-checked-out polyfill-rs at ../../../polyfill-rs.
-# Off by default so CI (which doesn't have the sibling checkout) builds cleanly.
-compare-polyfill = ["dep:polyfill-rs"]
+# Off by default. Cargo evaluates path deps at workspace-metadata time
+# regardless of `optional = true`, so we cannot list the dep here without
+# breaking CI (which has no sibling checkout). To run comparisons locally,
+# uncomment the polyfill-rs dep below AND restore `"dep:polyfill-rs"` here.
+compare-polyfill = []
 # polymarket-rs-client 0.1 has a pkcs8 version conflict with our kalshi crate's
 # alloy pin, so direct comparison isn't feasible. polyfill-rs already publishes
 # its number against polymarket-rs-client (README: 409.3 ms ± 137.6 ms); if we
@@ -28,7 +31,9 @@ clap = { workspace = true }
 chrono = { workspace = true }
 smallvec = { workspace = true }
 
-polyfill-rs = { path = "../../../polyfill-rs", optional = true }
+# Uncomment locally to enable `--features compare-polyfill`. Path is relative
+# to this manifest; expects polyfill-rs checked out as a workspace sibling.
+# polyfill-rs = { path = "../../../polyfill-rs", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
