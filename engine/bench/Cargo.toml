@@ -19,12 +19,15 @@ default = []
 px-core = { workspace = true, features = ["simd-json"] }
 px-exchange-polymarket = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process"] }
+tokio-tungstenite = { workspace = true }
+futures = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 smallvec = { workspace = true }
+rustls = { version = "0.23", features = ["ring"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -45,3 +48,7 @@ harness = false
 [[bin]]
 name = "openpx-bench-network"
 path = "src/bin/network_bench.rs"
+
+[[bin]]
+name = "openpx-bench-ws"
+path = "src/bin/ws_bench.rs"
