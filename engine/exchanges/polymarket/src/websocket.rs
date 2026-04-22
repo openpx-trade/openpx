@@ -10,11 +10,11 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use chrono::{DateTime, Utc};
 use px_core::{
-    insert_ask, insert_bid, now_pair, ActivityFill, ActivityTrade, AtomicWebSocketState,
-    ChangeVec, FixedPrice, InvalidationReason, LiquidityRole, OrderBookWebSocket, Orderbook,
-    PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent, SessionStream, UpdateStream,
-    WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig, WsUpdate,
-    stall_watchdog, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
+    insert_ask, insert_bid, now_pair, stall_watchdog, ActivityFill, ActivityTrade,
+    AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
+    OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent,
+    SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig,
+    WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
     WS_RECONNECT_MAX_DELAY,
 };
 use smallvec::SmallVec;
@@ -361,10 +361,12 @@ impl PolymarketWebSocket {
 
         if let Some(items) = value.as_array() {
             for item in items {
-                self.handle_single_message(item, local_ts, local_ts_ms).await;
+                self.handle_single_message(item, local_ts, local_ts_ms)
+                    .await;
             }
         } else {
-            self.handle_single_message(&value, local_ts, local_ts_ms).await;
+            self.handle_single_message(&value, local_ts, local_ts_ms)
+                .await;
         }
     }
 
@@ -400,7 +402,8 @@ impl PolymarketWebSocket {
                 self.handle_price_change(&msg, local_ts, local_ts_ms).await;
             }
             Some("last_trade_price") => {
-                self.handle_last_trade_price(&msg, local_ts, local_ts_ms).await
+                self.handle_last_trade_price(&msg, local_ts, local_ts_ms)
+                    .await
             }
             Some("trade") => self.handle_user_trade(&msg, local_ts, local_ts_ms).await,
             Some(other) => {
@@ -868,7 +871,9 @@ impl PolymarketWebSocket {
                     match msg {
                         Ok(Message::Text(text)) => {
                             *ws_self.last_message_at.write().await = Some(chrono::Utc::now());
-                            ws_self.handle_message_at(&text, local_ts, local_ts_ms).await;
+                            ws_self
+                                .handle_message_at(&text, local_ts, local_ts_ms)
+                                .await;
                         }
                         Ok(Message::Ping(data)) => {
                             if let Some(ref tx) = *ws_self.user_write_tx.lock().await {
@@ -1056,7 +1061,9 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                     match msg {
                         Ok(Message::Text(text)) => {
                             *ws_self.last_message_at.write().await = Some(chrono::Utc::now());
-                            ws_self.handle_message_at(&text, local_ts, local_ts_ms).await;
+                            ws_self
+                                .handle_message_at(&text, local_ts, local_ts_ms)
+                                .await;
                         }
                         Ok(Message::Ping(data)) => {
                             if let Some(ref tx) = *ws_self.write_tx.lock().await {
@@ -1161,13 +1168,8 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                     .dispatcher
                                     .send_session(SessionEvent::reconnected(gap))
                                     .await;
-                                let asset_ids: Vec<String> = ws_self
-                                    .orderbooks
-                                    .read()
-                                    .await
-                                    .keys()
-                                    .cloned()
-                                    .collect();
+                                let asset_ids: Vec<String> =
+                                    ws_self.orderbooks.read().await.keys().cloned().collect();
                                 for asset_id in asset_ids {
                                     ws_self
                                         .dispatcher
@@ -1203,7 +1205,9 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                         Ok(Message::Text(text)) => {
                                             *ws_self.last_message_at.write().await =
                                                 Some(chrono::Utc::now());
-                                            ws_self.handle_message_at(&text, local_ts, local_ts_ms).await;
+                                            ws_self
+                                                .handle_message_at(&text, local_ts, local_ts_ms)
+                                                .await;
                                         }
                                         Ok(Message::Ping(data)) => {
                                             if let Some(ref tx) = *ws_self.write_tx.lock().await {
@@ -1266,9 +1270,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
         self.set_state(WebSocketState::Connected);
         self.reset_reconnect_attempts().await;
         *self.last_message_at.write().await = Some(chrono::Utc::now());
-        self.dispatcher
-            .send_session(SessionEvent::Connected)
-            .await;
+        self.dispatcher.send_session(SessionEvent::Connected).await;
         self.resubscribe_all().await?;
         let _ = self.connect_user_channel().await;
 
@@ -1509,7 +1511,9 @@ mod tests {
             .expect("should receive snapshot")
             .expect("stream closed");
         match update {
-            WsUpdate::Snapshot { book, market_id, .. } => {
+            WsUpdate::Snapshot {
+                book, market_id, ..
+            } => {
                 assert_eq!(market_id, "token-yes");
                 assert_eq!(book.bids.len(), 2);
                 assert_eq!(book.asks.len(), 2);
@@ -1568,7 +1572,11 @@ mod tests {
             .expect("stream closed");
         match update {
             WsUpdate::Snapshot { book, .. } => {
-                eprintln!("snapshot: {} bids, {} asks", book.bids.len(), book.asks.len());
+                eprintln!(
+                    "snapshot: {} bids, {} asks",
+                    book.bids.len(),
+                    book.asks.len()
+                );
                 assert!(!book.bids.is_empty());
                 assert!(!book.asks.is_empty());
             }

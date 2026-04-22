@@ -314,8 +314,8 @@ impl Polymarket {
             .as_ref()
             .ok_or_else(|| PolymarketError::Auth("private key required for trading".into()))?;
 
-        let unauth_client =
-            SdkClient::new(CLOB_URL, SdkConfig::builder().build()).map_err(PolymarketError::from)?;
+        let unauth_client = SdkClient::new(CLOB_URL, SdkConfig::builder().build())
+            .map_err(PolymarketError::from)?;
 
         // Use pre-set API credentials if available, otherwise derive from Polymarket
         let (sdk_creds, creds) = if let Some(ref existing) = self.preset_api_creds {
@@ -421,8 +421,8 @@ impl Polymarket {
             chain_id: Some(POLYGON),
         };
 
-        let unauth_client =
-            SdkClient::new(CLOB_URL, SdkConfig::builder().build()).map_err(PolymarketError::from)?;
+        let unauth_client = SdkClient::new(CLOB_URL, SdkConfig::builder().build())
+            .map_err(PolymarketError::from)?;
 
         let mut builder = unauth_client
             .authentication_builder(&stub_signer)

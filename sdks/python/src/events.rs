@@ -182,9 +182,7 @@ pub fn ws_update_into_py(py: Python<'_>, update: WsUpdate) -> PyResult<Py<PyAny>
             .map(Py::into_any)
         }
         WsUpdate::Trade {
-            trade,
-            local_ts_ms,
-            ..
+            trade, local_ts_ms, ..
         } => {
             let trade_py = pythonize(py, &trade)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
@@ -336,7 +334,9 @@ impl SessionErrorEvent {
     }
 }
 
-fn invalidation_reason_label(reason: &InvalidationReason) -> (&'static str, Option<u64>, Option<u64>) {
+fn invalidation_reason_label(
+    reason: &InvalidationReason,
+) -> (&'static str, Option<u64>, Option<u64>) {
     match reason {
         InvalidationReason::Reconnect => ("Reconnect", None, None),
         InvalidationReason::Lag => ("Lag", None, None),

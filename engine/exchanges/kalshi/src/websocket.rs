@@ -353,7 +353,12 @@ impl KalshiWebSocket {
         u64::try_from(v).ok()
     }
 
-    async fn handle_snapshot(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
+    async fn handle_snapshot(
+        &self,
+        value: &serde_json::Value,
+        local_ts: Instant,
+        local_ts_ms: u64,
+    ) {
         let payload: SnapshotPayload = match value.get("msg") {
             Some(msg) => match serde_json::from_value(msg.clone()) {
                 Ok(parsed) => parsed,
@@ -819,9 +824,9 @@ impl OrderBookWebSocket for KalshiWebSocket {
                         Err(e) => {
                             ws_self
                                 .dispatcher
-                                .send_session(SessionEvent::error(
-                                    WebSocketError::Connection(e.to_string()),
-                                ))
+                                .send_session(SessionEvent::error(WebSocketError::Connection(
+                                    e.to_string(),
+                                )))
                                 .await;
                             break;
                         }
@@ -953,7 +958,9 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                         Ok(Message::Text(text)) => {
                                             *ws_self.last_message_at.write().await =
                                                 Some(chrono::Utc::now());
-                                            ws_self.handle_message(&text, local_ts, local_ts_ms).await;
+                                            ws_self
+                                                .handle_message(&text, local_ts, local_ts_ms)
+                                                .await;
                                         }
                                         Ok(Message::Ping(data)) => {
                                             if let Some(ref tx) = *ws_self.write_tx.lock().await {
@@ -1016,9 +1023,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
         self.set_state(WebSocketState::Connected);
         self.reset_reconnect_attempts().await;
         *self.last_message_at.write().await = Some(chrono::Utc::now());
-        self.dispatcher
-            .send_session(SessionEvent::Connected)
-            .await;
+        self.dispatcher.send_session(SessionEvent::Connected).await;
         self.resubscribe_all().await?;
 
         Ok(())

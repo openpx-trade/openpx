@@ -93,9 +93,7 @@ impl WebSocket {
             .spawn(async move { ws.lock().await.updates() })
             .await
             .map_err(to_napi_err)?
-            .ok_or_else(|| {
-                to_napi_err("updates() already taken; the stream is single-consumer")
-            })?;
+            .ok_or_else(|| to_napi_err("updates() already taken; the stream is single-consumer"))?;
 
         rt.spawn(async move {
             while let Some(update) = stream.next().await {

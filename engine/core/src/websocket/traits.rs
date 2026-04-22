@@ -243,7 +243,8 @@ mod tests {
     /// read sees it as stale.
     #[tokio::test]
     async fn watchdog_fires_when_last_message_is_stale() {
-        let stale = Utc::now() - chrono::Duration::from_std(WS_STALL_TIMEOUT).unwrap()
+        let stale = Utc::now()
+            - chrono::Duration::from_std(WS_STALL_TIMEOUT).unwrap()
             - chrono::Duration::seconds(5);
         let last = Arc::new(RwLock::new(Some(stale)));
         // Should fire within one check interval (10s) plus slack.

@@ -198,16 +198,23 @@ impl OpinionWebSocket {
                 self.handle_last_trade(&value, local_ts, local_ts_ms).await
             }
             "trade.order.update" => {
-                self.handle_order_update(&value, local_ts, local_ts_ms).await
+                self.handle_order_update(&value, local_ts, local_ts_ms)
+                    .await
             }
             "trade.record.new" => {
-                self.handle_trade_executed(&value, local_ts, local_ts_ms).await
+                self.handle_trade_executed(&value, local_ts, local_ts_ms)
+                    .await
             }
             _ => {}
         }
     }
 
-    async fn handle_depth_diff(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
+    async fn handle_depth_diff(
+        &self,
+        value: &serde_json::Value,
+        local_ts: Instant,
+        local_ts_ms: u64,
+    ) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -291,7 +298,12 @@ impl OpinionWebSocket {
         .await;
     }
 
-    async fn handle_last_trade(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
+    async fn handle_last_trade(
+        &self,
+        value: &serde_json::Value,
+        local_ts: Instant,
+        local_ts_ms: u64,
+    ) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -361,7 +373,12 @@ impl OpinionWebSocket {
     /// Handle `trade.order.update` — user order fill notifications.
     /// Only emits for `orderFill` updates; other types (orderNew, orderCancel, orderConfirm)
     /// are informational and not mapped to a `WsUpdate`.
-    async fn handle_order_update(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
+    async fn handle_order_update(
+        &self,
+        value: &serde_json::Value,
+        local_ts: Instant,
+        local_ts_ms: u64,
+    ) {
         let update_type = value
             .get("orderUpdateType")
             .and_then(|v| v.as_str())
@@ -452,7 +469,12 @@ impl OpinionWebSocket {
 
     /// Handle `trade.record.new` — confirmed on-chain trade execution.
     /// Each message is a single fill with final on-chain amounts and fee.
-    async fn handle_trade_executed(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
+    async fn handle_trade_executed(
+        &self,
+        value: &serde_json::Value,
+        local_ts: Instant,
+        local_ts_ms: u64,
+    ) {
         let market_id = match value.get("marketId").and_then(|v| {
             v.as_i64()
                 .map(|n| n.to_string())
@@ -627,7 +649,9 @@ impl OrderBookWebSocket for OpinionWebSocket {
                     match msg {
                         Ok(Message::Text(text)) => {
                             *ws_handle.last_message_at.write().await = Some(chrono::Utc::now());
-                            ws_handle.handle_message_at(&text, local_ts, local_ts_ms).await;
+                            ws_handle
+                                .handle_message_at(&text, local_ts, local_ts_ms)
+                                .await;
                         }
                         Ok(Message::Ping(data)) => {
                             if let Some(ref tx) = *ws_handle.write_tx.lock().await {
@@ -778,7 +802,9 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                         Ok(Message::Text(text)) => {
                                             *ws_handle.last_message_at.write().await =
                                                 Some(chrono::Utc::now());
-                                            ws_handle.handle_message_at(&text, local_ts, local_ts_ms).await;
+                                            ws_handle
+                                                .handle_message_at(&text, local_ts, local_ts_ms)
+                                                .await;
                                         }
                                         Ok(Message::Ping(data)) => {
                                             if let Some(ref tx) = *ws_handle.write_tx.lock().await {
@@ -853,9 +879,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
         self.set_state(WebSocketState::Connected);
         self.reset_reconnect_attempts().await;
         *self.last_message_at.write().await = Some(chrono::Utc::now());
-        self.dispatcher
-            .send_session(SessionEvent::Connected)
-            .await;
+        self.dispatcher.send_session(SessionEvent::Connected).await;
         self.resubscribe_all().await?;
 
         Ok(())
@@ -953,7 +977,9 @@ mod tests {
         ws.handle_message(&msg.to_string()).await;
 
         match next_update(&updates).await {
-            WsUpdate::Delta { changes, market_id, .. } => {
+            WsUpdate::Delta {
+                changes, market_id, ..
+            } => {
                 assert_eq!(market_id, "123");
                 assert_eq!(changes.len(), 1);
                 assert_eq!(changes[0].side, PriceLevelSide::Bid);

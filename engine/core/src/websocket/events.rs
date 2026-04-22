@@ -88,9 +88,7 @@ pub enum SessionEvent {
     /// wall-clock interval between the last received message and this event.
     /// Callers who maintain per-market books should discard them and wait for
     /// the next `WsUpdate::Snapshot` for each subscribed market.
-    Reconnected {
-        gap_ms: u64,
-    },
+    Reconnected { gap_ms: u64 },
     /// Outbound dispatch channel overflowed — a slow consumer missed deltas.
     /// Unlike `tokio::sync::broadcast` which silently skips ahead, openpx
     /// raises this explicitly and invalidates every affected book, because
@@ -110,9 +108,7 @@ pub enum SessionEvent {
     },
     /// A non-fatal error observed on the connection. The session continues;
     /// the caller is informed in case they want to log or alert.
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 impl SessionEvent {

@@ -66,7 +66,6 @@ impl UpdateStream {
     pub fn is_closed(&self) -> bool {
         self.rx.is_closed()
     }
-
 }
 
 /// Connection-level events. Separate from `UpdateStream` so one reconnect is

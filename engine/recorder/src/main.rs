@@ -189,11 +189,7 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
 /// Drain the multiplexed update stream and push orderbook snapshot/delta
 /// rows into the shared buffer. One task per WebSocket — the dispatcher
 /// already multiplexes all markets onto a single channel.
-async fn record_from_stream(
-    exchange_id: &str,
-    stream: UpdateStream,
-    rows: Arc<Mutex<Vec<ObRow>>>,
-) {
+async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<Mutex<Vec<ObRow>>>) {
     use std::collections::HashMap;
     // Per-market asset_id cache so deltas inherit the asset_id from the
     // most-recent snapshot.
@@ -250,10 +246,7 @@ async fn record_from_stream(
                 ..
             } => {
                 let ts = exchange_ts.map(|ms| (ms as i64) * 1000).unwrap_or(now);
-                let asset = last_asset_id
-                    .get(&market_id)
-                    .cloned()
-                    .unwrap_or_default();
+                let asset = last_asset_id.get(&market_id).cloned().unwrap_or_default();
                 let mut buf = rows.lock().await;
                 for change in changes.iter() {
                     buf.push(ObRow {

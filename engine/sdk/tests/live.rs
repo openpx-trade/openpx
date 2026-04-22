@@ -1141,9 +1141,9 @@ macro_rules! exchange_tests {
                     let remaining = deadline - std::time::Instant::now();
                     let result = tokio::time::timeout(remaining, updates.next()).await;
                     match result {
-                        Ok(Some(px_core::WsUpdate::Snapshot { market_id: m, book, .. }))
-                            if m == target =>
-                        {
+                        Ok(Some(px_core::WsUpdate::Snapshot {
+                            market_id: m, book, ..
+                        })) if m == target => {
                             assert!(
                                 !book.bids.is_empty() || !book.asks.is_empty(),
                                 "snapshot should have some levels"
@@ -1151,9 +1151,11 @@ macro_rules! exchange_tests {
                             got_book_event = true;
                             break;
                         }
-                        Ok(Some(px_core::WsUpdate::Delta { market_id: m, changes, .. }))
-                            if m == target =>
-                        {
+                        Ok(Some(px_core::WsUpdate::Delta {
+                            market_id: m,
+                            changes,
+                            ..
+                        })) if m == target => {
                             assert!(!changes.is_empty(), "delta should have at least one change");
                             got_book_event = true;
                             break;
