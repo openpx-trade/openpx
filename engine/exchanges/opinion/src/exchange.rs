@@ -70,13 +70,9 @@ pub struct Opinion {
 
 impl Opinion {
     pub fn new(config: OpinionConfig) -> Result<Self, OpinionError> {
-        let client = reqwest::Client::builder()
-            .http2_adaptive_window(true)
-            .pool_max_idle_per_host(8)
-            .http2_keep_alive_interval(std::time::Duration::from_secs(15))
-            .timeout(config.base.timeout)
+        let client = px_core::http::tuned_client_builder()
             .user_agent("openpx/1.0")
-            .no_proxy()
+            .timeout(config.base.timeout)
             .build()?;
 
         let rate_limiter = Arc::new(Mutex::new(RateLimiter::new(

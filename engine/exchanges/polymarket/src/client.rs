@@ -15,20 +15,11 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(config: &PolymarketConfig) -> Result<Self, PolymarketError> {
-        // http2_adaptive_window + an enlarged initial stream window are both
-        // aimed at the ~480 KB /simplified-markets response body. The 512 KB
-        // window was empirically optimal for this payload class (see
-        // polyfill-rs/src/http_config.rs:38). tcp_nodelay disables Nagle's
-        // algorithm — lower latency per request at the cost of a few extra
-        // small packets, the right trade-off for HTTP/2.
-        let client = Client::builder()
-            .http2_adaptive_window(true)
-            .http2_initial_stream_window_size(512 * 1024)
-            .tcp_nodelay(true)
-            .pool_max_idle_per_host(10)
-            .http2_keep_alive_interval(std::time::Duration::from_secs(15))
+        // px_core::http::tuned_client_builder() pre-applies the openpx-wide
+        // HTTP tunings (HTTP/2 stream window, TCP_NODELAY, pool sizing,
+        // keep-alive). Per-exchange overrides layer on top.
+        let client = px_core::http::tuned_client_builder()
             .timeout(config.base.timeout)
-            .no_proxy()
             .build()?;
 
         Ok(Self {

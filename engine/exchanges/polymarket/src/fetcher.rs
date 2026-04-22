@@ -37,13 +37,12 @@ impl PolymarketMarketFetcher {
     }
 
     /// Create a new HTTP client for fetching.
+    /// Uses the shared `px_core::http::tuned_client_builder()` and then
+    /// overrides `pool_max_idle_per_host` to match our CONCURRENCY (15),
+    /// since the fetcher opens more parallel streams than normal REST.
     fn create_client() -> Result<Client, PolymarketError> {
-        Client::builder()
+        px_core::http::tuned_client_builder()
             .pool_max_idle_per_host(CONCURRENCY)
-            .http2_adaptive_window(true)
-            .http2_initial_stream_window_size(512 * 1024)
-            .tcp_nodelay(true)
-            .http2_keep_alive_interval(Duration::from_secs(15))
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(PolymarketError::from)

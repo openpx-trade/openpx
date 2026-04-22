@@ -105,10 +105,8 @@ struct KalshiOhlc {
 
 impl Kalshi {
     pub fn new(config: KalshiConfig) -> Result<Self, KalshiError> {
-        let client = reqwest::Client::builder()
-            .http2_adaptive_window(true)
+        let client = px_core::http::tuned_client_builder()
             .timeout(config.base.timeout)
-            .no_proxy()
             .build()?;
 
         let rate_limiter = Arc::new(Mutex::new(RateLimiter::new(

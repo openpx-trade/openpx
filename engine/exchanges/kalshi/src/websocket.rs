@@ -254,18 +254,12 @@ impl KalshiWebSocket {
     }
 
     fn parse_levels(levels: Option<Vec<[String; 2]>>) -> Vec<PriceLevel> {
+        // px_core::parse_level skips the f64 round-trip — scans decimal
+        // strings directly into u32/i64 ticks.
         levels
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|[price_str, size_str]| {
-                let price: f64 = price_str.parse().ok()?;
-                let size: f64 = size_str.parse().ok()?;
-                if price > 0.0 && size > 0.0 {
-                    Some(PriceLevel::new(price, size))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|[price_str, size_str]| px_core::parse_level(&price_str, &size_str))
             .collect()
     }
 

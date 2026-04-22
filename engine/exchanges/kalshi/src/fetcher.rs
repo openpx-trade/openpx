@@ -70,11 +70,8 @@ impl KalshiMarketFetcher {
 
     /// Create a new HTTP client for fetching.
     fn create_client() -> Result<Client, KalshiError> {
-        Client::builder()
-            .http2_adaptive_window(true)
+        px_core::http::tuned_client_builder()
             .timeout(Duration::from_secs(30))
-            .pool_max_idle_per_host(8)
-            .http2_keep_alive_interval(Duration::from_secs(15))
             .build()
             .map_err(KalshiError::from)
     }

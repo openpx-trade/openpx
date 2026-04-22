@@ -38,6 +38,26 @@ pub fn parse_qty_str(s: &str) -> Option<Qty> {
     parse_scaled_signed(s, SCALE_FACTOR)
 }
 
+/// Convenience wrapper every exchange uses: parse a `(price_str, size_str)`
+/// pair into a `PriceLevel`. Returns `None` on any malformed input or when
+/// either value is non-positive.
+///
+/// Size is exposed as `f64` for backward compatibility with the public
+/// `PriceLevel` type; the parse itself stays in integer ticks.
+#[inline]
+pub fn parse_level(price: &str, size: &str) -> Option<crate::PriceLevel> {
+    let price_raw = parse_price_str(price)?;
+    let size_raw = parse_qty_str(size)?;
+    if price_raw == 0 || size_raw <= 0 {
+        return None;
+    }
+    let size_f64 = size_raw as f64 / SCALE_FACTOR as f64;
+    Some(crate::PriceLevel::with_fixed(
+        crate::FixedPrice::from_raw(price_raw as u64),
+        size_f64,
+    ))
+}
+
 fn parse_scaled_unsigned(s: &str, scale: i64) -> Option<u64> {
     let b = s.as_bytes();
     if b.is_empty() {
