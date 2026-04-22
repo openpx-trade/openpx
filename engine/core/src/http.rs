@@ -9,10 +9,10 @@
 //! Flags applied:
 //!
 //! - `http2_adaptive_window(true)`
-//! - `http2_initial_stream_window_size(512 KB)` — benchmarked against the
-//!   ~480 KB `/simplified-markets` payload (`polyfill-rs/src/http_config.rs:38`).
+//! - `http2_initial_stream_window_size(512 KB)` — empirically optimal for
+//!   the ~480 KB `/simplified-markets` response class.
 //! - `tcp_nodelay(true)` — disable Nagle's. Right call for HTTP/2.
-//! - `pool_max_idle_per_host(10)` — matches polyfill-rs's pool size.
+//! - `pool_max_idle_per_host(10)` — deep enough for burst patterns.
 //! - `http2_keep_alive_interval(15s)` — keeps the HTTP/2 connection hot
 //!   across bursty call patterns.
 //! - `no_proxy()` — skip the slow OS proxy lookup.

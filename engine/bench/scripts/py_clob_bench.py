@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Latency probe that mirrors the polyfill-rs methodology for the Python column.
+"""Latency probe for the official Polymarket Python client (py-clob-client).
 
 Prints one JSON object per timed iteration on stdout, e.g.
     {"i": 1, "elapsed_ms": 412.3}

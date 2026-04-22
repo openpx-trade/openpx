@@ -1,14 +1,20 @@
-//! openpx vs polyfill-rs vs baseline-reqwest vs py-clob-client — single process,
-//! same machine / network / time. Mirrors polyfill-rs's side_by_side_benchmark.
+//! Polymarket client latency comparison — single process, same machine /
+//! network / time. Measures openpx's polymarket implementation against the
+//! two official Polymarket client libraries:
+//!
+//! - `py-clob-client` (Python, crates.io) — subprocess via `python3`.
+//! - `polymarket-rs-client` (Rust, crates.io) — subprocess via a standalone
+//!   binary at `external/polymarket_rs_bench/`. Isolated from this
+//!   workspace's Cargo.lock because its pkcs8 pin conflicts with ours.
+//!
+//! A `baseline-reqwest` target (untuned `reqwest::Client`) is included as a
+//! "network floor" reference — if openpx is slower than baseline, something
+//! is wrong; if faster, the HTTP tuning is paying off.
 //!
 //! Run:
 //!     cargo run --release -p px-bench --bin openpx-bench-network -- \
-//!         --iterations 20 --delay-ms 100 --warmup 5
-//!
-//! With polyfill-rs comparison (requires ../../../polyfill-rs checkout):
-//!     cargo run --release -p px-bench --bin openpx-bench-network \
-//!         --features compare-polyfill -- \
-//!         --targets openpx,polyfill,baseline-reqwest,py-clob
+//!         --iterations 20 --delay-ms 100 --warmup 5 \
+//!         --targets openpx,baseline-reqwest,py-clob,polymarket-rs
 
 use clap::Parser;
 use px_bench::{gather_metadata, print_table, stats, write_report};
@@ -30,7 +36,11 @@ struct Args {
     #[arg(long, default_value_t = 5)]
     warmup: usize,
 
-    #[arg(long, value_delimiter = ',', default_value = "openpx,baseline-reqwest")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "openpx,baseline-reqwest,py-clob,polymarket-rs"
+    )]
     targets: Vec<String>,
 
     #[arg(long, default_value = "bench-results")]
@@ -61,15 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let samples = match name {
             "openpx" => run_openpx(&args).await?,
             "baseline-reqwest" => run_baseline(&args).await?,
-            "polyfill" | "polyfill-rs" => {
-                eprintln!(
-                    "  (skipped — polyfill comparison requires editing engine/bench/Cargo.toml \
-                     to uncomment the polyfill-rs path dep; left out of the committed file so CI \
-                     builds without the sibling repo)"
-                );
-                continue;
-            }
             "py-clob" | "py-clob-client" => run_py_clob(&args).await?,
+            "polymarket-rs" | "polymarket-rs-client" => run_polymarket_rs(&args).await?,
             other => {
                 eprintln!("  unknown target '{other}' — skipping");
                 continue;
@@ -80,10 +83,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "  done  mean={:.1} ms  stddev={:.1} ms  n={}",
             summary.mean_ms, summary.stddev_ms, summary.n
         );
-        let display_name = if name == "polyfill" {
-            "polyfill-rs".to_string()
-        } else {
-            name.to_string()
+        let display_name = match name {
+            "py-clob" => "py-clob-client".to_string(),
+            "polymarket-rs" => "polymarket-rs-client".to_string(),
+            other => other.to_string(),
         };
         results.push((display_name, summary));
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -181,24 +184,77 @@ async fn run_baseline(args: &Args) -> Result<Vec<Duration>, Box<dyn std::error::
     Ok(samples)
 }
 
-#[cfg(feature = "compare-polyfill")]
-async fn run_polyfill(args: &Args) -> Result<Vec<Duration>, Box<dyn std::error::Error>> {
-    let client = polyfill_rs::ClobClient::new("https://clob.polymarket.com");
-    client.start_keepalive(Duration::from_secs(30)).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+/// Subprocess-invoke the polymarket-rs-client standalone binary. Its pkcs8
+/// pin conflicts with our kalshi crate's alloy stack, so it can't be a
+/// workspace member — the binary's own Cargo.toml is at
+/// `engine/bench/external/polymarket_rs_bench/` and carries its own
+/// Cargo.lock.
+async fn run_polymarket_rs(args: &Args) -> Result<Vec<Duration>, Box<dyn std::error::Error>> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("external")
+        .join("polymarket_rs_bench")
+        .join("Cargo.toml");
+    if !manifest.exists() {
+        return Err(format!(
+            "polymarket_rs_bench/Cargo.toml missing at {}",
+            manifest.display()
+        )
+        .into());
+    }
 
-    let url = args.endpoint.clone();
-    let samples = sample_loop(args, || {
-        let http = client.http_client.clone();
-        let url = url.clone();
-        async move {
-            let resp = http.get(url).send().await?;
-            let _body: serde_json::Value = resp.json().await?;
-            Ok(())
+    // Build once (cached by cargo) before timing.
+    let build_status = tokio::process::Command::new("cargo")
+        .args([
+            "build",
+            "--release",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+        ])
+        .status()
+        .await?;
+    if !build_status.success() {
+        return Err("polymarket_rs_bench failed to build".into());
+    }
+
+    let output = tokio::process::Command::new("cargo")
+        .args([
+            "run",
+            "--release",
+            "--quiet",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+            "--",
+        ])
+        .arg("--iterations")
+        .arg(args.iterations.to_string())
+        .arg("--delay-ms")
+        .arg(args.delay_ms.to_string())
+        .arg("--warmup")
+        .arg(args.warmup.to_string())
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("polymarket_rs_bench run failed: {stderr}").into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut samples = Vec::with_capacity(args.iterations);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || !line.starts_with('{') {
+            continue;
         }
-    })
-    .await;
-    client.stop_keepalive().await;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(ms) = value.get("elapsed_ms").and_then(|v| v.as_f64()) {
+                samples.push(Duration::from_micros((ms * 1000.0) as u64));
+            }
+        }
+    }
+    if samples.is_empty() {
+        eprintln!("  (polymarket-rs produced no samples — check external/polymarket_rs_bench/)");
+    }
     Ok(samples)
 }
 

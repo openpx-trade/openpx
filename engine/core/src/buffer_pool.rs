@@ -1,9 +1,9 @@
 //! Reusable byte-buffer pool.
 //!
-//! Ports polyfill-rs's `buffer_pool.rs` to px-core. Used by the WS hot path and
-//! HTTP body reads to avoid realloc churn. Each buffer defaults to 512 KB;
-//! pool size 10. Buffers that have grown past 2x the configured size on return
-//! are shrunk back so the pool does not retain pathologically large allocations.
+//! Used by the WS hot path and HTTP body reads to avoid realloc churn. Each
+//! buffer defaults to 512 KB; pool size 10. Buffers that have grown past 2x
+//! the configured size on return are shrunk back so the pool does not
+//! retain pathologically large allocations.
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

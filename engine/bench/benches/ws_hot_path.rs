@@ -1,15 +1,12 @@
 //! Measures the Polymarket book-update hot path: decode WS JSON + apply to
-//! Orderbook. Two openpx variants track production:
+//! Orderbook. Several variants track different decoding strategies:
 //!
-//! - `legacy` — the pre-optimisation path (serde_json to typed struct, f64
-//!   parse per level, push+sort insert). Kept so the bench still shows the
-//!   historical "before".
+//! - `legacy` — historical pre-optimisation path (serde_json to typed
+//!   struct, f64 parse per level, push+sort insert).
 //! - `optimized` — the current production path (`px_core::decode_frame` +
-//!   `px_core::parse_level` + partition_point insert). What polymarket WS
-//!   actually runs today.
-//!
-//! A third variant measures `simd_json::to_borrowed_value` parse-only cost
-//! as the theoretical ceiling for a future Step B7 rewrite.
+//!   `px_core::parse_level` + partition_point insert).
+//! - `simd_parse_only` / `simd_serde_apply` / `simd_decode_apply` — SIMD
+//!   parse ceilings, for comparing against BorrowedValue-walk approaches.
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use px_core::{insert_ask, insert_bid, Orderbook, PriceLevel, WsFrame};

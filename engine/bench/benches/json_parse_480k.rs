@@ -1,7 +1,7 @@
 //! Parses a captured 480KB /simplified-markets response. Compares the three
-//! parsers openpx could use: serde_json::Value (current baseline),
-//! simd_json::to_borrowed_value (polyfill-rs's choice), and serde_json's
-//! DeserializeOwned into a typed struct.
+//! parsers openpx could use: serde_json::Value, simd_json::to_borrowed_value,
+//! and serde_json's DeserializeOwned into a typed struct. Tracks whether the
+//! simd-json path in decode_frame stays the right default for large frames.
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use px_bench::fixtures;

@@ -301,7 +301,7 @@ pub fn insert_ask(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
 }
 
 /// Apply a price-level delta to a bid-sorted list with replace-or-insert
-/// semantics matching polyfill-rs's BTreeMap behavior:
+/// semantics (matches the behaviour of a sorted associative map):
 ///   - `size > 0.0` and price exists: replace in place (O(log n)).
 ///   - `size > 0.0` and price is new: insert at sorted position (O(log n + n)).
 ///   - `size == 0.0`: remove the level if present (no-op otherwise).

@@ -132,7 +132,8 @@ pub struct Fill {
 }
 
 // TODO(fill-sim): Add local fill simulation for backtesting strategies offline.
-// polyfill-rs has FillEngine that simulates order execution against a local orderbook copy:
+// Sketch of a FillEngine that simulates order execution against a local
+// orderbook copy:
 //   - execute_market_order(order, book) → FillResult with fills, fees, slippage check
 //   - execute_limit_order(order, book) → checks immediate fillability
 //   - Configurable: min_fill_size, max_slippage_pct, fee_rate_bps

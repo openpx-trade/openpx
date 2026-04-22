@@ -1,8 +1,8 @@
 //! Shared utilities for the openpx benchmark harness.
 //!
-//! Mirrors the methodology in polyfill-rs/examples/side_by_side_benchmark.rs so
-//! numbers produced here are directly comparable to those polyfill-rs publishes
-//! in its README.
+//! Methodology: 20 timed iterations per target, 100 ms spacing, 5 warmup
+//! requests discarded, all targets in a single process so machine / network /
+//! time are held constant.
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -106,34 +106,27 @@ pub fn print_table(results: &[(String, stats::Summary)]) {
         print_row(name, s);
     }
     println!("═══════════════════════════════════════════════════════════════════════════");
-    if let (Some((a_name, a)), Some((b_name, b))) = (
-        results.iter().find(|(n, _)| n == "openpx"),
-        results.iter().find(|(n, _)| n == "polyfill-rs"),
-    ) {
-        if a.mean_ms > 0.0 && b.mean_ms > 0.0 {
-            let diff = b.mean_ms - a.mean_ms;
-            let pct = (diff.abs() / b.mean_ms) * 100.0;
-            if diff > 0.0 {
-                println!(
-                    "  {a_name} is {:.1}% faster than {b_name} ({:.1} ms faster)",
-                    pct, diff
-                );
-            } else {
-                println!(
-                    "  {a_name} is {:.1}% slower than {b_name} ({:.1} ms slower)",
-                    pct, -diff
-                );
-            }
-        }
+    let Some((_, openpx)) = results.iter().find(|(n, _)| n == "openpx") else {
+        return;
+    };
+    if openpx.mean_ms <= 0.0 {
+        return;
     }
-    if let (Some((a_name, a)), Some((b_name, b))) = (
-        results.iter().find(|(n, _)| n == "openpx"),
-        results.iter().find(|(n, _)| n == "py-clob-client"),
-    ) {
-        if a.mean_ms > 0.0 && b.mean_ms > 0.0 {
+    for (name, other) in results.iter().filter(|(n, _)| n != "openpx") {
+        if other.mean_ms <= 0.0 {
+            continue;
+        }
+        let diff = other.mean_ms - openpx.mean_ms;
+        let pct = (diff.abs() / other.mean_ms) * 100.0;
+        if diff > 0.0 {
             println!(
-                "  {a_name} is {:.1}x faster than {b_name}",
-                b.mean_ms / a.mean_ms
+                "  openpx is {:.1}% faster than {name}  ({:+.1} ms mean)",
+                pct, -diff
+            );
+        } else {
+            println!(
+                "  openpx is {:.1}% slower than {name}  ({:+.1} ms mean)",
+                pct, -diff
             );
         }
     }

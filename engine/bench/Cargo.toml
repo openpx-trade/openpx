@@ -1,6 +1,6 @@
 [package]
 name = "px-bench"
-description = "Internal benchmark harness comparing openpx against polyfill-rs"
+description = "Internal benchmark harness comparing openpx against official exchange client libraries"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,17 +9,11 @@ publish = false
 
 [features]
 default = []
-# Compare against locally-checked-out polyfill-rs at ../../../polyfill-rs.
-# Off by default. The polyfill-rs path dep is commented below; uncomment it
-# and flip this feature to `["dep:polyfill-rs"]` locally when running the
-# cross-library network bench with a sibling polyfill-rs checkout. Leaving
-# the path dep out of the committed Cargo.toml keeps CI (which has no
-# sibling checkout) clean.
-compare-polyfill = []
-# polymarket-rs-client 0.1 has a pkcs8 version conflict with our kalshi crate's
-# alloy pin, so direct comparison isn't feasible. polyfill-rs already publishes
-# its number against polymarket-rs-client (README: 409.3 ms ± 137.6 ms); if we
-# beat polyfill we transitively beat it.
+# polymarket-rs-client 0.1 has a pkcs8 version conflict with our kalshi
+# crate's alloy pin, so it lives in a separate out-of-workspace crate at
+# engine/bench/external/polymarket_rs_bench/ and is subprocess-invoked by
+# the network bench. py-clob-client is subprocess-invoked via Python.
+# No third-party Rust clients are pulled into this workspace.
 
 [dependencies]
 px-core = { workspace = true, features = ["simd-json"] }
@@ -31,10 +25,6 @@ serde_json = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 smallvec = { workspace = true }
-
-# Uncomment locally to enable `--features compare-polyfill`. Path is relative
-# to this manifest; expects polyfill-rs checked out as a workspace sibling.
-# polyfill-rs = { path = "../../../polyfill-rs", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

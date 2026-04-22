@@ -1,9 +1,7 @@
 //! Order book throughput: apply 1000 price-level changes and exercise
-//! best-bid / best-ask / spread / mid in a tight loop.
-//!
-//! Mirrors polyfill-rs's published numbers:
-//!   Order Book Updates (1000 ops): 159.6 µs ± 32 µs
-//!   Spread/Mid calc:                70 ns  ± 77 ns
+//! best-bid / best-ask / spread / mid in a tight loop. Tracks whether the
+//! `insert_bid` / `insert_ask` fast-path and `FixedPrice` integer math stay
+//! fast as the data structures evolve.
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use px_core::{insert_ask, insert_bid, Orderbook, PriceLevel};

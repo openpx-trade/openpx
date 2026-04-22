@@ -443,7 +443,7 @@ mod tests {
 
     // TODO(fee-rate): Add fee_rate (basis points) to market data responses. Pro traders need
     // fee rates for accurate PnL calculations and cost-optimal routing between exchanges.
-    // polyfill-rs has get_fee_rate_bps(token_id) returning the maker fee rate.
+    // Per-token `get_fee_rate_bps(token_id)` returning the maker fee rate.
     // Implementation: add fee_rate_bps field alongside tick_size in the market data pipeline.
     // Note: fee rates may vary per user tier on some exchanges, so document as "base fee rate."
 

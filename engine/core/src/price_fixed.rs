@@ -10,8 +10,7 @@
 //! existing `FixedPrice(u64)` in `models/orderbook.rs` uses the same scale,
 //! so the raw output can be handed straight to `FixedPrice::from_raw`.
 
-/// Ticks per unit. 1 tick = 0.0001. Matches polyfill-rs `types.rs:62` and
-/// openpx's existing `FixedPrice::SCALE`.
+/// Ticks per unit. 1 tick = 0.0001. Matches the existing `FixedPrice::SCALE`.
 pub const SCALE_FACTOR: i64 = 10_000;
 
 /// Integer price type — ticks, 0..=10_000 for prediction market probabilities.
