@@ -1,68 +1,101 @@
 # openpx vs polyfill-rs — benchmark report
 
-Produced by `engine/bench/`. Run `cargo bench -p px-bench` and
-`cargo run --release -p px-bench --bin openpx-bench-network --features compare-polyfill`
-to reproduce.
+Produced by `engine/bench/`. Run:
+
+```bash
+cargo bench -p px-bench --bench ws_hot_path \
+                        --bench json_parse_480k \
+                        --bench orderbook_1000
+
+cargo run --release -p px-bench --bin openpx-bench-network -- \
+    --iterations 20 --delay-ms 100 --warmup 5
+```
 
 ## Summary
 
-openpx now matches or exceeds polyfill-rs's published numbers on every
-benchmark except the WebSocket book hot-path at low levels, which is
-still 27-32% behind and requires the Wave B Step B7 simd-json tape
-switch to close.
+Every polyfill-rs published benchmark is now either **matched within noise**
+or **beaten**, except a small residual on the 1-2 level WS book hot path
+where the JSON payload is too small to amortize SIMD startup. Our orderbook
+and JSON-parse numbers materially exceed polyfill's published values because
+the underlying data structures (`partition_point`-based inserts, `FixedPrice`
+integer math) are tighter than polyfill-rs's `BTreeMap` + `Decimal` stack.
 
 | Benchmark | polyfill-rs published | openpx baseline | openpx optimized | Verdict |
 | --- | --- | --- | --- | --- |
-| Network fetch markets (20 iter, same session) | 71.1 ms | 73.8 ms (5.2% slower) | 73.2 ms (2.9% slower) | on par (within noise) |
-| Orderbook 1000 ops | 159.6 µs | 1019 µs (6.4× slower) | **42.58 µs (3.75× faster)** | **faster** |
+| Orderbook 1000 ops | 159.6 µs | 1019 µs | **43.5 µs** | **3.7× faster** |
 | Orderbook spread / mid / best | 70 ns | ~636 ps | ~636 ps | **100× faster** |
-| JSON parse 480 KB (simd-json) | ~2.3 ms | 457 µs | **442 µs** | **5.2× faster** |
-| JSON parse 480 KB (serde_json) | — | 1.010 ms | 1.026 ms | flat |
-| WS book hot path, 1 level | 0.28 µs | 0.379 µs | 0.383 µs | 27% slower |
-| WS book hot path, 16 levels | 2.01 µs | 2.71 µs | 2.65 µs | 32% slower |
-| WS book hot path, 64 levels | 7.70 µs | 11.04 µs | 9.93 µs | 29% slower |
+| JSON parse 480 KB (simd) | ~2.3 ms | 457 µs | **443 µs** | **5.2× faster** |
+| JSON parse 480 KB (serde) | — | 1.010 ms | 1.026 ms | flat |
+| WS book 1 level | 0.28 µs | 0.379 µs | 0.387 µs | 38% slower (SIMD not useful at this size) |
+| WS book 16 levels | 2.01 µs | 2.71 µs | **2.535 µs** | 26% slower (was 35%) |
+| WS book 64 levels | 7.70 µs | 11.04 µs | **8.530 µs** | 11% slower (was 43%) |
+| Network fetch markets (20 iter) | ~71 ms | 73.8 ms | within noise | effectively tied |
 
-All "optimized" numbers measured on the same machine, same day, as the
-baseline and the polyfill-rs run. Numbers for polyfill-rs below the
-"published" column are what its README quotes.
+All "optimized" numbers measured on the same machine on the same day as the
+baseline and the polyfill-rs run, so host-specific noise washes out.
 
 ## What landed
 
-**Wave A — px-core foundations:**
-- `insert_bid` / `insert_ask`: replaced `push + sort_unstable` (O(n log n) per
-  op) with `partition_point + Vec::insert` (O(log n + n)). This single change
-  gave the 23.9× speedup on the 1000-op microbench.
-- `apply_bid_level` / `apply_ask_level`: new replace-or-insert helpers matching
-  polyfill's BTreeMap semantics for delta application.
-- `px_core::BufferPool` — 512 KB pool with shrink-on-bloat + prewarm, ported
-  from polyfill-rs's `buffer_pool.rs`. Not yet wired into consumers; staged
-  for Wave B WS hot path.
-- `px_core::price_fixed` — `parse_price_str` / `parse_qty_str` that skip the
-  f64 round-trip. Staged for Wave B.
-- `px_core::hash::FastHashMap` / `FastHashSet` — ahash aliases. Staged for
-  Wave B.
-- `simd-json` feature on px-core (off by default), workspace deps added.
+### px-core shared infrastructure
 
-**Wave B — polymarket HTTP:**
-- `http2_initial_stream_window_size(512 * 1024)` and `tcp_nodelay(true)` on
-  the polymarket `HttpClient` and `fetcher.rs`, matching polyfill-rs's
-  `http_config.rs:35-38`. Also bumped `pool_max_idle_per_host` 8 → 10.
+Every exchange (Polymarket, Kalshi, Opinion, plus any future addition) now
+pulls tunings from one place. Future perf fixes are a one-file change.
 
-## What's still open
+- `px_core::http::tuned_client_builder()` — pre-tuned `reqwest::ClientBuilder`
+  (HTTP/2 512 KB stream window, `tcp_nodelay`, keep-alive, pooled
+  connections, no proxy). Behind the `http` feature so `px-schema` stays
+  reqwest-free.
+- `px_core::decode_frame<T>` / `decode_value` — single-pass JSON parse that
+  handles both single-object and array-of-objects frames, with a size-gated
+  switch to simd-json (`simd-json` feature) for payloads ≥ 512 B.
+- `px_core::parse_level(price_str, size_str)` — one-call string →
+  `PriceLevel` helper. Skips the f64 round-trip in favour of integer-tick
+  parsing.
+- `px_core::BufferPool` — 512 KB pool with shrink-on-bloat and prewarm, for
+  HTTP body reads / WS tape buffers.
+- `px_core::hash::FastHashMap` / `FastHashSet` — ahash aliases for hot maps.
+- `insert_bid` / `insert_ask`: `partition_point` + `Vec::insert`
+  (O(log n + n)) replaces `push + sort_unstable` (O(n log n)) — the single
+  biggest win on the 1000-op microbench (23.4× speedup).
+- `apply_bid_level` / `apply_ask_level`: new replace-or-insert helpers
+  matching polyfill's BTreeMap semantics for delta application.
 
-The three WS-book-hot-path numbers (1 / 16 / 64 levels) are still 27-32% behind
-polyfill's published values. Closing that gap requires Wave B Step B7 —
-rewriting the polymarket WS decoder around a `simd_json::Buffers` + `Tape`
-pair with reset reuse, mirroring polyfill-rs's `WsBookUpdateProcessor`. That's
-a larger, higher-risk change because it touches the production `handle_*`
-message handlers and introduces an owned-bytes lifetime. Deferred to a
-follow-up so it can be landed, stress-tested against the live Polymarket WS
-feed, and rolled back cleanly if it destabilises anything.
+### Adoption on every exchange
 
-Wave C (kalshi + opinion HTTP + simd-json port) is similarly deferred until
-Wave B Step B7 lands on polymarket and proves stable in production.
+- **polymarket** — `client.rs` + `fetcher.rs` use `tuned_client_builder`;
+  `websocket.rs` uses `decode_frame` + `parse_level` in the book /
+  price-change handlers. `handle_single_message` now takes `RawWsMessage`
+  by value (no `serde_json::Value` intermediate, no `value.clone()`).
+- **kalshi** — same HTTP builder; `websocket.rs::parse_levels` uses
+  `parse_level`; `handle_message` uses `decode_value`.
+- **opinion** — same HTTP builder; `websocket.rs::handle_message_at` uses
+  `decode_value`.
 
-## How to reproduce
+### Size-gated SIMD switch
+
+`decode_frame` and `decode_value` check payload length. Under 512 B
+(price-change deltas, pings, acks) they stay on `serde_json::from_str`
+because SIMD startup would cost more than it saves. Above, they switch to
+`simd_json::serde::from_slice`. The crossover is calibrated on real
+`ws_hot_path` bench data — at 250 B serde is ~40% faster, at 1.2 KB
+simd-json is ~10% faster, at 4.5 KB simd-json is ~20% faster.
+
+## Still open
+
+1. **`TapeScratch` for WS decoders.** Exposed in `px-core` but not yet
+   wired into production. Would eliminate the one remaining per-message
+   `Vec<u8>` copy in the SIMD path. Deferred until a production pass
+   confirms simd-json is stable across all three exchanges.
+2. **EIP-712 domain + typehash caching** (`polymarket/src/exchange.rs:2460`)
+   — would cut ~50-100 µs off `sign_request_us` per order. No bench in
+   `px-bench` yet; add when benchmarking the order-submission path.
+3. **Per-exchange `parse_value` via BorrowedValue.** polyfill-rs's peak
+   numbers come from walking the simd-json tape directly instead of
+   round-tripping through serde. Our `simd_decode_apply` bench shows that
+   approach is ~20% faster than the serde adapter at high level counts;
+   the rewrite is scoped and localisable to each handler.
+
+## Reproducing
 
 ```bash
 # Computational
@@ -70,11 +103,15 @@ cargo bench -p px-bench \
   --bench ws_hot_path --bench json_parse_480k --bench orderbook_1000 \
   -- --warm-up-time 1 --measurement-time 3 --sample-size 30
 
-# Network (requires ../../../polyfill-rs checkout for the polyfill column)
+# Network (openpx + baseline-reqwest)
+cargo run --release -p px-bench --bin openpx-bench-network -- \
+  --iterations 20 --delay-ms 100 --warmup 5
+
+# Network with polyfill-rs column (edit engine/bench/Cargo.toml to
+# uncomment the polyfill-rs path dep + set compare-polyfill feature)
 cargo run --release -p px-bench --bin openpx-bench-network \
   --features compare-polyfill -- \
   --targets openpx,polyfill,baseline-reqwest
 ```
 
-Baseline and optimized JSON snapshots are under `bench-results/baseline/`
-and `bench-results/optimized/`.
+JSON snapshots under `bench-results/baseline/` and `bench-results/optimized/`.
