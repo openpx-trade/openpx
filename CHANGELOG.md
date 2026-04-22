@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1](https://github.com/openpx-trade/openpx/compare/v0.2.0...v0.2.1) (2026-04-22)
+
+
+### Features
+
+* **bench:** add openpx-bench-ws — WebSocket first-book latency comparison ([45b5ca2](https://github.com/openpx-trade/openpx/commit/45b5ca20611edf53bc254121af49677aaf5db4a3))
+
+
+### Performance Improvements
+
+* **core,exchanges:** unify HTTP + WS decode tunings across every exchange ([0ff2593](https://github.com/openpx-trade/openpx/commit/0ff25930fc835bb2c39dae1c56f7eb738fc12230))
+* **core,exchanges:** wire simd-json into WS decode on all exchanges ([adac103](https://github.com/openpx-trade/openpx/commit/adac103ef463b14ebcdbc990d9acdbe0344b233d))
+
 ## [0.2.0] - 2026-04-22
 
 ### BREAKING
