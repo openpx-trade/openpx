@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "timestamp": "2026-04-22T17:15:00Z",
+    "notes": "Phase 3 — openpx after Wave A+B foundations landed. cargo bench --warm-up-time 1 --measurement-time 3 --sample-size 30 on the same machine used for the baseline snapshot.",
+    "reference_targets": {
+      "polyfill-rs_published_readme": {
+        "ws_book_1lvl_ns": 280,
+        "ws_book_16lvl_us": 2.01,
+        "ws_book_64lvl_us": 7.70,
+        "orderbook_1000_ops_us": 159.6,
+        "spread_mid_ns": 70,
+        "json_parse_480k_ms": 2.3
+      }
+    }
+  },
+  "results": {
+    "ws_hot_path_openpx_serde_1lvl_ns": 383,
+    "ws_hot_path_openpx_serde_16lvl_us": 2.65,
+    "ws_hot_path_openpx_serde_64lvl_us": 9.93,
+    "ws_hot_path_simd_json_parse_only_1lvl_ns": 534,
+    "ws_hot_path_simd_json_parse_only_16lvl_us": 2.32,
+    "ws_hot_path_simd_json_parse_only_64lvl_us": 7.73,
+    "json_parse_480k_serde_value_us": 1026,
+    "json_parse_480k_serde_typed_us": 565,
+    "json_parse_480k_simd_borrowed_us": 442,
+    "orderbook_1000_ops_us": 42.58,
+    "orderbook_calc_best_bid_ps": 634,
+    "orderbook_calc_best_ask_ps": 633,
+    "orderbook_calc_mid_price_ps": 642,
+    "orderbook_calc_spread_ps": 635
+  },
+  "deltas_vs_baseline": {
+    "ws_book_1lvl": "+1%",
+    "ws_book_16lvl": "-2%",
+    "ws_book_64lvl": "-10% (benefits from insert_bid optimization)",
+    "orderbook_1000_ops": "-95.8% — 23.9× speedup",
+    "json_parse_480k_simd": "-3%",
+    "spread_mid_calc": "flat (already sub-ns)"
+  },
+  "vs_polyfill_published": {
+    "orderbook_1000_ops": "3.75× FASTER (42.58 µs vs 159.6 µs)",
+    "spread_mid": "100× FASTER (0.6 ns vs 70 ns) — FixedPrice integer math wins here",
+    "json_parse_480k_with_simd": "5× FASTER than polyfill's published 2.3 ms",
+    "ws_book_1lvl": "27% slower — Wave B Step B7 (simd-json tape) would close this",
+    "ws_book_16lvl": "32% slower — same fix applies",
+    "ws_book_64lvl": "29% slower — same fix applies"
+  }
+}
