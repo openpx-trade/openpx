@@ -11,7 +11,6 @@ members = [
     "engine/sdk",
     "engine/cli",
     "engine/recorder",
-    "engine/bench",
     "sdks/python",
     "sdks/typescript",
 ]
