@@ -354,8 +354,11 @@ impl PolymarketWebSocket {
     }
 
     async fn handle_message_at(&self, text: &str, local_ts: Instant, local_ts_ms: u64) {
-        // Single-pass parse via the shared px-core helper — skips the
-        // serde_json::Value intermediate + value.clone() we had before.
+        // `decode_frame` routes small payloads (≤512 B — e.g. price_change
+        // deltas with 1-3 levels) through serde_json on the input `&str`
+        // (zero allocation), and large ones (book snapshots, trade batches)
+        // through simd-json's SIMD tokenizer. Threshold calibrated on the
+        // ws_hot_path bench.
         match px_core::decode_frame::<RawWsMessage>(text) {
             Some(px_core::WsFrame::Single(msg)) => {
                 self.handle_single_message(msg, local_ts, local_ts_ms).await

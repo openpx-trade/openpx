@@ -21,4 +21,4 @@ pub use price_fixed::{parse_level, parse_price_str, parse_qty_str, Price, Qty, S
 pub use timing::*;
 pub use utils::*;
 pub use websocket::*;
-pub use ws_decoder::{decode_frame, WsFrame};
+pub use ws_decoder::{decode_frame, decode_value, WsFrame};

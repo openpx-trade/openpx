@@ -10,10 +10,11 @@ publish = false
 [features]
 default = []
 # Compare against locally-checked-out polyfill-rs at ../../../polyfill-rs.
-# Off by default. Cargo evaluates path deps at workspace-metadata time
-# regardless of `optional = true`, so we cannot list the dep here without
-# breaking CI (which has no sibling checkout). To run comparisons locally,
-# uncomment the polyfill-rs dep below AND restore `"dep:polyfill-rs"` here.
+# Off by default. The polyfill-rs path dep is commented below; uncomment it
+# and flip this feature to `["dep:polyfill-rs"]` locally when running the
+# cross-library network bench with a sibling polyfill-rs checkout. Leaving
+# the path dep out of the committed Cargo.toml keeps CI (which has no
+# sibling checkout) clean.
 compare-polyfill = []
 # polymarket-rs-client 0.1 has a pkcs8 version conflict with our kalshi crate's
 # alloy pin, so direct comparison isn't feasible. polyfill-rs already publishes
@@ -21,7 +22,7 @@ compare-polyfill = []
 # beat polyfill we transitively beat it.
 
 [dependencies]
-px-core = { workspace = true }
+px-core = { workspace = true, features = ["simd-json"] }
 px-exchange-polymarket = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process"] }
 reqwest = { workspace = true }

@@ -10,7 +10,7 @@ keywords = ["prediction-market", "trading", "opinion", "api"]
 categories = ["api-bindings", "finance"]
 
 [dependencies]
-px-core = { workspace = true, features = ["http"] }
+px-core = { workspace = true, features = ["http", "simd-json"] }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }

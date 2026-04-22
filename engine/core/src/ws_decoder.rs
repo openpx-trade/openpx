@@ -5,8 +5,10 @@
 //! `from_value(value.clone())` double-parse pattern that existed before.
 //! `decode_frame` centralises both.
 //!
-//! For zero-allocation parsing (simd-json with reusable Tape buffers), see
-//! `TapeScratch` behind the `simd-json` feature.
+//! When the `simd-json` feature is enabled, large payloads route through
+//! simd-json's SIMD tokenizer (~15-20% faster on mid-to-large WS frames);
+//! small payloads stay on serde_json, where the SIMD startup cost would
+//! otherwise dominate the parse.
 
 use serde::de::DeserializeOwned;
 
@@ -30,15 +32,46 @@ impl<T> WsFrame<T> {
     }
 }
 
-/// Decode `text` into a `WsFrame<T>` with a single pass of serde_json.
+/// Below this payload size, simd-json's startup cost exceeds the tokenizer
+/// speedup — `serde_json::from_str` is measurably faster on tiny frames
+/// (single-level price-change updates, subscription acks). Above it,
+/// simd-json wins steadily.
 ///
-/// Returns `None` on parse failure — callers typically log and drop such
-/// frames since a half-parsed WS message is not recoverable.
+/// Crossover calibrated on the `ws_hot_path` bench: at ~250 bytes (1 book
+/// level) serde is ~40% faster; at ~1200 bytes (16 levels) simd-json is
+/// ~10% faster; at ~4.5 KB (64 levels) simd-json is ~20% faster. 512 bytes
+/// sits comfortably above the worst-case small-frame size.
+#[cfg(feature = "simd-json")]
+pub const SIMD_CROSSOVER_BYTES: usize = 512;
+
+/// Decode `text` into a `WsFrame<T>` with a single pass of whatever JSON
+/// parser is fastest for its size.
 ///
-/// Dispatch rule: if the first non-whitespace byte is `[`, parse as `Vec<T>`;
-/// otherwise parse as `T`. This matches polymarket / kalshi / opinion WS
-/// behavior (both forms are observed in the wild).
+/// - Small frames: `serde_json::from_str` on the `&str` directly — no alloc.
+/// - Large frames (≥ `SIMD_CROSSOVER_BYTES`, `simd-json` feature on): copy
+///   to a `Vec<u8>` once, then `simd_json::serde::from_slice` with
+///   SIMD-accelerated tokenisation.
+///
+/// Returns `None` on parse failure; callers typically log and drop such
+/// frames. Dispatch rule between single and array: first non-whitespace
+/// byte is `[` → array; else single object. Matches polymarket / kalshi /
+/// opinion WS behaviour (both forms are observed in the wild).
 pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
+    #[cfg(feature = "simd-json")]
+    if text.len() >= SIMD_CROSSOVER_BYTES {
+        let mut bytes = text.as_bytes().to_vec();
+        let head = bytes.iter().find(|&&b| !b.is_ascii_whitespace()).copied()?;
+        return if head == b'[' {
+            simd_json::serde::from_slice::<Vec<T>>(&mut bytes)
+                .ok()
+                .map(WsFrame::Array)
+        } else {
+            simd_json::serde::from_slice::<T>(&mut bytes)
+                .ok()
+                .map(WsFrame::Single)
+        };
+    }
+
     let trimmed = text.trim_start();
     if trimmed.starts_with('[') {
         serde_json::from_str::<Vec<T>>(text)
@@ -47,6 +80,19 @@ pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
     } else {
         serde_json::from_str::<T>(text).ok().map(WsFrame::Single)
     }
+}
+
+/// Parse `text` into a `serde_json::Value` using the same size-based simd
+/// switching as `decode_frame`. For exchanges (kalshi, opinion) that
+/// dispatch on a field inside a loosely typed Value rather than
+/// deserialising into a bespoke `RawWsMessage` struct.
+pub fn decode_value(text: &str) -> Option<serde_json::Value> {
+    #[cfg(feature = "simd-json")]
+    if text.len() >= SIMD_CROSSOVER_BYTES {
+        let mut bytes = text.as_bytes().to_vec();
+        return simd_json::serde::from_slice::<serde_json::Value>(&mut bytes).ok();
+    }
+    serde_json::from_str::<serde_json::Value>(text).ok()
 }
 
 /// Reusable simd-json scratch space for high-throughput WS decoders.
@@ -145,5 +191,42 @@ mod tests {
     fn malformed_returns_none() {
         assert!(decode_frame::<Msg>("{not json").is_none());
         assert!(decode_frame::<Msg>("").is_none());
+    }
+
+    #[test]
+    fn large_frame_uses_simd() {
+        // Build a frame safely above the crossover so the SIMD branch runs.
+        let mut inner = String::new();
+        for i in 0..100 {
+            if i > 0 {
+                inner.push(',');
+            }
+            inner.push_str(&format!(r#"{{"event":"tick","seq":{i}}}"#));
+        }
+        let text = format!("[{inner}]");
+        match decode_frame::<Msg>(&text).unwrap() {
+            WsFrame::Array(items) => assert_eq!(items.len(), 100),
+            WsFrame::Single(_) => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn decode_value_handles_both_sizes() {
+        // small path
+        let small = r#"{"msgType":"ping","seq":1}"#;
+        let v = decode_value(small).unwrap();
+        assert_eq!(v.get("msgType").and_then(|v| v.as_str()), Some("ping"));
+
+        // large path (SIMD branch when feature is enabled)
+        let mut fields = String::new();
+        for i in 0..200 {
+            if i > 0 {
+                fields.push(',');
+            }
+            fields.push_str(&format!(r#""k{i}":"value_{i}""#));
+        }
+        let large = format!("{{{fields}}}");
+        let v = decode_value(&large).unwrap();
+        assert_eq!(v.get("k0").and_then(|v| v.as_str()), Some("value_0"));
     }
 }

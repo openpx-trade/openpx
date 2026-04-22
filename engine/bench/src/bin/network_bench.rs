@@ -62,15 +62,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "openpx" => run_openpx(&args).await?,
             "baseline-reqwest" => run_baseline(&args).await?,
             "polyfill" | "polyfill-rs" => {
-                #[cfg(feature = "compare-polyfill")]
-                {
-                    run_polyfill(&args).await?
-                }
-                #[cfg(not(feature = "compare-polyfill"))]
-                {
-                    eprintln!("  (skipped — rebuild with --features compare-polyfill)");
-                    continue;
-                }
+                eprintln!(
+                    "  (skipped — polyfill comparison requires editing engine/bench/Cargo.toml \
+                     to uncomment the polyfill-rs path dep; left out of the committed file so CI \
+                     builds without the sibling repo)"
+                );
+                continue;
             }
             "py-clob" | "py-clob-client" => run_py_clob(&args).await?,
             other => {

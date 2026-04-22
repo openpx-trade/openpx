@@ -11,7 +11,7 @@ categories = ["api-bindings", "finance"]
 
 [dependencies]
 metrics = { workspace = true }
-px-core = { workspace = true, features = ["http"] }
+px-core = { workspace = true, features = ["http", "simd-json"] }
 smallvec = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }

@@ -282,9 +282,10 @@ impl KalshiWebSocket {
     }
 
     async fn handle_message(&self, text: &str, local_ts: Instant, local_ts_ms: u64) {
-        let value: serde_json::Value = match serde_json::from_str(text) {
-            Ok(v) => v,
-            Err(_) => return,
+        // Shared SIMD-accelerated parse with size-based switching (simd-json
+        // above 512 B, serde_json below).
+        let Some(value) = px_core::decode_value(text) else {
+            return;
         };
 
         let msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
