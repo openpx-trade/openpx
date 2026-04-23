@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5](https://github.com/openpx-trade/openpx/compare/v0.2.3...v0.2.5) (2026-04-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ws:** Polymarket WsUpdate::Snapshot.market_id and Delta.market_id now carry the parent condition ID (from the asset_to_market map), not the CLOB token. Consumers that were keying by the outer market_id expecting a token should key by the new asset_id field. Kalshi and Opinion behavior is unchanged.
+* **kalshi:** cursor format changed. Old 0.2.3 cursor strings are not recognized; callers must restart pagination after upgrading.
+
+### Features
+
+* **ws:** asset_id on Delta, Clear variant, reconnect parity, Opinion snapshot ([3d4eaf0](https://github.com/openpx-trade/openpx/commit/3d4eaf07dd455a580cc7c54063b1b497603842b2))
+
+
+### Bug Fixes
+
+* **kalshi:** rewrite fetch_markets using /markets + /historical/markets ([267a74c](https://github.com/openpx-trade/openpx/commit/267a74c27b2d56e4827e28ff742c2306a7ccdb70))
+
 ## [0.2.3](https://github.com/openpx-trade/openpx/compare/v0.2.2...v0.2.3) (2026-04-23)
 
 
