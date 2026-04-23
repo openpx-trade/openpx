@@ -6,46 +6,34 @@ use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn empty_events_response() -> serde_json::Value {
-    serde_json::json!({ "events": [], "cursor": null })
+fn empty_markets_response() -> serde_json::Value {
+    serde_json::json!({ "markets": [], "cursor": null })
 }
 
-fn sample_events_response() -> serde_json::Value {
+fn sample_markets_response() -> serde_json::Value {
     serde_json::json!({
-        "events": [
+        "markets": [
             {
+                "ticker": "INXD-24DEC31-B5000",
                 "event_ticker": "INXD-24DEC31",
-                "title": "S&P 500 Dec 31",
-                "markets": [
-                    {
-                        "ticker": "INXD-24DEC31-B5000",
-                        "event_ticker": "INXD-24DEC31",
-                        "title": "S&P 500 above 5000 on Dec 31?",
-                        "subtitle": "Market resolves Yes if S&P closes above 5000",
-                        "yes_ask": 65,
-                        "volume": 150000.0,
-                        "open_interest": 25000.0,
-                        "close_time": "2024-12-31T21:00:00Z",
-                        "status": "active"
-                    }
-                ]
+                "title": "S&P 500 above 5000 on Dec 31?",
+                "subtitle": "Market resolves Yes if S&P closes above 5000",
+                "yes_ask": 65,
+                "volume": 150000.0,
+                "open_interest": 25000.0,
+                "close_time": "2024-12-31T21:00:00Z",
+                "status": "active"
             },
             {
+                "ticker": "ELON-TWEET-2024",
                 "event_ticker": "ELON-TWEET",
-                "title": "Elon Tweets",
-                "markets": [
-                    {
-                        "ticker": "ELON-TWEET-2024",
-                        "event_ticker": "ELON-TWEET",
-                        "title": "Will Elon tweet about crypto today?",
-                        "subtitle": "Any tweet mentioning BTC, ETH, or DOGE",
-                        "yes_ask": 42,
-                        "volume": 50000.0,
-                        "open_interest": 8000.0,
-                        "close_time": "2024-12-28T23:59:59Z",
-                        "status": "active"
-                    }
-                ]
+                "title": "Will Elon tweet about crypto today?",
+                "subtitle": "Any tweet mentioning BTC, ETH, or DOGE",
+                "yes_ask": 42,
+                "volume": 50000.0,
+                "open_interest": 8000.0,
+                "close_time": "2024-12-28T23:59:59Z",
+                "status": "active"
             }
         ],
         "cursor": null
@@ -72,13 +60,8 @@ async fn test_fetch_markets_parses_response() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
-        .mount(&mock_server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .and(path("/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
         .mount(&mock_server)
         .await;
 
@@ -528,30 +511,21 @@ async fn test_fetch_markets_with_pagination_cursor() {
     // #given - first page returns cursor "abc123"
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "events": [{
+            "markets": [{
+                "ticker": "EVT-1-MKT1",
                 "event_ticker": "EVT-1",
-                "title": "Event 1",
-                "markets": [{
-                    "ticker": "EVT-1-MKT1",
-                    "event_ticker": "EVT-1",
-                    "title": "Market 1",
-                    "subtitle": "First market",
-                    "yes_ask": 50,
-                    "volume": 1000.0,
-                    "open_interest": 100.0,
-                    "close_time": "2024-12-31T21:00:00Z",
-                    "status": "active"
-                }]
+                "title": "Market 1",
+                "subtitle": "First market",
+                "yes_ask": 50,
+                "volume": 1000.0,
+                "open_interest": 100.0,
+                "close_time": "2024-12-31T21:00:00Z",
+                "status": "active"
             }],
             "cursor": "abc123"
         })))
-        .mount(&mock_server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -569,7 +543,8 @@ async fn test_fetch_markets_with_pagination_cursor() {
     // #then
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "EVT-1-MKT1");
-    // Cursor is now a compound JSON encoding regular + multivariate pagination
+    // Cursor is a compound JSON encoding live + historical pagination;
+    // Active filter only paginates live (`r`).
     let cursor_str = cursor.unwrap();
     let cursor_val: serde_json::Value = serde_json::from_str(&cursor_str).unwrap();
     assert_eq!(cursor_val["r"], "abc123");
@@ -580,30 +555,22 @@ async fn test_fetch_markets_with_cursor_passes_through() {
     // #given - second page request with cursor parameter
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
+        .and(query_param("cursor", "abc123"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "events": [{
+            "markets": [{
+                "ticker": "EVT-2-MKT1",
                 "event_ticker": "EVT-2",
-                "title": "Event 2",
-                "markets": [{
-                    "ticker": "EVT-2-MKT1",
-                    "event_ticker": "EVT-2",
-                    "title": "Market 2",
-                    "subtitle": "Second page market",
-                    "yes_ask": 30,
-                    "volume": 500.0,
-                    "open_interest": 50.0,
-                    "close_time": "2025-01-15T21:00:00Z",
-                    "status": "active"
-                }]
+                "title": "Market 2",
+                "subtitle": "Second page market",
+                "yes_ask": 30,
+                "volume": 500.0,
+                "open_interest": 50.0,
+                "close_time": "2025-01-15T21:00:00Z",
+                "status": "active"
             }],
             "cursor": null
         })))
-        .mount(&mock_server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -612,9 +579,10 @@ async fn test_fetch_markets_with_cursor_passes_through() {
         .with_verbose(false);
     let exchange = Kalshi::new(config).unwrap();
 
-    // #when - pass legacy cursor from previous page (treated as regular-only)
+    // #when - pass a compound cursor from a previous page (live-only).
+    let prior_cursor = serde_json::json!({"r": "abc123"}).to_string();
     let params = FetchMarketsParams {
-        cursor: Some("abc123".to_string()),
+        cursor: Some(prior_cursor),
         ..Default::default()
     };
     let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
@@ -678,7 +646,7 @@ async fn test_http_401_returns_auth_error() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized: invalid API key"))
         .mount(&mock_server)
         .await;
@@ -705,7 +673,7 @@ async fn test_http_403_returns_auth_error() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(
             ResponseTemplate::new(403).set_body_string("Forbidden: insufficient permissions"),
         )
@@ -738,7 +706,7 @@ async fn test_http_429_returns_rate_limit_error() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(ResponseTemplate::new(429).set_body_string("Too Many Requests"))
         .mount(&mock_server)
         .await;
@@ -771,7 +739,7 @@ async fn test_http_500_returns_api_error() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
             "error": { "code": "internal_error", "message": "something broke" }
         })))
@@ -973,46 +941,38 @@ async fn test_insufficient_balance_error_parsed() {
 
 #[tokio::test]
 async fn test_fetch_markets_filters_by_status() {
-    // #given - event contains markets with mixed statuses
+    // #given - /markets returns mixed statuses; Active filter must narrow
+    // to the single "active" row even if the server echoes others.
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "events": [{
-                "event_ticker": "MIX-EVT",
-                "title": "Mixed Status Event",
-                "markets": [
-                    {
-                        "ticker": "MIX-OPEN",
-                        "event_ticker": "MIX-EVT",
-                        "title": "Open market",
-                        "subtitle": "Still trading",
-                        "yes_ask": 50,
-                        "volume": 1000.0,
-                        "open_interest": 100.0,
-                        "close_time": "2025-12-31T21:00:00Z",
-                        "status": "active"
-                    },
-                    {
-                        "ticker": "MIX-CLOSED",
-                        "event_ticker": "MIX-EVT",
-                        "title": "Closed market",
-                        "subtitle": "No longer trading",
-                        "yes_ask": 90,
-                        "volume": 5000.0,
-                        "open_interest": 0.0,
-                        "close_time": "2024-06-01T21:00:00Z",
-                        "status": "closed"
-                    }
-                ]
-            }],
+            "markets": [
+                {
+                    "ticker": "MIX-OPEN",
+                    "event_ticker": "MIX-EVT",
+                    "title": "Open market",
+                    "subtitle": "Still trading",
+                    "yes_ask": 50,
+                    "volume": 1000.0,
+                    "open_interest": 100.0,
+                    "close_time": "2025-12-31T21:00:00Z",
+                    "status": "active"
+                },
+                {
+                    "ticker": "MIX-CLOSED",
+                    "event_ticker": "MIX-EVT",
+                    "title": "Closed market",
+                    "subtitle": "No longer trading",
+                    "yes_ask": 90,
+                    "volume": 5000.0,
+                    "open_interest": 0.0,
+                    "close_time": "2024-06-01T21:00:00Z",
+                    "status": "closed"
+                }
+            ],
             "cursor": null
         })))
-        .mount(&mock_server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
         .mount(&mock_server)
         .await;
 
@@ -1320,44 +1280,40 @@ async fn test_fetch_trades_filters_zero_size() {
 // fetch_markets: MarketStatusFilter::All returns all statuses
 // ---------------------------------------------------------------------------
 
-fn sample_mixed_status_events() -> serde_json::Value {
+fn sample_mixed_status_markets() -> serde_json::Value {
     serde_json::json!({
-        "events": [{
-            "event_ticker": "MIX-EVT",
-            "title": "Mixed Status Event",
-            "markets": [
-                {
-                    "ticker": "MIX-ACTIVE",
-                    "event_ticker": "MIX-EVT",
-                    "title": "Active market",
-                    "subtitle": "Currently trading",
-                    "yes_ask": 50,
-                    "volume": 1000.0,
-                    "close_time": "2025-12-31T21:00:00Z",
-                    "status": "active"
-                },
-                {
-                    "ticker": "MIX-CLOSED",
-                    "event_ticker": "MIX-EVT",
-                    "title": "Closed market",
-                    "subtitle": "No longer trading",
-                    "yes_ask": 90,
-                    "volume": 5000.0,
-                    "close_time": "2024-06-01T21:00:00Z",
-                    "status": "closed"
-                },
-                {
-                    "ticker": "MIX-SETTLED",
-                    "event_ticker": "MIX-EVT",
-                    "title": "Settled market",
-                    "subtitle": "Resolved",
-                    "yes_ask": 100,
-                    "volume": 8000.0,
-                    "close_time": "2024-01-01T21:00:00Z",
-                    "status": "determined"
-                }
-            ]
-        }],
+        "markets": [
+            {
+                "ticker": "MIX-ACTIVE",
+                "event_ticker": "MIX-EVT",
+                "title": "Active market",
+                "subtitle": "Currently trading",
+                "yes_ask": 50,
+                "volume": 1000.0,
+                "close_time": "2025-12-31T21:00:00Z",
+                "status": "active"
+            },
+            {
+                "ticker": "MIX-CLOSED",
+                "event_ticker": "MIX-EVT",
+                "title": "Closed market",
+                "subtitle": "No longer trading",
+                "yes_ask": 90,
+                "volume": 5000.0,
+                "close_time": "2024-06-01T21:00:00Z",
+                "status": "closed"
+            },
+            {
+                "ticker": "MIX-SETTLED",
+                "event_ticker": "MIX-EVT",
+                "title": "Settled market",
+                "subtitle": "Resolved",
+                "yes_ask": 100,
+                "volume": 8000.0,
+                "close_time": "2024-01-01T21:00:00Z",
+                "status": "determined"
+            }
+        ],
         "cursor": null
     })
 }
@@ -1367,13 +1323,13 @@ async fn test_fetch_markets_status_all_returns_all_statuses() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets()))
         .mount(&mock_server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .and(path("/historical/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_markets_response()))
         .mount(&mock_server)
         .await;
 
@@ -1403,13 +1359,13 @@ async fn test_fetch_markets_status_active_filters_correctly() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets()))
         .mount(&mock_server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .and(path("/historical/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_markets_response()))
         .mount(&mock_server)
         .await;
 
@@ -1436,13 +1392,13 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets()))
         .mount(&mock_server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .and(path("/historical/markets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_markets_response()))
         .mount(&mock_server)
         .await;
 
@@ -1473,15 +1429,15 @@ async fn test_fetch_markets_with_series_id() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .and(query_param("series_ticker", "INXD"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_response()))
         .mount(&mock_server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
+        .and(path("/historical/markets"))
         .and(query_param("series_ticker", "INXD"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_markets_response()))
         .mount(&mock_server)
         .await;
 
@@ -1506,16 +1462,16 @@ async fn test_fetch_markets_with_series_id_and_status() {
     // #given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/markets"))
         .and(query_param("series_ticker", "KXBTC"))
         .and(query_param("status", "settled"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_markets()))
         .mount(&mock_server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/events/multivariate"))
+        .and(path("/historical/markets"))
         .and(query_param("series_ticker", "KXBTC"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(empty_events_response()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_markets_response()))
         .mount(&mock_server)
         .await;
 

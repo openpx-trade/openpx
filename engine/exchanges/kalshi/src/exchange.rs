@@ -1004,50 +1004,67 @@ impl Exchange for Kalshi {
         }
 
         #[derive(serde::Deserialize)]
-        struct EventsResponse {
-            events: Vec<serde_json::Value>,
+        struct MarketsResponse {
+            markets: Vec<serde_json::Value>,
             cursor: Option<String>,
         }
 
-        /// Compound cursor tracking pagination for both regular and multivariate
-        /// event endpoints. `None` means that source is exhausted.
-        #[derive(serde::Serialize, serde::Deserialize)]
+        /// Compound cursor for live + historical markets. `None` on either side
+        /// means that source is exhausted. Both `None` ⇒ terminate pagination.
+        /// Breaking change from 0.2.2 — old cursor strings are discarded; callers
+        /// must restart pagination after upgrading.
+        #[derive(serde::Serialize, serde::Deserialize, Default)]
         struct CursorState {
             #[serde(skip_serializing_if = "Option::is_none")]
             r: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
-            m: Option<String>,
+            h: Option<String>,
         }
 
-        // Parse incoming cursor into compound state.
-        let mut state = match params.cursor.as_deref() {
+        let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+
+        // Map unified filter → /markets `status` query value. `/historical/markets`
+        // has no status filter — we include it only when callers may want
+        // pre-cutoff settled markets (Resolved, All).
+        let live_status: Option<&str> = match filter {
+            MarketStatusFilter::Active => Some("open"),
+            MarketStatusFilter::Closed => Some("closed"),
+            MarketStatusFilter::Resolved => Some("settled"),
+            MarketStatusFilter::All => None,
+        };
+        let include_historical = matches!(
+            filter,
+            MarketStatusFilter::Resolved | MarketStatusFilter::All
+        );
+
+        // Seed compound state from caller cursor (fresh-start on first call or
+        // on any unrecognized cursor — no legacy-shape compat).
+        let mut state: CursorState = match params.cursor.as_deref() {
             None => CursorState {
                 r: Some(String::new()),
-                m: Some(String::new()),
+                h: if include_historical {
+                    Some(String::new())
+                } else {
+                    None
+                },
             },
-            Some(s) if s.starts_with('{') => serde_json::from_str(s).unwrap_or(CursorState {
+            Some(s) => serde_json::from_str(s).unwrap_or(CursorState {
                 r: Some(String::new()),
-                m: Some(String::new()),
+                h: if include_historical {
+                    Some(String::new())
+                } else {
+                    None
+                },
             }),
-            Some(s) => CursorState {
-                r: Some(s.to_string()),
-                m: Some(String::new()),
-            },
         };
 
-        let status_str = match params.status {
-            Some(MarketStatusFilter::Active) | None => Some("open"),
-            Some(MarketStatusFilter::Closed) => Some("closed"),
-            Some(MarketStatusFilter::Resolved) => Some("settled"),
-            Some(MarketStatusFilter::All) => None,
-        };
+        let limit = params.limit.unwrap_or(200).min(1000);
 
-        // Build endpoint URLs for sources that still have pages remaining.
-        let regular_endpoint = state.r.as_ref().map(|cursor| {
-            let mut ep = match status_str {
-                Some(s) => format!("/events?limit=200&with_nested_markets=true&status={s}"),
-                None => "/events?limit=200&with_nested_markets=true".to_string(),
-            };
+        let live_endpoint = state.r.as_ref().map(|cursor| {
+            let mut ep = format!("/markets?limit={limit}");
+            if let Some(s) = live_status {
+                ep.push_str(&format!("&status={s}"));
+            }
             if let Some(ref st) = params.series_id {
                 ep.push_str(&format!("&series_ticker={st}"));
             }
@@ -1057,8 +1074,8 @@ impl Exchange for Kalshi {
             ep
         });
 
-        let multivariate_endpoint = state.m.as_ref().map(|cursor| {
-            let mut ep = "/events/multivariate?limit=200&with_nested_markets=true".to_string();
+        let historical_endpoint = state.h.as_ref().map(|cursor| {
+            let mut ep = format!("/historical/markets?limit={limit}");
             if let Some(ref st) = params.series_id {
                 ep.push_str(&format!("&series_ticker={st}"));
             }
@@ -1068,26 +1085,26 @@ impl Exchange for Kalshi {
             ep
         });
 
-        // Fetch both endpoints in parallel.
-        let regular_fut = async {
-            match regular_endpoint {
-                Some(ref ep) => self.get::<EventsResponse>(ep).await.map(Some),
+        let live_fut = async {
+            match live_endpoint {
+                Some(ref ep) => self.get::<MarketsResponse>(ep).await.map(Some),
                 None => Ok(None),
             }
         };
-        let multivariate_fut = async {
-            match multivariate_endpoint {
-                Some(ref ep) => self.get::<EventsResponse>(ep).await.map(Some),
+        let historical_fut = async {
+            match historical_endpoint {
+                Some(ref ep) => self.get::<MarketsResponse>(ep).await.map(Some),
                 None => Ok(None),
             }
         };
 
-        let (regular_res, multivariate_res) = tokio::join!(regular_fut, multivariate_fut);
-        let regular_resp = regular_res.map_err(to_openpx)?;
-        let multivariate_resp = multivariate_res.map_err(to_openpx)?;
+        let (live_res, historical_res) = tokio::join!(live_fut, historical_fut);
+        let live_resp = live_res.map_err(to_openpx)?;
+        let historical_resp = historical_res.map_err(to_openpx)?;
 
-        // Extract and filter markets from event responses.
-        let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+        // Client-side status filter: `/markets?status=...` is server-authoritative,
+        // but `/historical/markets` has no status filter and `All` hits both
+        // endpoints without a server filter. Keep the post-filter as a safety net.
         let requested_status = match filter {
             MarketStatusFilter::Active => Some(MarketStatus::Active),
             MarketStatusFilter::Closed => Some(MarketStatus::Closed),
@@ -1098,35 +1115,35 @@ impl Exchange for Kalshi {
         let mut all_markets = Vec::new();
         let map_start = Instant::now();
 
-        let extract_markets = |events: &[serde_json::Value], markets: &mut Vec<Market>| {
-            for event in events {
-                if let Some(arr) = event.get("markets").and_then(|v| v.as_array()) {
-                    for raw in arr {
-                        if let Some(market) = self.parse_market(raw) {
-                            if let Some(ref req) = requested_status {
-                                if market.status != *req {
-                                    continue;
-                                }
-                            }
-                            markets.push(market);
+        let mut extract = |rows: &[serde_json::Value]| {
+            for raw in rows {
+                if let Some(market) = self.parse_market(raw) {
+                    if let Some(ref req) = requested_status {
+                        if market.status != *req {
+                            continue;
                         }
                     }
+                    all_markets.push(market);
                 }
             }
         };
 
-        if let Some(ref resp) = regular_resp {
-            extract_markets(&resp.events, &mut all_markets);
-            state.r = resp.cursor.clone();
+        // `cursor == Some("")` from Kalshi signals end-of-stream; collapse it to
+        // `None` so we stop issuing requests.
+        let next_or_none = |c: Option<String>| c.filter(|s| !s.is_empty());
+
+        if let Some(resp) = live_resp {
+            extract(&resp.markets);
+            state.r = next_or_none(resp.cursor);
         } else {
             state.r = None;
         }
 
-        if let Some(ref resp) = multivariate_resp {
-            extract_markets(&resp.events, &mut all_markets);
-            state.m = resp.cursor.clone();
+        if let Some(resp) = historical_resp {
+            extract(&resp.markets);
+            state.h = next_or_none(resp.cursor);
         } else {
-            state.m = None;
+            state.h = None;
         }
 
         let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
@@ -1137,7 +1154,7 @@ impl Exchange for Kalshi {
         )
         .record(map_us);
 
-        let next_cursor = match (&state.r, &state.m) {
+        let next_cursor = match (&state.r, &state.h) {
             (None, None) => None,
             _ => Some(serde_json::to_string(&state).unwrap_or_default()),
         };
