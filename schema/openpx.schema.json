@@ -302,6 +302,7 @@
           ]
         },
         "limit": {
+          "description": "Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped at 20. Values above the cap are silently clamped to the cap.",
           "format": "uint",
           "minimum": 0.0,
           "type": [
@@ -1568,8 +1569,11 @@
       "description": "Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.",
       "oneOf": [
         {
-          "description": "Full orderbook snapshot. Caller should replace any cached book for this `market_id`. Emitted on initial subscribe and after any `BookInvalidated` recovery path.",
+          "description": "Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id` is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker, Opinion numeric market id). Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.",
           "properties": {
+            "asset_id": {
+              "type": "string"
+            },
             "book": {
               "$ref": "#/definitions/Orderbook"
             },
@@ -1602,6 +1606,7 @@
             }
           },
           "required": [
+            "asset_id",
             "book",
             "kind",
             "local_ts_ms",
@@ -1611,8 +1616,11 @@
           "type": "object"
         },
         {
-          "description": "Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `BookInvalidated` without a follow-up `Snapshot` yet.",
+          "description": "Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear` / `BookInvalidated` without a follow-up `Snapshot` yet.",
           "properties": {
+            "asset_id": {
+              "type": "string"
+            },
             "changes": {
               "items": {
                 "$ref": "#/definitions/PriceLevelChange"
@@ -1648,10 +1656,50 @@
             }
           },
           "required": [
+            "asset_id",
             "changes",
             "kind",
             "local_ts_ms",
             "market_id",
+            "seq"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear, drop anything with seq ≤ N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`, which stays as the connection-level signal for global observability.",
+          "properties": {
+            "asset_id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "Clear"
+              ],
+              "type": "string"
+            },
+            "local_ts_ms": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "market_id": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/InvalidationReason"
+            },
+            "seq": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "asset_id",
+            "kind",
+            "local_ts_ms",
+            "market_id",
+            "reason",
             "seq"
           ],
           "type": "object"

@@ -310,16 +310,29 @@ class Kind6(Enum):
 
 
 class Kind7(Enum):
-    Trade = "Trade"
+    Clear = "Clear"
 
 
 class WsUpdate3(BaseModel):
+    asset_id: str
     kind: Kind7
+    local_ts_ms: conint(ge=0)
+    market_id: str
+    reason: InvalidationReason
+    seq: conint(ge=0)
+
+
+class Kind8(Enum):
+    Trade = "Trade"
+
+
+class WsUpdate4(BaseModel):
+    kind: Kind8
     local_ts_ms: conint(ge=0)
     trade: ActivityTrade
 
 
-class Kind8(Enum):
+class Kind9(Enum):
     Fill = "Fill"
 
 
@@ -360,7 +373,10 @@ class FetchMarketsParams(BaseModel):
         None,
         description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`), a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`), or an Opinion market slug (e.g., `"btc-price-daily"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
     )
-    limit: conint(ge=0) | None = None
+    limit: conint(ge=0) | None = Field(
+        None,
+        description="Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped at 20. Values above the cap are silently clamped to the cap.",
+    )
     series_id: str | None = Field(
         None,
         description='Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.',
@@ -516,6 +532,7 @@ class PriceLevelChange(BaseModel):
 
 
 class WsUpdate2(BaseModel):
+    asset_id: str
     changes: list[PriceLevelChange]
     exchange_ts: conint(ge=0) | None = None
     kind: Kind6
@@ -524,9 +541,9 @@ class WsUpdate2(BaseModel):
     seq: conint(ge=0)
 
 
-class WsUpdate4(BaseModel):
+class WsUpdate5(BaseModel):
     fill: ActivityFill
-    kind: Kind8
+    kind: Kind9
     local_ts_ms: conint(ge=0)
 
 
@@ -552,6 +569,7 @@ class OrderbookSnapshot(BaseModel):
 
 
 class WsUpdate1(BaseModel):
+    asset_id: str
     book: Orderbook
     exchange_ts: conint(ge=0) | None = None
     kind: Kind5
@@ -560,8 +578,8 @@ class WsUpdate1(BaseModel):
     seq: conint(ge=0)
 
 
-class WsUpdate(RootModel[WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4]):
-    root: WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 = Field(
+class WsUpdate(RootModel[WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5]):
+    root: WsUpdate1 | WsUpdate2 | WsUpdate3 | WsUpdate4 | WsUpdate5 = Field(
         ...,
         description="Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.",
         title="WsUpdate",
