@@ -28,7 +28,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.91"
 license = "MIT"
@@ -93,13 +93,13 @@ base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 
 # Internal crates
-px-core = { version = "0.2.2", path = "engine/core" }
-px-exchange-polymarket = { version = "0.2.2", path = "engine/exchanges/polymarket" }
-px-exchange-opinion = { version = "0.2.2", path = "engine/exchanges/opinion" }
-px-exchange-kalshi = { version = "0.2.2", path = "engine/exchanges/kalshi" }
-px-sports = { version = "0.2.2", path = "engine/sports" }
-px-crypto = { version = "0.2.2", path = "engine/crypto" }
-openpx = { version = "0.2.2", path = "engine/sdk" }
+px-core = { version = "0.2.3", path = "engine/core" }
+px-exchange-polymarket = { version = "0.2.3", path = "engine/exchanges/polymarket" }
+px-exchange-opinion = { version = "0.2.3", path = "engine/exchanges/opinion" }
+px-exchange-kalshi = { version = "0.2.3", path = "engine/exchanges/kalshi" }
+px-sports = { version = "0.2.3", path = "engine/sports" }
+px-crypto = { version = "0.2.3", path = "engine/crypto" }
+openpx = { version = "0.2.3", path = "engine/sdk" }
 
 [profile.release]
 lto = true

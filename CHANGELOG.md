@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3](https://github.com/openpx-trade/openpx/compare/v0.2.2...v0.2.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **npm:** remove prepublishOnly hook that double-runs napi prepublish ([19a4dc7](https://github.com/openpx-trade/openpx/commit/19a4dc71fc7e97b4c825d756df6765c2926ee614))
+
 ## [0.2.2](https://github.com/openpx-trade/openpx/compare/v0.2.1...v0.2.2) (2026-04-22)
 
 
