@@ -26,8 +26,7 @@
   ],
   "scripts": {
     "build": "napi build --release",
-    "build:debug": "napi build",
-    "prepublishOnly": "napi prepublish -t npm --skip-gh-release"
+    "build:debug": "napi build"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
