@@ -146,11 +146,13 @@ impl KalshiWebSocket {
     }
 
     /// Emit a `WsUpdate` through the 0.2 dispatcher. On overflow raises
-    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` so callers can
-    /// invalidate their cached books instead of silently diverging — the
-    /// correctness fix vs. tokio broadcast's lag-and-skip.
+    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` + a best-effort
+    /// `WsUpdate::Clear` on the update stream so consumers can invalidate
+    /// without merging session + update streams — correctness fix vs.
+    /// tokio broadcast's lag-and-skip.
     async fn dispatch(&self, update: WsUpdate) {
         let market = update.market_id().map(str::to_string);
+        let asset = update.asset_id().map(str::to_string);
         if !self.dispatcher.try_send_update(update) {
             self.dispatcher
                 .send_session(SessionEvent::Lagged {
@@ -159,13 +161,28 @@ impl KalshiWebSocket {
                     last_seq: 0,
                 })
                 .await;
-            if let Some(market_id) = market {
+            if let (Some(market_id), Some(asset_id)) = (market, asset) {
                 self.dispatcher
                     .send_session(SessionEvent::BookInvalidated {
-                        market_id,
+                        market_id: market_id.clone(),
                         reason: InvalidationReason::Lag,
                     })
                     .await;
+                let (local_ts, local_ts_ms) = now_pair();
+                let seq = self
+                    .dispatcher_seq(&market_id)
+                    .await
+                    .fetch_add(1, Ordering::Relaxed);
+                // Best-effort: channel may still be full. If it drops, the
+                // session `BookInvalidated` already signaled the invalidation.
+                let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
+                    market_id,
+                    asset_id,
+                    reason: InvalidationReason::Lag,
+                    local_ts,
+                    local_ts_ms,
+                    seq,
+                });
             }
         }
     }
@@ -392,8 +409,11 @@ impl KalshiWebSocket {
             .dispatcher_seq(&payload.market_ticker)
             .await
             .fetch_add(1, Ordering::Relaxed);
+        // Kalshi markets are binary, keyed by a single ticker; market_id and
+        // asset_id are the same string.
         self.dispatch(WsUpdate::Snapshot {
-            market_id: payload.market_ticker,
+            market_id: payload.market_ticker.clone(),
+            asset_id: payload.market_ticker,
             book: Arc::new(orderbook),
             exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
             local_ts,
@@ -479,7 +499,8 @@ impl KalshiWebSocket {
                 .await
                 .fetch_add(1, Ordering::Relaxed);
             self.dispatch(WsUpdate::Delta {
-                market_id: payload.market_ticker,
+                market_id: payload.market_ticker.clone(),
+                asset_id: payload.market_ticker,
                 changes,
                 exchange_ts,
                 local_ts,
@@ -660,10 +681,23 @@ impl KalshiWebSocket {
                 self.dispatcher.send_session(SessionEvent::error(err)).await;
                 self.dispatcher
                     .send_session(SessionEvent::BookInvalidated {
-                        market_id,
+                        market_id: market_id.clone(),
                         reason: InvalidationReason::ExchangeReset,
                     })
                     .await;
+                let (local_ts, local_ts_ms) = now_pair();
+                let seq = self
+                    .dispatcher_seq(&market_id)
+                    .await
+                    .fetch_add(1, Ordering::Relaxed);
+                let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
+                    market_id: market_id.clone(),
+                    asset_id: market_id,
+                    reason: InvalidationReason::ExchangeReset,
+                    local_ts,
+                    local_ts_ms,
+                    seq,
+                });
             }
         }
     }
@@ -927,6 +961,19 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                             reason: InvalidationReason::Reconnect,
                                         })
                                         .await;
+                                    let (ts_mono, ts_ms) = now_pair();
+                                    let seq = ws_self
+                                        .dispatcher_seq(market_id)
+                                        .await
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    let _ = ws_self.dispatcher.try_send_update(WsUpdate::Clear {
+                                        market_id: market_id.clone(),
+                                        asset_id: market_id.clone(),
+                                        reason: InvalidationReason::Reconnect,
+                                        local_ts: ts_mono,
+                                        local_ts_ms: ts_ms,
+                                        seq,
+                                    });
                                 }
                             }
 
@@ -977,11 +1024,22 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                 }
                             };
 
+                            let ping_future = async {
+                                let mut ping_interval = interval(WS_PING_INTERVAL);
+                                loop {
+                                    ping_interval.tick().await;
+                                    if let Some(ref tx) = *ws_self.write_tx.lock().await {
+                                        let _ = tx.unbounded_send(Message::Ping(vec![]));
+                                    }
+                                }
+                            };
+
                             let stall_future = stall_watchdog(last_message_at.clone());
 
                             tokio::select! {
                                 _ = write_future => {},
                                 _ = read_future => {},
+                                _ = ping_future => {},
                                 _ = stall_future => {},
                             }
 

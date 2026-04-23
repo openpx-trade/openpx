@@ -26,6 +26,8 @@ pub struct Snapshot {
     #[pyo3(get)]
     pub market_id: String,
     #[pyo3(get)]
+    pub asset_id: String,
+    #[pyo3(get)]
     pub book: Py<PyAny>,
     #[pyo3(get)]
     pub exchange_ts: Option<u64>,
@@ -38,8 +40,14 @@ pub struct Snapshot {
 #[pymethods]
 impl Snapshot {
     #[classattr]
-    const __match_args__: (&str, &str, &str, &str, &str) =
-        ("market_id", "book", "exchange_ts", "local_ts_ms", "seq");
+    const __match_args__: (&str, &str, &str, &str, &str, &str) = (
+        "market_id",
+        "asset_id",
+        "book",
+        "exchange_ts",
+        "local_ts_ms",
+        "seq",
+    );
 
     #[getter]
     fn kind(&self) -> &'static str {
@@ -48,8 +56,8 @@ impl Snapshot {
 
     fn __repr__(&self) -> String {
         format!(
-            "Snapshot(market_id={:?}, seq={}, exchange_ts={:?}, local_ts_ms={})",
-            self.market_id, self.seq, self.exchange_ts, self.local_ts_ms
+            "Snapshot(market_id={:?}, asset_id={:?}, seq={}, exchange_ts={:?}, local_ts_ms={})",
+            self.market_id, self.asset_id, self.seq, self.exchange_ts, self.local_ts_ms
         )
     }
 }
@@ -58,6 +66,8 @@ impl Snapshot {
 pub struct Delta {
     #[pyo3(get)]
     pub market_id: String,
+    #[pyo3(get)]
+    pub asset_id: String,
     #[pyo3(get)]
     pub changes: Py<PyAny>,
     #[pyo3(get)]
@@ -71,8 +81,14 @@ pub struct Delta {
 #[pymethods]
 impl Delta {
     #[classattr]
-    const __match_args__: (&str, &str, &str, &str, &str) =
-        ("market_id", "changes", "exchange_ts", "local_ts_ms", "seq");
+    const __match_args__: (&str, &str, &str, &str, &str, &str) = (
+        "market_id",
+        "asset_id",
+        "changes",
+        "exchange_ts",
+        "local_ts_ms",
+        "seq",
+    );
 
     #[getter]
     fn kind(&self) -> &'static str {
@@ -81,8 +97,41 @@ impl Delta {
 
     fn __repr__(&self) -> String {
         format!(
-            "Delta(market_id={:?}, seq={}, exchange_ts={:?}, local_ts_ms={})",
-            self.market_id, self.seq, self.exchange_ts, self.local_ts_ms
+            "Delta(market_id={:?}, asset_id={:?}, seq={}, exchange_ts={:?}, local_ts_ms={})",
+            self.market_id, self.asset_id, self.seq, self.exchange_ts, self.local_ts_ms
+        )
+    }
+}
+
+#[pyclass(module = "openpx", frozen)]
+pub struct Clear {
+    #[pyo3(get)]
+    pub market_id: String,
+    #[pyo3(get)]
+    pub asset_id: String,
+    #[pyo3(get)]
+    pub reason: Py<PyAny>,
+    #[pyo3(get)]
+    pub local_ts_ms: u64,
+    #[pyo3(get)]
+    pub seq: u64,
+}
+
+#[pymethods]
+impl Clear {
+    #[classattr]
+    const __match_args__: (&str, &str, &str, &str, &str) =
+        ("market_id", "asset_id", "reason", "local_ts_ms", "seq");
+
+    #[getter]
+    fn kind(&self) -> &'static str {
+        "Clear"
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Clear(market_id={:?}, asset_id={:?}, seq={}, local_ts_ms={})",
+            self.market_id, self.asset_id, self.seq, self.local_ts_ms
         )
     }
 }
@@ -137,6 +186,7 @@ pub fn ws_update_into_py(py: Python<'_>, update: WsUpdate) -> PyResult<Py<PyAny>
     match update {
         WsUpdate::Snapshot {
             market_id,
+            asset_id,
             book,
             exchange_ts,
             local_ts_ms,
@@ -150,6 +200,7 @@ pub fn ws_update_into_py(py: Python<'_>, update: WsUpdate) -> PyResult<Py<PyAny>
                 py,
                 Snapshot {
                     market_id,
+                    asset_id,
                     book: book_py,
                     exchange_ts,
                     local_ts_ms,
@@ -160,6 +211,7 @@ pub fn ws_update_into_py(py: Python<'_>, update: WsUpdate) -> PyResult<Py<PyAny>
         }
         WsUpdate::Delta {
             market_id,
+            asset_id,
             changes,
             exchange_ts,
             local_ts_ms,
@@ -173,8 +225,32 @@ pub fn ws_update_into_py(py: Python<'_>, update: WsUpdate) -> PyResult<Py<PyAny>
                 py,
                 Delta {
                     market_id,
+                    asset_id,
                     changes: changes_py,
                     exchange_ts,
+                    local_ts_ms,
+                    seq,
+                },
+            )
+            .map(Py::into_any)
+        }
+        WsUpdate::Clear {
+            market_id,
+            asset_id,
+            reason,
+            local_ts_ms,
+            seq,
+            ..
+        } => {
+            let reason_py = pythonize(py, &reason)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
+                .into();
+            Py::new(
+                py,
+                Clear {
+                    market_id,
+                    asset_id,
+                    reason: reason_py,
                     local_ts_ms,
                     seq,
                 },

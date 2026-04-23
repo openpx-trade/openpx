@@ -190,31 +190,25 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
 /// rows into the shared buffer. One task per WebSocket — the dispatcher
 /// already multiplexes all markets onto a single channel.
 async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<Mutex<Vec<ObRow>>>) {
-    use std::collections::HashMap;
-    // Per-market asset_id cache so deltas inherit the asset_id from the
-    // most-recent snapshot.
-    let mut last_asset_id: HashMap<String, String> = HashMap::new();
-
     while let Some(update) = stream.next().await {
         let now = chrono::Utc::now().timestamp_micros();
         match update {
             WsUpdate::Snapshot {
                 market_id,
+                asset_id,
                 book,
                 exchange_ts,
                 seq,
                 ..
             } => {
-                last_asset_id.insert(market_id.clone(), book.asset_id.clone());
                 let ts = exchange_ts.map(|ms| (ms as i64) * 1000).unwrap_or(now);
-
                 let mut buf = rows.lock().await;
                 for level in &book.bids {
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
-                        market_id: book.market_id.clone(),
-                        asset_id: book.asset_id.clone(),
+                        market_id: market_id.clone(),
+                        asset_id: asset_id.clone(),
                         update_type: "snapshot".into(),
                         side: "bid".into(),
                         price: level.price.to_f64(),
@@ -227,8 +221,8 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
-                        market_id: book.market_id.clone(),
-                        asset_id: book.asset_id.clone(),
+                        market_id: market_id.clone(),
+                        asset_id: asset_id.clone(),
                         update_type: "snapshot".into(),
                         side: "ask".into(),
                         price: level.price.to_f64(),
@@ -240,20 +234,20 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
             }
             WsUpdate::Delta {
                 market_id,
+                asset_id,
                 changes,
                 exchange_ts,
                 seq,
                 ..
             } => {
                 let ts = exchange_ts.map(|ms| (ms as i64) * 1000).unwrap_or(now);
-                let asset = last_asset_id.get(&market_id).cloned().unwrap_or_default();
                 let mut buf = rows.lock().await;
                 for change in changes.iter() {
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
                         market_id: market_id.clone(),
-                        asset_id: asset.clone(),
+                        asset_id: asset_id.clone(),
                         update_type: "delta".into(),
                         side: match change.side {
                             px_core::models::PriceLevelSide::Bid => "bid".into(),
@@ -266,7 +260,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                     });
                 }
             }
-            // Trade / Fill / Raw aren't recorded into the orderbook parquet.
+            // Trade / Fill / Clear aren't recorded into the orderbook parquet.
             _ => {}
         }
     }

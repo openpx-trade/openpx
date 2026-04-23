@@ -32,11 +32,14 @@ use crate::websocket::traits::{ActivityFill, ActivityTrade};
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind")]
 pub enum WsUpdate {
-    /// Full orderbook snapshot. Caller should replace any cached book for this
-    /// `market_id`. Emitted on initial subscribe and after any
-    /// `BookInvalidated` recovery path.
+    /// Full orderbook snapshot. Caller should replace any cached book keyed by
+    /// `(market_id, asset_id)`. `market_id` is the parent market on every
+    /// exchange; `asset_id` is the per-outcome identifier (Polymarket token,
+    /// Kalshi ticker, Opinion numeric market id). Emitted on initial subscribe
+    /// and after any `BookInvalidated` / `Clear` recovery path.
     Snapshot {
         market_id: String,
+        asset_id: String,
         book: Arc<Orderbook>,
         exchange_ts: Option<u64>,
         #[serde(skip)]
@@ -46,12 +49,28 @@ pub enum WsUpdate {
         seq: u64,
     },
     /// Incremental change to an existing book. Apply in-place, or discard if
-    /// the caller has seen a matching `BookInvalidated` without a follow-up
-    /// `Snapshot` yet.
+    /// the caller has seen a matching `Clear` / `BookInvalidated` without a
+    /// follow-up `Snapshot` yet.
     Delta {
         market_id: String,
+        asset_id: String,
         changes: ChangeVec,
         exchange_ts: Option<u64>,
+        #[serde(skip)]
+        #[cfg_attr(feature = "schema", schemars(skip))]
+        local_ts: Instant,
+        local_ts_ms: u64,
+        seq: u64,
+    },
+    /// Book invalidation on the same stream as `Snapshot` / `Delta`, so a
+    /// consumer can say "seq N was Clear, drop anything with seq ≤ N, wait
+    /// for the next Snapshot" without merging with the session stream. Mirrors
+    /// `SessionEvent::BookInvalidated`, which stays as the connection-level
+    /// signal for global observability.
+    Clear {
+        market_id: String,
+        asset_id: String,
+        reason: InvalidationReason,
         #[serde(skip)]
         #[cfg_attr(feature = "schema", schemars(skip))]
         local_ts: Instant,
@@ -150,6 +169,7 @@ impl WsUpdate {
         match self {
             Self::Snapshot { local_ts, .. }
             | Self::Delta { local_ts, .. }
+            | Self::Clear { local_ts, .. }
             | Self::Trade { local_ts, .. }
             | Self::Fill { local_ts, .. } => *local_ts,
         }
@@ -162,6 +182,7 @@ impl WsUpdate {
         match self {
             Self::Snapshot { local_ts_ms, .. }
             | Self::Delta { local_ts_ms, .. }
+            | Self::Clear { local_ts_ms, .. }
             | Self::Trade { local_ts_ms, .. }
             | Self::Fill { local_ts_ms, .. } => *local_ts_ms,
         }
@@ -171,9 +192,24 @@ impl WsUpdate {
     #[inline]
     pub fn market_id(&self) -> Option<&str> {
         match self {
-            Self::Snapshot { market_id, .. } | Self::Delta { market_id, .. } => Some(market_id),
+            Self::Snapshot { market_id, .. }
+            | Self::Delta { market_id, .. }
+            | Self::Clear { market_id, .. } => Some(market_id),
             Self::Trade { trade, .. } => Some(&trade.market_id),
             Self::Fill { fill, .. } => Some(&fill.market_id),
+        }
+    }
+
+    /// Asset ID for book-scoped events. Returns `None` for activity events
+    /// (`Trade` / `Fill`) where the asset is carried on the inner payload.
+    #[inline]
+    pub fn asset_id(&self) -> Option<&str> {
+        match self {
+            Self::Snapshot { asset_id, .. }
+            | Self::Delta { asset_id, .. }
+            | Self::Clear { asset_id, .. } => Some(asset_id),
+            Self::Trade { trade, .. } => Some(&trade.asset_id),
+            Self::Fill { fill, .. } => Some(&fill.asset_id),
         }
     }
 }

@@ -11,11 +11,11 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use px_core::{
-    now_pair, stall_watchdog, ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec,
-    FixedPrice, InvalidationReason, LiquidityRole, OrderBookWebSocket, PriceLevelChange,
-    PriceLevelSide, SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState,
-    WsDispatcher, WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY,
-    WS_RECONNECT_MAX_DELAY,
+    now_pair, sort_asks, sort_bids, stall_watchdog, ActivityFill, ActivityTrade,
+    AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole, Orderbook,
+    OrderBookWebSocket, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent, SessionStream,
+    UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig, WsUpdate,
+    WS_MAX_RECONNECT_ATTEMPTS, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::config::OpinionConfig;
@@ -40,6 +40,10 @@ pub struct OpinionWebSocket {
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     auto_reconnect: bool,
     reconnect_attempts: Arc<Mutex<u32>>,
+    /// REST client for snapshot-on-subscribe. Opinion's WS protocol delivers
+    /// `market.depth.diff` only — no server-pushed initial snapshot — so we
+    /// fetch the book once per subscribe to seed consumer caches.
+    http: reqwest::Client,
 }
 
 impl OpinionWebSocket {
@@ -49,6 +53,11 @@ impl OpinionWebSocket {
                 "api_key required for Opinion WebSocket".into(),
             ));
         }
+        let http = px_core::http::tuned_client_builder()
+            .user_agent("openpx/1.0")
+            .timeout(config.base.timeout)
+            .build()
+            .map_err(|e| WebSocketError::Connection(format!("http client build: {e}")))?;
         Ok(Self {
             config,
             state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),
@@ -60,6 +69,7 @@ impl OpinionWebSocket {
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect: true,
             reconnect_attempts: Arc::new(Mutex::new(0)),
+            http,
         })
     }
 
@@ -79,9 +89,11 @@ impl OpinionWebSocket {
     }
 
     /// Emit a `WsUpdate` through the 0.2 dispatcher. On overflow raises
-    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)`.
+    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` + best-effort
+    /// `WsUpdate::Clear`.
     async fn dispatch(&self, update: WsUpdate) {
         let market = update.market_id().map(str::to_string);
+        let asset = update.asset_id().map(str::to_string);
         if !self.dispatcher.try_send_update(update) {
             self.dispatcher
                 .send_session(SessionEvent::Lagged {
@@ -90,13 +102,26 @@ impl OpinionWebSocket {
                     last_seq: 0,
                 })
                 .await;
-            if let Some(market_id) = market {
+            if let (Some(market_id), Some(asset_id)) = (market, asset) {
                 self.dispatcher
                     .send_session(SessionEvent::BookInvalidated {
-                        market_id,
+                        market_id: market_id.clone(),
                         reason: InvalidationReason::Lag,
                     })
                     .await;
+                let (local_ts, local_ts_ms) = now_pair();
+                let seq = self
+                    .dispatcher_seq(&market_id)
+                    .await
+                    .fetch_add(1, Ordering::Relaxed);
+                let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
+                    market_id,
+                    asset_id,
+                    reason: InvalidationReason::Lag,
+                    local_ts,
+                    local_ts_ms,
+                    seq,
+                });
             }
         }
     }
@@ -287,8 +312,11 @@ impl OpinionWebSocket {
             .dispatcher_seq(&market_id)
             .await
             .fetch_add(1, Ordering::Relaxed);
+        // Opinion's market.depth.diff is market-level (yes-space book);
+        // asset_id mirrors market_id.
         self.dispatch(WsUpdate::Delta {
-            market_id,
+            market_id: market_id.clone(),
+            asset_id: market_id,
             changes,
             exchange_ts: timestamp.map(|t| t.timestamp_millis() as u64),
             local_ts,
@@ -581,9 +609,204 @@ impl OpinionWebSocket {
 
         for market in markets {
             self.send_subscribe(&market).await?;
+            self.spawn_snapshot_fetch(market);
         }
 
         Ok(())
+    }
+
+    /// Fetch `(yes_token_id, no_token_id)` from `/openapi/market/{market_id}`.
+    /// Returns `None` for non-binary markets, auth failures, or any parse
+    /// error — snapshot fetch is best-effort; diffs still work.
+    async fn fetch_market_tokens(&self, market_id: &str) -> Option<(String, String)> {
+        let base = self.config.api_url.trim_end_matches('/');
+        let url = format!("{base}/openapi/market/{market_id}");
+        let mut req = self.http.get(&url);
+        if let Some(ref key) = self.config.api_key {
+            req = req.header("apikey", key);
+        }
+        let resp = req.send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let v: serde_json::Value = resp.json().await.ok()?;
+        let code = v
+            .get("code")
+            .or_else(|| v.get("errno"))
+            .and_then(|c| c.as_i64())
+            .unwrap_or(-1);
+        if code != 0 {
+            return None;
+        }
+        let data = v.get("result").and_then(|r| r.get("data"))?;
+        let yes = data
+            .get("yesTokenId")
+            .or_else(|| data.get("yes_token_id"))
+            .and_then(|t| t.as_str())
+            .filter(|s| !s.is_empty())?
+            .to_string();
+        let no = data
+            .get("noTokenId")
+            .or_else(|| data.get("no_token_id"))
+            .and_then(|t| t.as_str())
+            .filter(|s| !s.is_empty())?
+            .to_string();
+        Some((yes, no))
+    }
+
+    /// Fetch raw (bids, asks) for a single outcome token. Empty vectors on any
+    /// parse failure — caller merges what is available.
+    async fn fetch_token_book(&self, token_id: &str) -> (Vec<PriceLevel>, Vec<PriceLevel>) {
+        let base = self.config.api_url.trim_end_matches('/');
+        let url = format!("{base}/openapi/token/orderbook?token_id={token_id}");
+        let mut req = self.http.get(&url);
+        if let Some(ref key) = self.config.api_key {
+            req = req.header("apikey", key);
+        }
+        let Ok(resp) = req.send().await else {
+            return (Vec::new(), Vec::new());
+        };
+        if !resp.status().is_success() {
+            return (Vec::new(), Vec::new());
+        }
+        let Ok(v) = resp.json::<serde_json::Value>().await else {
+            return (Vec::new(), Vec::new());
+        };
+        let code = v
+            .get("code")
+            .or_else(|| v.get("errno"))
+            .and_then(|c| c.as_i64())
+            .unwrap_or(-1);
+        if code != 0 {
+            return (Vec::new(), Vec::new());
+        }
+        let Some(data) = v.get("result").and_then(|r| r.get("data")) else {
+            return (Vec::new(), Vec::new());
+        };
+        let parse = |key: &str| -> Vec<PriceLevel> {
+            data.get(key)
+                .and_then(|arr| arr.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| {
+                            let price = item.get("price").and_then(|p| {
+                                p.as_f64()
+                                    .or_else(|| p.as_str().and_then(|s| s.parse().ok()))
+                            })?;
+                            let size = item.get("size").and_then(|s| {
+                                s.as_f64()
+                                    .or_else(|| s.as_str().and_then(|s| s.parse().ok()))
+                            })?;
+                            if price > 0.0 && size > 0.0 {
+                                Some(PriceLevel::new(price, size))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        (parse("bids"), parse("asks"))
+    }
+
+    /// Fetch both yes/no books and dispatch a single `WsUpdate::Snapshot` in
+    /// the same yes-space layout that `handle_depth_diff` produces, so
+    /// consumers can apply subsequent deltas on top.
+    async fn fetch_and_dispatch_snapshot(&self, market_id: String) {
+        let Some((yes_token, no_token)) = self.fetch_market_tokens(&market_id).await else {
+            tracing::debug!(
+                exchange = "opinion",
+                market_id = %market_id,
+                "snapshot skipped: token ids unavailable"
+            );
+            return;
+        };
+
+        let (yes_book, no_book) = tokio::join!(
+            self.fetch_token_book(&yes_token),
+            self.fetch_token_book(&no_token),
+        );
+
+        // Match handle_depth_diff mapping:
+        //   yes "bids" → Bid (as-is), yes "asks" → Ask (as-is)
+        //   no  "bids" → Ask at 1-p,  no  "asks" → Bid at 1-p
+        let mut bids: Vec<PriceLevel> = yes_book.0;
+        bids.extend(
+            no_book
+                .1
+                .into_iter()
+                .map(|l| PriceLevel::with_fixed(l.price.complement(), l.size)),
+        );
+        let mut asks: Vec<PriceLevel> = yes_book.1;
+        asks.extend(
+            no_book
+                .0
+                .into_iter()
+                .map(|l| PriceLevel::with_fixed(l.price.complement(), l.size)),
+        );
+
+        sort_bids(&mut bids);
+        sort_asks(&mut asks);
+
+        let book = Orderbook {
+            market_id: market_id.clone(),
+            asset_id: market_id.clone(),
+            bids,
+            asks,
+            last_update_id: None,
+            timestamp: Some(chrono::Utc::now()),
+            hash: None,
+        };
+
+        let (local_ts, local_ts_ms) = now_pair();
+        let seq = self
+            .dispatcher_seq(&market_id)
+            .await
+            .fetch_add(1, Ordering::Relaxed);
+        self.dispatch(WsUpdate::Snapshot {
+            market_id: market_id.clone(),
+            asset_id: market_id,
+            book: Arc::new(book),
+            exchange_ts: None,
+            local_ts,
+            local_ts_ms,
+            seq,
+        })
+        .await;
+    }
+
+    /// Fire-and-forget snapshot fetch. Runs REST + dispatch off the subscribe
+    /// path so callers don't block on HTTP latency.
+    fn spawn_snapshot_fetch(&self, market_id: String) {
+        let http = self.http.clone();
+        let api_url = self.config.api_url.clone();
+        let api_key = self.config.api_key.clone();
+        let dispatcher = self.dispatcher.clone();
+        let seqs = self.seqs.clone();
+        // Rebuild a minimal handle for the spawned task. Cheap: all inner fields
+        // are `Arc` or small `Clone`-ables.
+        let handle = OpinionWebSocket {
+            config: {
+                let mut c = self.config.clone();
+                c.api_url = api_url;
+                c.api_key = api_key;
+                c
+            },
+            state: self.state.clone(),
+            subscriptions: self.subscriptions.clone(),
+            dispatcher,
+            seqs,
+            last_message_at: self.last_message_at.clone(),
+            write_tx: self.write_tx.clone(),
+            shutdown_tx: Arc::new(Mutex::new(None)),
+            auto_reconnect: self.auto_reconnect,
+            reconnect_attempts: self.reconnect_attempts.clone(),
+            http,
+        };
+        tokio::spawn(async move {
+            handle.fetch_and_dispatch_snapshot(market_id).await;
+        });
     }
 
     fn calculate_reconnect_delay(attempt: u32) -> Duration {
@@ -626,6 +849,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
         let dispatcher = self.dispatcher.clone();
         let seqs = self.seqs.clone();
         let last_message_at = self.last_message_at.clone();
+        let http = self.http.clone();
 
         let ws_handle = OpinionWebSocket {
             config: config.clone(),
@@ -638,6 +862,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
             shutdown_tx: Arc::new(Mutex::new(None)),
             auto_reconnect,
             reconnect_attempts: reconnect_attempts_clone.clone(),
+            http: http.clone(),
         };
 
         tokio::spawn(async move {
@@ -772,10 +997,23 @@ impl OrderBookWebSocket for OpinionWebSocket {
                                     ws_handle
                                         .dispatcher
                                         .send_session(SessionEvent::BookInvalidated {
-                                            market_id,
+                                            market_id: market_id.clone(),
                                             reason: InvalidationReason::Reconnect,
                                         })
                                         .await;
+                                    let (ts_mono, ts_ms) = now_pair();
+                                    let seq = ws_handle
+                                        .dispatcher_seq(&market_id)
+                                        .await
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    let _ = ws_handle.dispatcher.try_send_update(WsUpdate::Clear {
+                                        market_id: market_id.clone(),
+                                        asset_id: market_id,
+                                        reason: InvalidationReason::Reconnect,
+                                        local_ts: ts_mono,
+                                        local_ts_ms: ts_ms,
+                                        seq,
+                                    });
                                 }
                             }
 
@@ -901,6 +1139,7 @@ impl OrderBookWebSocket for OpinionWebSocket {
         }
         if self.state.load() == WebSocketState::Connected {
             self.send_subscribe(&market).await?;
+            self.spawn_snapshot_fetch(market);
         }
         Ok(())
     }

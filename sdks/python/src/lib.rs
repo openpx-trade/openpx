@@ -37,6 +37,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // WsUpdate variants — isinstance-matchable tagged union on the Python side.
     m.add_class::<events::Snapshot>()?;
     m.add_class::<events::Delta>()?;
+    m.add_class::<events::Clear>()?;
     m.add_class::<events::Trade>()?;
     m.add_class::<events::Fill>()?;
 

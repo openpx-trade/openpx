@@ -215,10 +215,11 @@ impl PolymarketWebSocket {
     }
 
     /// Emit a `WsUpdate` through the 0.2 dispatcher. On overflow raises
-    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` so callers can
-    /// invalidate their cached books instead of silently diverging.
+    /// `SessionEvent::Lagged` + `BookInvalidated(Lag)` + a best-effort
+    /// `WsUpdate::Clear` so consumers can invalidate from a single stream.
     async fn dispatch(&self, update: WsUpdate) {
         let market = update.market_id().map(str::to_string);
+        let asset = update.asset_id().map(str::to_string);
         if !self.dispatcher.try_send_update(update) {
             self.dispatcher
                 .send_session(SessionEvent::Lagged {
@@ -227,13 +228,28 @@ impl PolymarketWebSocket {
                     last_seq: 0,
                 })
                 .await;
-            if let Some(market_id) = market {
+            if let (Some(market_id), Some(asset_id)) = (market, asset) {
                 self.dispatcher
                     .send_session(SessionEvent::BookInvalidated {
-                        market_id,
+                        market_id: market_id.clone(),
                         reason: InvalidationReason::Lag,
                     })
                     .await;
+                let (local_ts, local_ts_ms) = now_pair();
+                // Polymarket's per-market seq counter is keyed by asset_id
+                // (tokens are the unit of book ordering here).
+                let seq = self
+                    .dispatcher_seq(&asset_id)
+                    .await
+                    .fetch_add(1, Ordering::Relaxed);
+                let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
+                    market_id,
+                    asset_id,
+                    reason: InvalidationReason::Lag,
+                    local_ts,
+                    local_ts_ms,
+                    seq,
+                });
             }
         }
     }
@@ -470,8 +486,18 @@ impl PolymarketWebSocket {
             .dispatcher_seq(&asset_id)
             .await
             .fetch_add(1, Ordering::Relaxed);
+        // market_id is the parent (condition/market), asset_id is the CLOB
+        // token. If we haven't learned the mapping yet (snapshot arrives
+        // before market metadata), fall back to asset_id so the field is
+        // still non-empty.
+        let dispatch_market_id = if market_id.is_empty() {
+            asset_id.clone()
+        } else {
+            market_id.clone()
+        };
         self.dispatch(WsUpdate::Snapshot {
-            market_id: asset_id,
+            market_id: dispatch_market_id,
+            asset_id: asset_id.clone(),
             book: Arc::new(orderbook),
             exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
             local_ts,
@@ -568,13 +594,22 @@ impl PolymarketWebSocket {
         // CRITICAL: Drop orderbooks write lock BEFORE dispatching.
         drop(obs);
 
+        // Resolve each asset's parent market via the asset_to_market map that
+        // Snapshot populates. If the snapshot hasn't arrived yet, fall back to
+        // asset_id so market_id stays non-empty.
+        let market_map = self.asset_to_market.read().await.clone();
         for (asset_id, timestamp, changes) in to_dispatch {
             let dispatch_seq = self
                 .dispatcher_seq(&asset_id)
                 .await
                 .fetch_add(1, Ordering::Relaxed);
+            let market_id = market_map
+                .get(&asset_id)
+                .cloned()
+                .unwrap_or_else(|| asset_id.clone());
             self.dispatch(WsUpdate::Delta {
-                market_id: asset_id,
+                market_id,
+                asset_id,
                 changes,
                 exchange_ts: timestamp.map(|t| t.timestamp_millis() as u64),
                 local_ts,
@@ -1133,8 +1168,8 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                             }
 
                             // ONE global Reconnected event with wall-clock gap,
-                            // plus one BookInvalidated per subscribed asset so
-                            // callers reset caches.
+                            // plus one BookInvalidated + WsUpdate::Clear per
+                            // subscribed asset so callers reset caches.
                             {
                                 let now = chrono::Utc::now();
                                 let gap = ws_self
@@ -1149,14 +1184,32 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                     .await;
                                 let asset_ids: Vec<String> =
                                     ws_self.orderbooks.read().await.keys().cloned().collect();
+                                let market_map = ws_self.asset_to_market.read().await.clone();
                                 for asset_id in asset_ids {
+                                    let market_id = market_map
+                                        .get(&asset_id)
+                                        .cloned()
+                                        .unwrap_or_else(|| asset_id.clone());
                                     ws_self
                                         .dispatcher
                                         .send_session(SessionEvent::BookInvalidated {
-                                            market_id: asset_id,
+                                            market_id: market_id.clone(),
                                             reason: InvalidationReason::Reconnect,
                                         })
                                         .await;
+                                    let (ts_mono, ts_ms) = now_pair();
+                                    let seq = ws_self
+                                        .dispatcher_seq(&asset_id)
+                                        .await
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    let _ = ws_self.dispatcher.try_send_update(WsUpdate::Clear {
+                                        market_id,
+                                        asset_id,
+                                        reason: InvalidationReason::Reconnect,
+                                        local_ts: ts_mono,
+                                        local_ts_ms: ts_ms,
+                                        seq,
+                                    });
                                 }
                             }
 
@@ -1208,11 +1261,22 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                 }
                             };
 
+                            let ping_future = async {
+                                let mut ping_interval = interval(WS_PING_INTERVAL);
+                                loop {
+                                    ping_interval.tick().await;
+                                    if let Some(ref tx) = *ws_self.write_tx.lock().await {
+                                        let _ = tx.unbounded_send(Message::Text("PING".into()));
+                                    }
+                                }
+                            };
+
                             let stall_future = stall_watchdog(last_message_at.clone());
 
                             tokio::select! {
                                 _ = write_future => {},
                                 _ = read_future => {},
+                                _ = ping_future => {},
                                 _ = stall_future => {},
                             }
 
@@ -1491,9 +1555,13 @@ mod tests {
             .expect("stream closed");
         match update {
             WsUpdate::Snapshot {
-                book, market_id, ..
+                book,
+                market_id,
+                asset_id,
+                ..
             } => {
-                assert_eq!(market_id, "token-yes");
+                assert_eq!(market_id, "market-1");
+                assert_eq!(asset_id, "token-yes");
                 assert_eq!(book.bids.len(), 2);
                 assert_eq!(book.asks.len(), 2);
                 assert_eq!(book.bids[0].price, FixedPrice::from_f64(0.55));
