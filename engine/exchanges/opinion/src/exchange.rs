@@ -787,6 +787,10 @@ impl Opinion {
     }
 
     /// Internal: fetch a single page of markets. Not part of the public API.
+    ///
+    /// Opinion's `/openapi/market` endpoint caps pages at 20 rows server-side.
+    /// `params.limit` values above 20 are clamped, so a full-catalog sweep
+    /// takes ~1 page per 20 markets regardless of what the caller requests.
     async fn fetch_markets_page(
         &self,
         params: &FetchMarketsParams,

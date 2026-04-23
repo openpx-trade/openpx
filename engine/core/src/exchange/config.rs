@@ -100,6 +100,9 @@ impl ExchangeConfig {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchMarketsParams {
+    /// Per-page limit. Each exchange applies its own server-side cap:
+    /// Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped
+    /// at 20. Values above the cap are silently clamped to the cap.
     pub limit: Option<usize>,
     /// Exchange-specific cursor (offset, page number, or cursor string)
     #[serde(default)]
