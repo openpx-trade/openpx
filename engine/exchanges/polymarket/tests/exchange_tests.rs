@@ -11,6 +11,7 @@ fn sample_events_response() -> serde_json::Value {
             "markets": [
                 {
                     "id": "123",
+                    "conditionId": "123",
                     "question": "Will it rain tomorrow?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.65\", \"0.35\"]",
@@ -27,6 +28,7 @@ fn sample_events_response() -> serde_json::Value {
             "markets": [
                 {
                     "id": "456",
+                    "conditionId": "456",
                     "question": "Bitcoin > $100k by EOY?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.42\", \"0.58\"]",
@@ -43,6 +45,7 @@ fn sample_events_response() -> serde_json::Value {
 fn sample_single_market_response() -> serde_json::Value {
     serde_json::json!({
         "id": "789",
+        "conditionId": "789",
         "question": "Single market test",
         "outcomes": "[\"Yes\", \"No\"]",
         "outcomePrices": "[\"0.80\", \"0.20\"]",
@@ -157,6 +160,7 @@ async fn test_fetch_markets_with_limit() {
             "title": "Event 1",
             "markets": [{
                 "id": "m1",
+                "conditionId": "m1",
                 "question": "Market 1?",
                 "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": "[\"0.60\", \"0.40\"]",
@@ -171,6 +175,7 @@ async fn test_fetch_markets_with_limit() {
             "title": "Event 2",
             "markets": [{
                 "id": "m2",
+                "conditionId": "m2",
                 "question": "Market 2?",
                 "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": "[\"0.50\", \"0.50\"]",
@@ -185,6 +190,7 @@ async fn test_fetch_markets_with_limit() {
             "title": "Event 3",
             "markets": [{
                 "id": "m3",
+                "conditionId": "m3",
                 "question": "Market 3?",
                 "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": "[\"0.70\", \"0.30\"]",
@@ -338,6 +344,7 @@ async fn test_fetch_markets_multiple_outcomes() {
             "title": "Multi-outcome Event",
             "markets": [{
                 "id": "multi-1",
+                "conditionId": "multi-1",
                 "question": "Who will win the election?",
                 "outcomes": "[\"Alice\", \"Bob\", \"Charlie\"]",
                 "outcomePrices": "[\"0.45\", \"0.35\", \"0.20\"]",
@@ -387,6 +394,7 @@ async fn test_fetch_markets_with_additional_fields() {
             "title": "Full Fields Event",
             "markets": [{
                 "id": "market-1",
+                "conditionId": "cond-123",
                 "question": "Test market with tokens",
                 "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": "[\"0.75\", \"0.25\"]",
@@ -395,7 +403,6 @@ async fn test_fetch_markets_with_additional_fields() {
                 "minimum_tick_size": 0.01,
                 "description": "Market with full fields",
                 "clobTokenIds": "[\"token1\", \"token2\"]",
-                "conditionId": "cond-123",
                 "slug": "test-market-slug"
             }]
         }
@@ -421,7 +428,8 @@ async fn test_fetch_markets_with_additional_fields() {
     // then
     assert_eq!(markets.len(), 1);
     let market = &markets[0];
-    assert_eq!(market.id, "market-1");
+    assert_eq!(market.id, "cond-123"); // Market.id is condition_id on Polymarket
+    assert_eq!(market.native_numeric_id, Some("market-1".to_string()));
     assert_eq!(market.slug, Some("test-market-slug".to_string()));
     assert_eq!(market.condition_id, Some("cond-123".to_string()));
 
@@ -449,6 +457,7 @@ async fn test_market_volume_and_liquidity() {
             "title": "Volume Event",
             "markets": [{
                 "id": "vol-market",
+                "conditionId": "vol-market",
                 "question": "Volume test market?",
                 "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": "[\"0.55\", \"0.45\"]",
@@ -495,6 +504,7 @@ async fn test_fetch_market_single_returns_correct_exchange_field() {
     // fetch_open_interest call (also uses a hardcoded URL).
     let market_response = serde_json::json!([{
         "id": "abc-123",
+        "conditionId": "abc-123",
         "question": "Exchange field test",
         "outcomes": "[\"Yes\", \"No\"]",
         "outcomePrices": "[\"0.90\", \"0.10\"]",
@@ -543,6 +553,7 @@ fn sample_mixed_status_events() -> serde_json::Value {
             "markets": [
                 {
                     "id": "pm-active",
+                    "conditionId": "pm-active",
                     "question": "Active market?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.60\", \"0.40\"]",
@@ -555,6 +566,7 @@ fn sample_mixed_status_events() -> serde_json::Value {
                 },
                 {
                     "id": "pm-closed",
+                    "conditionId": "pm-closed",
                     "question": "Closed market?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.90\", \"0.10\"]",
@@ -703,6 +715,7 @@ async fn test_fetch_markets_with_event_id() {
             "markets": [
                 {
                     "id": "market-a",
+                    "conditionId": "market-a",
                     "question": "Will Candidate A win?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.55\", \"0.45\"]",
@@ -715,6 +728,7 @@ async fn test_fetch_markets_with_event_id() {
                 },
                 {
                     "id": "market-b",
+                    "conditionId": "market-b",
                     "question": "Will Candidate B win?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.30\", \"0.70\"]",
@@ -765,6 +779,7 @@ async fn test_fetch_markets_with_event_slug() {
             "markets": [
                 {
                     "id": "mkt-yes",
+                    "conditionId": "mkt-yes",
                     "question": "Trump wins?",
                     "outcomes": "[\"Yes\", \"No\"]",
                     "outcomePrices": "[\"0.60\", \"0.40\"]",

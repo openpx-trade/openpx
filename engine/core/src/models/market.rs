@@ -138,6 +138,12 @@ pub struct Market {
     /// Question ID (Opinion, Polymarket)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_id: Option<String>,
+    /// Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that
+    /// need to build UI deep-links or cross-reference Polymarket's REST-only
+    /// numeric surface. Not used for trading or subscription — `id` (the
+    /// condition_id on Polymarket) is the canonical identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_numeric_id: Option<String>,
 
     // ── Volume ─────────────────────────────────────────────────────────────
     /// Total volume (USD)
@@ -369,6 +375,7 @@ impl Default for Market {
             token_id_no: None,
             condition_id: None,
             question_id: None,
+            native_numeric_id: None,
             volume: 0.0,
             volume_24h: None,
             volume_1wk: None,

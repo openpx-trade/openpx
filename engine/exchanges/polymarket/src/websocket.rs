@@ -486,17 +486,10 @@ impl PolymarketWebSocket {
             .dispatcher_seq(&asset_id)
             .await
             .fetch_add(1, Ordering::Relaxed);
-        // market_id is the parent (condition/market), asset_id is the CLOB
-        // token. If we haven't learned the mapping yet (snapshot arrives
-        // before market metadata), fall back to asset_id so the field is
-        // still non-empty.
-        let dispatch_market_id = if market_id.is_empty() {
-            asset_id.clone()
-        } else {
-            market_id.clone()
-        };
+        // Polymarket WS book events always carry `market` (the condition_id),
+        // which matches openpx `Market.id`. No translation needed.
         self.dispatch(WsUpdate::Snapshot {
-            market_id: dispatch_market_id,
+            market_id,
             asset_id: asset_id.clone(),
             book: Arc::new(orderbook),
             exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
@@ -594,19 +587,22 @@ impl PolymarketWebSocket {
         // CRITICAL: Drop orderbooks write lock BEFORE dispatching.
         drop(obs);
 
-        // Resolve each asset's parent market via the asset_to_market map that
-        // Snapshot populates. If the snapshot hasn't arrived yet, fall back to
-        // asset_id so market_id stays non-empty.
-        let market_map = self.asset_to_market.read().await.clone();
+        // price_change always carries `market` (condition_id) at the top level,
+        // shared by every change in the event — use it directly. No map lookup
+        // needed on the hot path.
+        let market_id_hex = msg.market.clone().unwrap_or_default();
         for (asset_id, timestamp, changes) in to_dispatch {
             let dispatch_seq = self
                 .dispatcher_seq(&asset_id)
                 .await
                 .fetch_add(1, Ordering::Relaxed);
-            let market_id = market_map
-                .get(&asset_id)
-                .cloned()
-                .unwrap_or_else(|| asset_id.clone());
+            // Fallback only if the payload lacked `market` (never observed in
+            // practice, but keeps the field non-empty).
+            let market_id = if market_id_hex.is_empty() {
+                asset_id.clone()
+            } else {
+                market_id_hex.clone()
+            };
             self.dispatch(WsUpdate::Delta {
                 market_id,
                 asset_id,

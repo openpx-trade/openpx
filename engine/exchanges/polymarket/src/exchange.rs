@@ -1063,7 +1063,21 @@ impl Polymarket {
             })
         }
 
-        let id = obj.get("id")?.as_str()?.to_string();
+        // condition_id is Polymarket's authoritative identifier: on-chain,
+        // in every WS payload, and accepted by REST alongside the numeric
+        // id. Use it as Market.id so `Market.id == WsUpdate.market_id`
+        // without any translation layer. Polymarket's REST numeric `id` is
+        // stored separately in `native_numeric_id` for deep-linking callers.
+        let id = obj
+            .get("conditionId")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())?
+            .to_string();
+        let native_numeric_id = obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from);
         let title = obj
             .get("question")
             .and_then(|v| v.as_str())
@@ -1228,6 +1242,7 @@ impl Polymarket {
             token_id_no,
             condition_id: parse_str(obj, "conditionId"),
             question_id: parse_str(obj, "questionID"),
+            native_numeric_id,
             volume,
             volume_24h: parse_f64(obj, "volume24hr"),
             volume_1wk: parse_f64(obj, "volume1wk"),

@@ -438,6 +438,10 @@ class Market(BaseModel):
     min_order_size: float | None = Field(
         None, description="Minimum order size (contracts)"
     )
+    native_numeric_id: str | None = Field(
+        None,
+        description="Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.",
+    )
     neg_risk: bool | None = Field(None, description="Polymarket: neg-risk flag")
     neg_risk_market_id: str | None = Field(
         None, description="Polymarket: neg-risk market ID"

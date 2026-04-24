@@ -615,6 +615,13 @@
             "null"
           ]
         },
+        "native_numeric_id": {
+          "description": "Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "neg_risk": {
           "description": "Polymarket: neg-risk flag",
           "type": [
