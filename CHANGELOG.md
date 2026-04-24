@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6](https://github.com/openpx-trade/openpx/compare/v0.2.5...v0.2.6) (2026-04-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **polymarket:** Polymarket `Market.id` now returns the condition_id hex string (e.g. `"0x311d0c4b..."`) rather than the REST numeric id (e.g. `"1031769"`). Callers storing `Market.id` to pass back to Polymarket REST are unaffected — both `?id=` and `?condition_id=` accept this value. Callers needing the numeric id should read `Market.native_numeric_id` instead.
+
+### Features
+
+* **polymarket:** use condition_id as Market.id; add native_numeric_id ([704c560](https://github.com/openpx-trade/openpx/commit/704c5606564503ee6ab2f2f158c12c46d06aa21d))
+
 ## [0.2.5](https://github.com/openpx-trade/openpx/compare/v0.2.3...v0.2.5) (2026-04-23)
 
 
