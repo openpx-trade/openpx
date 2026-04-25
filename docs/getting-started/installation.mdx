@@ -1,0 +1,45 @@
+---
+title: "Installation"
+description: "Add OpenPX to your project."
+---
+
+Install the binding for your language. All three are powered by the same Rust
+engine and share an identical API surface.
+
+<CodeGroup>
+
+```bash Rust
+cargo add openpx
+```
+
+```bash Python
+pip install openpx
+```
+
+```bash TypeScript
+npm install openpx
+```
+
+</CodeGroup>
+
+## Requirements
+
+- **Rust** — 1.75 or later
+- **Python** — 3.9 or later (Pydantic v2 models are auto-generated)
+- **Node.js** — 18 or later (NAPI-RS native addon)
+
+<Tip>
+  The TypeScript and Python packages ship prebuilt binaries for common
+  platforms. No Rust toolchain is needed to install them.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/getting-started/quickstart">
+    Fetch markets in under a minute.
+  </Card>
+  <Card title="Exchange setup" icon="key" href="/getting-started/exchanges/kalshi">
+    Configure credentials for Kalshi or Polymarket.
+  </Card>
+</CardGroup>

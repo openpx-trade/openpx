@@ -1,0 +1,58 @@
+---
+title: "Kalshi setup"
+description: "Configure credentials and connect to Kalshi."
+---
+
+Kalshi is a CFTC-regulated US event-contract exchange. OpenPX talks to its
+REST API (`api.elections.kalshi.com`) and authenticated WebSocket.
+
+## Config fields
+
+Pass these in the second argument of `Exchange.new`:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `api_key_id` | `string` | for auth | API key identifier from your Kalshi account |
+| `private_key_pem` | `string` | for auth | RSA private key contents (PEM) |
+| `private_key_path` | `string` | alt. to PEM | Filesystem path to a `.pem` file |
+| `api_url` | `string` | optional | Override the API base URL |
+| `demo` | `bool` | optional | Use the demo environment |
+| `verbose` | `bool` | optional | Verbose logging |
+
+Public read-only methods (markets, orderbooks, trades) work without
+credentials. Orders, balances, and WebSocket require auth.
+
+## Environment variables
+
+The CLI and recorder read these by default:
+
+- `KALSHI_API_KEY_ID`
+- `KALSHI_PRIVATE_KEY_PEM` *or* `KALSHI_PRIVATE_KEY_PATH`
+
+## Identifiers
+
+- **`Market.id`** is the Kalshi ticker, e.g. `KXBTC-25MAR14-T20000`.
+- **WebSocket subscribe target** is the same ticker.
+- **Outcomes** are `"Yes"` / `"No"` for binary markets.
+
+## Capabilities
+
+| Method | Available |
+|--------|-----------|
+| `fetch_markets` / `fetch_market` | Yes |
+| `fetch_orderbook` | Yes |
+| `fetch_trades` | Yes |
+| `fetch_price_history` | Yes |
+| `create_order` / `cancel_order` / `fetch_open_orders` | Auth |
+| `fetch_positions` / `fetch_balance` / `fetch_fills` | Auth |
+| WebSocket | Auth |
+
+Inspect `ex.describe()` at runtime for the source of truth.
+
+## Rate limits
+
+Defined in the manifest at `engine/core/src/exchange/manifests/kalshi.rs`:
+
+- Default: **20 req/sec**, burst 5
+- Write endpoints (orders): **10 req/sec**, burst 3
+- Bulk endpoints: **10 req/sec**, burst 3

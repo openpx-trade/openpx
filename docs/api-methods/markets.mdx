@@ -1,0 +1,85 @@
+---
+title: "Markets"
+description: "fetch_markets and fetch_market."
+---
+
+## `fetch_markets`
+
+Returns one page of markets plus an opaque cursor.
+
+**Signature**
+
+```rust
+async fn fetch_markets(
+    params: &FetchMarketsParams,
+) -> Result<(Vec<Market>, Option<String>), OpenPxError>
+```
+
+**`FetchMarketsParams`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `limit` | `usize?` | Per-page limit. Capped at 1000 (Kalshi) / 500 (Polymarket). |
+| `cursor` | `string?` | Opaque cursor returned from a prior call. |
+| `status` | `MarketStatusFilter?` | `active`, `closed`, `resolved`, or `all`. Defaults to `active`. |
+| `series_id` | `string?` | Kalshi series ticker (e.g. `"KXBTC"`) or Polymarket series ID. |
+| `event_id` | `string?` | Kalshi event ticker or Polymarket event ID/slug. When set, `series_id`, `cursor`, and `limit` are ignored. |
+
+<CodeGroup>
+
+```rust Rust
+use openpx::{FetchMarketsParams, MarketStatusFilter};
+
+let params = FetchMarketsParams {
+    status: Some(MarketStatusFilter::Active),
+    limit: Some(100),
+    ..Default::default()
+};
+let (markets, cursor) = ex.fetch_markets(&params).await?;
+```
+
+```python Python
+result = ex.fetch_markets(status="active")
+markets, cursor = result["markets"], result["cursor"]
+```
+
+```typescript TypeScript
+// TypeScript auto-paginates and returns all markets
+const markets = await ex.fetchMarkets();
+```
+
+</CodeGroup>
+
+## `fetch_market`
+
+Fetch a single market by its native ID.
+
+**Signature**
+
+```rust
+async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
+```
+
+| Exchange | `market_id` format |
+|----------|--------------------|
+| Kalshi | Ticker, e.g. `KXBTC-25MAR14-T20000` |
+| Polymarket | Condition ID, e.g. `0x311d0c4b…` |
+
+<CodeGroup>
+
+```rust Rust
+let market = ex.fetch_market("KXBTC-25MAR14-T20000").await?;
+```
+
+```python Python
+market = ex.fetch_market("KXBTC-25MAR14-T20000")
+```
+
+```typescript TypeScript
+const market = await ex.fetchMarket("KXBTC-25MAR14-T20000");
+```
+
+</CodeGroup>
+
+See the [`Market` schema](/getting-started/unified-schema#market) for every
+field returned.

@@ -1,0 +1,59 @@
+---
+title: "Changelog"
+description: "Released versions of OpenPX."
+---
+
+The full, machine-generated changelog lives at
+[`CHANGELOG.md`](https://github.com/openpx-trade/openpx/blob/main/CHANGELOG.md).
+This page summarizes recent releases and breaking changes for SDK users.
+
+## 0.2.6 — 2026-04-24
+
+### Breaking
+
+- **Polymarket `Market.id` is now the `condition_id` hex string**
+  (e.g. `0x311d0c4b…`), not the numeric REST id. Callers that need the
+  numeric id should read `Market.native_numeric_id` instead.
+
+## 0.2.5 — 2026-04-23
+
+### Breaking
+
+- **`WsUpdate::Snapshot.market_id` and `Delta.market_id`** carry the parent
+  condition ID on Polymarket (not the CLOB token). Consumers keying by
+  `market_id` expecting a token should switch to the new `asset_id` field.
+- **Kalshi `fetch_markets` cursor format changed.** Old 0.2.3 cursors are
+  rejected; restart pagination after upgrading.
+
+### Added
+
+- New `WsUpdate::Clear` variant with `InvalidationReason` for per-market book
+  invalidation on the same stream as `Snapshot`/`Delta`.
+- Reconnect parity across all exchanges.
+
+### Fixed
+
+- Kalshi `fetch_markets` rewritten on `/markets` + `/historical/markets`.
+
+## 0.2.0 — 2026-04-22
+
+### Breaking
+
+- **WebSocket surface rewritten.** Per-token `orderbook_stream(token_id)`
+  and `activity_stream(token_id)` are gone. Consumers now read
+  `ws.updates()` (multiplexed `WsUpdate`) and `ws.session_events()`
+  (connection-level `SessionEvent`).
+- Both stream methods are **take-once** — calling either twice returns
+  `None` (Rust) or raises (Python/TS).
+- **`WsUpdate::Raw` removed.** Untyped escape-hatch variant retired.
+- **Timestamps unified to `u64` millis** on the entire WS surface.
+- **Python WS variants are real classes** (`Snapshot`, `Delta`, `Trade`,
+  `Fill`, `Connected`, `Reconnected`, `Lagged`, `BookInvalidated`,
+  `SessionError`) — not dicts. `match` and `isinstance` work directly.
+- `tokio::sync::broadcast` replaced with `async-channel` plus explicit
+  `Lagged` + `BookInvalidated` signaling.
+
+## Earlier versions
+
+See the [full changelog on GitHub](https://github.com/openpx-trade/openpx/blob/main/CHANGELOG.md)
+for 0.1.x and 0.2.1 – 0.2.4.

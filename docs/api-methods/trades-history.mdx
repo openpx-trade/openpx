@@ -1,0 +1,120 @@
+---
+title: "Trades & History"
+description: "Public tape, your fills, candles, and activity."
+---
+
+## `fetch_trades`
+
+Public market trade tape.
+
+```rust
+async fn fetch_trades(
+    req: TradesRequest,
+) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError>
+```
+
+**`TradesRequest`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `market_id` | `string` | Native market ID |
+| `market_ref` | `string?` | Alternate ID (e.g. Polymarket `conditionId`) — preferred when present |
+| `outcome` | `string?` | Filter by outcome label |
+| `token_id` | `string?` | Filter by CLOB token (Polymarket) |
+| `start_ts` | `i64?` | Inclusive lower bound (Unix seconds) |
+| `end_ts` | `i64?` | Inclusive upper bound (Unix seconds) |
+| `limit` | `usize?` | Max trades, exchange-capped |
+| `cursor` | `string?` | From a prior response |
+
+## `fetch_price_history`
+
+OHLCV candles.
+
+```rust
+async fn fetch_price_history(
+    req: PriceHistoryRequest,
+) -> Result<Vec<Candlestick>, OpenPxError>
+```
+
+**`PriceHistoryRequest`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `market_id` | `string` | Native market ID |
+| `outcome` | `string?` | Outcome label (Kalshi infers Yes/No from market) |
+| `token_id` | `string?` | Polymarket CLOB token |
+| `condition_id` | `string?` | Polymarket condition ID for OI enrichment |
+| `interval` | `PriceHistoryInterval` | `1m`, `1h`, `6h`, `1d`, `1w`, `max` |
+| `start_ts` | `i64?` | Unix seconds |
+| `end_ts` | `i64?` | Unix seconds |
+
+`Candlestick`: `{ timestamp, open, high, low, close, volume, open_interest? }`.
+Open interest is currently provided only by Kalshi.
+
+<CodeGroup>
+
+```python Python
+candles = ex.fetch_price_history(
+    "KXBTC-25MAR14-T20000",
+    "1h",
+    start_ts=1735689600,
+)
+```
+
+```typescript TypeScript
+const candles = await ex.fetchPriceHistory(
+  "KXBTC-25MAR14-T20000",
+  "1h",
+);
+```
+
+</CodeGroup>
+
+## `fetch_fills`
+
+Your own executed fills.
+
+```rust
+async fn fetch_fills(
+    market_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<Fill>, OpenPxError>
+```
+
+`Fill`: `{ fill_id, order_id, market_id, outcome, side, price, size, is_taker, fee, created_at }`.
+
+## `fetch_user_activity`
+
+Polymarket-only activity feed (positions, trades, portfolio data).
+
+```rust
+async fn fetch_user_activity(
+    params: FetchUserActivityParams,
+) -> Result<serde_json::Value, OpenPxError>
+```
+
+`FetchUserActivityParams { address: String, limit: Option<usize> }`. Returns
+unparsed JSON from Polymarket's activity API.
+
+## `fetch_orderbook_history`
+
+Historical L2 orderbook snapshots — Polymarket only.
+
+```rust
+async fn fetch_orderbook_history(
+    req: OrderbookHistoryRequest,
+) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError>
+```
+
+**`OrderbookHistoryRequest`**
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `token_id` | `string?` |
+| `start_ts` | `i64?` |
+| `end_ts` | `i64?` |
+| `limit` | `usize?` |
+| `cursor` | `string?` |
+
+`OrderbookSnapshot`: `{ timestamp, recorded_at?, hash?, bids, asks }`.

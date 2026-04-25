@@ -1,0 +1,117 @@
+---
+title: "Orders"
+description: "Create, cancel, and look up orders."
+---
+
+All four methods return the unified `Order` shape — see
+[`Order`](/getting-started/unified-schema#order) for fields.
+
+## `create_order`
+
+```rust
+async fn create_order(
+    market_id: &str,
+    outcome: &str,        // "Yes" / "No"
+    side: OrderSide,      // Buy / Sell
+    price: f64,           // 0.0..1.0
+    size: f64,            // contracts
+    params: HashMap<String, String>,
+) -> Result<Order, OpenPxError>
+```
+
+**`params` keys**
+
+| Key | Values | Default |
+|-----|--------|---------|
+| `order_type` | `gtc`, `ioc`, `fok`, `market` | `gtc` |
+| `token_id` (Polymarket only) | CLOB token ID | derived from `market_id` + `outcome` |
+
+<CodeGroup>
+
+```rust Rust
+use openpx::{OrderSide};
+use std::collections::HashMap;
+
+let mut params = HashMap::new();
+params.insert("order_type".to_string(), "gtc".to_string());
+
+let order = ex.create_order(
+    "KXBTC-25MAR14-T20000",
+    "Yes",
+    OrderSide::Buy,
+    0.55,
+    10.0,
+    params,
+).await?;
+```
+
+```python Python
+order = ex.create_order(
+    "KXBTC-25MAR14-T20000",
+    "Yes",
+    "buy",
+    0.55,
+    10.0,
+    order_type="gtc",
+)
+```
+
+```typescript TypeScript
+const order = await ex.createOrder(
+  "KXBTC-25MAR14-T20000",
+  "Yes",
+  "buy",
+  0.55,
+  10.0,
+  { order_type: "gtc" },
+);
+```
+
+</CodeGroup>
+
+## `cancel_order`
+
+```rust
+async fn cancel_order(
+    order_id: &str,
+    market_id: Option<&str>,
+) -> Result<Order, OpenPxError>
+```
+
+`market_id` is optional but accelerates Polymarket cancels (avoids a lookup).
+
+## `fetch_order`
+
+```rust
+async fn fetch_order(
+    order_id: &str,
+    market_id: Option<&str>,
+) -> Result<Order, OpenPxError>
+```
+
+## `fetch_open_orders`
+
+```rust
+async fn fetch_open_orders(
+    params: Option<FetchOrdersParams>,
+) -> Result<Vec<Order>, OpenPxError>
+```
+
+`FetchOrdersParams { market_id: Option<String> }` — pass `None` to list every
+open order across all markets.
+
+<CodeGroup>
+
+```rust Rust
+let open = ex.fetch_open_orders(None).await?;
+```
+
+```python Python
+open = ex.fetch_open_orders()
+```
+
+```typescript TypeScript
+const open = await ex.fetchOpenOrders();
+```
+
+</CodeGroup>

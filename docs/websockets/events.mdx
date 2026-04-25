@@ -1,0 +1,127 @@
+---
+title: "Events"
+description: "Every variant of WsUpdate."
+---
+
+`WsUpdate` is a tagged enum (`#[serde(tag = "kind")]`) defined in
+`engine/core/src/websocket/events.rs`. Five variants. No untyped escape
+hatch — if you can't handle one, that's a bug.
+
+Every event carries paired timestamps:
+
+- `local_ts: Instant` — monotonic, captured at socket-read (Rust only)
+- `local_ts_ms: u64` — wall-clock millis paired with `local_ts`
+- `exchange_ts: Option<u64>` — exchange-authoritative millis (when provided)
+
+## `Snapshot`
+
+A full L2 book. Replace any cached book keyed by `(market_id, asset_id)`.
+Emitted on initial subscribe and after any recovery (`Clear`,
+`BookInvalidated`).
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `book` | `Arc<Orderbook>` |
+| `exchange_ts` | `u64?` |
+| `local_ts_ms` | `u64` |
+| `seq` | `u64` |
+
+## `Delta`
+
+Incremental change to an existing book. Apply in place; discard if you've
+seen a `Clear` / `BookInvalidated` for this market without a follow-up
+`Snapshot`.
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `changes` | `ChangeVec` (stack-allocated up to 4) |
+| `exchange_ts` | `u64?` |
+| `local_ts_ms` | `u64` |
+| `seq` | `u64` |
+
+Each `PriceLevelChange` is `{ side: Bid | Ask, price: FixedPrice, size: f64 }`
+with absolute-replacement semantics: `size > 0` sets the level; `size == 0`
+removes it.
+
+## `Clear`
+
+Per-market book invalidation, on the same stream as `Snapshot`/`Delta`. A
+consumer can act inline: "drop everything ≤ this seq, wait for the next
+Snapshot."
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `reason` | `InvalidationReason` |
+| `local_ts_ms` | `u64` |
+| `seq` | `u64` |
+
+`InvalidationReason`: `Reconnect`, `Lag`, `SequenceGap { expected, received }`,
+`ExchangeReset`.
+
+## `Trade`
+
+A public trade on a subscribed market. Not tied to a local order.
+
+`ActivityTrade` payload:
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `trade_id` | `string?` |
+| `price` | `f64` |
+| `size` | `f64` |
+| `side` | `string?` |
+| `aggressor_side` | `string?` |
+| `outcome` | `string?` (e.g. `"Yes"` / `"No"`) |
+| `fee_rate_bps` | `u32?` (Polymarket `last_trade_price` events) |
+| `exchange_ts_ms` | `u64?` |
+| `source_channel` | `Cow<'static, str>` |
+
+## `Fill`
+
+A fill on one of *your* orders.
+
+`ActivityFill` payload:
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `fill_id` | `string?` |
+| `order_id` | `string?` |
+| `price` | `f64` |
+| `size` | `f64` |
+| `side` | `string?` |
+| `outcome` | `string?` |
+| `tx_hash` | `string?` |
+| `fee` | `f64?` |
+| `liquidity_role` | `Maker` \| `Taker` \| `null` |
+| `exchange_ts_ms` | `u64?` |
+| `source_channel` | `Cow<'static, str>` |
+
+## Pattern matching (Python)
+
+`Snapshot`, `Delta`, `Trade`, and `Fill` are real classes with
+`__match_args__`:
+
+```python
+from openpx import Snapshot, Delta, Trade, Fill
+
+for update in ws.updates():
+    match update:
+        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq):
+            ...
+        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq):
+            ...
+        case Trade(trade, local_ts_ms):
+            ...
+        case Fill(fill, local_ts_ms):
+            ...
+```

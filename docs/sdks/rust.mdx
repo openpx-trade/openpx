@@ -1,9 +1,10 @@
 ---
-title: "Rust SDK"
-description: "Use OpenPX directly from Rust."
+title: "Rust"
+description: "Use OpenPX from Rust."
 ---
 
-The Rust crate is the canonical implementation — every other binding is a thin wrapper.
+The Rust crate is the canonical implementation — Python and TypeScript are
+thin wrappers around it.
 
 ## Install
 
@@ -11,7 +12,14 @@ The Rust crate is the canonical implementation — every other binding is a thin
 cargo add openpx
 ```
 
-## Construct an exchange
+OpenPX requires `tokio` and `serde_json`:
+
+```bash
+cargo add tokio --features full
+cargo add serde_json
+```
+
+## Constructing an exchange
 
 ```rust
 use openpx::ExchangeInner;
@@ -23,19 +31,68 @@ let ex = ExchangeInner::new("polymarket", json!({
 }))?;
 ```
 
-`ExchangeInner` is an enum-dispatched façade: the compiler monomorphizes each call into the underlying exchange implementation, so there's no `dyn Exchange` vtable cost on the hot path.
+`ExchangeInner` is enum-dispatched — `match` over `Kalshi(_)` and
+`Polymarket(_)`, no `dyn Exchange` vtable.
+
+## Direct exchange types
+
+If you don't need the unified facade, construct exchanges directly:
+
+```rust
+use openpx::{Kalshi, KalshiConfig, Polymarket, PolymarketConfig};
+```
+
+Both implement the `Exchange` trait, so callers can be generic over either.
+
+## Re-exports
+
+`openpx::*` re-exports everything from `px-core`, plus:
+
+- `ExchangeInner` and `WebSocketInner` — enum-dispatched facades
+- `Kalshi`, `KalshiConfig`
+- `Polymarket`, `PolymarketConfig`, `PolymarketSignatureType`
+- `CryptoPriceWebSocket` (from `px-crypto`)
+- `SportsWebSocket` (from `px-sports`)
 
 ## WebSocket
 
 ```rust
 use openpx::WebSocketInner;
 use px_core::websocket::OrderBookWebSocket;
+use serde_json::json;
+use futures::StreamExt;
 
 let mut ws = WebSocketInner::new("polymarket", json!({}))?;
+let mut updates = ws.updates().expect("first call");
+let mut session = ws.session_events().expect("first call");
+
 ws.connect().await?;
-ws.subscribe("0x…condition_id").await?;
+ws.subscribe("0x…token_id").await?;
+
+while let Some(update) = updates.next().await {
+    match update? {
+        px_core::WsUpdate::Snapshot { book, .. } => { /* ... */ }
+        px_core::WsUpdate::Delta { changes, .. } => { /* ... */ }
+        px_core::WsUpdate::Trade { trade, .. } => { /* ... */ }
+        px_core::WsUpdate::Fill { fill, .. } => { /* ... */ }
+        px_core::WsUpdate::Clear { reason, .. } => { /* ... */ }
+    }
+}
 ```
 
-<Info>
-  TODO: per-method examples (orders, positions, fills).
-</Info>
+## Errors
+
+All methods return `Result<T, OpenPxError>`. The hierarchy is defined in
+`engine/core/src/error.rs`:
+
+- `OpenPxError::Network`
+- `OpenPxError::Exchange(ExchangeError)` — includes `NotSupported`,
+  `MarketNotFound`, `Authentication`, `InsufficientFunds`, `Api`,
+  `RateLimited`
+- `OpenPxError::Config`
+- `OpenPxError::Serialization`
+- `OpenPxError::WebSocket(WebSocketError)`
+
+Per-exchange error types map into `ExchangeError`. See the
+[`define_exchange_error!` macro](https://github.com/openpx-trade/openpx/blob/main/engine/core/src/error.rs)
+for the canonical pattern.

@@ -1,0 +1,50 @@
+---
+title: "Overview"
+description: "Real-time orderbooks, trades, and fills."
+---
+
+OpenPX exposes a single multiplexed WebSocket per exchange. One connection
+handles every subscribed market, and consumers read from two streams:
+
+| Stream | Type | What it carries |
+|--------|------|-----------------|
+| `updates()` | `WsUpdate` | Per-market events: `Snapshot`, `Delta`, `Clear`, `Trade`, `Fill` |
+| `session_events()` | `SessionEvent` | Connection-level events: `Connected`, `Reconnected`, `Lagged`, `BookInvalidated`, `Error` |
+
+Both are **single-consumer**. Calling `updates()` or `session_events()` twice
+returns `None` (Rust) or raises (Python/TS) — cloning a receiver would
+silently split messages between holders. Fan out by running one consumer
+that re-broadcasts.
+
+## Driver trait
+
+Defined at `engine/core/src/websocket/traits.rs`:
+
+```rust
+pub trait OrderBookWebSocket: Send + Sync {
+    async fn connect(&mut self) -> Result<(), WebSocketError>;
+    async fn disconnect(&mut self) -> Result<(), WebSocketError>;
+    async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
+    async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
+    fn state(&self) -> WebSocketState;
+    fn updates(&self) -> Option<UpdateStream>;
+    fn session_events(&self) -> Option<SessionStream>;
+}
+```
+
+`WebSocketState` is one of: `Disconnected`, `Connecting`, `Connected`,
+`Reconnecting`, `Closed`.
+
+## What's next
+
+<CardGroup cols={3}>
+  <Card title="Connecting" icon="plug" href="/websockets/connecting">
+    `connect`, `subscribe`, and per-exchange targets.
+  </Card>
+  <Card title="Events" icon="bolt" href="/websockets/events">
+    Every variant of `WsUpdate`.
+  </Card>
+  <Card title="Session events" icon="signal" href="/websockets/session-events">
+    Reconnects, lag, and book invalidation.
+  </Card>
+</CardGroup>

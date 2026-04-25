@@ -1,0 +1,123 @@
+---
+title: "Unified Schema"
+description: "How exchange-specific fields map to OpenPX's unified models."
+---
+
+OpenPX normalizes every exchange's response into the same set of typed models
+defined in `engine/core/src/models/`. This page shows exactly which
+exchange-native field becomes which unified field.
+
+## `Market`
+
+The `Market` struct is the same across every exchange. Mappings are declared
+in `engine/core/src/exchange/manifests/{kalshi,polymarket}.rs`.
+
+| OpenPX field | Type | Kalshi source | Polymarket source |
+|--------------|------|---------------|-------------------|
+| `openpx_id` | `string` | `"kalshi:" + ticker` | `"polymarket:" + condition_id` |
+| `exchange` | `string` | `"kalshi"` | `"polymarket"` |
+| `id` | `string` | `ticker` | `conditionId` |
+| `native_numeric_id` | `string?` | — | `id` (numeric DB id) |
+| `group_id` | `string?` | `event_ticker` | `events[0].id` |
+| `event_id` | `string?` | canonical OpenPX event id | canonical OpenPX event id |
+| `title` | `string` | `title` | `question` |
+| `question` | `string?` | `title` | `question` |
+| `description` | `string` | `rules_primary` | `description` |
+| `slug` | `string?` | `subtitle` | `slug` |
+| `status` | `MarketStatus` | `status` (mapped) | derived from booleans |
+| `market_type` | `MarketType` | `market_type` | `marketType` |
+| `outcomes` | `string[]` | `["Yes", "No"]` | parsed `outcomes` |
+| `outcome_tokens` | `OutcomeToken[]` | `[{outcome, ticker}]` | `[{outcome, clobTokenIds[i]}]` |
+| `token_id_yes` | `string?` | — | `clobTokenIds[0]` |
+| `token_id_no` | `string?` | — | `clobTokenIds[1]` |
+| `condition_id` | `string?` | — | `conditionId` |
+| `volume` | `f64` | `volume_fp` ⟶ `volume` | `volumeNum` ⟶ `volume` |
+| `liquidity` | `f64?` | — | `liquidityNum` ⟶ `liquidity` |
+| `open_interest` | `f64?` | `open_interest_fp` ⟶ `open_interest` | — |
+| `close_time` | `DateTime?` | `close_time` (ISO 8601) | `endDate` (ISO 8601) |
+| `open_time` | `DateTime?` | `open_time` (ISO 8601) | `startDate` (ISO 8601) |
+
+<Tip>
+  All prices on the unified surface are decimals in `[0.0, 1.0]`. Kalshi's
+  fixed-point dollar strings are parsed during normalization; Polymarket prices
+  are already decimal.
+</Tip>
+
+### Status mapping (Kalshi)
+
+`MarketStatus` is normalized to one of `Active`, `Closed`, or `Resolved`:
+
+| Kalshi value | OpenPX `MarketStatus` |
+|--------------|-----------------------|
+| `active` | `Active` |
+| `closed`, `initialized`, `inactive`, `disputed`, `amended` | `Closed` |
+| `determined`, `finalized` | `Resolved` |
+
+Polymarket exposes booleans (`active`, `closed`, `archived`); the adapter folds
+them into the same three states.
+
+## `Order`
+
+Every exchange returns this single `Order` shape from `create_order`,
+`cancel_order`, `fetch_order`, and `fetch_open_orders`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `string` | Native order ID |
+| `market_id` | `string` | Same as `Market.id` |
+| `outcome` | `string` | e.g. `"Yes"` / `"No"` |
+| `side` | `OrderSide` | `buy` or `sell` |
+| `price` | `f64` | Decimal in `[0, 1]` |
+| `size` | `f64` | Contracts |
+| `filled` | `f64` | Cumulative fills |
+| `status` | `OrderStatus` | `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected` |
+| `created_at` | `DateTime<Utc>` | |
+| `updated_at` | `DateTime<Utc>?` | |
+
+`OrderType` (passed via `params["order_type"]` on `create_order`) is normalized
+to one of: `gtc`, `ioc`, `fok`.
+
+## `Position`
+
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `outcome` | `string` |
+| `size` | `f64` |
+| `average_price` | `f64` |
+| `current_price` | `f64` |
+
+## `Orderbook`
+
+Returned by `fetch_orderbook` and carried inside `WsUpdate::Snapshot`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `market_id` | `string` | Parent market |
+| `asset_id` | `string` | Per-outcome ID (Kalshi: ticker, Polymarket: token) |
+| `bids` | `PriceLevel[]` | Sorted high-to-low |
+| `asks` | `PriceLevel[]` | Sorted low-to-high |
+| `last_update_id` | `u64?` | Sequence, when provided |
+| `timestamp` | `DateTime?` | |
+| `hash` | `string?` | Polymarket book integrity hash |
+
+`PriceLevel` is `{ price: f64, size: f64 }`. Internally stored as
+`FixedPrice` (integer with scale 10,000) for branch-free comparison;
+serialized as `f64` over the wire.
+
+## `MarketTrade`, `Fill`, `Candlestick`
+
+| Model | Source method |
+|-------|---------------|
+| `MarketTrade` | `fetch_trades` (public tape) |
+| `Fill` | `fetch_fills` (your own executions) |
+| `Candlestick` | `fetch_price_history` (OHLCV) |
+
+All three carry decimal prices (`[0, 1]`), `f64` sizes, and `DateTime<Utc>`
+timestamps. See `engine/core/src/models/{trade,order}.rs` for full field lists.
+
+## `WsUpdate` and `SessionEvent`
+
+Documented on the [WebSocket events page](/websockets/events). Both types are
+defined in `engine/core/src/websocket/events.rs` and apply identically to
+every exchange's WebSocket implementation.

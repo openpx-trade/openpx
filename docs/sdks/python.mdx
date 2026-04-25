@@ -1,9 +1,10 @@
 ---
-title: "Python SDK"
-description: "Use OpenPX from Python via PyO3 bindings."
+title: "Python"
+description: "Use OpenPX from Python via PyO3."
 ---
 
-The Python SDK is a thin PyO3 wrapper around the Rust engine. Models are auto-generated Pydantic v2 types.
+The Python SDK is a PyO3 binding around the Rust engine. Result types are
+auto-generated Pydantic v2 models.
 
 ## Install
 
@@ -11,23 +12,114 @@ The Python SDK is a thin PyO3 wrapper around the Rust engine. Models are auto-ge
 pip install openpx
 ```
 
-## Usage
+Requires Python 3.9+. Prebuilt wheels ship for common platforms.
+
+## Public surface
+
+Importable from `openpx`:
 
 ```python
-import asyncio
-from openpx import Exchange
-
-async def main():
-    ex = Exchange("kalshi", {
-        "api_key_id": "…",
-        "private_key_pem": open("kalshi.pem").read(),
-    })
-    markets, cursor = await ex.fetch_markets({})
-    print(markets[0])
-
-asyncio.run(main())
+from openpx import (
+    Exchange,
+    WebSocket,
+    SportsWebSocket,
+    CryptoPriceWebSocket,
+    # WsUpdate variants
+    Snapshot, Delta, Trade, Fill,
+    # SessionEvent variants
+    Connected, Reconnected, Lagged, BookInvalidated, SessionError,
+    # Errors
+    OpenPxError, NetworkError, ExchangeError, AuthenticationError,
+)
 ```
 
-<Info>
-  TODO: document Pydantic model imports, async patterns, and WebSocket usage.
-</Info>
+## `Exchange`
+
+```python
+class Exchange:
+    def __init__(self, exchange_id: str, config: dict | None = None): ...
+
+    @property
+    def id(self) -> str: ...
+    @property
+    def name(self) -> str: ...
+
+    def describe(self) -> dict: ...
+    def websocket(self) -> WebSocket: ...
+
+    def fetch_markets(self, *, status=None, cursor=None,
+                      series_id=None, event_id=None) -> dict: ...
+    def fetch_market(self, market_id: str) -> Market: ...
+
+    def create_order(self, market_id, outcome, side, price, size,
+                     **params) -> Order: ...
+    def cancel_order(self, order_id, market_id=None) -> Order: ...
+    def fetch_order(self, order_id, market_id=None) -> Order: ...
+    def fetch_open_orders(self, market_id=None) -> list[Order]: ...
+
+    def fetch_positions(self, market_id=None) -> list[Position]: ...
+    def fetch_balance(self) -> dict[str, float]: ...
+
+    def fetch_orderbook(self, market_id, outcome=None,
+                        token_id=None) -> Orderbook: ...
+    def fetch_fills(self, market_id=None, limit=None) -> list[Fill]: ...
+
+    def fetch_price_history(self, market_id, interval, *,
+                            outcome=None, token_id=None, condition_id=None,
+                            start_ts=None, end_ts=None) -> list[Candlestick]: ...
+
+    def fetch_trades(self, market_id, *, market_ref=None, outcome=None,
+                     token_id=None, start_ts=None, end_ts=None,
+                     limit=None, cursor=None) -> dict: ...
+
+    def fetch_orderbook_history(self, market_id, *, token_id=None,
+                                start_ts=None, end_ts=None,
+                                limit=None, cursor=None) -> dict: ...
+```
+
+`fetch_markets`, `fetch_trades`, and `fetch_orderbook_history` return a dict
+with the items list under its plural name and a `cursor` key.
+
+<Note>
+  All methods are **synchronous**. The Rust engine runs the underlying async
+  work on its own runtime; the binding blocks the calling Python thread.
+</Note>
+
+## `WebSocket`
+
+```python
+ws = exchange.websocket()
+ws.connect()
+ws.subscribe("token-id-or-ticker")
+
+for update in ws.updates():       # blocking iterator, single-consumer
+    match update:
+        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq):
+            ...
+        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq):
+            ...
+        case Trade(trade, local_ts_ms):
+            ...
+        case Fill(fill, local_ts_ms):
+            ...
+
+for event in ws.session_events():
+    match event:
+        case Reconnected(gap_ms): ...
+        case BookInvalidated(market_id, reason): ...
+```
+
+`updates()` and `session_events()` are **take-once**; calling either twice
+raises.
+
+## Models
+
+`openpx._models` exports auto-generated Pydantic types: `Market`, `Order`,
+`Fill`, `Position`, `Orderbook`, `OrderbookSnapshot`, `MarketTrade`,
+`Candlestick`, and friends. They mirror the Rust structs documented in the
+[unified schema](/getting-started/unified-schema).
+
+## Errors
+
+Catch `OpenPxError` for everything; subclasses are `NetworkError`,
+`ExchangeError`, and `AuthenticationError`.
