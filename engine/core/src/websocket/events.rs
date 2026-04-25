@@ -35,8 +35,8 @@ pub enum WsUpdate {
     /// Full orderbook snapshot. Caller should replace any cached book keyed by
     /// `(market_id, asset_id)`. `market_id` is the parent market on every
     /// exchange; `asset_id` is the per-outcome identifier (Polymarket token,
-    /// Kalshi ticker, Opinion numeric market id). Emitted on initial subscribe
-    /// and after any `BookInvalidated` / `Clear` recovery path.
+    /// Kalshi ticker). Emitted on initial subscribe and after any
+    /// `BookInvalidated` / `Clear` recovery path.
     Snapshot {
         market_id: String,
         asset_id: String,

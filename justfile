@@ -9,8 +9,8 @@ setup:
     {{venv}}/bin/pip install datamodel-code-generator maturin pydantic
     cd sdks/typescript && npm install
 
-sync-all: python node docs
-    @echo "All SDKs and docs synced with Rust core"
+sync-all: python node
+    @echo "All SDKs synced with Rust core"
 
 schema:
     mkdir -p schema
@@ -43,21 +43,11 @@ node-build: node-models
 
 node: node-build
 
-docs: schema
-    python3 scripts/generate_sdk_docs.py
-    @echo "Docs generated in docs/src/content/docs/"
+docs-serve:
+    cd docs && mintlify dev
 
-docs-serve: docs
-    cd docs && npx astro dev --open
-
-docs-build: docs
-    cd docs && npx astro build
-
-docs-install:
-    cd docs && npm install
-
-check-sync: schema python-models node-models docs
-    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/src/
+check-sync: schema python-models node-models
+    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
 
 # ---------------------------------------------------------------------------
 # Versioning
@@ -69,7 +59,7 @@ bump VERSION:
     sed -i'' -e 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
     sed -i'' -e 's/^version = ".*"/version = "{{VERSION}}"/' sdks/python/pyproject.toml
     cd sdks/typescript && npm version "{{VERSION}}" --no-git-tag-version
-    sed -i'' -e 's/\(px-core\|px-exchange-kalshi\|px-exchange-polymarket\|px-exchange-opinion\|px-sports\|px-crypto\|openpx\) = { version = "[^"]*"/\1 = { version = "{{VERSION}}"/' Cargo.toml
+    sed -i'' -e 's/\(px-core\|px-exchange-kalshi\|px-exchange-polymarket\|px-sports\|px-crypto\|openpx\) = { version = "[^"]*"/\1 = { version = "{{VERSION}}"/' Cargo.toml
     @echo "Done. Verify with: just check-versions"
 
 # Verify all package versions match
@@ -97,7 +87,6 @@ publish-crates:
     sleep 30
     cargo publish -p px-exchange-kalshi
     cargo publish -p px-exchange-polymarket
-    cargo publish -p px-exchange-opinion
     cargo publish -p px-crypto
     cargo publish -p px-sports
     sleep 30

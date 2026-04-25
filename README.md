@@ -4,7 +4,7 @@
 
 **Unified, open-source prediction market SDK.**
 
-One interface to trade across Polymarket, Kalshi, and Opinion.
+One interface to trade across Polymarket and Kalshi.
 Rust engine with Python & TypeScript SDKs.
 
 [![CI](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml/badge.svg)](https://github.com/openpx-trade/openpx/actions/workflows/ci.yml)
@@ -16,8 +16,7 @@ Rust engine with Python & TypeScript SDKs.
 <br/>
 
 <a href="https://polymarket.com"><img src="assets/logos/polymarket.png" width="56" height="56" alt="Polymarket" style="border-radius:12px" /></a>&nbsp;&nbsp;&nbsp;
-<a href="https://kalshi.com"><img src="assets/logos/kalshi.png" width="56" height="56" alt="Kalshi" style="border-radius:12px" /></a>&nbsp;&nbsp;&nbsp;
-<a href="https://opinion.trade"><img src="assets/logos/opinion.jpg" width="56" height="56" alt="Opinion" style="border-radius:12px" /></a>
+<a href="https://kalshi.com"><img src="assets/logos/kalshi.png" width="56" height="56" alt="Kalshi" style="border-radius:12px" /></a>
 
 </div>
 
@@ -113,17 +112,17 @@ Every exchange exposes the same interface — switch exchanges by changing one s
 
 ## Exchange Support
 
-| Feature | <img src="assets/logos/polymarket.png" width="20" height="20" /> Polymarket | <img src="assets/logos/kalshi.png" width="20" height="20" /> Kalshi | <img src="assets/logos/opinion.jpg" width="20" height="20" /> Opinion |
-|---------|:---:|:---:|:---:|
-| Markets | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Trading | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Orderbook | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Price History | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Trades | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Positions | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Balance | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Fills | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| WebSocket | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Feature | <img src="assets/logos/polymarket.png" width="20" height="20" /> Polymarket | <img src="assets/logos/kalshi.png" width="20" height="20" /> Kalshi |
+|---------|:---:|:---:|
+| Markets | :white_check_mark: | :white_check_mark: |
+| Trading | :white_check_mark: | :white_check_mark: |
+| Orderbook | :white_check_mark: | :white_check_mark: |
+| Price History | :white_check_mark: | :white_check_mark: |
+| Trades | :white_check_mark: | :white_check_mark: |
+| Positions | :white_check_mark: | :white_check_mark: |
+| Balance | :white_check_mark: | :white_check_mark: |
+| Fills | :white_check_mark: | :white_check_mark: |
+| WebSocket | :white_check_mark: | :white_check_mark: |
 
 ## Exchange Credentials
 
@@ -133,7 +132,6 @@ Each exchange is optional — only configure what you need.
 |----------|--------------|------|
 | <img src="assets/logos/polymarket.png" width="16" height="16" /> Polymarket | `POLYMARKET_PRIVATE_KEY` | [docs](https://docs.polymarket.com/developers/) |
 | <img src="assets/logos/kalshi.png" width="16" height="16" /> Kalshi | `KALSHI_API_KEY_ID`, `KALSHI_PRIVATE_KEY_PEM` | [docs](https://docs.kalshi.com/) |
-| <img src="assets/logos/opinion.jpg" width="16" height="16" /> Opinion | `OPINION_API_KEY`, `OPINION_PRIVATE_KEY`, `OPINION_MULTI_SIG_ADDR` | [docs](https://docs.opinion.trade/developer-guide/opinion-open-api) |
 
 Set them as environment variables or in a `.env` file (auto-loaded by the CLI).
 
@@ -164,7 +162,7 @@ openpx kalshi fetch-markets --limit 1 | jq '.markets[0].title'
 ```
 engine/
   core/               Core types, Exchange trait, error handling
-  exchanges/          Exchange implementations (kalshi, polymarket, opinion)
+  exchanges/          Exchange implementations (kalshi, polymarket)
   sdk/                Unified facade (enum dispatch)
   cli/                CLI tool
   sports/             Sports WebSocket (Polymarket live scores)
@@ -172,7 +170,7 @@ engine/
 sdks/
   python/             PyO3 bindings + Pydantic models
   typescript/         NAPI-RS bindings + TS types
-docs/                 Starlight documentation site
+docs/                 Mintlify documentation site
 ```
 
 ## Development

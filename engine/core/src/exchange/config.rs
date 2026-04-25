@@ -101,8 +101,8 @@ impl ExchangeConfig {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchMarketsParams {
     /// Per-page limit. Each exchange applies its own server-side cap:
-    /// Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped
-    /// at 20. Values above the cap are silently clamped to the cap.
+    /// Kalshi tops out at 1000, Polymarket at ~500. Values above the cap
+    /// are silently clamped to the cap.
     pub limit: Option<usize>,
     /// Exchange-specific cursor (offset, page number, or cursor string)
     #[serde(default)]
@@ -117,9 +117,8 @@ pub struct FetchMarketsParams {
     #[serde(default)]
     pub series_id: Option<String>,
     /// Fetch all markets within a specific event. Pass a Kalshi event ticker
-    /// (e.g., `"KXBTC-25MAR14"`), a Polymarket event ID or slug
-    /// (e.g., `"903"` or `"will-trump-win-2024"`), or an Opinion market slug
-    /// (e.g., `"btc-price-daily"`) to get its child markets.
+    /// (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug
+    /// (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets.
     /// When set, `series_id`, `cursor`, and `limit` are ignored (not paginated).
     /// `status` filtering is still applied client-side.
     #[serde(default)]
@@ -311,11 +310,4 @@ mod tests {
 pub struct KalshiCredentials {
     pub api_key_id: String,
     pub private_key: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct OpinionCredentials {
-    pub api_key: String,
-    pub private_key: String,
-    pub multi_sig_addr: String,
 }

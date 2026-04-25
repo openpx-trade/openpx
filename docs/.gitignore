@@ -1,3 +1,2 @@
-dist/
-.astro/
+.mintlify/
 node_modules/

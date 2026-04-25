@@ -54,8 +54,8 @@ pub const SIMD_CROSSOVER_BYTES: usize = 512;
 ///
 /// Returns `None` on parse failure; callers typically log and drop such
 /// frames. Dispatch rule between single and array: first non-whitespace
-/// byte is `[` → array; else single object. Matches polymarket / kalshi /
-/// opinion WS behaviour (both forms are observed in the wild).
+/// byte is `[` → array; else single object. Matches polymarket / kalshi
+/// WS behaviour (both forms are observed in the wild).
 pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
     #[cfg(feature = "simd-json")]
     if text.len() >= SIMD_CROSSOVER_BYTES {
@@ -83,9 +83,9 @@ pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
 }
 
 /// Parse `text` into a `serde_json::Value` using the same size-based simd
-/// switching as `decode_frame`. For exchanges (kalshi, opinion) that
-/// dispatch on a field inside a loosely typed Value rather than
-/// deserialising into a bespoke `RawWsMessage` struct.
+/// switching as `decode_frame`. For exchanges (e.g. kalshi) that dispatch
+/// on a field inside a loosely typed Value rather than deserialising into
+/// a bespoke `RawWsMessage` struct.
 pub fn decode_value(text: &str) -> Option<serde_json::Value> {
     #[cfg(feature = "simd-json")]
     if text.len() >= SIMD_CROSSOVER_BYTES {

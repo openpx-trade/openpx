@@ -1,6 +1,6 @@
 [package]
 name = "openpx"
-description = "Unified SDK for prediction markets — Kalshi, Polymarket, Opinion and more"
+description = "Unified SDK for prediction markets — Kalshi, Polymarket, and more"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,6 @@ categories = ["api-bindings", "finance"]
 px-core = { workspace = true }
 px-exchange-kalshi = { workspace = true }
 px-exchange-polymarket = { workspace = true }
-px-exchange-opinion = { workspace = true }
 px-sports = { workspace = true }
 px-crypto = { workspace = true }
 async-trait = { workspace = true }

@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/openpx/badge.svg)](https://docs.rs/openpx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Unified Rust SDK for prediction markets — Kalshi, Polymarket, Opinion and more.
+Unified Rust SDK for prediction markets — Kalshi, Polymarket, and more.
 
 ## Installation
 
@@ -37,7 +37,6 @@ async fn main() -> anyhow::Result<()> {
 
 - **Kalshi** — US-regulated event contracts
 - **Polymarket** — Crypto-native prediction markets
-- **Opinion** — Opinion exchange markets
 
 ## Features
 

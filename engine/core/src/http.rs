@@ -1,9 +1,9 @@
 //! Shared HTTP client tunings.
 //!
-//! Every exchange client (Polymarket, Kalshi, Opinion, and any future
-//! addition) should build its `reqwest::Client` via `tuned_client_builder()`.
-//! Centralising the tunings here means one edit rolls out to every exchange
-//! — we don't want performance fixes to drift across three independent
+//! Every exchange client (Polymarket, Kalshi, and any future addition)
+//! should build its `reqwest::Client` via `tuned_client_builder()`.
+//! Centralising the tunings here means one edit rolls out to every
+//! exchange — we don't want performance fixes to drift across independent
 //! builders.
 //!
 //! Flags applied:

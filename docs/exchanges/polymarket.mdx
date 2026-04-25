@@ -1,0 +1,38 @@
+---
+title: "Polymarket"
+description: "Configuration and capabilities for the Polymarket exchange."
+---
+
+Polymarket is an on-chain CLOB for prediction markets, settled on Polygon. OpenPX handles signing, CTF interactions, and CLOB API auth.
+
+## Config
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `private_key` | string | EOA private key (hex). Used to sign orders. |
+| `funder` | string | Funder/proxy/safe address holding USDC. |
+| `signature_type` | `"eoa"` \| `"proxy"` \| `"gnosis_safe"` (or `0`/`1`/`2`) | Signature type. Defaults: GnosisSafe when `funder` set, otherwise EOA. |
+| `api_key`, `api_secret`, `api_passphrase` | string | L2 API credentials (required for authenticated REST). |
+| `gamma_url` | string | Override the Gamma (markets) API base URL. |
+| `clob_url` | string | Override the CLOB API base URL. |
+| `polygon_rpc_url` | string | Polygon RPC URL for on-chain reads. |
+| `verbose` | bool | Verbose logging. |
+
+## Environment variables
+
+The CLI and recorder pick up these by default:
+
+- `POLYMARKET_PRIVATE_KEY`
+- `POLYMARKET_FUNDER`
+- `POLYMARKET_API_KEY`
+- `POLYMARKET_API_SECRET`
+- `POLYMARKET_API_PASSPHRASE`
+
+## Notes
+
+- `Market.id` is the `condition_id` (canonical CTF identifier). The numeric Polymarket DB id is exposed separately as `native_numeric_id` for callers that need to build deep-links.
+- WebSocket activity events include outcome labels ("Yes"/"No") when token IDs are registered.
+
+<Info>
+  TODO: link to authoritative Polymarket API docs and add per-method examples.
+</Info>

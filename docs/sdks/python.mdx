@@ -1,0 +1,33 @@
+---
+title: "Python SDK"
+description: "Use OpenPX from Python via PyO3 bindings."
+---
+
+The Python SDK is a thin PyO3 wrapper around the Rust engine. Models are auto-generated Pydantic v2 types.
+
+## Install
+
+```bash
+pip install openpx
+```
+
+## Usage
+
+```python
+import asyncio
+from openpx import Exchange
+
+async def main():
+    ex = Exchange("kalshi", {
+        "api_key_id": "…",
+        "private_key_pem": open("kalshi.pem").read(),
+    })
+    markets, cursor = await ex.fetch_markets({})
+    print(markets[0])
+
+asyncio.run(main())
+```
+
+<Info>
+  TODO: document Pydantic model imports, async patterns, and WebSocket usage.
+</Info>

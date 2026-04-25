@@ -28,7 +28,6 @@ for market in markets[:5]:
 
 - **Kalshi** — US-regulated event contracts
 - **Polymarket** — Crypto-native prediction markets
-- **Opinion** — Opinion exchange markets
 
 ## Requirements
 

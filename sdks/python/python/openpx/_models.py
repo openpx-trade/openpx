@@ -346,8 +346,7 @@ class ActivityFill(BaseModel):
         None, description="Exchange-authoritative timestamp (millis since epoch)."
     )
     fee: float | None = Field(
-        None,
-        description="Fee charged for this fill. Opinion: `fee` from `trade.record.new`.",
+        None, description="Fee charged for this fill, when the exchange publishes one."
     )
     fill_id: str | None = None
     liquidity_role: LiquidityRole | None = None
@@ -359,8 +358,7 @@ class ActivityFill(BaseModel):
     size: float
     source_channel: str
     tx_hash: str | None = Field(
-        None,
-        description="On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.",
+        None, description="On-chain transaction hash, when the exchange publishes one."
     )
 
 
@@ -371,11 +369,11 @@ class FetchMarketsParams(BaseModel):
     )
     event_id: str | None = Field(
         None,
-        description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`), a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`), or an Opinion market slug (e.g., `"btc-price-daily"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
+        description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
     )
     limit: conint(ge=0) | None = Field(
         None,
-        description="Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped at 20. Values above the cap are silently clamped to the cap.",
+        description="Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.",
     )
     series_id: str | None = Field(
         None,
@@ -418,9 +416,7 @@ class Market(BaseModel):
     event_id: str | None = Field(
         None, description="Canonical OpenPX event ID for cross-exchange event grouping."
     )
-    exchange: str = Field(
-        ..., description="Exchange identifier (kalshi, polymarket, opinion)"
-    )
+    exchange: str = Field(..., description="Exchange identifier (kalshi, polymarket)")
     group_id: str | None = Field(
         None, description="Source-native event/group ID from the exchange."
     )
@@ -477,9 +473,7 @@ class Market(BaseModel):
     question: str | None = Field(
         None, description="Market question (may differ from title)"
     )
-    question_id: str | None = Field(
-        None, description="Question ID (Opinion, Polymarket)"
-    )
+    question_id: str | None = Field(None, description="Question ID (Polymarket)")
     result: str | None = Field(None, description="Resolution result")
     rules: str | None = Field(None, description="Resolution rules")
     settlement_time: AwareDatetime | None = Field(

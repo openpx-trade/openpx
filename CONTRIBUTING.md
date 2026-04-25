@@ -63,10 +63,11 @@ Rust types (engine/core)
     → engine/schema binary → schema/openpx.schema.json
         → datamodel-codegen     → sdks/python/_models.py (Pydantic v2)
         → json-schema-to-typescript → sdks/typescript/types/models.d.ts
-        → generate_sdk_docs.py  → docs/src/ (mdBook)
 ```
 
-### Syncing SDKs and Docs
+Documentation lives in `docs/` as a Mintlify project (MDX + `docs.json`) and is authored by hand — it is **not** regenerated from the Rust schema.
+
+### Syncing SDKs
 
 After modifying any Rust types in `engine/core`, run:
 
@@ -78,28 +79,25 @@ This single command:
 1. Exports the JSON Schema from Rust types
 2. Regenerates Python Pydantic models
 3. Regenerates TypeScript type definitions
-4. Regenerates SDK documentation
 
 ### Available Just Recipes
 
 | Command | What it does |
 |---------|-------------|
-| `just sync-all` | Full sync: schema + Python + TypeScript + docs |
+| `just sync-all` | Full sync: schema + Python + TypeScript |
 | `just schema` | Export `schema/openpx.schema.json` from Rust types |
 | `just python-models` | Regenerate Python Pydantic models from schema |
 | `just node-models` | Regenerate TypeScript types from schema |
-| `just docs` | Regenerate SDK documentation from schema |
-| `just docs-serve` | Generate docs and open local preview |
-| `just docs-build` | Generate docs and build static HTML |
+| `just docs-serve` | Run `mintlify dev` from `docs/` for local preview |
 | `just check-sync` | Verify generated files are up to date (used in CI) |
 
 ### Viewing Documentation Locally
 
 ```bash
-# Install mdbook (one-time)
-cargo install mdbook
+# Install Mintlify CLI (one-time)
+npm i -g mintlify
 
-# Generate and preview docs
+# Preview the docs site
 just docs-serve
 ```
 
@@ -135,16 +133,14 @@ openpx/
 │   ├── core/                 # Core types, Exchange trait, errors
 │   ├── exchanges/            # Exchange implementations (Rust only)
 │   │   ├── kalshi/
-│   │   ├── polymarket/
-│   │   └── opinion/
+│   │   └── polymarket/
 │   ├── sdk/                  # Unified facade — enum dispatch over all exchanges
 │   └── schema/               # Binary: exports JSON Schema from Rust types
 ├── sdks/                     # Language SDKs
 │   ├── python/               # PyO3 bindings + auto-generated Pydantic models
 │   └── typescript/           # NAPI-RS bindings + auto-generated TS types
-├── docs/                     # mdBook docs (auto-generated from schema)
+├── docs/                     # Mintlify docs site (docs.json + MDX)
 ├── schema/                   # openpx.schema.json (checked into git)
-├── scripts/                  # Doc generation scripts
 └── justfile                  # Single-command SDK sync
 ```
 

@@ -36,17 +36,15 @@ openpx/
 │   │   └── src/websocket/    # WebSocket traits
 │   ├── exchanges/            # Exchange implementations
 │   │   ├── kalshi/           # auth, config, error, exchange, fetcher, normalize, websocket
-│   │   ├── polymarket/       # auth, config, error, exchange, fetcher, websocket, approvals, clob, ctf, signer, relayer, swap, client, diagnostics
-│   │   └── opinion/          # config, error, exchange, websocket
+│   │   └── polymarket/       # auth, config, error, exchange, fetcher, websocket, approvals, clob, ctf, signer, relayer, swap, client, diagnostics
 │   ├── sdk/                  # Unified facade (enum dispatch)
 │   ├── cli/                  # CLI tool for testing APIs & WebSocket streams
 │   └── schema/               # JSON Schema export binary
 ├── sdks/                     # Language SDKs
 │   ├── python/               # PyO3 + auto-generated Pydantic models
 │   └── typescript/           # NAPI-RS + auto-generated TS types
-├── docs/                     # Astro-based documentation site
+├── docs/                     # Mintlify documentation site (docs.json + MDX)
 ├── schema/                   # openpx.schema.json (generated artifact)
-├── scripts/                  # Build & codegen scripts
 └── justfile                  # Single-command SDK sync
 ```
 
@@ -56,7 +54,7 @@ openpx/
 |---------|------|-------|
 | Exchange trait | `engine/core/src/exchange/traits.rs` | All exchanges implement this |
 | Exchange manifest base | `engine/core/src/exchange/manifest.rs` | ExchangeManifest struct, PaginationConfig, FieldMapping, Transform |
-| Exchange manifests | `engine/core/src/exchange/manifests/` | Per-exchange configs (kalshi.rs, polymarket.rs, opinion.rs) |
+| Exchange manifests | `engine/core/src/exchange/manifests/` | Per-exchange configs (kalshi.rs, polymarket.rs) |
 | Timing macros | `engine/core/src/timing.rs` | `timed!` macro + metric name constants |
 | Error types | `engine/core/src/error.rs` | `OpenPxError` hierarchy + `define_exchange_error!` macro |
 | Event IDs | `engine/core/src/events.rs` | Canonical cross-exchange event grouping |
@@ -135,4 +133,3 @@ cargo build --release --workspace
 Always refer to the official documentation for each prediction market when implementing solutions:
 - Polymarket: https://docs.polymarket.com/developers/
 - Kalshi: https://docs.kalshi.com/
-- Opinion: https://docs.opinion.trade/developer-guide/opinion-open-api

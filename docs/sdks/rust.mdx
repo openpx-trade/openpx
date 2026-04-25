@@ -1,0 +1,41 @@
+---
+title: "Rust SDK"
+description: "Use OpenPX directly from Rust."
+---
+
+The Rust crate is the canonical implementation — every other binding is a thin wrapper.
+
+## Install
+
+```bash
+cargo add openpx
+```
+
+## Construct an exchange
+
+```rust
+use openpx::ExchangeInner;
+use serde_json::json;
+
+let ex = ExchangeInner::new("polymarket", json!({
+    "private_key": std::env::var("POLYMARKET_PRIVATE_KEY")?,
+    "funder": std::env::var("POLYMARKET_FUNDER")?,
+}))?;
+```
+
+`ExchangeInner` is an enum-dispatched façade: the compiler monomorphizes each call into the underlying exchange implementation, so there's no `dyn Exchange` vtable cost on the hot path.
+
+## WebSocket
+
+```rust
+use openpx::WebSocketInner;
+use px_core::websocket::OrderBookWebSocket;
+
+let mut ws = WebSocketInner::new("polymarket", json!({}))?;
+ws.connect().await?;
+ws.subscribe("0x…condition_id").await?;
+```
+
+<Info>
+  TODO: per-method examples (orders, positions, fills).
+</Info>

@@ -16,7 +16,7 @@
           ]
         },
         "fee": {
-          "description": "Fee charged for this fill. Opinion: `fee` from `trade.record.new`.",
+          "description": "Fee charged for this fill, when the exchange publishes one.",
           "format": "double",
           "type": [
             "number",
@@ -72,7 +72,7 @@
           "type": "string"
         },
         "tx_hash": {
-          "description": "On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.",
+          "description": "On-chain transaction hash, when the exchange publishes one.",
           "type": [
             "string",
             "null"
@@ -295,14 +295,14 @@
         },
         "event_id": {
           "default": null,
-          "description": "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`), a Polymarket event ID or slug (e.g., `\"903\"` or `\"will-trump-win-2024\"`), or an Opinion market slug (e.g., `\"btc-price-daily\"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.",
+          "description": "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`) or a Polymarket event ID or slug (e.g., `\"903\"` or `\"will-trump-win-2024\"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.",
           "type": [
             "string",
             "null"
           ]
         },
         "limit": {
-          "description": "Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500, Opinion is hard-capped at 20. Values above the cap are silently clamped to the cap.",
+          "description": "Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.",
           "format": "uint",
           "minimum": 0.0,
           "type": [
@@ -468,7 +468,7 @@
       "type": "string"
     },
     "Market": {
-      "description": "Unified prediction market model.\n\nAll exchanges produce this single type directly — no intermediate conversion.\n\n# Price Format\n\nAll prices are normalized to decimal format (0.0 to 1.0). Exchange-specific conversions are handled during parsing:\n\n- **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration). - **Polymarket, Opinion**: Native prices already in decimal (0.0-1.0).",
+      "description": "Unified prediction market model.\n\nAll exchanges produce this single type directly — no intermediate conversion.\n\n# Price Format\n\nAll prices are normalized to decimal format (0.0 to 1.0). Exchange-specific conversions are handled during parsing:\n\n- **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration). - **Polymarket**: Native prices already in decimal (0.0-1.0).",
       "properties": {
         "accepting_orders": {
           "default": false,
@@ -547,7 +547,7 @@
           ]
         },
         "exchange": {
-          "description": "Exchange identifier (kalshi, polymarket, opinion)",
+          "description": "Exchange identifier (kalshi, polymarket)",
           "type": "string"
         },
         "group_id": {
@@ -743,7 +743,7 @@
           ]
         },
         "question_id": {
-          "description": "Question ID (Opinion, Polymarket)",
+          "description": "Question ID (Polymarket)",
           "type": [
             "string",
             "null"
@@ -1576,7 +1576,7 @@
       "description": "Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.",
       "oneOf": [
         {
-          "description": "Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id` is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker, Opinion numeric market id). Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.",
+          "description": "Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id` is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker). Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.",
           "properties": {
             "asset_id": {
               "type": "string"

@@ -35,7 +35,7 @@ jobs:
           sleep 30
 
           # Tier 2: depends on px-core
-          for crate in px-exchange-kalshi px-exchange-polymarket px-exchange-opinion px-crypto px-sports; do
+          for crate in px-exchange-kalshi px-exchange-polymarket px-crypto px-sports; do
             publish "$crate"
             sleep 10
           done

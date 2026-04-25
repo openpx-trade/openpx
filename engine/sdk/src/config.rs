@@ -15,7 +15,6 @@ use serde_json::Value;
 
 use px_core::error::OpenPxError;
 use px_exchange_kalshi::KalshiConfig;
-use px_exchange_opinion::OpinionConfig;
 use px_exchange_polymarket::{PolymarketConfig, PolymarketSignatureType};
 
 #[inline]
@@ -106,34 +105,6 @@ pub fn parse_polymarket(config: &Value) -> Result<PolymarketConfig, OpenPxError>
     }
     if let Some(v) = get_str(obj, "polygon_rpc_url") {
         cfg = cfg.with_polygon_rpc(v);
-    }
-    if let Some(v) = get_bool(obj, "verbose") {
-        cfg = cfg.with_verbose(v);
-    }
-    Ok(cfg)
-}
-
-pub fn parse_opinion(config: &Value) -> Result<OpinionConfig, OpenPxError> {
-    let mut cfg = OpinionConfig::new();
-    let obj = match config.as_object() {
-        Some(o) => o,
-        None => return Ok(cfg),
-    };
-
-    if let Some(v) = get_str(obj, "api_key") {
-        cfg = cfg.with_api_key(v);
-    }
-    if let Some(v) = get_str(obj, "private_key") {
-        cfg = cfg.with_private_key(v);
-    }
-    if let Some(v) = get_str(obj, "multi_sig_addr") {
-        cfg = cfg.with_multi_sig(v);
-    }
-    if let Some(v) = get_str(obj, "api_url") {
-        cfg = cfg.with_api_url(v);
-    }
-    if let Some(v) = get_str(obj, "ws_url") {
-        cfg = cfg.with_ws_url(v);
     }
     if let Some(v) = get_bool(obj, "verbose") {
         cfg = cfg.with_verbose(v);

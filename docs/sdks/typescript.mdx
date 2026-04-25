@@ -1,0 +1,30 @@
+---
+title: "TypeScript SDK"
+description: "Use OpenPX from Node.js via NAPI-RS bindings."
+---
+
+The TypeScript SDK is a NAPI-RS native addon backed by the Rust engine, with auto-generated `.d.ts` types from the JSON schema.
+
+## Install
+
+```bash
+npm install openpx
+```
+
+## Usage
+
+```typescript
+import { Exchange } from "openpx";
+
+const ex = new Exchange("polymarket", {
+  private_key: process.env.POLYMARKET_PRIVATE_KEY!,
+  funder: process.env.POLYMARKET_FUNDER!,
+});
+
+const { markets } = await ex.fetchMarkets({});
+console.log(markets[0]);
+```
+
+<Info>
+  TODO: document async/streaming patterns and WebSocket usage.
+</Info>

@@ -1,0 +1,34 @@
+---
+title: "Kalshi"
+description: "Configuration and capabilities for the Kalshi exchange."
+---
+
+Kalshi is a CFTC-regulated US event-contract exchange. OpenPX talks to its REST and WebSocket APIs.
+
+## Config
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `api_url` | string | Override the API base URL (defaults to production). |
+| `api_key_id` | string | API key identifier. |
+| `private_key_pem` | string | RSA private key contents (PEM). |
+| `private_key_path` | string | Filesystem path to the PEM file (alternative to `private_key_pem`). |
+| `demo` | bool | Use the demo environment. |
+| `verbose` | bool | Verbose logging. |
+
+## Environment variables
+
+The CLI and recorder pick up these by default:
+
+- `KALSHI_API_KEY_ID`
+- `KALSHI_PRIVATE_KEY_PEM`
+- `KALSHI_PRIVATE_KEY_PATH`
+
+## Notes
+
+- Native market IDs are tickers (e.g., `KXBTC-25MAR14-T20000`).
+- WebSocket requires authentication; unauthenticated `Exchange` instances report `has_websocket = false`.
+
+<Info>
+  TODO: link to authoritative Kalshi API docs and add per-method examples.
+</Info>

@@ -10,7 +10,6 @@ pub use px_sports::SportsWebSocket;
 
 // Exchange implementations (re-export for direct construction)
 pub use px_exchange_kalshi::{Kalshi, KalshiConfig};
-pub use px_exchange_opinion::{Opinion, OpinionConfig};
 pub use px_exchange_polymarket::{Polymarket, PolymarketConfig, PolymarketSignatureType};
 
 use std::collections::HashMap;
@@ -21,7 +20,6 @@ use std::collections::HashMap;
 pub enum ExchangeInner {
     Kalshi(Box<Kalshi>),
     Polymarket(Box<Polymarket>),
-    Opinion(Opinion),
 }
 
 /// Dispatch macro: calls a trait method on the inner exchange via match + UFCS,
@@ -32,7 +30,6 @@ macro_rules! dispatch {
         match $self {
             ExchangeInner::Kalshi(e) => Exchange::$method(e.as_ref(), $($arg),*).await,
             ExchangeInner::Polymarket(e) => Exchange::$method(e.as_ref(), $($arg),*).await,
-            ExchangeInner::Opinion(e) => Exchange::$method(e, $($arg),*).await,
         }
     };
 }
@@ -43,7 +40,6 @@ macro_rules! dispatch_sync {
         match $self {
             ExchangeInner::Kalshi(e) => Exchange::$method(e.as_ref(), $($arg),*),
             ExchangeInner::Polymarket(e) => Exchange::$method(e.as_ref(), $($arg),*),
-            ExchangeInner::Opinion(e) => Exchange::$method(e, $($arg),*),
         }
     };
 }
@@ -60,10 +56,6 @@ impl ExchangeInner {
                 Polymarket::new(config::parse_polymarket(&config)?)
                     .map_err(|e| OpenPxError::Config(e.to_string()))?,
             ))),
-            "opinion" => Ok(Self::Opinion(
-                Opinion::new(config::parse_opinion(&config)?)
-                    .map_err(|e| OpenPxError::Config(e.to_string()))?,
-            )),
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
     }

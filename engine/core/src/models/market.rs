@@ -73,14 +73,14 @@ pub struct OutcomeToken {
 /// Exchange-specific conversions are handled during parsing:
 ///
 /// - **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration).
-/// - **Polymarket, Opinion**: Native prices already in decimal (0.0-1.0).
+/// - **Polymarket**: Native prices already in decimal (0.0-1.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Market {
     // ── Identity ──────────────────────────────────────────────────────────
     /// Primary key: {exchange}:{native_id}
     pub openpx_id: String,
-    /// Exchange identifier (kalshi, polymarket, opinion)
+    /// Exchange identifier (kalshi, polymarket)
     pub exchange: String,
     /// Native exchange market ID
     pub id: String,
@@ -135,7 +135,7 @@ pub struct Market {
     /// Condition ID for CTF
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_id: Option<String>,
-    /// Question ID (Opinion, Polymarket)
+    /// Question ID (Polymarket)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_id: Option<String>,
     /// Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that

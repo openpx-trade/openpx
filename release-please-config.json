@@ -26,11 +26,6 @@
         {
           "type": "toml",
           "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.px-exchange-opinion.version"
-        },
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
           "jsonpath": "$.workspace.dependencies.px-exchange-kalshi.version"
         },
         {

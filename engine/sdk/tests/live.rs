@@ -50,11 +50,6 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
             ("POLYMARKET_API_SECRET", "api_secret"),
             ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
         ],
-        "opinion" => &[
-            ("OPINION_API_KEY", "api_key"),
-            ("OPINION_PRIVATE_KEY", "private_key"),
-            ("OPINION_MULTI_SIG_ADDR", "multi_sig_addr"),
-        ],
         _ => &[],
     };
     for (env_key, config_key) in vars {
@@ -119,7 +114,6 @@ fn owner_address_for(id: &str) -> Option<String> {
         "polymarket" => env::var("POLYMARKET_FUNDER")
             .or_else(|_| env::var("POLYMARKET_WALLET_ADDRESS"))
             .ok(),
-        "opinion" => env::var("OPINION_MULTI_SIG_ADDR").ok(),
         _ => None,
     }
 }
@@ -1186,4 +1180,3 @@ macro_rules! exchange_tests {
 
 exchange_tests!(kalshi);
 exchange_tests!(polymarket);
-exchange_tests!(opinion);

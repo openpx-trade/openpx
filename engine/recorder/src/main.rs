@@ -26,7 +26,7 @@ const MARKET_FETCH_LIMIT: usize = 50;
     about = "Record WebSocket orderbook data to Parquet (zstd)"
 )]
 struct Args {
-    /// Exchange to record: kalshi, polymarket, or opinion
+    /// Exchange to record: kalshi or polymarket
     #[arg(short, long)]
     exchange: String,
 }
@@ -60,11 +60,6 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
             ("POLYMARKET_API_KEY", "api_key"),
             ("POLYMARKET_API_SECRET", "api_secret"),
             ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
-        ],
-        "opinion" => &[
-            ("OPINION_API_KEY", "api_key"),
-            ("OPINION_PRIVATE_KEY", "private_key"),
-            ("OPINION_MULTI_SIG_ADDR", "multi_sig_addr"),
         ],
         _ => &[],
     };
@@ -275,10 +270,8 @@ async fn main() {
     let args = Args::parse();
 
     let exchange_id = args.exchange.to_lowercase();
-    if !matches!(exchange_id.as_str(), "kalshi" | "polymarket" | "opinion") {
-        eprintln!(
-            "error: unknown exchange '{exchange_id}' — must be kalshi, polymarket, or opinion"
-        );
+    if !matches!(exchange_id.as_str(), "kalshi" | "polymarket") {
+        eprintln!("error: unknown exchange '{exchange_id}' — must be kalshi or polymarket");
         std::process::exit(1);
     }
 

@@ -1,7 +1,6 @@
 use px_core::error::{OpenPxError, WebSocketError};
 use px_core::websocket::{OrderBookWebSocket, SessionStream, UpdateStream, WebSocketState};
 use px_exchange_kalshi::KalshiWebSocket;
-use px_exchange_opinion::OpinionWebSocket;
 use px_exchange_polymarket::PolymarketWebSocket;
 
 use crate::config;
@@ -11,7 +10,6 @@ use crate::config;
 pub enum WebSocketInner {
     Kalshi(KalshiWebSocket),
     Polymarket(PolymarketWebSocket),
-    Opinion(OpinionWebSocket),
 }
 
 impl WebSocketInner {
@@ -28,12 +26,6 @@ impl WebSocketInner {
             "polymarket" => {
                 let cfg = config::parse_polymarket(&config)?;
                 Ok(Self::Polymarket(PolymarketWebSocket::from_config(&cfg)))
-            }
-            "opinion" => {
-                let cfg = config::parse_opinion(&config)?;
-                Ok(Self::Opinion(
-                    OpinionWebSocket::new(cfg).map_err(|e| OpenPxError::Config(e.to_string()))?,
-                ))
             }
             _ => Err(OpenPxError::Config(format!("unknown exchange: {id}"))),
         }
@@ -53,7 +45,6 @@ macro_rules! ws_dispatch_async {
         match $self {
             WebSocketInner::Kalshi(ws) => ws.$method($($arg),*).await,
             WebSocketInner::Polymarket(ws) => ws.$method($($arg),*).await,
-            WebSocketInner::Opinion(ws) => ws.$method($($arg),*).await,
         }
     };
 }
@@ -79,7 +70,6 @@ impl OrderBookWebSocket for WebSocketInner {
         match self {
             Self::Kalshi(ws) => ws.state(),
             Self::Polymarket(ws) => ws.state(),
-            Self::Opinion(ws) => ws.state(),
         }
     }
 
@@ -87,7 +77,6 @@ impl OrderBookWebSocket for WebSocketInner {
         match self {
             Self::Kalshi(ws) => ws.updates(),
             Self::Polymarket(ws) => ws.updates(),
-            Self::Opinion(ws) => ws.updates(),
         }
     }
 
@@ -95,7 +84,6 @@ impl OrderBookWebSocket for WebSocketInner {
         match self {
             Self::Kalshi(ws) => ws.session_events(),
             Self::Polymarket(ws) => ws.session_events(),
-            Self::Opinion(ws) => ws.session_events(),
         }
     }
 }

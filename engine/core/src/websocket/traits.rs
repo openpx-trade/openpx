@@ -160,10 +160,10 @@ pub struct ActivityFill {
     pub size: f64,
     pub side: Option<String>,
     pub outcome: Option<String>,
-    /// On-chain transaction hash. Opinion: `txHash` from `trade.record.new`.
+    /// On-chain transaction hash, when the exchange publishes one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tx_hash: Option<String>,
-    /// Fee charged for this fill. Opinion: `fee` from `trade.record.new`.
+    /// Fee charged for this fill, when the exchange publishes one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee: Option<f64>,
     /// Exchange-authoritative timestamp (millis since epoch).

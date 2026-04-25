@@ -28,4 +28,3 @@ for (const market of markets.slice(0, 5)) {
 
 - **Kalshi** — US-regulated event contracts
 - **Polymarket** — Crypto-native prediction markets
-- **Opinion** — Opinion exchange markets
