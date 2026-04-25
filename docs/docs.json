@@ -1,0 +1,96 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "OpenPX",
+  "description": "Open-source, CCXT-style unified SDK for prediction markets.",
+  "colors": {
+    "primary": "#0EA5E9",
+    "light": "#38BDF8",
+    "dark": "#0369A1"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo-light.svg",
+    "dark": "/logo-dark.svg"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Getting Started",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "getting-started/introduction",
+              "getting-started/installation",
+              "getting-started/quickstart",
+              "getting-started/unified-schema"
+            ]
+          },
+          {
+            "group": "Exchange setup",
+            "pages": [
+              "getting-started/exchanges/kalshi",
+              "getting-started/exchanges/polymarket"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Methods",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "api-methods/overview",
+              "api-methods/markets",
+              "api-methods/orderbook",
+              "api-methods/orders",
+              "api-methods/positions-balance",
+              "api-methods/trades-history"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "WebSockets",
+        "groups": [
+          {
+            "group": "Streaming",
+            "pages": [
+              "websockets/overview",
+              "websockets/connecting",
+              "websockets/events",
+              "websockets/session-events"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDKs",
+        "groups": [
+          {
+            "group": "Languages",
+            "pages": [
+              "sdks/rust",
+              "sdks/python",
+              "sdks/typescript"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Changelog",
+      "href": "/changelog"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/openpx-trade/openpx"
+    }
+  }
+}

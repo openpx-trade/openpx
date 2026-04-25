@@ -39,6 +39,7 @@ output/
 !.release-please-manifest.json
 !docs/package.json
 !docs/package-lock.json
+!docs/docs.json
 
 
 # Python
