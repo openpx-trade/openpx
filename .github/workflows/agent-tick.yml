@@ -96,7 +96,12 @@ jobs:
             - `pull_request` (closed + merged) → changelog append
 
             End with the standard handoff message from `.claude/agents/HANDOFF.md`.
-          claude_args: --max-turns 30
+          # bypassPermissions: skip per-tool permission prompts (which would
+          # otherwise block every gh pr create / Edit / Write the orchestrator
+          # makes). The real safety net is CODEOWNERS + branch protection +
+          # contracts_test + manifest_coverage — not per-tool prompts.
+          # Agent prompts forbid destructive ops (merge, force-push, --no-verify).
+          claude_args: --max-turns 30 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
