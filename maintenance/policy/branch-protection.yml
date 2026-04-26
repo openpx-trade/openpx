@@ -1,0 +1,51 @@
+# OpenPX branch protection rules — source-of-truth document.
+# GitHub does not read this file natively. Apply via:
+#   - the repo Settings UI (Settings → Branches → Add branch protection rule)
+#   - or via `gh api` (see notes at bottom)
+
+main:
+  require_pull_request: true
+  required_approving_reviews: 1
+  dismiss_stale_reviews: true
+  require_code_owner_reviews: true  # CODEOWNERS-driven
+
+  required_status_checks:
+    strict: true  # branches must be up-to-date before merge
+    contexts:
+      - fmt
+      - clippy
+      - test (ubuntu-latest)
+      - test (macos-latest)
+      - check
+      - version-sync
+      - sdk-sync
+      - bench
+      - manifest-coverage    # added by Wave 1 of the autonomous-maintenance plan
+      - ci-success
+
+  require_conversation_resolution: true
+
+  restrictions:
+    push: false           # no direct pushes; PRs only
+    force_push: false     # no force-push to main
+    deletion: false       # cannot delete main branch
+
+  allow_auto_merge: false  # explicitly disabled — every PR human-merged
+
+notes: |
+  Applying via gh CLI:
+
+    gh api repos/{owner}/{repo}/branches/main/protection \
+      --method PUT \
+      --raw-field required_status_checks='{"strict":true,"contexts":["fmt","clippy","test (ubuntu-latest)","test (macos-latest)","check","version-sync","sdk-sync","bench","manifest-coverage","ci-success"]}' \
+      --raw-field enforce_admins=false \
+      --raw-field required_pull_request_reviews='{"dismiss_stale_reviews":true,"require_code_owner_reviews":true,"required_approving_review_count":1}' \
+      --raw-field restrictions=null \
+      --raw-field allow_force_pushes=false \
+      --raw-field allow_deletions=false \
+      --raw-field required_conversation_resolution=true \
+      --raw-field allow_auto_merge=false
+
+  When `manifest-coverage` doesn't yet exist as a status check (i.e. no PR has run
+  it yet), GitHub will reject the protection update. Land Wave 1's CI changes
+  first; merge a no-op PR so the check name is registered; then apply protection.

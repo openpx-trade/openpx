@@ -1,0 +1,58 @@
+# Kalshi exchange.rs allowlist — JSON keys read by the source that are NOT
+# part of the unified Market schema mapping (engine/core/src/exchange/manifests/kalshi.rs).
+# Format: <key>  # justification
+# Lines starting with '#' are comments. Inline trailing comments stripped.
+
+# --- Order parsing (Order model, not Market) ---
+order_id                # Order.id
+order_type              # Order type (limit/market) read for normalization
+action                  # buy/sell
+side                    # yes/no
+type                    # alias for order_type in some payloads
+price                   # Order.price (not Market price)
+yes_price               # Order yes-side price
+no_price                # Order no-side price
+count                   # Order quantity (legacy integer count)
+count_fp                # Order quantity (fixed-point)
+filled_count            # Order.filled
+remaining_count         # Order remaining quantity
+expiration_time         # Order expiration timestamp
+created_time            # Order/Fill created timestamp
+last_update_time        # Order last update timestamp
+updated_time            # Order updated timestamp
+
+# --- Fill parsing ---
+fill_id                 # Fill.fill_id
+is_taker                # Fill.is_taker
+fee_cost                # Fill.fee
+market_ticker           # Legacy alias for ticker on fill records
+
+# --- Position parsing ---
+position                # Position.size (Kalshi uses signed integer)
+market_exposure         # Position-level exposure value
+total_traded            # Position aggregate volume
+
+# --- Live market data fields read directly into Market without manifest pipeline ---
+# TODO: migrate these into engine/core/src/exchange/manifests/kalshi.rs::field_mappings
+last_price              # Market.last_trade_price
+yes_ask                 # Market.best_ask (yes side)
+yes_bid                 # Market.best_bid (yes side)
+tick_size               # Market.price_level_structure source
+previous_price          # Market.previous_price (Kalshi-specific)
+result                  # Market.result (settlement outcome string)
+settlement_value        # Market.settlement_value (Kalshi-specific)
+settlement_ts           # Market.settlement_time
+notional_value          # Market.notional_value (Kalshi-specific)
+can_close_early         # Market.can_close_early (Kalshi-specific)
+price_level_structure   # Market.price_level_structure
+description             # Market.description
+yes_sub_title           # Market.yes outcome label override
+
+# --- Error response parsing (ApiResponse wrapper, not Market data) ---
+error                   # error.error envelope
+code                    # error.code
+message                 # error.message
+
+# --- Status field name (specific values "active"/"unopened"/etc are in status_map) ---
+status                  # status field; values are matched via map_status
+accepting_orders        # Boolean flag complementary to status; not part of map_status enum

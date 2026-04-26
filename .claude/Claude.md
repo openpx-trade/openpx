@@ -133,3 +133,39 @@ cargo build --release --workspace
 Always refer to the official documentation for each prediction market when implementing solutions:
 - Polymarket: https://docs.polymarket.com/developers/
 - Kalshi: https://docs.kalshi.com/
+
+## How to extend the manifest
+
+The unified schema mapping is OpenPX's core business value. The contract is:
+**every JSON key read in `engine/exchanges/<id>/src/exchange.rs` must be declared
+in `engine/core/src/exchange/manifests/<id>.rs::field_mappings`** (as a
+`source_paths` entry, possibly with fallbacks), OR explicitly listed in
+`maintenance/manifest-allowlists/<id>.txt` with a one-line justification.
+This is enforced mechanically by `maintenance/tests/manifest_coverage.rs`
+(wired into Cargo via `engine/core/Cargo.toml::[[test]]`).
+
+When you read a new JSON key in `exchange.rs`:
+1. If it maps to a `Market` model field: add a `FieldMapping` entry in `manifests/<id>.rs`.
+2. If it's part of order/fill/position/orderbook parsing or a wrapper field
+   (e.g. `data`, `error`, `code`): add it to `maintenance/manifest-allowlists/<id>.txt` with a comment.
+3. Run `cargo test -p px-core --test manifest_coverage` locally before
+   pushing — CI gates this on every PR.
+
+Hardcoded contract addresses in `engine/exchanges/polymarket/src/{swap,approvals,clob,ctf,relayer,signer}.rs`
+are similarly gated by `maintenance/tests/contracts_test.rs` (wired into Cargo
+via `engine/exchanges/polymarket/Cargo.toml::[[test]]`) against the snapshot at
+`maintenance/data/polymarket-contracts.snapshot.json`. Never bypass that test —
+a wrong contract address can move user funds.
+
+## Autonomous maintenance
+
+This repo is maintained primarily by Claude Code agents. **Everything related to
+the agent system lives under `maintenance/`** (runbooks, scripts, policy docs,
+data files, allowlists). The agent definitions themselves live at
+`.claude/agents/` (Claude Code's required location) and reference the
+`maintenance/` tree for everything else. See `.claude/agents/README.md` for the
+index, or the plan at
+`/Users/mppathiyal/.claude/plans/just-so-i-can-rustling-planet.md` for the full
+design. Every PR opened by an agent requires explicit human approval — there is
+no auto-merge. CODEOWNERS at `.github/CODEOWNERS` and the policy at
+`maintenance/policy/REVIEW_POLICY.md` define what each surface allows.

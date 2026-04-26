@@ -1,0 +1,87 @@
+# Single entry point for the orchestrator. Three triggers branch on event type:
+# - schedule / workflow_dispatch -> weekly drift cycle
+# - issues.* / issue_comment.created (admin-gated) -> issue triage
+# - pull_request.closed merged -> changelog append
+#
+# The orchestrator's prompt inspects the GitHub event payload to decide which
+# of its three roles to play.
+
+name: agent-tick
+
+on:
+  schedule:
+    - cron: "0 6 * * MON"   # Mon 06:00 UTC weekly tick
+  workflow_dispatch:
+  issues:
+    types: [opened, reopened, edited, assigned, labeled]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  orchestrate:
+    name: Run orchestrator
+    runs-on: ubuntu-latest
+    # Kill switches and admin-association gate.
+    if: |
+      vars.OPENPX_AGENTS_DISABLED != '1'
+      && !contains(github.event.repository.labels.*.name, 'pause-bots')
+      && (
+        github.event_name == 'schedule'
+        || github.event_name == 'workflow_dispatch'
+        || (
+          github.event_name == 'pull_request'
+          && github.event.action == 'closed'
+          && github.event.pull_request.merged == true
+        )
+        || (
+          github.event_name == 'issues'
+          && (
+            github.event.issue.user.login == 'MilindPathiyal'
+            || github.event.issue.assignee.login == 'MilindPathiyal'
+            || contains(github.event.issue.labels.*.name, 'triage-ready')
+          )
+        )
+        || (
+          github.event_name == 'issue_comment'
+          && github.event.comment.user.login == 'MilindPathiyal'
+          && contains(github.event.comment.body, '@openpx-bot')
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download latest drift report (best-effort)
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: docs-drift.yml
+          name: drift-report
+          path: ./.drift
+          if_no_artifact_found: ignore
+
+      - name: Run orchestrator agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Bills against the Max subscription via the long-lived OAuth token
+          # (generated locally with `claude setup-token`, stored as a repo secret).
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.OPENPX_BOT_TOKEN }}
+          agent: orchestrator
+          # The orchestrator reads .drift/drift.json (if present) plus the
+          # GitHub event payload from $GITHUB_EVENT_PATH. Its prompt branches
+          # on event type — see .claude/agents/orchestrator.md.
+          claude_args: |
+            --max-turns 30
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}

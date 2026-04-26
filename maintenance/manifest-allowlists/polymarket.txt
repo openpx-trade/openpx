@@ -1,0 +1,56 @@
+# Polymarket exchange.rs allowlist — JSON keys read by the source that are NOT
+# part of the unified Market schema mapping (engine/core/src/exchange/manifests/polymarket.rs).
+# Format: <key>  # justification
+# Lines starting with '#' are comments. Inline trailing comments stripped.
+
+# --- CLOB order/fill parsing (Order/Fill models, not Market) ---
+order_type              # Order type (gtc, fak)
+side                    # buy/sell
+size                    # Order/fill size
+price                   # Order/fill price
+count                   # Quantity (some endpoints)
+asset                   # Asset/token id on order or fill records
+token_id                # CTF token id
+condition_id            # CTF condition id
+order_id                # Order.id (referenced indirectly via various paths)
+transactionHash         # Polygon tx hash on fill records
+hash                    # Order/transaction hash
+matchTime               # Polymarket match timestamp
+timestamp               # Order/fill timestamp
+t                       # Compact timestamp field on price-history candles
+p                       # Compact price field on price-history candles
+
+# --- Activity API fields (PublicTrade model, not Market) ---
+title                   # Activity-API title (UI display label, not Market.title)
+icon                    # Activity-API icon URL
+eventSlug               # Activity-API event slug
+outcome                 # Activity-API outcome name
+outcomeIndex            # Activity-API outcome index
+proxyWallet             # User's proxy wallet address
+pseudonym               # Public-profile pseudonym
+profileImage            # Public-profile image URL
+profileImageOptimized   # Public-profile image URL (optimized)
+bio                     # Public-profile bio
+name                    # Public-profile display name
+value                   # Activity-API trade value
+
+# --- Negative-risk / multi-outcome fields ---
+negRisk                 # Polymarket camelCase variant of neg_risk
+neg_risk                # Snake-case variant
+acceptingOrders         # Whether market currently accepts orders (camelCase)
+
+# --- Live Market fields read directly into Market without manifest pipeline ---
+# TODO: migrate these into engine/core/src/exchange/manifests/polymarket.rs::field_mappings
+outcomes                # Market.outcomes (Vec<String>)
+outcomePrices           # Market.outcome_prices
+tokens                  # CTF token metadata array
+markets                 # Event.markets[] when parsing event-as-market
+market                  # Single market wrapper field
+curPrice                # Current price (price-history endpoint)
+avgPrice                # Average price (price-history endpoint)
+history                 # Price history array
+closed                  # Boolean closed flag
+active                  # Boolean active flag
+
+# --- Internal data envelope wrappers ---
+data                    # Generic data envelope used by some Polymarket endpoints

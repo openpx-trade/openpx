@@ -40,6 +40,8 @@ output/
 !docs/package.json
 !docs/package-lock.json
 !docs/docs.json
+!maintenance/scripts/exchange-docs.lock.json
+!maintenance/data/polymarket-contracts.snapshot.json
 
 
 # Python
@@ -54,7 +56,9 @@ sdks/typescript/*.node
 sdks/typescript/types/models.d.ts
 
 # Claude Code
-.claude/agents
+# Track agent definitions for the GitHub Action; ignore everything else under agents/
+.claude/agents/*
+!.claude/agents/*.md
 .claude/hooks
 .claude/commands
 .claude/tsc-cache

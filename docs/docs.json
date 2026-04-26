@@ -49,6 +49,13 @@
               "api-methods/positions-balance",
               "api-methods/trades-history"
             ]
+          },
+          {
+            "group": "Generated reference",
+            "pages": [
+              "reference/types",
+              "parity/STATUS"
+            ]
           }
         ]
       },

@@ -38,6 +38,7 @@ schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 criterion = { version = "0.5", features = ["html_reports"] }
+syn = { version = "2", features = ["full", "visit"] }
 
 [[bench]]
 name = "orderbook"
@@ -50,3 +51,9 @@ harness = false
 [[bench]]
 name = "price_utils"
 harness = false
+
+# Maintenance test — lives under maintenance/tests/ to keep all autonomous-maintenance
+# content in one place. Cargo discovers it via this explicit `path` entry.
+[[test]]
+name = "manifest_coverage"
+path = "../../maintenance/tests/manifest_coverage.rs"

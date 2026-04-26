@@ -90,10 +90,10 @@ jobs:
       - uses: extractions/setup-just@v2
       - run: pip install datamodel-code-generator
       - run: cd sdks/typescript && npm install
-      - name: Generate schema and SDK models
-        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models
+      - name: Generate schema, SDK models, and docs
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models docs
       - name: Check generated files are in sync
-        run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
+        run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/reference/
 
   bench:
     name: Benchmarks
@@ -105,10 +105,20 @@ jobs:
       - name: Run benchmarks (detect panics / compilation regressions)
         run: cargo bench -p px-core --bench orderbook --bench normalizers --bench price_utils -- --warm-up-time 1 --measurement-time 2
 
+  manifest-coverage:
+    name: Manifest Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify every JSON key read in exchange.rs is declared in the manifest or allowlist
+        run: cargo test -p px-core --test manifest_coverage
+
   ci-success:
     name: CI Success
     if: always()
-    needs: [fmt, clippy, test, check, version-sync, sdk-sync, bench]
+    needs: [fmt, clippy, test, check, version-sync, sdk-sync, bench, manifest-coverage]
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs passed
