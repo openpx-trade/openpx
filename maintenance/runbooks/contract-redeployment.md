@@ -23,9 +23,9 @@ The agent does the typing; the human reviews and merges. CODEOWNERS forces human
    - Confirm: contract is deployed; deployer matches a known Polymarket multisig; recent activity is consistent with the contract's stated purpose.
    - Note the deployment block + the tx hash that deployed it. These go in the snapshot file as provenance, in the `purpose` field.
 
-3. **Diff against the current snapshot.** Read `maintenance/data/polymarket-contracts.snapshot.json`. Identify which constants moved.
+3. **Diff against the current snapshot.** Read `maintenance/snapshots/polymarket-contracts.snapshot.json`. Identify which constants moved.
 
-4. **Update the snapshot.** Edit `maintenance/data/polymarket-contracts.snapshot.json`:
+4. **Update the snapshot.** Edit `maintenance/snapshots/polymarket-contracts.snapshot.json`:
    - Update `address` for each changed constant
    - Update `_last_verified` to today's date
    - Add provenance to the `purpose` field (e.g. "CLOB V2 deployment, 2026-04-28; Polygonscan: <url>; deployed at block <N>, tx <hash>")

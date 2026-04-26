@@ -24,7 +24,7 @@ maintenance/
 ├── manifest-allowlists/               # JSON keys read in exchange.rs that aren't in field_mappings
 │   ├── kalshi.txt
 │   └── polymarket.txt
-├── data/                              # vendored snapshots used by tests
+├── snapshots/                         # vendored snapshots used by tests
 │   └── polymarket-contracts.snapshot.json
 └── tests/                             # maintenance assertions wired into Cargo via [[test]] entries
     ├── manifest_coverage.rs           # gates engine/core/src/exchange/manifests/ vs exchange.rs reads

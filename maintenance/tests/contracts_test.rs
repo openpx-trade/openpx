@@ -1,5 +1,5 @@
 //! Asserts hardcoded contract addresses in src/{swap,approvals}.rs match the
-//! vendored snapshot at maintenance/data/polymarket-contracts.snapshot.json.
+//! vendored snapshot at maintenance/snapshots/polymarket-contracts.snapshot.json.
 //!
 //! When this test fails, EITHER:
 //! - the source was updated and the snapshot needs a paired update, OR
@@ -28,7 +28,7 @@ struct ConstEntry {
 fn contracts_match_snapshot() {
     let workspace_root = workspace_root();
     let snapshot_path =
-        workspace_root.join("maintenance/data/polymarket-contracts.snapshot.json");
+        workspace_root.join("maintenance/snapshots/polymarket-contracts.snapshot.json");
     let snapshot_text = fs::read_to_string(&snapshot_path)
         .unwrap_or_else(|e| panic!("read {}: {}", snapshot_path.display(), e));
     let snapshot: Snapshot =
@@ -68,7 +68,7 @@ fn contracts_match_snapshot() {
     assert!(
         failures.is_empty(),
         "Polymarket contract address drift detected — {} mismatch(es):\n\n{}\n\n\
-         If the source is correct, update maintenance/data/polymarket-contracts.snapshot.json \
+         If the source is correct, update maintenance/snapshots/polymarket-contracts.snapshot.json \
          (and verify each new address on https://polygonscan.com/).\n\
          If the snapshot is correct, revert the source change.\n\
          NEVER bypass this test — a wrong address can lose user funds.",

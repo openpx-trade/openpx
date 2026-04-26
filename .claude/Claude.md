@@ -154,7 +154,7 @@ When you read a new JSON key in `exchange.rs`:
 Hardcoded contract addresses in `engine/exchanges/polymarket/src/{swap,approvals,clob,ctf,relayer,signer}.rs`
 are similarly gated by `maintenance/tests/contracts_test.rs` (wired into Cargo
 via `engine/exchanges/polymarket/Cargo.toml::[[test]]`) against the snapshot at
-`maintenance/data/polymarket-contracts.snapshot.json`. Never bypass that test —
+`maintenance/snapshots/polymarket-contracts.snapshot.json`. Never bypass that test —
 a wrong contract address can move user funds.
 
 ## Autonomous maintenance

@@ -41,7 +41,7 @@ output/
 !docs/package-lock.json
 !docs/docs.json
 !maintenance/scripts/exchange-docs.lock.json
-!maintenance/data/polymarket-contracts.snapshot.json
+!maintenance/snapshots/polymarket-contracts.snapshot.json
 
 
 # Python

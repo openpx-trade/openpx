@@ -35,8 +35,7 @@ fn polymarket_manifest_covers_exchange_reads() {
 fn check_exchange(id: &str, manifest: &ExchangeManifest) {
     let workspace = workspace_root();
     let source_path = workspace.join(format!("engine/exchanges/{id}/src/exchange.rs"));
-    let allowlist_path =
-        workspace.join(format!("maintenance/manifest-allowlists/{id}.txt"));
+    let allowlist_path = workspace.join(format!("maintenance/manifest-allowlists/{id}.txt"));
 
     let read_keys = collect_json_keys(&source_path);
     let manifest_keys = manifest_declared_keys(manifest);
