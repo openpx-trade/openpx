@@ -10,12 +10,73 @@ on each exchange impl. **Do not hand-edit** — your changes will be overwritten
 on the next cycle.
 </Note>
 
-## Status
+_Last refreshed: 2026-04-26._
 
-Awaiting first run of the `parity-analyst` agent. After the first weekly tick of `agent-tick.yml`, this file will contain the live capability matrix.
+## Capability matrix
 
-## What lives here once populated
+Source of truth: the `ExchangeInfo` returned by `Exchange::describe()` on each
+exchange impl (`engine/exchanges/<id>/src/exchange.rs`). The "auth" partial
+state means the method is wired up but only available when the exchange is
+configured with credentials — public/read-only callers see it as unsupported.
 
-- A table with one row per `Exchange` trait method, one column per supported exchange (currently Kalshi and Polymarket), cells showing ✓ / ✗ / partial.
-- A list of identified UX-improvement opportunities — endpoints both exchanges support that aren't yet exposed through the unified trait, and high-value exchange-specific features that aren't surfaced ergonomically.
-- Open parity-gap proposal issues filed by the analyst for human review.
+| Trait method                  | Kalshi | Polymarket |
+| ----------------------------- | :----: | :--------: |
+| `fetch_markets`               |   ✓    |     ✓      |
+| `fetch_market`                |   ✓    |     ✓      |
+| `create_order`                | partial (auth) | partial (auth) |
+| `cancel_order`                | partial (auth) | partial (auth) |
+| `fetch_order`                 |   ✓    |     ✓      |
+| `fetch_open_orders`           |   ✓    |     ✓      |
+| `fetch_positions`             |   ✓    |     ✓      |
+| `fetch_balance`               |   ✓    |     ✓      |
+| `refresh_balance`             |   ✗    |     ✓      |
+| `fetch_orderbook`             |   ✓    |     ✓      |
+| `fetch_price_history`         |   ✓    |     ✓      |
+| `fetch_trades`                |   ✓    |     ✓      |
+| `fetch_orderbook_history`     |   ✗    |  ✗ (S3 backfill, not via trait)  |
+| `fetch_balance_raw`           |   ✓    |     ✓      |
+| `fetch_user_activity`         |   ✗    |     ✓      |
+| `fetch_fills`                 |   ✓    |     ✓      |
+| `approvals` (token allowances) |   —   |     ✓      |
+| WebSocket session             | partial (auth, non-demo) | ✓ |
+
+Legend: ✓ supported · ✗ not implemented · partial = supported when an
+additional precondition (auth, non-demo, etc.) is met · — = not applicable
+to this exchange.
+
+## Drift summary (this cycle)
+
+The orchestrator reported no real Tier 1 or Tier 2 drift this cycle. The
+`watch_removed` signal that surfaced was a known false positive caused by the
+drift script running without `--full` (an empty `curr_watch` always triggers
+`watch_removed` for every lock-file entry). No maintainer PRs were opened, and
+no `parity-fill-approved` issues exist.
+
+## Open parity-fill candidates
+
+Proposal issues filed this cycle for human review (see Issues tab, label
+`parity-proposal`):
+
+- `[parity] proposed unified method: fetch_events` — both exchanges expose
+  first-class event APIs (Kalshi `/events`, Polymarket `/events`) but the
+  unified trait only surfaces `Market`. Adding `fetch_events` would let SDK
+  consumers iterate the cross-exchange event graph without dropping to
+  exchange-specific code.
+- `[parity] proposed unified method: server_time` — both exchanges expose a
+  server-time endpoint (Kalshi `/exchange/status`, Polymarket `/server-time`).
+  HFT callers need this for clock-skew correction; today they reach into
+  exchange-specific impls.
+- `[ux] surface Polymarket relayer / gasless transactions in docs` —
+  the relayer pipeline is implemented in
+  `engine/exchanges/polymarket/src/relayer.rs` but is not documented
+  publicly, leaving a high-leverage Polymarket UX feature invisible to
+  SDK consumers.
+
+## What lives here
+
+- A table with one row per `Exchange` trait method, one column per supported
+  exchange, cells showing ✓ / ✗ / partial.
+- A short summary of drift activity for the cycle.
+- Pointers to open parity-fill proposal issues filed by the analyst for human
+  review (per the trait-evolution runbook,
+  `maintenance/runbooks/trait-evolution.md`).
