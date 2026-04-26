@@ -9,8 +9,8 @@ setup:
     {{venv}}/bin/pip install datamodel-code-generator maturin pydantic
     cd sdks/typescript && npm install
 
-sync-all: python node
-    @echo "All SDKs synced with Rust core"
+sync-all: python node docs
+    @echo "All SDKs and docs synced with Rust core"
 
 schema:
     mkdir -p schema
@@ -43,11 +43,30 @@ node-build: node-models
 
 node: node-build
 
-docs-serve:
+docs: schema
+    python3 maintenance/scripts/generate_mintlify_docs.py
+
+docs-serve: docs
     cd docs && mintlify dev
 
-check-sync: schema python-models node-models
-    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
+check-sync: schema python-models node-models docs
+    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/reference/
+
+drift-check:
+    python3 maintenance/scripts/check_docs_drift.py
+
+drift-update:
+    python3 maintenance/scripts/check_docs_drift.py --update --full
+
+# Manually trigger the agent-tick workflow (the same workflow the weekly cron runs).
+# Use this when an upstream change happens between weekly ticks.
+maintain:
+    gh workflow run agent-tick.yml --ref main
+    @echo "Dispatched agent-tick.yml. Track progress: gh run watch"
+
+# One-time: create the GitHub label taxonomy used by the autonomous-maintenance agents.
+labels:
+    bash maintenance/scripts/bootstrap-labels.sh
 
 # ---------------------------------------------------------------------------
 # Versioning

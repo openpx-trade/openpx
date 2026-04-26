@@ -1,0 +1,47 @@
+{
+  "_comment": "Vendored Polymarket contract addresses. Asserts engine/exchanges/polymarket/src/{swap,approvals}.rs match. NEVER bypass the contracts_test that reads this file. A wrong address can move user funds to a contract under someone else's control. When Polymarket redeploys (e.g. CLOB V2 cutover 2026-04-28), update this file in lockstep with the source-code constants and verify each new address on https://polygonscan.com/.",
+  "_chain_id": 137,
+  "_chain_name": "polygon",
+  "_last_verified": "2026-04-25",
+  "_source_files": [
+    "engine/exchanges/polymarket/src/swap.rs",
+    "engine/exchanges/polymarket/src/approvals.rs"
+  ],
+  "constants": {
+    "NATIVE_USDC_ADDRESS": {
+      "address": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      "file": "engine/exchanges/polymarket/src/swap.rs",
+      "purpose": "Native USDC on Polygon (Circle's CCTP-bridged version) — the form users typically receive from on-ramps."
+    },
+    "BRIDGED_USDC_E_ADDRESS": {
+      "address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "file": "engine/exchanges/polymarket/src/swap.rs",
+      "purpose": "USDC.e (PoS-bridged USDC) — Polymarket's collateral token pre-CLOB-V2."
+    },
+    "USDC_ADDRESS": {
+      "address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "file": "engine/exchanges/polymarket/src/approvals.rs",
+      "purpose": "USDC.e (same address as BRIDGED_USDC_E_ADDRESS) — used as the collateral approval target."
+    },
+    "CTF_ADDRESS": {
+      "address": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+      "file": "engine/exchanges/polymarket/src/approvals.rs",
+      "purpose": "Conditional Tokens Framework (Gnosis CTF, ERC-1155) — the share-token contract."
+    },
+    "CTF_EXCHANGE": {
+      "address": "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
+      "file": "engine/exchanges/polymarket/src/approvals.rs",
+      "purpose": "Polymarket CLOB Exchange contract for binary markets (pre-CLOB-V2)."
+    },
+    "NEG_RISK_CTF_EXCHANGE": {
+      "address": "0xC5d563A36AE78145C45a50134d48A1215220f80a",
+      "file": "engine/exchanges/polymarket/src/approvals.rs",
+      "purpose": "Polymarket Neg-Risk CLOB Exchange for multi-outcome markets (pre-CLOB-V2)."
+    },
+    "NEG_RISK_ADAPTER": {
+      "address": "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
+      "file": "engine/exchanges/polymarket/src/approvals.rs",
+      "purpose": "Neg-Risk Adapter — manages multi-outcome share splits/merges/redemptions."
+    }
+  }
+}

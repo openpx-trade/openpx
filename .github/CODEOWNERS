@@ -1,0 +1,41 @@
+# OpenPX CODEOWNERS
+# Last matching pattern wins (per GitHub spec).
+# Most general first, most specific overrides last.
+
+# Default — human review for everything not otherwise overridden
+*                                                 @MilindPathiyal
+
+# Auth surfaces — human-only
+/engine/exchanges/kalshi/src/auth.rs              @MilindPathiyal
+
+# Funds-moving Polymarket on-chain code — human-only, never bot-approvable
+/engine/exchanges/polymarket/src/clob.rs          @MilindPathiyal
+/engine/exchanges/polymarket/src/ctf.rs           @MilindPathiyal
+/engine/exchanges/polymarket/src/relayer.rs       @MilindPathiyal
+/engine/exchanges/polymarket/src/swap.rs          @MilindPathiyal
+/engine/exchanges/polymarket/src/signer.rs        @MilindPathiyal
+/engine/exchanges/polymarket/src/approvals.rs     @MilindPathiyal
+
+# Core trait + manifest schema + dispatch + models — human-only
+/engine/core/                                     @MilindPathiyal
+/engine/sdk/                                      @MilindPathiyal
+
+# Release + CI infrastructure — human-only
+/.github/                                         @MilindPathiyal
+/release-please-config.json                       @MilindPathiyal
+/.release-please-manifest.json                    @MilindPathiyal
+/Cargo.toml                                       @MilindPathiyal
+/Cargo.lock                                       @MilindPathiyal
+
+# Credentials — human-only
+/.env*                                            @MilindPathiyal
+/kalshi-private-key.pem                           @MilindPathiyal
+
+# Safe surfaces — @openpx-bot may review-approve to satisfy the CODEOWNERS chain;
+# humans still merge every PR.
+/engine/core/src/exchange/manifests/              @openpx-bot @MilindPathiyal
+/sdks/python/python/openpx/_models.py             @openpx-bot @MilindPathiyal
+/sdks/typescript/types/models.d.ts                @openpx-bot @MilindPathiyal
+/schema/                                          @openpx-bot @MilindPathiyal
+/maintenance/                                     @openpx-bot @MilindPathiyal
+/docs/                                            @openpx-bot @MilindPathiyal

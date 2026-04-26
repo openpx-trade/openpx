@@ -36,3 +36,9 @@ sha2 = "0.10"
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
+
+# Maintenance test — lives under maintenance/tests/ to keep all autonomous-maintenance
+# content in one place. Cargo discovers it via this explicit `path` entry.
+[[test]]
+name = "contracts_test"
+path = "../../../maintenance/tests/contracts_test.rs"
