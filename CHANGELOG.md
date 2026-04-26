@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7](https://github.com/openpx-trade/openpx/compare/v0.2.6...v0.2.7) (2026-04-26)
+
+
+### Features
+
+* bootstrap autonomous-maintenance system ([#12](https://github.com/openpx-trade/openpx/issues/12)) ([a55cbb9](https://github.com/openpx-trade/openpx/commit/a55cbb9e29b78db4ef5aea3a480cc44f3f720e91))
+
+
+### Bug Fixes
+
+* **ci:** bypass per-tool permission prompts for orchestrator ([#15](https://github.com/openpx-trade/openpx/issues/15)) ([222acb3](https://github.com/openpx-trade/openpx/commit/222acb3a48c97917677442aae08ec9f39dbc0d03))
+* **ci:** give claude-code-action a prompt instead of a fake `agent` input ([#14](https://github.com/openpx-trade/openpx/issues/14)) ([e5f27b2](https://github.com/openpx-trade/openpx/commit/e5f27b282a91bd49d68538a6626edcc4ff385e2c))
+
 ## [0.2.6](https://github.com/openpx-trade/openpx/compare/v0.2.5...v0.2.6) (2026-04-24)
 
 
