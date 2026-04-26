@@ -76,12 +76,27 @@ jobs:
           # (generated locally with `claude setup-token`, stored as a repo secret).
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.OPENPX_BOT_TOKEN }}
-          agent: orchestrator
-          # The orchestrator reads .drift/drift.json (if present) plus the
-          # GitHub event payload from $GITHUB_EVENT_PATH. Its prompt branches
-          # on event type — see .claude/agents/orchestrator.md.
-          claude_args: |
-            --max-turns 30
+          # The action expects an explicit prompt to know what to do on
+          # workflow_dispatch / schedule / pull_request events (no @-mention
+          # to detect). Tell it to load the orchestrator agent definition
+          # and follow it.
+          prompt: |
+            Read `.claude/agents/orchestrator.md` and follow those
+            instructions exactly. The triggering GitHub event payload is
+            available at `$GITHUB_EVENT_PATH` (event type: `${{ github.event_name }}`,
+            action: `${{ github.event.action }}`).
+
+            The drift artifact (if present from the most recent docs-drift
+            workflow run) is at `./.drift/drift.json`.
+
+            Branch on the event type per the orchestrator's three roles:
+            - `schedule` / `workflow_dispatch` → weekly drift cycle
+            - `issues` / `issue_comment` → issue triage (workflow `if:` already
+              gated for admin association)
+            - `pull_request` (closed + merged) → changelog append
+
+            End with the standard handoff message from `.claude/agents/HANDOFF.md`.
+          claude_args: --max-turns 30
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
