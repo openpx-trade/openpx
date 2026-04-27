@@ -48,7 +48,8 @@ If your work would require touching code that triggers a second concern, stop an
 5. Run `cargo test -p px-exchange-kalshi`, `cargo test -p px-core --test manifest_coverage`, `cargo clippy -p px-exchange-kalshi -- -D warnings`. All must pass before you open the PR.
 6. Open a draft PR with the structured body (see below).
 7. Run `gh pr edit <PR> --add-reviewer MilindPathiyal`.
-8. Submit the standard handoff.
+8. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`.** Run `gh pr checks <PR> --watch`, then fix any failures with up to 3 attempts. Only submit `status: success` once CI is green. If you can't get it green after 3 attempts, submit `status: blocked` with a clear handoff. **The PR is not your handoff artifact — green CI on the PR is.**
+9. Submit the standard handoff once CI is green (or status: blocked with detailed Notes).
 
 ## PR body template (mandatory)
 
