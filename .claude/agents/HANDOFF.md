@@ -37,7 +37,7 @@ human reviewer should know>
 - Kalshi `auth.rs` edit required
 - Release config edit required
 - New crate added to workspace
-- Auto-detected duplicate issue / duplicate PR within 24h
+- Auto-detected duplicate PR within 24h (per `orchestrator.md` Step 2a / 3a dedup pre-flight)
 - `cargo test` or `cargo clippy` failed and fix is non-trivial
 - `manifest_coverage` test fails and the new key isn't obviously order/fill/position parsing (escalate so a human picks the right manifest entry vs allowlist)
 

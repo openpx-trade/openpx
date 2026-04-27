@@ -45,11 +45,11 @@ Triggered by: backfill since <date> (run <run-id>)
 
 If a bot PR lacks this line, it's a prompt failure — request the linkage be added before merging. Reviewers can find every PR's origin in 5 seconds without reading the diff.
 
-## Bot-created issue rule
+## PR dedup rule
 
-Every issue opened by an agent MUST be assigned to `openpx-bot` (`gh issue create ... --assignee openpx-bot`). This makes the issues list filterable by assignee and signals "bot-authored" at a glance. Reviewers reassign to themselves if they want to take it over.
+The orchestrator runs a `gh pr list --state open --author "@me" --search ...` pre-flight before every dispatch and before opening the daily lock-refresh PR (per `orchestrator.md` Steps 2a, 3a, 5). The check keys on the `Triggered by:` provenance string so a re-detected concern updates the existing PR instead of opening a duplicate. Filing a duplicate when an open bot PR already covers the same `<Update>` block or `(exchange, method)` is a prompt failure.
 
-Before any `gh issue create`, the agent runs a dedup pre-flight (`gh issue list --search`) and comments on an existing issue if one already covers the topic. Filing duplicates is a prompt failure.
+OpenPX does not file GitHub issues. Every drift signal travels through a PR, never an issue.
 
 ## Structured review summary
 
@@ -60,7 +60,7 @@ Every agent PR body must contain this template:
 <one sentence>
 
 ## Why
-<upstream signal — link to drift diff, issue, or proposal>
+<upstream signal — link to drift diff or proposal>
 
 ## Files
 <path: ±lines>

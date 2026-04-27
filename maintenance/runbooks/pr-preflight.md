@@ -86,25 +86,24 @@ A green build with a broken import means the package metadata or entry point dri
 
 For changes that introduce or rename a **user-facing concept** — a new trait method, a new error class, a new model, a renamed field, a new exchange-level capability — also check whether a prose page in `docs/` (a guide, a tutorial, an exchange-specific notes page) needs an update. If yes, update it in this PR. The reference page alone is not enough for a feature; users read prose.
 
-If you are uncertain whether a prose page needs updating, ask the orchestrator (or comment on the source issue) before opening the PR.
+If you are uncertain whether a prose page needs updating, comment on the orchestrator's daily PR before opening yours and exit `status: blocked`.
 
 ### 8. Provenance — every PR body starts with the source line
 
 Per `.claude/agents/orchestrator.md`:
 
 ```
-Closes #<N>                                       ← when a single source issue exists
-Triggered by: weekly drift cycle (run <run-id>)
-Triggered by: daily describe()-scan dispatch (run <run-id>)
-Triggered by: PR-merged changelog (PR #<N>)
-Triggered by: scheduled SDK + docs regen (run <run-id>)
+Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entry "<label>"
+Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entry "<label>" classified as overlap-opportunity
+Triggered by: daily describe()-scan dispatch (run <run-id>) — implements <method> on <exchange>; trait scaffolded in PR #<N>
+Triggered by: backfill since <date> (run <run-id>)
 ```
 
-Without this line the orchestrator will comment-block the PR; do not open without it.
+Without this line the orchestrator's Step 2a/3a dedup pre-flight cannot match the PR back to its source signal, so the next cycle will re-dispatch and open a duplicate. Do not open without it.
 
 ## Hard rules
 
-- **If `just`, `maturin`, `napi`, `tsc`, or any other required tool is missing in your sandbox, DO NOT open the PR.** Comment on the source issue with the exact tool that's missing and the step that failed, and stop. Never invent a justification to skip a step. Never write a PR body that says "please regen before merge" — the bot's job is to do the regen, not punt it to the human.
+- **If `just`, `maturin`, `napi`, `tsc`, or any other required tool is missing in your sandbox, DO NOT open the PR.** Comment on the orchestrator's daily PR with the exact tool that's missing and the step that failed, and exit `status: blocked`. Never invent a justification to skip a step. Never write a PR body that says "please regen before merge" — the bot's job is to do the regen, not punt it to the human.
 - **If `just check-sync` fails for any reason other than expected regen drift on the four tracked artifacts, STOP and escalate.** Drift on a fifth file (a copy of the schema somewhere, a hand-rolled type definition) is a sync-pipeline bug, not a license to commit the partial state.
 - **Never open a PR with the artifacts in different states.** Schema changed but `_models.py` wasn't regenerated → not a PR. `_models.py` regenerated but `models.d.ts` wasn't → not a PR. Either all four are coherent or you don't open the PR.
 - **Never claim a step "passed" that you didn't run.** The CI gates exist as a safety net, not as a substitute for actually running the preflight. If you skipped a step because of tooling, say so explicitly in your handoff — don't quietly omit it from the PR body's test plan.

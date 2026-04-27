@@ -54,7 +54,7 @@ Follow `maintenance/runbooks/changelog-driven-update.md` step by step. Summary:
 
 ## PR body template (mandatory)
 
-Every PR you open MUST start with a provenance block — either a `Closes #N` line if a single source issue exists, or a `Triggered by:` line for routine maintenance. No exceptions.
+Every PR you open MUST start with a `Triggered by:` provenance line. No exceptions. (OpenPX does not file GitHub issues; the orchestrator's dispatch is the sole source signal.)
 
 ```markdown
 Triggered by: daily changelog cycle (run <run-id>) — Kalshi changelog entry "<label>"
