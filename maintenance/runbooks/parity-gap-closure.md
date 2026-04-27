@@ -44,6 +44,8 @@ Followed by an exchange-maintainer when a human approves a parity-analyst propos
    ```
    All must pass.
 
+7a. **Complete `maintenance/runbooks/pr-preflight.md` to its conclusion.** Flipping `has_<method>: false` → `true` in `describe()` is a schema change — the regen will produce diffs in `schema/openpx.schema.json`, `_models.py`, `models.d.ts`, and `docs/reference/types.mdx` that all must land in this same PR. SDK builds + smoke imports are also part of the preflight; do not skip.
+
 8. **Open the PR.** Conventional commit: `feat(<id>): implement <method>`. Body uses the maintainer template. Label `parity-fill` + `area:<id>`. Reference the proposal issue: `Closes #<proposal-issue-N>`.
 
 9. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.

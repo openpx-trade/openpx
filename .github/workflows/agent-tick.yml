@@ -1,33 +1,33 @@
-# Single entry point for the orchestrator. Three triggers branch on event type:
-# - schedule / workflow_dispatch -> weekly drift cycle
-# - issues.* / issue_comment.created (admin-gated) -> issue triage
-# - pull_request.closed merged -> changelog append
-#
-# The orchestrator's prompt inspects the GitHub event payload to decide which
-# of its three roles to play.
+# Daily entry point for the orchestrator. Fires at 00:00 UTC and on
+# workflow_dispatch. The orchestrator diffs the Kalshi + Polymarket changelogs
+# against the lock and dispatches a maintainer or parity-analyst per actionable
+# entry — that is the bot's entire scope.
 
 name: agent-tick
 
 on:
   schedule:
-    - cron: "0 6 * * MON"   # Mon 06:00 UTC weekly tick
+    - cron: "0 0 * * *"   # daily at 00:00 UTC
   workflow_dispatch:
-  issues:
-    # Narrow on purpose: GitHub fires `labeled` and `assigned` events for every
-    # label/assignee added (including the bot's own), which previously cascaded
-    # into 4-6 parallel orchestrator runs per user issue and produced duplicate
-    # proposal issues. opened/reopened is the right granularity.
-    types: [opened, reopened]
-  issue_comment:
-    types: [created]
-  pull_request:
-    types: [closed]
+    inputs:
+      mode:
+        description: "Run mode: 'daily' (default — diff vs lock) or 'backfill' (re-process every entry since `since`)"
+        required: false
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - backfill
+      since:
+        description: "Backfill cutoff date YYYY-MM-DD (only used when mode=backfill). Inclusive."
+        required: false
+        default: ""
+        type: string
 
-# One orchestrator run per issue / PR / global cycle at a time. Even if events
-# do batch (or someone runs `just maintain` while a cron is mid-flight), the
-# second run waits for the first to finish before starting.
+# Only one tick at a time. If a manual dispatch fires while the cron is
+# mid-flight (or a previous run hasn't completed), the second waits.
 concurrency:
-  group: agent-tick-${{ github.event.issue.number || github.event.pull_request.number || 'global' }}
+  group: agent-tick-global
   cancel-in-progress: false
 
 permissions:
@@ -39,46 +39,19 @@ jobs:
   orchestrate:
     name: Run orchestrator
     runs-on: ubuntu-latest
-    # Kill switches and admin-association gate.
+    # Kill switch: pause-bots label OR OPENPX_AGENTS_DISABLED=1 repo var.
     if: |
       vars.OPENPX_AGENTS_DISABLED != '1'
       && !contains(github.event.repository.labels.*.name, 'pause-bots')
-      && (
-        github.event_name == 'schedule'
-        || github.event_name == 'workflow_dispatch'
-        || (
-          github.event_name == 'pull_request'
-          && github.event.action == 'closed'
-          && github.event.pull_request.merged == true
-        )
-        || (
-          github.event_name == 'issues'
-          && (
-            github.event.issue.user.login == 'MilindPathiyal'
-            || github.event.issue.assignee.login == 'MilindPathiyal'
-            || contains(github.event.issue.labels.*.name, 'triage-ready')
-          )
-        )
-        || (
-          github.event_name == 'issue_comment'
-          && github.event.comment.user.login == 'MilindPathiyal'
-          && contains(github.event.comment.body, '@openpx-bot')
-        )
-      )
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download latest drift report (best-effort)
-        uses: dawidd6/action-download-artifact@v6
-        continue-on-error: true
+      - uses: actions/setup-python@v5
         with:
-          workflow: docs-drift.yml
-          name: drift-report
-          path: ./.drift
-          if_no_artifact_found: ignore
+          python-version: "3.12"
 
       - name: Run orchestrator agent
         uses: anthropics/claude-code-action@v1
@@ -87,34 +60,33 @@ jobs:
           # (generated locally with `claude setup-token`, stored as a repo secret).
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.OPENPX_BOT_TOKEN }}
-          # The action expects an explicit prompt to know what to do on
-          # workflow_dispatch / schedule / pull_request events (no @-mention
-          # to detect). Tell it to load the orchestrator agent definition
-          # and follow it.
           prompt: |
             Read `.claude/agents/orchestrator.md` and follow those
-            instructions exactly. The triggering GitHub event payload is
-            available at `$GITHUB_EVENT_PATH` (event type: `${{ github.event_name }}`,
-            action: `${{ github.event.action }}`).
+            instructions exactly.
 
-            The drift artifact (if present from the most recent docs-drift
-            workflow run) is at `./.drift/drift.json`.
+            Run mode: `${{ github.event.inputs.mode || 'daily' }}`.
+            Backfill since (only meaningful when mode is `backfill`):
+            `${{ github.event.inputs.since }}`.
 
-            Branch on the event type per the orchestrator's three roles:
-            - `schedule` / `workflow_dispatch` → weekly drift cycle
-            - `issues` / `issue_comment` → issue triage (workflow `if:` already
-              gated for admin association)
-            - `pull_request` (closed + merged) → changelog append
+            - `daily` (the default — also used by the cron and by `just maintain`):
+              fetch both upstream changelogs, diff against
+              `maintenance/scripts/exchange-docs.lock.json`, classify each
+              new <Update> entry, and dispatch the relevant maintainer or
+              parity-analyst per the runbook.
+            - `backfill`: instead of diffing against the lock, walk every
+              <Update> entry in both changelogs whose label date is
+              on/after the `since` value and classify it the same way the
+              daily cycle would. Use when the repo has fallen behind and
+              the lock's last-seen state predates entries the bot needs
+              to catch up on.
 
-            End with the standard handoff message from `.claude/agents/HANDOFF.md`.
-          # bypassPermissions: skip per-tool permission prompts (which would
-          # otherwise block every gh pr create / Edit / Write the orchestrator
-          # makes). The real safety net is CODEOWNERS + branch protection +
-          # contracts_test + manifest_coverage — not per-tool prompts.
-          # Agent prompts forbid destructive ops (merge, force-push, --no-verify).
-          # --max-turns 60: previous 30-turn budget was tight once we added
-          # the pr-ci-watch protocol (each PR-opening agent now spends turns
-          # waiting on CI and potentially fixing failures up to 3 times).
+            End with the standard handoff message from
+            `.claude/agents/HANDOFF.md`.
+          # bypassPermissions: skip per-tool prompts (which would block every
+          # gh pr create / Edit / Write the orchestrator makes). Real safety
+          # net is CODEOWNERS + branch protection + contracts_test +
+          # manifest_coverage + the SDK Sync / Build CI gates — not per-tool
+          # prompts. Agent prompts forbid destructive ops.
           claude_args: --max-turns 60 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}

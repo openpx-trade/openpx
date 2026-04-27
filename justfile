@@ -59,11 +59,23 @@ drift-check:
 drift-update:
     python3 maintenance/scripts/check_docs_drift.py --update --full
 
-# Manually trigger the agent-tick workflow (the same workflow the weekly cron runs).
-# Use this when an upstream change happens between weekly ticks.
+# Manually trigger the agent-tick workflow (the same workflow the daily 00:00 UTC cron runs).
+# Use this when an upstream change happens between daily ticks.
 maintain:
     gh workflow run agent-tick.yml --ref main
     @echo "Dispatched agent-tick.yml. Track progress: gh run watch"
+
+# Backfill: re-process every changelog entry dated on/after SINCE so the bot
+# can catch up after a quiet period. Pass YYYY-MM-DD.
+# Example: just backfill 2026-02-01
+#   → orchestrator fetches both changelogs, walks every <Update> with a label
+#     date >= 2026-02-01, classifies each, and dispatches per the daily-cycle
+#     rules. Use this when the repo has fallen behind and the daily cron's
+#     "diff vs lock" wouldn't pick up entries that pre-date the lock.
+backfill SINCE:
+    @echo "Backfilling changelogs since {{SINCE}}..."
+    gh workflow run agent-tick.yml --ref main -f mode=backfill -f since={{SINCE}}
+    @echo "Dispatched agent-tick.yml (mode=backfill, since={{SINCE}}). Track progress: gh run watch"
 
 # One-time: create the GitHub label taxonomy used by the autonomous-maintenance agents.
 labels:
