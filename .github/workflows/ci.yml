@@ -105,10 +105,15 @@ jobs:
       # PR #26 hid for an indeterminate amount of time because models.d.ts
       # was a 13-line stub that never changed regardless of schema edits.
       # These two checks make the drift impossible to hide.
+      #
+      # --skipLibCheck: only validate models.d.ts itself, not transitive
+      # third-party type defs in node_modules (json-schema-to-typescript
+      # pulls in @types/lodash which needs es2015+ lib settings we don't
+      # care about for this smoke check).
       - name: Smoke-check generated Python models parse
         run: python -m py_compile sdks/python/python/openpx/_models.py
       - name: Smoke-check generated TS models type-check
-        run: cd sdks/typescript && npx tsc --noEmit types/models.d.ts
+        run: cd sdks/typescript && npx tsc --noEmit --skipLibCheck types/models.d.ts
 
   python-sdk-build:
     name: Python SDK Build
@@ -123,11 +128,18 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - run: pip install datamodel-code-generator maturin pydantic
+      # maturin develop refuses to run outside a venv. Create one at the
+      # justfile's default location (.venv at repo root) so the recipe
+      # picks it up without needing the venv= override.
+      - name: Set up .venv with maturin + datamodel-code-generator
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install datamodel-code-generator maturin pydantic
       - name: Build Python SDK against current Rust core
-        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" python-build
+        run: just python-build
       - name: Smoke-import the built package
-        run: cd sdks/python && python -c "import openpx; print(openpx.__version__)"
+        run: cd sdks/python && ../../.venv/bin/python -c "import openpx; print(openpx.__version__)"
 
   node-sdk-build:
     name: Node.js SDK Build
@@ -149,6 +161,8 @@ jobs:
       - run: cd sdks/typescript && npm install
       - name: Build Node SDK against current Rust core
         run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" node-build
+      # node-build runs `npm run build` which invokes `napi build --release`.
+      # The smoke import below confirms the native binary loads.
       - name: Smoke-import the built package
         run: cd sdks/typescript && node -e "const o = require('./index.js'); const keys = Object.keys(o).sort(); console.log(keys); if (keys.length === 0) { console.error('no exports'); process.exit(1); }"
 
