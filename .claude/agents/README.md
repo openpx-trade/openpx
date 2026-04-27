@@ -6,7 +6,7 @@ Five specialist agents maintain this repo. All run on `claude-opus-4-7` with max
 
 | Agent | Owns | Triggered by |
 |---|---|---|
-| `orchestrator` | Daily changelog cycle — diffs upstream Kalshi + Polymarket changelogs against the lock, classifies new entries, dispatches one maintainer/architect call per concern | Daily cron 00:00 UTC, `workflow_dispatch` (incl. `just backfill <DATE>`) |
+| `orchestrator` | Daily cycle — (1) diffs upstream Kalshi + Polymarket changelogs against the lock, classifies new entries, dispatches one maintainer/architect call per concern; (2) appends one bullet per user-facing merged PR since last tick to `docs/changelog.mdx` under `## Unreleased`; (3) opens one daily PR with the lock refresh + changelog append | Daily cron 00:00 UTC, `workflow_dispatch` (incl. `just backfill <DATE>`) |
 | `kalshi-maintainer` | `engine/exchanges/kalshi/` (excluding `auth.rs`) and Kalshi entries in `engine/core/src/exchange/manifests/kalshi.rs` | Dispatched by `orchestrator` on a Kalshi changelog entry classified as `critical-exchange-specific` |
 | `polymarket-maintainer` | All of `engine/exchanges/polymarket/` (including funds-moving files; CODEOWNERS forces human review on those) and Polymarket entries in manifests + the contracts snapshot | Dispatched by `orchestrator` on a Polymarket changelog entry classified as `critical-exchange-specific` |
 | `core-architect` | `engine/core/` — trait, manifest schema, normalizers, error hierarchy, models. Implements approved parity proposals (i.e. parity-analyst proposals that a human approved, then routed back through a future cycle). | Dispatched by `orchestrator` only when a `parity-fill-approved` issue exists at cycle-start time |
@@ -19,8 +19,9 @@ Five specialist agents maintain this repo. All run on `claude-opus-4-7` with max
 1. Run `python3 maintenance/scripts/check_docs_drift.py --json` — fetches both upstream changelogs, diffs against `maintenance/scripts/exchange-docs.lock.json`, returns the unified diff per exchange.
 2. For each new `<Update>` block in the diff, classify as `overlap-opportunity` (→ dispatch `parity-analyst` to file a proposal issue), `critical-exchange-specific` (→ dispatch the relevant maintainer to open a PR), or `operational-only` (→ skip).
 3. Each dispatch is its own concern → its own Task call → its own PR or issue. Never bundle.
-4. After dispatches settle, refresh the lock and open one `chore(drift): refresh changelog lock` PR.
-5. End with the standard handoff message.
+4. Query merged PRs since the last commit that touched `docs/changelog.mdx`. For each user-facing PR, append one bullet under `## Unreleased`. Skip pure-mechanical PRs (regen, CI, agent config).
+5. Refresh the lock and open one `chore(daily): refresh changelog lock + append openpx changelog for <DATE>` PR with both the lock-file change and the changelog appends.
+6. End with the standard handoff message.
 
 ## Triggers
 

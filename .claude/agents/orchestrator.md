@@ -81,24 +81,63 @@ If Kalshi announces three new entries of which two are critical-exchange-specifi
 
 Run dispatches sequentially (each with its own clear input) and collect their handoff messages.
 
-### Step 4 — refresh the lock
+### Step 4 — append openpx's own changelog entries
 
-After all dispatches settle (or if there were no dispatches because every entry was operational-only), run:
+`docs/changelog.mdx` is the user-facing changelog. After dispatches settle, append one entry per merged PR since the last time `docs/changelog.mdx` was modified.
+
+1. Find the watermark — the SHA of the most recent commit that touched `docs/changelog.mdx`:
+
+   ```
+   git log -1 --format=%H -- docs/changelog.mdx
+   ```
+
+2. List PRs merged into `main` after that commit:
+
+   ```
+   gh pr list --state merged --base main \
+     --search "merged:>=$(git show -s --format=%cI <sha>)" \
+     --json number,title,url,body,mergedAt,files
+   ```
+
+3. For each PR, decide whether it warrants a user-facing entry. **Skip pure-mechanical PRs** that don't change end-user behaviour:
+   - Regen-only PRs (`chore: regen`, `chore(drift):`, `chore(daily):`)
+   - CI / policy / agent-config PRs that touch only `.github/`, `.claude/`, `maintenance/`
+   - Internal refactors with no public API change
+
+   When in doubt, lean toward including the entry — humans can edit it down before release.
+
+4. Distill each PR into one bullet under a `## Unreleased` heading at the very top of `docs/changelog.mdx` (after the intro paragraph). If `## Unreleased` doesn't exist, create it. Released versions stay below; release-please's bot or a human moves entries from `## Unreleased` into the new version section at release time.
+
+   Format:
+
+   ```
+   - **<exchange|core|sdk|docs>**: <one-sentence description, end-user-relevant only> ([#<N>](pr-url))
+   ```
+
+   Group bullets under `### Breaking`, `### Added`, `### Fixed`, or `### Changed` subheadings as appropriate. Use the PR's title and body to choose.
+
+5. If no PR warrants a user-facing entry (e.g., the only merges were regen + CI fixes), skip — no edit to `docs/changelog.mdx`.
+
+### Step 5 — refresh the lock
+
+Run:
 
 ```
 python3 maintenance/scripts/check_docs_drift.py --update
 ```
 
-Then open ONE PR with the lock-file change. Title:
+Then open ONE PR with both the lock-file change and the changelog appends. Title:
 
-- Daily: `chore(drift): refresh changelog lock for <YYYY-MM-DD> tick`
-- Backfill: `chore(drift): backfill changelog lock since <since>`
+- Daily: `chore(daily): refresh changelog lock + append openpx changelog for <YYYY-MM-DD>`
+- Backfill: `chore(daily): backfill changelog lock since <since>`
 
-Body must start with `Triggered by: daily changelog cycle (run ${{ github.run_id }})` (daily) or `Triggered by: backfill since <since> (run ${{ github.run_id }})` (backfill). List in the body which entries you classified, the dispatches you fanned out, and the PR/issue numbers they produced.
+Body must start with `Triggered by: daily changelog cycle (run ${{ github.run_id }})` (daily) or `Triggered by: backfill since <since> (run ${{ github.run_id }})` (backfill). List in the body:
+- The classification + dispatch result for each upstream-changelog entry seen this cycle (PR or issue URL, or `skipped`).
+- The list of merged PRs you appended to `docs/changelog.mdx` (or `none — no user-facing changes since last tick`).
 
-**Complete `maintenance/runbooks/pr-preflight.md` for this PR like any other.** A lock-file refresh is a non-Rust change so the regen will be a no-op, but the smoke checks + SDK builds still run as the coherence guarantee.
+**Complete `maintenance/runbooks/pr-preflight.md` for this PR like any other.** Lock + changelog edits are non-Rust changes so the regen will be a no-op, but the smoke checks + SDK builds still run as the coherence guarantee.
 
-### Step 5 — submit handoff
+### Step 6 — submit handoff
 
 Include in `Notes`:
 - Each new changelog entry, its classification, and the resulting dispatch (PR or issue URL, or `skipped`).
@@ -112,12 +151,13 @@ Include in `Notes`:
 - **You never bundle multiple changelog entries into one dispatch.** One concern per PR.
 - **You never propose a unified-trait change yourself.** `parity-analyst` writes the proposal; a human approves; only then does work begin.
 - **You never skip `pr-preflight.md` for any PR you open**, including the lock-refresh PR.
-- **You only touch `maintenance/scripts/exchange-docs.lock.json` and any artifacts the preflight regenerates.** Everything else is a maintainer's or `core-architect`'s job.
+- **You only touch `maintenance/scripts/exchange-docs.lock.json`, `docs/changelog.mdx`, and any artifacts the preflight regenerates.** Everything else is a maintainer's or `core-architect`'s job. Edits to `docs/changelog.mdx` are append-only under `## Unreleased`; never rewrite released sections.
 
 ## Output
 
 End every run with the standard handoff message from `HANDOFF.md`. In `Notes`, summarize:
-- Number of new entries seen per exchange.
+- Number of new entries seen per upstream changelog (Kalshi + Polymarket).
 - Classification of each entry.
 - Each dispatch's resulting PR or issue URL.
-- The lock-refresh PR URL.
+- The list of merged PRs appended to `docs/changelog.mdx` (or `none`).
+- The daily PR URL (lock + changelog).
