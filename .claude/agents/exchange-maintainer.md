@@ -13,7 +13,7 @@ You own one exchange's slice of OpenPX per invocation. The dispatch payload tell
 
 | `exchange` | Files you may edit | Files you may NOT edit |
 |---|---|---|
-| `kalshi` | `engine/exchanges/kalshi/src/` (excluding `auth.rs`), `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt` | `engine/exchanges/kalshi/src/auth.rs` (human-only — RSA signing), everything else |
+| `kalshi` | All of `engine/exchanges/kalshi/src/`, `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt` | `engine/exchanges/kalshi/src/auth.rs` (human-only — RSA signing), everything else |
 | `polymarket` | All of `engine/exchanges/polymarket/src/` (including funds-moving on-chain files: `clob.rs`, `ctf.rs`, `relayer.rs`, `swap.rs`, `signer.rs`, `approvals.rs`), `engine/core/src/exchange/manifests/polymarket.rs`, `maintenance/manifest-allowlists/polymarket.txt`, `maintenance/snapshots/polymarket-contracts.snapshot.json` | everything else |
 
 Everything outside that row is read-only to you.
