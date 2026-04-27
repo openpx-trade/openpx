@@ -179,11 +179,13 @@ mechanically backstop the same rule — they are required by branch protection,
 so a partial sync cannot land regardless of what any agent claims in a PR
 body.
 
-**The bot's scope:** the agent system fires once a day at 00:00 UTC. Its
-single job is to keep OpenPX in sync with the upstream Kalshi and Polymarket
-changelogs — propose new overlapping features (`parity-analyst` files an
-issue), implement breaking exchange-specific features (the relevant
-maintainer opens a PR), refresh the lock at the end. To catch up on a
-quiet period, use `just backfill YYYY-MM-DD`; the orchestrator walks every
-`<Update>` block on or after that date and classifies them with the same
-rules as the daily cycle.
+**The bot's scope:** the agent system fires once a day at 00:00 UTC. Per
+cycle it (1) keeps OpenPX in sync with the upstream Kalshi and Polymarket
+changelogs — proposes new overlapping features via `parity-analyst`,
+implements breaking exchange-specific features via the relevant
+maintainer — and (2) appends one bullet per user-facing merged PR since
+the last tick to `docs/changelog.mdx` under `## Unreleased`. Both land in
+one daily PR alongside the lock refresh. To catch up on a quiet period,
+use `just backfill YYYY-MM-DD`; the orchestrator walks every `<Update>`
+block on or after that date and classifies them with the same rules as
+the daily cycle.
