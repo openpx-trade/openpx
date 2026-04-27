@@ -1,42 +1,57 @@
 # Runbook: parity-gap closure
 
-Followed by an exchange-maintainer when a human approves a parity-analyst proposal and routes implementation to them. Typical case: an `Exchange` trait method that's currently `NotSupported` on one exchange but implemented on the other.
+Followed by an exchange-maintainer when the orchestrator's daily `describe()`-flag scan dispatches you to handle a `has_<method>: false` line on your exchange. The trait method has been scaffolded (typically by `core-architect` in response to an `overlap-opportunity` changelog entry); your job is to either implement it or mark it as intentionally unsupported.
 
 ## Inputs
 
-- The proposal issue (parity-analyst-authored) with the human's approval comment
-- Your dispatcher's instructions (which method, which exchange)
+The orchestrator's dispatch message names:
+- The exchange (`kalshi` | `polymarket`)
+- The trait method (e.g., `fetch_server_time`)
+- A pointer to the trait scaffolding PR that introduced it (so you can read the unified shape)
 
-## Steps
+## Decision: implement or mark intentionally unsupported
 
-1. **Confirm the gap is real.** Read your exchange's `Exchange` impl in `engine/exchanges/<id>/src/exchange.rs`. The target method should currently:
-   - Use the default `NotSupported` impl (no override), OR
-   - Have an explicit override that returns `Err(ExchangeError::NotSupported(...))`
-   - Have `has_<method>: false` in the `describe()` impl
+First read the upstream API for your exchange. One of two outcomes:
 
-2. **Read the reference implementation** on the other exchange (the one that already has it). Pattern-match the request building, response parsing, error mapping. Do not blindly copy — exchanges have different conventions — but use the structural shape.
+- **An equivalent endpoint exists** → implement the method. Continue to the implementation steps.
+- **No equivalent exists, and there's no near-term path to one** → mark the flag with a single-line comment. Open a small PR that just edits `engine/exchanges/<id>/src/exchange.rs::describe()` to add the marker comment above (or trailing) the existing `has_<method>: false` line:
+
+  ```rust
+  // intentionally unsupported: <one-sentence reason — e.g. "Polymarket has no server-time endpoint">
+  has_<method>: false,
+  ```
+
+  PR title: `chore(<id>): mark <method> intentionally unsupported`. Body provenance: `Triggered by: daily describe()-scan dispatch (run <run-id>)`. Complete `pr-preflight.md`. Done — handoff with `status: success`.
+
+The marker comment is the signal to the orchestrator's next describe()-scan that this `(exchange, method)` pair is settled and should not be re-dispatched.
+
+## Steps to implement
+
+1. **Read the trait scaffolding PR** named in your dispatch. The PR body contains the proposal — request/response types, error mapping notes, naming rationale. Also read `engine/core/src/exchange/traits.rs` for the post-merge trait shape.
+
+2. **Read the reference implementation** on the *other* exchange (the one that already implements the method). Pattern-match the request building, response parsing, error mapping. Don't blindly copy — exchanges have different conventions — but use the structural shape.
 
 3. **Read the upstream API docs** for your exchange's equivalent endpoint. Confirm:
-   - The endpoint exists (URL, HTTP method, path/query params)
+   - Endpoint exists (URL, HTTP method, path/query params)
    - Request format
    - Response shape
    - Error responses
-   - Rate limit category
+   - Rate-limit category
 
-4. **Implement the method.** Follow these conventions:
+4. **Implement the method:**
    - Wrap the HTTP call in `timed!("openpx.exchange.http_request_us", "exchange" => self.id(), "operation" => "<method-name>"; ...)`.
    - Use `define_exchange_error!`-defined variants for exchange-specific errors; map them via the existing `From<<Id>Error> for px_core::ExchangeError` impl.
-   - If the response shape doesn't fit existing unified models, **stop and escalate** — model changes are human-only.
+   - If the response shape doesn't fit existing unified models, **stop and escalate** — model changes belong to `core-architect`. Comment on the orchestrator's daily PR with what you found and exit `status: blocked`.
    - If parsing requires reading a JSON key not in the manifest, prefer adding a `FieldMapping` entry over the allowlist (unless the field is genuinely outside the unified Market schema).
 
-5. **Update `describe()`.** Set the corresponding `has_<method>` flag to `true` in the `ExchangeInfo` returned. Don't lie — only flip the flag if the implementation is actually working, not just compiling.
+5. **Update `describe()`.** Set `has_<method>: true`. Don't lie — only flip the flag if the implementation is actually working, not just compiling.
 
-6. **Add tests.** At minimum:
-   - One happy-path test using `wiremock` (look at existing tests in `engine/exchanges/<id>/tests/` for the pattern).
+6. **Add tests:**
+   - One happy-path test using `wiremock`.
    - One error-path test covering the most likely upstream failure (404, 401, 429).
-   Tests live in `engine/exchanges/<id>/tests/exchange_tests.rs` or a new file if the existing one is getting too large.
+   Tests live in `engine/exchanges/<id>/tests/exchange_tests.rs`.
 
-7. **Run the gauntlet:**
+7. **Run the local Rust gauntlet:**
    ```
    cargo test -p px-exchange-<id>
    cargo test -p px-core --test manifest_coverage
@@ -44,21 +59,24 @@ Followed by an exchange-maintainer when a human approves a parity-analyst propos
    ```
    All must pass.
 
-8. **Open the PR.** Conventional commit: `feat(<id>): implement <method>`. Body uses the maintainer template. Label `parity-fill` + `area:<id>`. Reference the proposal issue: `Closes #<proposal-issue-N>`.
+8. **Complete `maintenance/runbooks/pr-preflight.md` to its conclusion.** Flipping `has_<method>: false` → `true` is a schema change — the regen will produce diffs in `schema/openpx.schema.json`, `_models.py`, `models.d.ts`, and `docs/reference/types.mdx` that all land in this same PR.
 
-9. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
+9. **Open the PR.** Conventional commit: `feat(<id>): implement <method>`. Body provenance:
 
-10. **Submit handoff.** In `Notes`, mention which existing exchange's pattern you mirrored and any deviations.
+   ```
+   Triggered by: daily describe()-scan dispatch (run <run-id>) — implements <method> on <exchange>; trait scaffolded in PR #<scaffolding-pr-N>
+   ```
 
-## Verification
+   Body uses the maintainer template (What changed / Why / Files / Tests / Review focus). Label `area:<id>`.
 
-CI green on `manifest-coverage`, `clippy`, `test`. After merge:
+10. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
 
-- `parity-analyst` will pick up the new `has_<method>: true` flag on its next weekly run and remove the gap from `docs/parity/STATUS.md`.
-- The proposal issue closes automatically via the PR's `Closes #<N>`.
+11. **Watch CI per `runbooks/pr-ci-watch.md`.** Up to 3 fix attempts.
 
-## When to abort instead of finishing
+12. **Submit handoff.** In `Notes`, mention which exchange's reference implementation you mirrored and any deviations.
 
-- The upstream API doesn't actually have the endpoint the proposal assumed — comment on the proposal issue with what you found, set status `blocked`.
-- Implementing requires changing the trait signature — that's `core-architect` (deferred); escalate to human, set status `blocked`.
-- Implementing requires changing a unified model — same; human-only, set status `blocked`.
+## When to abort
+
+- The upstream API doesn't actually have the endpoint → mark intentionally unsupported (the small-PR path above) instead.
+- Implementing requires changing the trait signature → comment on the orchestrator's daily PR, exit `status: blocked` (this is `core-architect`'s next overlap-opportunity dispatch).
+- Implementing requires changing a unified model → same; comment + `status: blocked`.

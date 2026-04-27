@@ -31,11 +31,6 @@
 /.env*                                            @MilindPathiyal
 /kalshi-private-key.pem                           @MilindPathiyal
 
-# Safe surfaces — @openpx-bot may review-approve to satisfy the CODEOWNERS chain;
-# humans still merge every PR.
-/engine/core/src/exchange/manifests/              @openpx-bot @MilindPathiyal
-/sdks/python/python/openpx/_models.py             @openpx-bot @MilindPathiyal
-/sdks/typescript/types/models.d.ts                @openpx-bot @MilindPathiyal
-/schema/                                          @openpx-bot @MilindPathiyal
-/maintenance/                                     @openpx-bot @MilindPathiyal
-/docs/                                            @openpx-bot @MilindPathiyal
+# Every PR is reviewed and approved by @MilindPathiyal. openpx-bot opens
+# PRs but never approves them — the default `*` line above is the single
+# source of truth; do not re-add openpx-bot as a code-owner anywhere.

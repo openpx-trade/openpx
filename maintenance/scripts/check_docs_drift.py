@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""Detect drift in Kalshi and Polymarket documentation against a checked-in lock file.
+"""Detect drift in the Kalshi and Polymarket changelogs against a checked-in lock file.
+
+The orchestrator (`.claude/agents/orchestrator.md`) is the only consumer.
+Drift is changelog-only by design — the bot's single job is to mirror what
+the upstreams announce. Other documentation pages (specs, llms.txt, prose)
+are no longer tracked here.
 
 Usage:
-    python3 maintenance/scripts/check_docs_drift.py                  # check (fast: specs + tier1)
-    python3 maintenance/scripts/check_docs_drift.py --full           # also walks every llms.txt URL
-    python3 maintenance/scripts/check_docs_drift.py --update         # refresh lock file
+    python3 maintenance/scripts/check_docs_drift.py            # check, exit 0 (clean) or 1 (drift)
+    python3 maintenance/scripts/check_docs_drift.py --json     # machine-readable output
+    python3 maintenance/scripts/check_docs_drift.py --update   # refresh lock with current state
     python3 maintenance/scripts/check_docs_drift.py --exchange kalshi
-    python3 maintenance/scripts/check_docs_drift.py --json           # machine-readable output
 
-Exit codes:
-    0  clean
-    1  Tier 1 drift (specs or tier1 pages — block-merging severity)
-    2  Watch drift only (new/removed/changed pages from llms.txt)
-    3  Network or parse error
+Lock file shape (`maintenance/scripts/exchange-docs.lock.json`):
+    {
+      "<exchange>": {
+        "url": "...",
+        "last_checked": "ISO-8601",
+        "sha256": "...",
+        "body": "<full markdown of the changelog>"
+      },
+      ...
+    }
+
+The `body` field is committed so the orchestrator can compute a unified
+diff between last-known and live without re-fetching the previous state.
 """
 
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
-import re
 import sys
-import time
-import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,61 +42,20 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent.parent
 LOCK_PATH = ROOT / "maintenance" / "scripts" / "exchange-docs.lock.json"
 
-CONFIGS: dict[str, dict[str, Any]] = {
-    "kalshi": {
-        "specs": {
-            "openapi.yaml": "https://docs.kalshi.com/openapi.yaml",
-            "asyncapi.yaml": "https://docs.kalshi.com/asyncapi.yaml",
-        },
-        "tier1": [
-            "https://docs.kalshi.com/changelog.md",
-            "https://docs.kalshi.com/llms.txt",
-        ],
-        "llms_txt": "https://docs.kalshi.com/llms.txt",
-    },
-    "polymarket": {
-        "specs": {},
-        "tier1": [
-            "https://docs.polymarket.com/changelog.md",
-            "https://docs.polymarket.com/api-reference/introduction.md",
-            "https://docs.polymarket.com/api-reference/authentication.md",
-            "https://docs.polymarket.com/resources/contracts.md",
-            "https://docs.polymarket.com/llms.txt",
-        ],
-        "llms_txt": "https://docs.polymarket.com/llms.txt",
-    },
+CHANGELOGS: dict[str, str] = {
+    "kalshi": "https://docs.kalshi.com/changelog.md",
+    "polymarket": "https://docs.polymarket.com/changelog.md",
 }
 
-LLMS_URL_RE = re.compile(r"\((https?://[^)]+\.md)\)")
 
-
-def fetch(url: str, timeout: int = 30) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "openpx-docs-drift/1"})
+def fetch(url: str, timeout: int = 30) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "openpx-changelog-drift/1"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+        return resp.read().decode("utf-8", errors="replace")
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def spec_version(text: str) -> str | None:
-    in_info = False
-    for line in text.splitlines():
-        if line.startswith("info:"):
-            in_info = True
-            continue
-        if in_info:
-            if line and not line.startswith((" ", "\t")):
-                break
-            m = re.match(r"\s+version:\s*(.+)$", line)
-            if m:
-                return m.group(1).strip().strip('"').strip("'")
-    return None
-
-
-def parse_llms_urls(text: str) -> list[str]:
-    return sorted(set(LLMS_URL_RE.findall(text)))
+def sha256(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 def load_lock() -> dict[str, Any]:
@@ -99,158 +68,88 @@ def save_lock(data: dict[str, Any]) -> None:
     LOCK_PATH.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def snapshot(exchange: str, full_watch: bool, polite_delay: float = 0.1) -> dict[str, Any]:
-    cfg = CONFIGS[exchange]
-    state: dict[str, Any] = {
-        "last_checked": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "specs": {},
-        "tier1": {},
-        "watch": {},
-    }
-
-    for name, url in cfg["specs"].items():
-        body = fetch(url).decode("utf-8", errors="replace")
-        state["specs"][name] = {
-            "url": url,
-            "version": spec_version(body),
-            "sha256": sha256(body.encode()),
-        }
-
-    for url in cfg["tier1"]:
-        state["tier1"][url] = sha256(fetch(url))
-        time.sleep(polite_delay)
-
-    if full_watch:
-        llms = fetch(cfg["llms_txt"]).decode("utf-8", errors="replace")
-        for url in parse_llms_urls(llms):
-            try:
-                state["watch"][url] = sha256(fetch(url))
-            except urllib.error.HTTPError as e:
-                state["watch"][url] = f"HTTP_{e.code}"
-            except Exception as e:
-                state["watch"][url] = f"ERROR_{type(e).__name__}"
-            time.sleep(polite_delay)
-
-    return state
-
-
-def diff_state(prev: dict[str, Any], curr: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "specs_changed": [],
-        "tier1_changed": [],
-        "watch_changed": [],
-        "watch_added": [],
-        "watch_removed": [],
-    }
-
-    for name, info in curr.get("specs", {}).items():
-        prev_info = prev.get("specs", {}).get(name, {})
-        if prev_info.get("sha256") != info["sha256"]:
-            out["specs_changed"].append({
-                "name": name,
-                "prev_version": prev_info.get("version"),
-                "curr_version": info["version"],
-            })
-
-    for url, h in curr.get("tier1", {}).items():
-        if prev.get("tier1", {}).get(url) != h:
-            out["tier1_changed"].append(url)
-
-    prev_watch = prev.get("watch", {})
-    curr_watch = curr.get("watch", {})
-    for url, h in curr_watch.items():
-        if url not in prev_watch:
-            out["watch_added"].append(url)
-        elif prev_watch[url] != h:
-            out["watch_changed"].append(url)
-    for url in prev_watch:
-        if url not in curr_watch:
-            out["watch_removed"].append(url)
-
-    return out
-
-
-def severity(drift: dict[str, Any]) -> int:
-    if drift["specs_changed"] or drift["tier1_changed"]:
-        return 1
-    if drift["watch_changed"] or drift["watch_added"] or drift["watch_removed"]:
-        return 2
-    return 0
-
-
-def report_human(exchange: str, drift: dict[str, Any]) -> None:
-    print(f"\n=== {exchange} ===")
-    if drift["specs_changed"]:
-        print("  [TIER 1] specs changed:")
-        for s in drift["specs_changed"]:
-            print(f"    {s['name']}: {s['prev_version']} -> {s['curr_version']}")
-    if drift["tier1_changed"]:
-        print("  [TIER 1] pages changed:")
-        for url in drift["tier1_changed"]:
-            print(f"    {url}")
-    if drift["watch_added"]:
-        print(f"  [INFO] {len(drift['watch_added'])} new pages in llms.txt")
-        for url in drift["watch_added"][:5]:
-            print(f"    + {url}")
-        if len(drift["watch_added"]) > 5:
-            print(f"    ... and {len(drift['watch_added']) - 5} more")
-    if drift["watch_removed"]:
-        print(f"  [INFO] {len(drift['watch_removed'])} pages removed from llms.txt")
-        for url in drift["watch_removed"][:5]:
-            print(f"    - {url}")
-    if drift["watch_changed"]:
-        print(f"  [INFO] {len(drift['watch_changed'])} watched pages changed body")
-
-    if severity(drift) == 0:
-        print("  clean")
+def unified_diff(prev: str, curr: str, label: str) -> str:
+    return "".join(difflib.unified_diff(
+        prev.splitlines(keepends=True),
+        curr.splitlines(keepends=True),
+        fromfile=f"{label}.prev",
+        tofile=f"{label}.curr",
+        n=3,
+    ))
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Detect Kalshi/Polymarket documentation drift against maintenance/scripts/exchange-docs.lock.json"
-    )
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--update", action="store_true", help="Refresh lock with current state")
-    ap.add_argument("--full", action="store_true", help="Also fetch every URL from llms.txt")
-    ap.add_argument("--exchange", choices=list(CONFIGS), help="Limit to one exchange")
-    ap.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable report")
+    ap.add_argument("--exchange", choices=list(CHANGELOGS), help="Limit to one exchange")
+    ap.add_argument("--json", action="store_true", help="Emit JSON instead of human report")
     args = ap.parse_args()
 
-    exchanges = [args.exchange] if args.exchange else list(CONFIGS)
+    targets = [args.exchange] if args.exchange else list(CHANGELOGS)
     lock = load_lock()
-    max_sev = 0
+    drift_found = False
     json_out: dict[str, Any] = {}
 
-    for ex in exchanges:
+    for ex in targets:
+        url = CHANGELOGS[ex]
         try:
-            curr = snapshot(ex, full_watch=args.full)
+            curr = fetch(url)
         except Exception as e:
-            print(f"\n=== {ex} ===\n  ERROR: {type(e).__name__}: {e}", file=sys.stderr)
-            max_sev = max(max_sev, 3)
-            continue
+            err = f"{type(e).__name__}: {e}"
+            if args.json:
+                json_out[ex] = {"error": err}
+            else:
+                print(f"=== {ex} ===\n  ERROR fetching {url}: {err}", file=sys.stderr)
+            return 3
+
+        curr_hash = sha256(curr)
+        prev_entry = lock.get(ex, {})
+        prev_hash = prev_entry.get("sha256")
+        prev_body = prev_entry.get("body", "")
 
         if args.update:
-            lock[ex] = curr
+            lock[ex] = {
+                "url": url,
+                "last_checked": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "sha256": curr_hash,
+                "body": curr,
+            }
             if not args.json:
-                print(f"=== {ex} ===  updated: {len(curr['tier1'])} tier1, "
-                      f"{len(curr['specs'])} specs, {len(curr['watch'])} watch")
+                print(f"=== {ex} ===  updated ({len(curr)} bytes)")
             continue
 
-        prev = lock.get(ex, {})
-        if not prev:
+        if not prev_hash:
             msg = f"no prior lock for {ex}; run with --update to bootstrap"
             if args.json:
-                json_out[ex] = {"error": msg}
+                json_out[ex] = {"status": "uninitialized", "message": msg}
             else:
-                print(f"\n=== {ex} ===\n  {msg}")
-            max_sev = max(max_sev, 2)
+                print(f"=== {ex} ===\n  {msg}")
+            drift_found = True
             continue
 
-        drift = diff_state(prev, curr)
+        if prev_hash == curr_hash:
+            if args.json:
+                json_out[ex] = {"status": "clean"}
+            else:
+                print(f"=== {ex} ===\n  clean")
+            continue
+
+        diff = unified_diff(prev_body, curr, ex)
+        drift_found = True
         if args.json:
-            json_out[ex] = {"severity": severity(drift), "drift": drift}
+            json_out[ex] = {
+                "status": "drift",
+                "url": url,
+                "prev_sha256": prev_hash,
+                "curr_sha256": curr_hash,
+                "diff": diff,
+            }
         else:
-            report_human(ex, drift)
-        max_sev = max(max_sev, severity(drift))
+            print(f"=== {ex} ===\n  DRIFT ({url})")
+            print(f"  prev: {prev_hash[:12]}  curr: {curr_hash[:12]}")
+            print("  --- diff ---")
+            print(diff)
+            print("  ------------")
 
     if args.update:
         save_lock(lock)
@@ -262,7 +161,7 @@ def main() -> int:
         json.dump(json_out, sys.stdout, indent=2)
         sys.stdout.write("\n")
 
-    return max_sev
+    return 1 if drift_found else 0
 
 
 if __name__ == "__main__":
