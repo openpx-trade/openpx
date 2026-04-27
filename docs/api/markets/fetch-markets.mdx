@@ -1,11 +1,7 @@
 ---
-title: "Markets"
-description: "fetch_markets and fetch_market."
+title: "fetch_markets"
+description: "Page through markets on an exchange."
 ---
-
-## `fetch_markets`
-
-Returns one page of markets plus an opaque cursor.
 
 ```rust
 async fn fetch_markets(
@@ -13,7 +9,7 @@ async fn fetch_markets(
 ) -> Result<(Vec<Market>, Option<String>), OpenPxError>
 ```
 
-### Parameters
+## Parameters
 
 <ParamField path="limit" type="usize?">
   Per-page limit. Capped at 1000 (Kalshi) / 500 (Polymarket).
@@ -35,6 +31,18 @@ async fn fetch_markets(
   Kalshi event ticker or Polymarket event ID/slug. When set, `series_id`,
   `cursor`, and `limit` are ignored.
 </ParamField>
+
+## Returns
+
+<ResponseField name="markets" type="Market[]">
+  One page of markets. See [`Market`](/api/unified-schema#market) for every field.
+</ResponseField>
+
+<ResponseField name="cursor" type="string?">
+  Opaque pagination cursor. `null` on the last page.
+</ResponseField>
+
+## Example
 
 <CodeGroup>
 
@@ -59,34 +67,3 @@ const markets = await ex.fetchMarkets();
 ```
 
 </CodeGroup>
-
-## `fetch_market`
-
-Fetch a single market by its native ID.
-
-```rust
-async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
-```
-
-| Exchange | `market_id` format |
-|----------|--------------------|
-| Kalshi | Ticker, e.g. `KXBTC-25MAR14-T20000` |
-| Polymarket | Condition ID, e.g. `0x311d0c4b…` |
-
-<CodeGroup>
-
-```rust Rust
-let market = ex.fetch_market("KXBTC-25MAR14-T20000").await?;
-```
-
-```python Python
-market = ex.fetch_market("KXBTC-25MAR14-T20000")
-```
-
-```typescript TypeScript
-const market = await ex.fetchMarket("KXBTC-25MAR14-T20000");
-```
-
-</CodeGroup>
-
-See [`Market`](/api/unified-schema#market) for every field returned.

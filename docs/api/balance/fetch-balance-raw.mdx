@@ -1,0 +1,37 @@
+---
+title: "fetch_balance_raw"
+description: "Unparsed JSON from the underlying balance endpoint."
+---
+
+Polymarket only — Kalshi returns `NotSupported`. Useful when you need fields
+the unified surface doesn't expose.
+
+```rust
+async fn fetch_balance_raw() -> Result<serde_json::Value, OpenPxError>
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+Raw JSON from the exchange's balance endpoint.
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let raw = ex.fetch_balance_raw().await?;
+```
+
+```python Python
+raw = ex.fetch_balance_raw()
+```
+
+```typescript TypeScript
+const raw = await ex.fetchBalanceRaw();
+```
+
+</CodeGroup>

@@ -40,32 +40,64 @@
             ]
           },
           {
-            "group": "Methods",
+            "group": "Markets",
             "pages": [
-              "api/methods/overview",
-              "api/methods/markets",
-              "api/methods/orderbook",
-              "api/methods/orders",
-              "api/methods/positions",
-              "api/methods/balance",
-              "api/methods/trades",
-              "api/methods/price-history",
-              "api/methods/fills",
-              "api/methods/orderbook-history"
+              "api/markets/fetch-markets",
+              "api/markets/fetch-market"
             ]
           },
           {
-            "group": "SDKs",
+            "group": "Orderbook",
             "pages": [
-              "api/sdks/rust",
-              "api/sdks/python",
-              "api/sdks/typescript"
+              "api/orderbook/fetch-orderbook"
             ]
           },
           {
-            "group": "Reference",
+            "group": "Orders",
             "pages": [
-              "reference/types"
+              "api/orders/create-order",
+              "api/orders/cancel-order",
+              "api/orders/fetch-order",
+              "api/orders/fetch-open-orders"
+            ]
+          },
+          {
+            "group": "Positions",
+            "pages": [
+              "api/positions/fetch-positions"
+            ]
+          },
+          {
+            "group": "Balance",
+            "pages": [
+              "api/balance/fetch-balance",
+              "api/balance/fetch-balance-raw",
+              "api/balance/refresh-balance"
+            ]
+          },
+          {
+            "group": "Trades",
+            "pages": [
+              "api/trades/fetch-trades"
+            ]
+          },
+          {
+            "group": "Price History",
+            "pages": [
+              "api/price-history/fetch-price-history"
+            ]
+          },
+          {
+            "group": "Fills",
+            "pages": [
+              "api/fills/fetch-fills",
+              "api/fills/fetch-user-activity"
+            ]
+          },
+          {
+            "group": "Orderbook History",
+            "pages": [
+              "api/orderbook-history/fetch-orderbook-history"
             ]
           }
         ]

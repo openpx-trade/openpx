@@ -1,0 +1,39 @@
+---
+title: "fetch_balance"
+description: "Account balances, keyed by currency / token symbol."
+---
+
+```rust
+async fn fetch_balance() -> Result<HashMap<String, f64>, OpenPxError>
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+A map keyed by currency / token symbol.
+
+| Exchange | Example |
+|----------|---------|
+| Kalshi | `{ "USD": 1234.56 }` |
+| Polymarket | `{ "USDC": 120.00 }` |
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let balance = ex.fetch_balance().await?;
+```
+
+```python Python
+balance = ex.fetch_balance()
+```
+
+```typescript TypeScript
+const balance = await ex.fetchBalance();
+```
+
+</CodeGroup>

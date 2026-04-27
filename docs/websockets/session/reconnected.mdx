@@ -3,13 +3,41 @@ title: "Reconnected"
 description: "Socket re-established after an outage."
 ---
 
-Socket re-established after an observed outage.
+Discard cached books on receipt — a fresh `Snapshot` will arrive for every
+previously subscribed market.
 
-## Fields
+## Payload
 
 <ResponseField name="gap_ms" type="u64">
   Wall-clock gap between the last received message and recovery.
 </ResponseField>
 
-Callers maintaining cached books should discard them and wait for fresh
-[`Snapshot`](/websockets/snapshot) events on each subscribed market.
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use px_core::websocket::SessionEvent;
+
+if let SessionEvent::Reconnected { gap_ms } = event? {
+    println!("reconnected after {gap_ms}ms");
+    cache.clear();
+}
+```
+
+```python Python
+from openpx import Reconnected
+
+if isinstance(event, Reconnected):
+    print("gap:", event.gap_ms)
+    cache.clear()
+```
+
+```typescript TypeScript
+ws.on("reconnected", (gapMs) => {
+  console.log("gap:", gapMs);
+  cache.clear();
+});
+```
+
+</CodeGroup>

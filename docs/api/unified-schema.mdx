@@ -3,18 +3,15 @@ title: "Unified Schema"
 description: "Exchange-native fields mapped to OpenPX's unified models."
 ---
 
-Every exchange's response is normalized into the same typed models defined
-in `engine/core/src/models/`. Mappings live in
-`engine/core/src/exchange/manifests/{kalshi,polymarket}.rs`.
+Every exchange's response is normalized into the same typed models. All
+prices on the unified surface are decimals in `[0.0, 1.0]`.
 
 ## `Market`
 
 | Unified field | Type | Kalshi source | Polymarket source |
 |---------------|------|---------------|-------------------|
-| `openpx_id` | `string` | `"kalshi:" + ticker` | `"polymarket:" + condition_id` |
 | `id` | `string` | `ticker` | `conditionId` |
 | `native_numeric_id` | `string?` | — | numeric DB id |
-| `group_id` | `string?` | `event_ticker` | `events[0].id` |
 | `event_id` | `string?` | canonical OpenPX event id | canonical OpenPX event id |
 | `title` | `string` | `title` | `question` |
 | `description` | `string` | `rules_primary` | `description` |
@@ -26,18 +23,7 @@ in `engine/core/src/models/`. Mappings live in
 | `volume` / `liquidity` / `open_interest` | `f64` | normalized | normalized |
 | `open_time` / `close_time` | `DateTime?` | ISO 8601 | ISO 8601 |
 
-<Tip>
-  All prices on the unified surface are decimals in `[0.0, 1.0]`. Kalshi's
-  fixed-point dollar strings are parsed during normalization.
-</Tip>
-
-### Status mapping (Kalshi)
-
-| Kalshi value | OpenPX `MarketStatus` |
-|--------------|-----------------------|
-| `active` | `Active` |
-| `closed`, `initialized`, `inactive`, `disputed`, `amended` | `Closed` |
-| `determined`, `finalized` | `Resolved` |
+`MarketStatus`: `Active`, `Closed`, `Resolved`.
 
 ## `Order`
 
@@ -67,32 +53,23 @@ in `engine/core/src/models/`. Mappings live in
 
 ## `Orderbook`
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `market_id` | `string` | parent market |
-| `asset_id` | `string` | per-outcome (Kalshi: ticker, Polymarket: token) |
-| `bids` | `PriceLevel[]` | high-to-low |
-| `asks` | `PriceLevel[]` | low-to-high |
-| `last_update_id` | `u64?` | sequence |
-| `timestamp` | `DateTime?` | |
-| `hash` | `string?` | Polymarket book integrity hash |
+| Field | Type |
+|-------|------|
+| `market_id` | `string` |
+| `asset_id` | `string` |
+| `bids` / `asks` | `PriceLevel[]` |
+| `last_update_id` | `u64?` |
+| `timestamp` | `DateTime?` |
+| `hash` | `string?` |
 
-`PriceLevel`: `{ price: f64, size: f64 }`. Internally stored as `FixedPrice`
-(integer scale 10,000).
+`PriceLevel`: `{ price: f64, size: f64 }`.
 
 ## `MarketTrade` / `Fill` / `Candlestick`
 
 | Model | Source method |
 |-------|---------------|
-| `MarketTrade` | `fetch_trades` |
-| `Fill` | `fetch_fills` |
-| `Candlestick` | `fetch_price_history` |
+| `MarketTrade` | [`fetch_trades`](/api/trades/fetch-trades) |
+| `Fill` | [`fetch_fills`](/api/fills/fetch-fills) |
+| `Candlestick` | [`fetch_price_history`](/api/price-history/fetch-price-history) |
 
-All carry decimal prices (`[0, 1]`), `f64` sizes, and `DateTime<Utc>`
-timestamps. See `engine/core/src/models/{trade,order}.rs`.
-
-## WebSocket types
-
-`WsUpdate` and `SessionEvent` are documented under
-[WebSockets](/websockets/overview). Definitions live in
-`engine/core/src/websocket/events.rs`.
+All three carry decimal prices, `f64` sizes, and `DateTime<Utc>` timestamps.

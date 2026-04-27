@@ -1,25 +1,40 @@
 ---
 title: "Clear"
-description: "Per-market book invalidation on the same stream."
+description: "Per-market book invalidation."
 ---
 
-Per-market book invalidation, on the same stream as `Snapshot` / `Delta`.
-A consumer can act inline: drop everything ≤ this seq, wait for the next
+Drop everything ≤ this `seq` for the named market and wait for the next
 `Snapshot`.
 
-## Fields
+## Payload
 
 <ResponseField name="market_id" type="string" />
 <ResponseField name="asset_id" type="string" />
-<ResponseField name="reason" type="InvalidationReason" />
+<ResponseField name="reason" type="InvalidationReason">
+  `Reconnect`, `Lag`, `SequenceGap { expected, received }`, or `ExchangeReset`.
+</ResponseField>
 <ResponseField name="local_ts_ms" type="u64" />
 <ResponseField name="seq" type="u64" />
 
-## `InvalidationReason`
+## Example
 
-| Variant | Meaning |
-|---------|---------|
-| `Reconnect` | Recovered after a session reconnect |
-| `Lag` | Slow consumer dropped messages |
-| `SequenceGap { expected, received }` | Detected gap in the exchange stream |
-| `ExchangeReset` | Exchange-side reset / channel restart |
+<CodeGroup>
+
+```rust Rust
+use px_core::WsUpdate;
+
+if let WsUpdate::Clear { market_id, .. } = update? {
+    cache.remove(&market_id);
+}
+```
+
+```python Python
+if isinstance(update, Clear):
+    cache.pop(update.market_id, None)
+```
+
+```typescript TypeScript
+if (update?.kind === "Clear") cache.delete(update.market_id);
+```
+
+</CodeGroup>

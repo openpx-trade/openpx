@@ -1,0 +1,73 @@
+---
+title: "fetch_orderbook_history"
+description: "Historical L2 orderbook snapshots."
+---
+
+Polymarket only — Kalshi returns `NotSupported`.
+
+```rust
+async fn fetch_orderbook_history(
+    req: OrderbookHistoryRequest,
+) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market ID.
+</ParamField>
+
+<ParamField path="token_id" type="string?">
+  Polymarket CLOB token.
+</ParamField>
+
+<ParamField path="start_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+<ParamField path="end_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+<ParamField path="limit" type="usize?">
+  Max snapshots.
+</ParamField>
+
+<ParamField path="cursor" type="string?">
+  From a prior response.
+</ParamField>
+
+## Returns
+
+<ResponseField name="snapshots" type="OrderbookSnapshot[]">
+  Each snapshot: `{ timestamp, recorded_at?, hash?, bids, asks }`.
+</ResponseField>
+
+<ResponseField name="cursor" type="string?">
+  Pagination cursor; `null` on last page.
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::OrderbookHistoryRequest;
+
+let (snapshots, cursor) = ex.fetch_orderbook_history(OrderbookHistoryRequest {
+    market_id: "0x311d0c4b…".into(),
+    limit: Some(100),
+    ..Default::default()
+}).await?;
+```
+
+```python Python
+result = ex.fetch_orderbook_history("0x311d0c4b…", limit=100)
+snapshots, cursor = result["snapshots"], result["cursor"]
+```
+
+```typescript TypeScript
+const result = await ex.fetchOrderbookHistory("0x311d0c4b…");
+```
+
+</CodeGroup>

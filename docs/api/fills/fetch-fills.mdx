@@ -1,0 +1,54 @@
+---
+title: "fetch_fills"
+description: "Your own executed fills."
+---
+
+```rust
+async fn fetch_fills(
+    market_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<Fill>, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="market_id" type="string?">
+  Filter to one market.
+</ParamField>
+
+<ParamField path="limit" type="usize?">
+  Max fills, exchange-capped.
+</ParamField>
+
+## Returns
+
+`Fill[]`.
+
+<ResponseField name="fill_id" type="string" />
+<ResponseField name="order_id" type="string" />
+<ResponseField name="market_id" type="string" />
+<ResponseField name="outcome" type="string" />
+<ResponseField name="side" type="OrderSide" />
+<ResponseField name="price" type="f64" />
+<ResponseField name="size" type="f64" />
+<ResponseField name="is_taker" type="bool" />
+<ResponseField name="fee" type="f64?" />
+<ResponseField name="created_at" type="DateTime<Utc>" />
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let fills = ex.fetch_fills(None, Some(50)).await?;
+```
+
+```python Python
+fills = ex.fetch_fills(limit=50)
+```
+
+```typescript TypeScript
+const fills = await ex.fetchFills(undefined, 50);
+```
+
+</CodeGroup>
