@@ -13,11 +13,22 @@ on:
     - cron: "0 6 * * MON"   # Mon 06:00 UTC weekly tick
   workflow_dispatch:
   issues:
-    types: [opened, reopened, edited, assigned, labeled]
+    # Narrow on purpose: GitHub fires `labeled` and `assigned` events for every
+    # label/assignee added (including the bot's own), which previously cascaded
+    # into 4-6 parallel orchestrator runs per user issue and produced duplicate
+    # proposal issues. opened/reopened is the right granularity.
+    types: [opened, reopened]
   issue_comment:
     types: [created]
   pull_request:
     types: [closed]
+
+# One orchestrator run per issue / PR / global cycle at a time. Even if events
+# do batch (or someone runs `just maintain` while a cron is mid-flight), the
+# second run waits for the first to finish before starting.
+concurrency:
+  group: agent-tick-${{ github.event.issue.number || github.event.pull_request.number || 'global' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -101,7 +112,10 @@ jobs:
           # makes). The real safety net is CODEOWNERS + branch protection +
           # contracts_test + manifest_coverage — not per-tool prompts.
           # Agent prompts forbid destructive ops (merge, force-push, --no-verify).
-          claude_args: --max-turns 30 --permission-mode bypassPermissions
+          # --max-turns 60: previous 30-turn budget was tight once we added
+          # the pr-ci-watch protocol (each PR-opening agent now spends turns
+          # waiting on CI and potentially fixing failures up to 3 times).
+          claude_args: --max-turns 60 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}

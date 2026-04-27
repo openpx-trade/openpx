@@ -33,6 +33,26 @@ Funds-moving, signature-affecting, release-affecting, or trait-shaping code. `@o
 
 Every agent-opened PR addresses exactly one concern. The orchestrator splits multi-item drift into separate maintainer dispatches, each opening its own PR. Reviewers should reject any agent PR that bundles unrelated changes — the maintainer prompts forbid bundling, and a bundle indicates a prompt failure.
 
+## Provenance rule (every bot-opened PR)
+
+Every PR opened by an agent MUST start with one of these lines so the source is always discoverable:
+
+```
+Closes #<N>                                       ← when a single source issue exists
+Triggered by: weekly drift cycle (run <run-id>)
+Triggered by: parity-analyst proposal #<N>
+Triggered by: PR-merged changelog (PR #<N>)
+Triggered by: scheduled SDK + docs regen (run <run-id>)
+```
+
+If a bot PR lacks this line, it's a prompt failure — request the linkage be added before merging. Reviewers can find every PR's origin in 5 seconds without reading the diff.
+
+## Bot-created issue rule
+
+Every issue opened by an agent MUST be assigned to `openpx-bot` (`gh issue create ... --assignee openpx-bot`). This makes the issues list filterable by assignee and signals "bot-authored" at a glance. Reviewers reassign to themselves if they want to take it over.
+
+Before any `gh issue create`, the agent runs a dedup pre-flight (`gh issue list --search`) and comments on an existing issue if one already covers the topic. Filing duplicates is a prompt failure.
+
 ## Structured review summary
 
 Every agent PR body must contain this template:
