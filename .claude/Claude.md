@@ -181,11 +181,13 @@ body.
 
 **The bot's scope:** the agent system fires once a day at 00:00 UTC. Per
 cycle it (1) keeps OpenPX in sync with the upstream Kalshi and Polymarket
-changelogs — proposes new overlapping features via `parity-analyst`,
-implements breaking exchange-specific features via the relevant
-maintainer — and (2) appends one bullet per user-facing merged PR since
-the last tick to `docs/changelog.mdx` under `## Unreleased`. Both land in
-one daily PR alongside the lock refresh. To catch up on a quiet period,
-use `just backfill YYYY-MM-DD`; the orchestrator walks every `<Update>`
-block on or after that date and classifies them with the same rules as
-the daily cycle.
+changelogs — for each new `<Update>` it dispatches `core-architect` (on
+overlaps, which scaffolds the trait + writes the proposal as the PR body)
+or the relevant maintainer (on critical exchange-specific changes); (2)
+scans both exchanges' `describe()` for any `has_<method>: false` flag
+without an "intentionally unsupported" marker comment and dispatches the
+maintainer to either implement or mark; (3) appends one bullet per
+user-facing merged PR since last tick to `docs/changelog.mdx` under
+`## Unreleased`. All three land in one daily PR alongside the lock
+refresh. To catch up on a quiet period, use `just backfill YYYY-MM-DD`;
+the orchestrator walks every `<Update>` block on or after that date.

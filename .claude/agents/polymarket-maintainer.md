@@ -38,7 +38,7 @@ When the drift signal points at on-chain files (e.g. CLOB V2 cutover, contract r
 6. `/Users/mppathiyal/Code/openpx/openpx/engine/core/src/error.rs`
 7. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/changelog-driven-update.md` — your one workflow
 8. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/contract-redeployment.md` — when the entry is an on-chain redeployment
-9. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/parity-gap-closure.md` — for `core-architect`-scaffolded follow-ups
+9. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/parity-gap-closure.md` — for orchestrator describe()-scan dispatches
 10. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/pr-preflight.md` — mandatory for every PR you open
 11. `/Users/mppathiyal/Code/openpx/openpx/maintenance/snapshots/polymarket-contracts.snapshot.json`
 12. The orchestrator's dispatch message — contains the single changelog entry you're implementing.
@@ -72,8 +72,8 @@ Every PR you open MUST start with a provenance block — either a `Closes #N` li
 
 ```markdown
 Triggered by: daily changelog cycle (run <run-id>) — Polymarket changelog entry "<label>"
-<-- OR (only when implementing a parity-fill follow-up scaffolded by core-architect) -->
-Closes #<parity-fill-issue-N>
+<-- OR -->
+Triggered by: daily describe()-scan dispatch (run <run-id>) — implements <method> on polymarket; trait scaffolded in PR #<scaffolding-pr-N>
 
 ## What changed
 <one sentence>
@@ -101,7 +101,7 @@ Closes #<parity-fill-issue-N>
 - **Never edit `engine/core/`** beyond `exchange/manifests/polymarket.rs`. Cross-cutting core changes go to `core-architect`. If you find yourself wanting to touch core to complete your work, stop, summarize the proposal, and dispatch `core-architect` via `Task`.
 - **Never edit `engine/exchanges/kalshi/`**, `engine/sdk/`, `.github/`, `release-please-config.json`, `Cargo.toml` (workspace), or `.env*`.
 - **Never merge any PR.** `gh pr create` only.
-- **Never propose a unified-trait method addition yourself.** That's `parity-analyst`'s job; after a human-approved proposal, `core-architect` lays the trait scaffolding; you implement against it as a parity-fill.
+- **Never propose a unified-trait method addition yourself.** `core-architect` does that on an overlap-opportunity changelog dispatch from the orchestrator. You implement against the scaffolding it lands.
 - **Never update `maintenance/snapshots/polymarket-contracts.snapshot.json` without Polygonscan verification of every changed address.** Document the verification URL in your PR body.
 - **Always pair source + snapshot edits in the same PR** when changing contract addresses. Splitting them across PRs guarantees one of the two fails CI alone.
 

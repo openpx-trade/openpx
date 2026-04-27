@@ -38,11 +38,9 @@ Every agent-opened PR addresses exactly one concern. The orchestrator splits mul
 Every PR opened by an agent MUST start with one of these lines so the source is always discoverable:
 
 ```
-Closes #<N>                                       ← when a single source issue exists
-Triggered by: weekly drift cycle (run <run-id>)
-Triggered by: parity-analyst proposal #<N>
-Triggered by: PR-merged changelog (PR #<N>)
-Triggered by: scheduled SDK + docs regen (run <run-id>)
+Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entry "<label>"
+Triggered by: daily describe()-scan dispatch (run <run-id>) — implements <method> on <exchange>; trait scaffolded in PR #<N>
+Triggered by: backfill since <date> (run <run-id>)
 ```
 
 If a bot PR lacks this line, it's a prompt failure — request the linkage be added before merging. Reviewers can find every PR's origin in 5 seconds without reading the diff.
@@ -84,9 +82,7 @@ Every agent-opened PR carries exactly one **maintenance type** label and zero or
 
 | Label | Meaning |
 |---|---|
-| `autonomous-doc-sync` | Tracks an upstream spec/changelog change. Body cites source URL. |
-| `parity-fill` | Closes a parity gap (a formerly-`NotSupported` method is now implemented). |
-| `regen` | Generated artifact only (schema, `_models.py`, `models.d.ts`, docs MDX). |
+| `regen` | Generated artifact only (schema, `_models.py`, `models.d.ts`, docs MDX, lock refresh, `docs/changelog.mdx` append). |
 | `breaking-change` | Touches public API or trait; semver major bump implied. |
 | `requires-human-careful-review` | On-chain logic, auth, or any settlement-critical path. |
 | `docs-only` | Markdown / MDX changes; no Rust source touched. |

@@ -95,7 +95,7 @@ Per `.claude/agents/orchestrator.md`:
 ```
 Closes #<N>                                       ← when a single source issue exists
 Triggered by: weekly drift cycle (run <run-id>)
-Triggered by: parity-analyst proposal #<N>
+Triggered by: daily describe()-scan dispatch (run <run-id>)
 Triggered by: PR-merged changelog (PR #<N>)
 Triggered by: scheduled SDK + docs regen (run <run-id>)
 ```
@@ -114,7 +114,7 @@ Without this line the orchestrator will comment-block the PR; do not open withou
 To **every** PR opened by an agent, including:
 
 - Trait / model / manifest changes (`core-architect`)
-- Exchange spec-version bumps and parity-fills (maintainers)
+- Changelog-driven exchange updates and `(exchange, method)` describe()-scan dispatches (maintainers)
 - The cross-cutting `chore: regen SDK + docs` PR opened by `orchestrator` after the weekly tick
 - The `chore(docs): changelog #<N>` PR opened by `orchestrator` on PR-merge
 - Any other PR a future agent might open

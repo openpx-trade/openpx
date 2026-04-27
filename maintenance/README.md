@@ -9,14 +9,15 @@ maintenance/
 ├── README.md                          # this file
 ├── runbooks/                          # imperative checklists agents read at startup
 │   ├── README.md
-│   ├── spec-version-bump.md           # response to upstream openapi/asyncapi/changelog drift
+│   ├── changelog-driven-update.md     # maintainer response to a critical-exchange-specific changelog dispatch
 │   ├── contract-redeployment.md       # Polymarket contract-address change procedure
-│   ├── parity-gap-closure.md          # closing a NotSupported trait method on one exchange
+│   ├── parity-gap-closure.md          # maintainer response to a describe()-scan dispatch (implement or mark)
 │   ├── trait-evolution.md             # core-architect's playbook for trait/model changes
-│   └── issue-triage.md                # orchestrator's classification + routing
+│   ├── pr-preflight.md                # mandatory checklist before any gh pr create
+│   └── pr-ci-watch.md                 # post-PR-create CI watch + fix protocol
 ├── scripts/                           # Python scripts the workflows + just recipes call
-│   ├── check_docs_drift.py            # detect drift in upstream docs vs the lock
-│   ├── exchange-docs.lock.json        # hashed baseline (~325 URLs)
+│   ├── check_docs_drift.py            # diff Kalshi + Polymarket changelogs vs the lock
+│   ├── exchange-docs.lock.json        # per-exchange last-seen changelog body + hash
 │   └── generate_mintlify_docs.py      # auto-generate docs/reference/types.mdx from schema
 ├── policy/                            # written policies (referenced by CODEOWNERS at .github/CODEOWNERS)
 │   ├── REVIEW_POLICY.md               # PR review and label policy
@@ -40,7 +41,7 @@ The agent prompt files MUST live at `.claude/agents/` (Claude Code's required pa
 These can't move because their tooling expects specific paths:
 
 - `.github/CODEOWNERS` — GitHub mandates this path
-- `.github/workflows/agent-tick.yml`, `docs-drift.yml`, `ci.yml` — GitHub mandates `.github/workflows/`
+- `.github/workflows/agent-tick.yml`, `ci.yml` — GitHub mandates `.github/workflows/`
 - `.claude/agents/*.md`, `.claude/Claude.md`, `.claude/settings.json` — Claude Code mandates `.claude/`
 - `justfile` — `just` reads from repo root
 
@@ -53,17 +54,20 @@ they lived under each crate's `tests/` directory.
 ## Useful commands
 
 ```bash
-# Run drift detection (fast)
+# Run changelog drift detection (fetches both upstream changelogs)
 just drift-check
 
-# Refresh the lock file with a full sweep (~325 HTTP requests)
+# Refresh the lock file with the current live changelogs
 just drift-update
 
 # Regenerate Mintlify reference docs from schema
 just docs
 
-# Manually trigger the agent-tick workflow (the same workflow the weekly cron runs)
+# Manually trigger the agent-tick workflow (the same workflow the daily cron runs)
 just maintain
+
+# Backfill: re-process every changelog entry dated on/after SINCE
+just backfill 2026-02-01
 
 # Run the manifest-coverage test directly
 cargo test -p px-core --test manifest_coverage
