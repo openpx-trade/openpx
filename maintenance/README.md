@@ -9,8 +9,7 @@ maintenance/
 ├── README.md                          # this file
 ├── runbooks/                          # imperative checklists agents read at startup
 │   ├── README.md
-│   ├── changelog-driven-update.md     # maintainer response to a critical-exchange-specific changelog dispatch
-│   ├── contract-redeployment.md       # Polymarket contract-address change procedure
+│   ├── changelog-driven-update.md     # maintainer response to a critical-exchange-specific changelog dispatch (incl. on-chain redeployment special case)
 │   ├── parity-gap-closure.md          # maintainer response to a describe()-scan dispatch (implement or mark)
 │   ├── trait-evolution.md             # core-architect's playbook for trait/model changes
 │   ├── pr-preflight.md                # mandatory checklist before any gh pr create
