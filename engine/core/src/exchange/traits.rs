@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -144,6 +145,15 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
+    /// Fetch the exchange's current wall-clock time. Useful for clock-skew
+    /// correction in signing-sensitive paths and HFT replay where local
+    /// `chrono::Utc::now()` would silently drift from the venue's clock.
+    async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_server_time".into()),
+        ))
+    }
+
     fn describe(&self) -> ExchangeInfo {
         ExchangeInfo {
             id: self.id(),
@@ -158,6 +168,7 @@ pub trait Exchange: Send + Sync {
             has_fetch_trades: false,
             has_fetch_user_activity: false,
             has_fetch_fills: false,
+            has_fetch_server_time: false,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: false,
@@ -184,6 +195,7 @@ pub struct ExchangeInfo {
     pub has_fetch_trades: bool,
     pub has_fetch_user_activity: bool,
     pub has_fetch_fills: bool,
+    pub has_fetch_server_time: bool,
     pub has_approvals: bool,
     pub has_refresh_balance: bool,
     pub has_websocket: bool,

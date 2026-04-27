@@ -243,6 +243,9 @@
         "has_fetch_price_history": {
           "type": "boolean"
         },
+        "has_fetch_server_time": {
+          "type": "boolean"
+        },
         "has_fetch_trades": {
           "type": "boolean"
         },
@@ -273,6 +276,7 @@
         "has_fetch_orderbook_history",
         "has_fetch_positions",
         "has_fetch_price_history",
+        "has_fetch_server_time",
         "has_fetch_trades",
         "has_fetch_user_activity",
         "has_refresh_balance",
