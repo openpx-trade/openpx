@@ -56,7 +56,7 @@ One concern per PR. If you're tempted to bundle a trait addition with a model re
    - Update `engine/sdk/src/lib.rs` (`dispatch!` arm + `ExchangeInner` shim).
    - Update both exchanges' `describe()` impls in `engine/exchanges/<id>/src/exchange.rs` to add `has_<method>: false`. **Do NOT add an "intentionally unsupported" marker comment** — leaving the flag bare is the signal that the orchestrator's next daily cycle should dispatch the maintainer to implement (or, if the maintainer concludes the exchange has no equivalent, *they* add the marker).
 
-5. **Complete `maintenance/runbooks/pr-preflight.md` to its conclusion.** All four regenerated files (`schema/openpx.schema.json`, `_models.py`, `models.d.ts`, `docs/reference/types.mdx`) land in this PR. If any preflight step fails because of missing tooling, do NOT open the PR — comment on the orchestrator's daily PR with the exact failure and exit `status: blocked`.
+5. **Complete `maintenance/runbooks/pr-preflight.md` to its conclusion.** All four regenerated files (`schema/openpx.schema.json`, `_models.py`, `models.d.ts`, `docs/reference/types.mdx`) land in this PR. If any preflight step fails because of missing tooling, do NOT open the PR — write the exact failure to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`.
 
 6. **Open the PR.** Conventional commit `feat(core): add <method>` (or `feat(core)!: <change>` with `!` for breaking — label `breaking-change`).
 
@@ -99,7 +99,12 @@ One concern per PR. If you're tempted to bundle a trait addition with a model re
    2. <other likely-controversial design choice>
    ```
 
-7. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
+7. **Apply the dedup label and request reviewer:**
+   ```
+   gh pr edit <PR> --add-label cl/<exchange>/<id>
+   gh pr edit <PR> --add-reviewer MilindPathiyal
+   ```
+   `<exchange>` and `<id>` come from the dispatch payload (the upstream changelog entry that triggered this scaffold). The label is the orchestrator's dedup key — without it, the next cycle will dispatch a duplicate.
 
 8. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`.** Up to 3 fix attempts. Submit `status: success` only once CI is green; otherwise `status: blocked` with detailed Notes.
 

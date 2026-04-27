@@ -1,6 +1,6 @@
 # Runbook: PR preflight (mandatory for every PR-opening agent)
 
-Followed by **every** agent before running `gh pr create`. No exceptions — `orchestrator`, `core-architect`, `kalshi-maintainer`, `polymarket-maintainer`, and any future PR-opening agent must complete this checklist to its conclusion.
+Followed by **every** agent before running `gh pr create`. No exceptions — `orchestrator`, `core-architect`, `exchange-maintainer`, and any future PR-opening agent must complete this checklist to its conclusion.
 
 The rule this runbook enforces: **every bot PR keeps the Rust core, Python SDK, TypeScript SDK, and docs in sync, AND every SDK actually builds and imports cleanly.** No partial syncs, no "regen this before merge" caveats, no "intentionally untouched" carve-outs for any one SDK or for docs.
 
@@ -86,9 +86,23 @@ A green build with a broken import means the package metadata or entry point dri
 
 For changes that introduce or rename a **user-facing concept** — a new trait method, a new error class, a new model, a renamed field, a new exchange-level capability — also check whether a prose page in `docs/` (a guide, a tutorial, an exchange-specific notes page) needs an update. If yes, update it in this PR. The reference page alone is not enough for a feature; users read prose.
 
-If you are uncertain whether a prose page needs updating, comment on the orchestrator's daily PR before opening yours and exit `status: blocked`.
+If you are uncertain whether a prose page needs updating, write to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`.
 
-### 8. Provenance — every PR body starts with the source line
+### 8. openpx changelog bullet — if user-facing, append in this same PR
+
+If this PR introduces or changes user-facing surface (a new trait method implementation, a renamed model field, a new error variant, a new exchange capability, a breaking API change), append one bullet to `docs/changelog.mdx` under `## Unreleased` in this same PR. Format:
+
+```
+- **<exchange|core|sdk|docs>**: <one-sentence end-user-relevant description> ([#<N>](pr-url))
+```
+
+Group under `### Breaking`, `### Added`, `### Fixed`, or `### Changed`. Create the `## Unreleased` heading at the very top (after the intro paragraph) if missing — released versions stay below.
+
+Pure-mechanical PRs (regen-only, CI, agent-config) skip this step — humans flag missing bullets in review. The orchestrator's lock-refresh PR also skips (it's mechanical).
+
+If you are uncertain whether your change warrants a bullet, lean toward including — the human edits the bullet at release time.
+
+### 9. Provenance — every PR body starts with the source line
 
 Per `.claude/agents/orchestrator.md`:
 
@@ -132,6 +146,7 @@ A correct preflight run is visible in the PR body's `## Tests` (or `## Test plan
 - just python-build: pass; `import openpx` smoke OK
 - just node-build: pass; `require('./index.js')` smoke OK
 - docs/reference/types.mdx: regenerated; prose pages reviewed (none required | <list>)
+- docs/changelog.mdx ## Unreleased: bullet appended (or N/A — pure-mechanical PR)
 ```
 
 If any of these is missing or qualified ("not run because…"), the PR should bounce back to the bot with a comment requesting the missing step.
