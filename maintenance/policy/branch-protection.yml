@@ -12,20 +12,23 @@ main:
   required_status_checks:
     strict: true  # branches must be up-to-date before merge
     contexts:
-      # GitHub Actions reports check contexts under `<workflow-name> / <job-name>`
-      # — both halves are the `name:` fields in .github/workflows/ci.yml.
-      # The workflow-name prefix is required; without it the rule waits forever
-      # on a context that never resolves (which is why the old `ci-success`
-      # required check stayed pending). Match these strings verbatim.
-      - CI / Format
-      - CI / Clippy
-      - CI / Test (ubuntu-latest)
-      - CI / Test (macos-latest)
-      - CI / Check
-      - CI / Version Sync Check
-      - CI / SDK Sync Check
-      - CI / Benchmarks
-      - CI / Manifest Coverage
+      # GitHub Actions reports check contexts as `<workflow-name> / <job-name> (<event>)`.
+      # The trailing `(pull_request)` is auto-appended by GitHub for any workflow
+      # triggered on `pull_request`. Branch protection only gates PR merges (direct
+      # pushes to main are blocked), so we only require the pull_request variant.
+      # If the rule omits the `(pull_request)` suffix, GitHub treats it as a
+      # different context and waits forever for a status that never reports under
+      # that name (this is the same bug pattern that previously left
+      # `CI / CI Success` stuck — see history).
+      - CI / Format (pull_request)
+      - CI / Clippy (pull_request)
+      - CI / Test (ubuntu-latest) (pull_request)
+      - CI / Test (macos-latest) (pull_request)
+      - CI / Check (pull_request)
+      - CI / Version Sync Check (pull_request)
+      - CI / SDK Sync Check (pull_request)
+      - CI / Benchmarks (pull_request)
+      - CI / Manifest Coverage (pull_request)
       # ci-success removed — it was a needless aggregator and its status-check
       # name drifted from what Actions reported, leaving the rule forever
       # pending on a context never emitted.
@@ -49,15 +52,15 @@ notes: |
       "required_status_checks": {
         "strict": true,
         "contexts": [
-          "CI / Format",
-          "CI / Clippy",
-          "CI / Test (ubuntu-latest)",
-          "CI / Test (macos-latest)",
-          "CI / Check",
-          "CI / Version Sync Check",
-          "CI / SDK Sync Check",
-          "CI / Benchmarks",
-          "CI / Manifest Coverage"
+          "CI / Format (pull_request)",
+          "CI / Clippy (pull_request)",
+          "CI / Test (ubuntu-latest) (pull_request)",
+          "CI / Test (macos-latest) (pull_request)",
+          "CI / Check (pull_request)",
+          "CI / Version Sync Check (pull_request)",
+          "CI / SDK Sync Check (pull_request)",
+          "CI / Benchmarks (pull_request)",
+          "CI / Manifest Coverage (pull_request)"
         ]
       },
       "enforce_admins": false,
@@ -77,6 +80,11 @@ notes: |
     gh api repos/openpx-trade/openpx/branches/main/protection \
       --method PUT --input /tmp/protection.json
 
-  All listed contexts must include the `CI / ` prefix (workflow name) plus the
-  `name:` field of each job verbatim. If a check name in the workflow changes,
-  this list must change in lockstep.
+  All listed contexts must include:
+    1. `CI / ` workflow-name prefix
+    2. The job's `name:` field verbatim (capitalization, spaces, parens incl.)
+    3. The trailing ` (pull_request)` suffix that GitHub auto-appends
+
+  Drop any of those three pieces and the rule will wait forever for a status
+  that never reports under that name (the bug pattern that left CI / CI Success
+  pending in history).
