@@ -12,18 +12,20 @@ main:
   required_status_checks:
     strict: true  # branches must be up-to-date before merge
     contexts:
-      # These names match the `name:` field of each job in .github/workflows/ci.yml
-      # exactly. GitHub Actions reports the status under the job's display name;
-      # the branch-protection rule must use the same string verbatim.
-      - Format
-      - Clippy
-      - Test (ubuntu-latest)
-      - Test (macos-latest)
-      - Check
-      - Version Sync Check
-      - SDK Sync Check
-      - Benchmarks
-      - Manifest Coverage
+      # GitHub Actions reports check contexts under `<workflow-name> / <job-name>`
+      # — both halves are the `name:` fields in .github/workflows/ci.yml.
+      # The workflow-name prefix is required; without it the rule waits forever
+      # on a context that never resolves (which is why the old `ci-success`
+      # required check stayed pending). Match these strings verbatim.
+      - CI / Format
+      - CI / Clippy
+      - CI / Test (ubuntu-latest)
+      - CI / Test (macos-latest)
+      - CI / Check
+      - CI / Version Sync Check
+      - CI / SDK Sync Check
+      - CI / Benchmarks
+      - CI / Manifest Coverage
       # ci-success removed — it was a needless aggregator and its status-check
       # name drifted from what Actions reported, leaving the rule forever
       # pending on a context never emitted.
@@ -38,20 +40,43 @@ main:
   allow_auto_merge: false  # explicitly disabled — every PR human-merged
 
 notes: |
-  Applying via gh CLI:
+  Apply via the JSON-file pattern below. `gh api --raw-field` sends complex
+  values as JSON-encoded strings (which the API rejects); use `--input <file>`
+  with a real JSON document instead.
+
+    cat > /tmp/protection.json <<'JSON'
+    {
+      "required_status_checks": {
+        "strict": true,
+        "contexts": [
+          "CI / Format",
+          "CI / Clippy",
+          "CI / Test (ubuntu-latest)",
+          "CI / Test (macos-latest)",
+          "CI / Check",
+          "CI / Version Sync Check",
+          "CI / SDK Sync Check",
+          "CI / Benchmarks",
+          "CI / Manifest Coverage"
+        ]
+      },
+      "enforce_admins": false,
+      "required_pull_request_reviews": {
+        "dismiss_stale_reviews": true,
+        "require_code_owner_reviews": true,
+        "required_approving_review_count": 1
+      },
+      "restrictions": null,
+      "allow_force_pushes": false,
+      "allow_deletions": false,
+      "required_conversation_resolution": true,
+      "allow_auto_merge": false
+    }
+    JSON
 
     gh api repos/openpx-trade/openpx/branches/main/protection \
-      --method PUT \
-      --raw-field 'required_status_checks={"strict":true,"contexts":["Format","Clippy","Test (ubuntu-latest)","Test (macos-latest)","Check","Version Sync Check","SDK Sync Check","Benchmarks","Manifest Coverage"]}' \
-      --raw-field enforce_admins=false \
-      --raw-field 'required_pull_request_reviews={"dismiss_stale_reviews":true,"require_code_owner_reviews":true,"required_approving_review_count":1}' \
-      --raw-field restrictions=null \
-      --raw-field allow_force_pushes=false \
-      --raw-field allow_deletions=false \
-      --raw-field required_conversation_resolution=true \
-      --raw-field allow_auto_merge=false
+      --method PUT --input /tmp/protection.json
 
-  All listed contexts must match the actual `name:` field of each job in
-  .github/workflows/ci.yml exactly (capitalization, spaces, parentheses
-  included). If a check name in the workflow changes, this command must
-  change in lockstep.
+  All listed contexts must include the `CI / ` prefix (workflow name) plus the
+  `name:` field of each job verbatim. If a check name in the workflow changes,
+  this list must change in lockstep.
