@@ -1,0 +1,38 @@
+---
+title: "fetch_open_orders"
+description: "List open orders, optionally scoped to one market."
+---
+
+```rust
+async fn fetch_open_orders(
+    params: Option<FetchOrdersParams>,
+) -> Result<Vec<Order>, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="market_id" type="string?">
+  Filter to one market. Pass `None` for every open order.
+</ParamField>
+
+## Returns
+
+[`Order[]`](/api/unified-schema#order).
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let open = ex.fetch_open_orders(None).await?;
+```
+
+```python Python
+open = ex.fetch_open_orders()
+```
+
+```typescript TypeScript
+const open = await ex.fetchOpenOrders();
+```
+
+</CodeGroup>

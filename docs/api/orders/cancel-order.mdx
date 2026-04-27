@@ -1,0 +1,43 @@
+---
+title: "cancel_order"
+description: "Cancel an open order."
+---
+
+```rust
+async fn cancel_order(
+    order_id: &str,
+    market_id: Option<&str>,
+) -> Result<Order, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="order_id" type="string" required>
+  Native order ID.
+</ParamField>
+
+<ParamField path="market_id" type="string?">
+  Optional, but accelerates Polymarket cancels.
+</ParamField>
+
+## Returns
+
+[`Order`](/api/unified-schema#order) — the cancelled order.
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let order = ex.cancel_order("ord_abc123", None).await?;
+```
+
+```python Python
+order = ex.cancel_order("ord_abc123")
+```
+
+```typescript TypeScript
+const order = await ex.cancelOrder("ord_abc123");
+```
+
+</CodeGroup>

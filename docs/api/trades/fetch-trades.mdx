@@ -1,9 +1,7 @@
 ---
-title: "Trades"
+title: "fetch_trades"
 description: "Public market trade tape."
 ---
-
-## `fetch_trades`
 
 ```rust
 async fn fetch_trades(
@@ -11,7 +9,7 @@ async fn fetch_trades(
 ) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError>
 ```
 
-### Parameters
+## Parameters
 
 <ParamField path="market_id" type="string" required>
   Native market ID.
@@ -45,6 +43,37 @@ async fn fetch_trades(
   From a prior response.
 </ParamField>
 
-`MarketTrade` carries `{ trade_id, market_id, asset_id, price, size, side?,
-outcome?, fee_rate_bps?, exchange_ts? }`. See
-[`MarketTrade`](/api/unified-schema#markettrade--fill--candlestick).
+## Returns
+
+<ResponseField name="trades" type="MarketTrade[]">
+  See [`MarketTrade`](/api/unified-schema#markettrade--fill--candlestick).
+</ResponseField>
+
+<ResponseField name="cursor" type="string?">
+  Pagination cursor; `null` on last page.
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::TradesRequest;
+
+let (trades, cursor) = ex.fetch_trades(TradesRequest {
+    market_id: "KXBTC-25MAR14-T20000".into(),
+    limit: Some(100),
+    ..Default::default()
+}).await?;
+```
+
+```python Python
+result = ex.fetch_trades("KXBTC-25MAR14-T20000", limit=100)
+trades, cursor = result["trades"], result["cursor"]
+```
+
+```typescript TypeScript
+const trades = await ex.fetchTrades("KXBTC-25MAR14-T20000");
+```
+
+</CodeGroup>

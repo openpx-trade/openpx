@@ -1,9 +1,7 @@
 ---
-title: "Price History"
+title: "fetch_price_history"
 description: "OHLCV candles."
 ---
-
-## `fetch_price_history`
 
 ```rust
 async fn fetch_price_history(
@@ -11,7 +9,7 @@ async fn fetch_price_history(
 ) -> Result<Vec<Candlestick>, OpenPxError>
 ```
 
-### Parameters
+## Parameters
 
 <ParamField path="market_id" type="string" required>
   Native market ID.
@@ -41,10 +39,33 @@ async fn fetch_price_history(
   Unix seconds.
 </ParamField>
 
-`Candlestick`: `{ timestamp, open, high, low, close, volume, open_interest? }`.
-Open interest is currently provided only by Kalshi.
+## Returns
+
+`Candlestick[]`.
+
+<ResponseField name="timestamp" type="DateTime<Utc>" />
+<ResponseField name="open" type="f64" />
+<ResponseField name="high" type="f64" />
+<ResponseField name="low" type="f64" />
+<ResponseField name="close" type="f64" />
+<ResponseField name="volume" type="f64" />
+<ResponseField name="open_interest" type="f64?">
+  Kalshi only.
+</ResponseField>
+
+## Example
 
 <CodeGroup>
+
+```rust Rust
+use openpx::{PriceHistoryRequest, PriceHistoryInterval};
+
+let candles = ex.fetch_price_history(PriceHistoryRequest {
+    market_id: "KXBTC-25MAR14-T20000".into(),
+    interval: PriceHistoryInterval::Hour,
+    ..Default::default()
+}).await?;
+```
 
 ```python Python
 candles = ex.fetch_price_history(

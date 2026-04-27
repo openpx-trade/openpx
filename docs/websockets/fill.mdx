@@ -3,9 +3,7 @@ title: "Fill"
 description: "A fill on one of your orders."
 ---
 
-A fill on one of *your* orders.
-
-## `ActivityFill` payload
+## Payload
 
 <ResponseField name="market_id" type="string" />
 <ResponseField name="asset_id" type="string" />
@@ -19,17 +17,30 @@ A fill on one of *your* orders.
 <ResponseField name="fee" type="f64?" />
 <ResponseField name="liquidity_role" type="Maker | Taker | null" />
 <ResponseField name="exchange_ts_ms" type="u64?" />
-<ResponseField name="source_channel" type="Cow<'static, str>" />
 
-## Pattern matching (Python)
+## Example
 
-```python
-from openpx import Snapshot, Delta, Trade, Fill
+<CodeGroup>
 
-for update in ws.updates():
-    match update:
-        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq): ...
-        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq): ...
-        case Trade(trade, local_ts_ms): ...
-        case Fill(fill, local_ts_ms): ...
+```rust Rust
+use px_core::WsUpdate;
+
+if let WsUpdate::Fill { fill, .. } = update? {
+    println!("filled {} @ {}", fill.size, fill.price);
+}
 ```
+
+```python Python
+from openpx import Fill
+
+if isinstance(update, Fill):
+    print(update.fill.size, update.fill.price)
+```
+
+```typescript TypeScript
+if (update?.kind === "Fill") {
+  console.log(update.fill.size, update.fill.price);
+}
+```
+
+</CodeGroup>

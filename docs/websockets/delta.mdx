@@ -3,24 +3,48 @@ title: "Delta"
 description: "Incremental change to an existing book."
 ---
 
-Apply in place; discard if you've seen a `Clear` / `BookInvalidated` for
+Apply in place. Discard if you've seen a `Clear` / `BookInvalidated` for
 this market without a follow-up `Snapshot`.
 
-## Fields
+## Payload
 
 <ResponseField name="market_id" type="string" />
 <ResponseField name="asset_id" type="string" />
-<ResponseField name="changes" type="ChangeVec" >
-  Stack-allocated up to 4 entries.
+<ResponseField name="changes" type="PriceLevelChange[]">
+  Each change is `{ side: Bid | Ask, price, size }` with **absolute-replacement**
+  semantics: `size > 0` sets the level; `size == 0` removes it.
 </ResponseField>
 <ResponseField name="exchange_ts" type="u64?" />
 <ResponseField name="local_ts_ms" type="u64" />
 <ResponseField name="seq" type="u64" />
 
-## Change semantics
+## Example
 
-Each `PriceLevelChange` is `{ side: Bid | Ask, price: FixedPrice, size: f64 }`
-with **absolute-replacement** semantics:
+<CodeGroup>
 
-- `size > 0` sets the level
-- `size == 0` removes it
+```rust Rust
+use px_core::WsUpdate;
+
+if let WsUpdate::Delta { market_id, changes, .. } = update? {
+    let book = cache.get_mut(&market_id).expect("snapshot first");
+    for c in &changes { book.apply(c); }
+}
+```
+
+```python Python
+from openpx import Delta
+
+if isinstance(update, Delta):
+    book = cache[update.market_id]
+    for change in update.changes:
+        book.apply(change)
+```
+
+```typescript TypeScript
+if (update?.kind === "Delta") {
+  const book = cache.get(update.market_id);
+  for (const c of update.changes) book.apply(c);
+}
+```
+
+</CodeGroup>
