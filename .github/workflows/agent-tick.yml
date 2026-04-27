@@ -1,7 +1,8 @@
 # Daily entry point for the orchestrator. Fires at 00:00 UTC and on
 # workflow_dispatch. The orchestrator diffs the Kalshi + Polymarket changelogs
-# against the lock and dispatches a maintainer or parity-analyst per actionable
-# entry — that is the bot's entire scope.
+# against the lock, scans both exchanges' describe() for unimplemented
+# scaffolded methods, and dispatches core-architect or a maintainer per
+# concern — that is the bot's entire scope.
 
 name: agent-tick
 
@@ -71,12 +72,16 @@ jobs:
             - `daily` (the default — also used by the cron and by `just maintain`):
               fetch both upstream changelogs, diff against
               `maintenance/scripts/exchange-docs.lock.json`, classify each
-              new <Update> entry, and dispatch the relevant maintainer or
-              parity-analyst per the runbook.
+              new <Update> entry, and dispatch core-architect or the
+              relevant maintainer per the runbook. Then scan both
+              exchanges' describe() for unimplemented scaffolded methods
+              and dispatch maintainers per `parity-gap-closure.md`.
+              Finally append docs/changelog.mdx for any user-facing
+              merged PRs since last tick and open one daily PR.
             - `backfill`: instead of diffing against the lock, walk every
               <Update> entry in both changelogs whose label date is
-              on/after the `since` value and classify it the same way the
-              daily cycle would. Use when the repo has fallen behind and
+              on/after the `since` value and classify it the same way as
+              the daily cycle. Use when the repo has fallen behind and
               the lock's last-seen state predates entries the bot needs
               to catch up on.
 

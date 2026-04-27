@@ -32,7 +32,7 @@ Identify exactly which OpenPX files this change touches. Typical patterns:
 
 | Entry shape | OpenPX impact |
 |---|---|
-| New endpoint (e.g. "added `GET /server-time`") | New `fetch_<thing>` method on this exchange's `impl Exchange`. Most likely already-scaffolded by `core-architect` if the trait method exists; otherwise this is a parity-fill that needs `core-architect` first — escalate. |
+| New endpoint (e.g. "added `GET /server-time`") | If the unified trait method already exists (look for `fetch_<thing>` in `engine/core/src/exchange/traits.rs`), implement it on this exchange and flip `has_<method>` to `true`. If the trait method does not exist yet, this is an `overlap-opportunity` for `core-architect`, not a `critical-exchange-specific` for you — comment on the orchestrator's daily PR with what you found and exit `status: blocked`. |
 | Renamed field on an existing endpoint | Update `field_mappings` in `engine/core/src/exchange/manifests/<id>.rs`. |
 | Removed field | Drop the `FieldMapping` entry. If a unified model field is no longer fillable, escalate to `core-architect`. |
 | New optional field | Add to `field_mappings` if it maps to the unified Market/Order/etc.; otherwise to `maintenance/manifest-allowlists/<id>.txt` with a one-line comment. |

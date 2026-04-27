@@ -1,27 +1,28 @@
 # OpenPX agent roster
 
-Five specialist agents maintain this repo. All run on `claude-opus-4-7` with max reasoning effort. Every PR they open requires explicit human approval — no auto-merge.
+Four specialist agents maintain this repo. All run on `claude-opus-4-7` with max reasoning effort. Every PR they open requires explicit human approval — no auto-merge.
 
 ## Roster
 
 | Agent | Owns | Triggered by |
 |---|---|---|
-| `orchestrator` | Daily cycle — (1) diffs upstream Kalshi + Polymarket changelogs against the lock, classifies new entries, dispatches one maintainer/architect call per concern; (2) appends one bullet per user-facing merged PR since last tick to `docs/changelog.mdx` under `## Unreleased`; (3) opens one daily PR with the lock refresh + changelog append | Daily cron 00:00 UTC, `workflow_dispatch` (incl. `just backfill <DATE>`) |
-| `kalshi-maintainer` | `engine/exchanges/kalshi/` (excluding `auth.rs`) and Kalshi entries in `engine/core/src/exchange/manifests/kalshi.rs` | Dispatched by `orchestrator` on a Kalshi changelog entry classified as `critical-exchange-specific` |
-| `polymarket-maintainer` | All of `engine/exchanges/polymarket/` (including funds-moving files; CODEOWNERS forces human review on those) and Polymarket entries in manifests + the contracts snapshot | Dispatched by `orchestrator` on a Polymarket changelog entry classified as `critical-exchange-specific` |
-| `core-architect` | `engine/core/` — trait, manifest schema, normalizers, error hierarchy, models. Implements approved parity proposals (i.e. parity-analyst proposals that a human approved, then routed back through a future cycle). | Dispatched by `orchestrator` only when a `parity-fill-approved` issue exists at cycle-start time |
-| `parity-analyst` | Writes a unified-trait proposal as a new `parity-gap` issue when the orchestrator classifies a changelog entry as `overlap-opportunity` (the same/similar capability has appeared on the other exchange). Never opens PRs. | Dispatched by `orchestrator` per `overlap-opportunity` entry |
+| `orchestrator` | Daily cycle — (1) diffs the Kalshi + Polymarket changelogs against the lock and dispatches per actionable entry; (2) scans both exchanges' `describe()` for unimplemented scaffolded methods and dispatches the relevant maintainer; (3) appends one bullet per user-facing merged PR since last tick to `docs/changelog.mdx` under `## Unreleased`; (4) opens one daily PR with the lock refresh + changelog append | Daily cron 00:00 UTC, `workflow_dispatch` (incl. `just backfill <DATE>`) |
+| `core-architect` | `engine/core/` — trait, manifest schema, normalizers, error hierarchy, models. Designs the unified trait shape, scaffolds it, and writes the proposal as the PR body itself (no separate proposal-issue step). | Dispatched by `orchestrator` when a changelog entry is classified as `overlap-opportunity` (or for cross-cutting refactors) |
+| `kalshi-maintainer` | `engine/exchanges/kalshi/` (excluding `auth.rs`) and Kalshi entries in `engine/core/src/exchange/manifests/kalshi.rs` | Dispatched by `orchestrator` on a Kalshi changelog entry classified as `critical-exchange-specific`, or on a `(kalshi, <method>)` describe()-scan hit (per `runbooks/parity-gap-closure.md`) |
+| `polymarket-maintainer` | All of `engine/exchanges/polymarket/` (including funds-moving files; CODEOWNERS forces human review on those) and Polymarket entries in manifests + the contracts snapshot | Dispatched by `orchestrator` on a Polymarket changelog entry classified as `critical-exchange-specific`, or on a `(polymarket, <method>)` describe()-scan hit (per `runbooks/parity-gap-closure.md`) |
 
 ## How dispatch works
 
 `orchestrator` is the only agent that fans work out. The daily cycle:
 
 1. Run `python3 maintenance/scripts/check_docs_drift.py --json` — fetches both upstream changelogs, diffs against `maintenance/scripts/exchange-docs.lock.json`, returns the unified diff per exchange.
-2. For each new `<Update>` block in the diff, classify as `overlap-opportunity` (→ dispatch `parity-analyst` to file a proposal issue), `critical-exchange-specific` (→ dispatch the relevant maintainer to open a PR), or `operational-only` (→ skip).
-3. Each dispatch is its own concern → its own Task call → its own PR or issue. Never bundle.
+2. For each new `<Update>` block in the diff, classify as `overlap-opportunity` (→ dispatch `core-architect` to scaffold the trait and write the proposal in the PR body), `critical-exchange-specific` (→ dispatch the relevant maintainer to open a PR), or `operational-only` (→ skip).
+3. Read both exchanges' `describe()` impls. For each `has_<method>: false` line without an `// intentionally unsupported:` marker, dispatch the relevant maintainer to either implement the method or add the marker.
 4. Query merged PRs since the last commit that touched `docs/changelog.mdx`. For each user-facing PR, append one bullet under `## Unreleased`. Skip pure-mechanical PRs (regen, CI, agent config).
-5. Refresh the lock and open one `chore(daily): refresh changelog lock + append openpx changelog for <DATE>` PR with both the lock-file change and the changelog appends.
+5. Refresh the lock and open one `chore(daily): refresh changelog lock + append openpx changelog for <DATE>` PR.
 6. End with the standard handoff message.
+
+Each dispatch is its own concern → its own Task call → its own PR. Never bundle.
 
 ## Triggers
 
@@ -40,7 +41,7 @@ Five specialist agents maintain this repo. All run on `claude-opus-4-7` with max
 ## Files
 
 - `HANDOFF.md` — exit-message contract every agent uses
-- `orchestrator.md`, `kalshi-maintainer.md`, `polymarket-maintainer.md`, `parity-analyst.md` — agent definitions
+- `orchestrator.md`, `core-architect.md`, `kalshi-maintainer.md`, `polymarket-maintainer.md` — agent definitions
 - `../runbooks/` — procedural checklists agents read at startup
 
 ## See also

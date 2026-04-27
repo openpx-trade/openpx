@@ -4,7 +4,7 @@ Followed by `core-architect` when adding to or restructuring `engine/core/src/ex
 
 ## Inputs
 
-- An approved parity-analyst proposal issue, OR a refactor opportunity flagged by a maintainer in a PR review.
+- The orchestrator's dispatch message for an `overlap-opportunity` changelog entry, OR a cross-cutting refactor opportunity flagged by a maintainer.
 
 ## Decision tree
 
@@ -32,7 +32,7 @@ The repo is pre-users; backward compatibility is not a goal. Lean is. Treat all 
 
 2. **Add the request/response types** in `engine/core/src/exchange/traits.rs` (or a sibling module if the file is getting long). `#[derive(Debug, Clone, Serialize, Deserialize)]` plus `#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]` so they appear in the auto-generated docs.
 
-3. **Update `engine/core/src/exchange/traits.rs`'s `ExchangeInfo` struct** with a new `pub has_<method>: bool` field. Default is `false` — maintainers will flip to `true` in their parity-fill PRs once they implement the method.
+3. **Update `engine/core/src/exchange/traits.rs`'s `ExchangeInfo` struct** with a new `pub has_<method>: bool` field. Default is `false` — maintainers flip to `true` once they implement the method on their exchange (the orchestrator's daily describe()-scan dispatches them).
 
 4. **Update `engine/sdk/src/lib.rs`:**
    - Add a `dispatch!` arm for the new method (the macro takes the method name).
@@ -61,48 +61,23 @@ The repo is pre-users; backward compatibility is not a goal. Lean is. Treat all 
 
 9. **Commit the regenerated artifacts** in the same PR: `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, `docs/reference/types.mdx`. They MUST land together — the `sdk-sync`, `Python SDK Build`, and `Node.js SDK Build` CI gates collectively verify this.
 
-10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. **PR body MUST start with `Closes #<proposal-N>`** so the originating proposal auto-closes on merge. Label `area:core` + the `parity-fill` label if this closes a parity proposal.
+10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. **PR body MUST start with `Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entry "<label>" classified as overlap-opportunity`** and contain the proposal as the body itself (per `.claude/agents/core-architect.md`). Label `area:core`.
 
 11. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
 
-12. **File follow-up parity-fill issues** — one per exchange whose `describe()` flag you set to `false`. Use the explicit "this is impl follow-up, not a duplicate proposal" template:
+12. **Watch CI per `runbooks/pr-ci-watch.md`.** Up to 3 fix attempts.
 
-    ```
-    Title: [parity-fill] {exchange}: implement {method} (proposal #{N}, scaffolding PR #{M})
-
-    Body:
-    Implementation task for the `{method}` unified trait method.
-
-    - Original proposal: #{N}
-    - Trait scaffolding: PR #{M} (closes #{N} on merge)
-    - Runbook: `maintenance/runbooks/parity-gap-closure.md`
-
-    When the assignee picks this up, change `has_{method}: false` to `true` in
-    `engine/exchanges/{exchange}/src/exchange.rs::describe()` and replace the
-    default `NotSupported` impl with a real one that hits the upstream endpoint.
-
-    cc @{exchange}-maintainer
-    ```
-
-    Labels: `parity-fill`, `area:{exchange}`, `enhancement`. Assignee: `openpx-bot` (every `gh issue create` MUST include `--assignee openpx-bot`). Run dedup pre-flight (`gh issue list --search` for the same `{method}` and `{exchange}`) before creating each one.
-
-13. **Comment on the proposal issue** noting where the impl is tracked. Format:
-
-    ```
-    Trait scaffolding ready in PR #{M}. Per-exchange implementation:
-    - kalshi: #{kalshi-followup}
-    - polymarket: #{polymarket-followup}
-    ```
+13. **Submit handoff.** Per-exchange implementation lands later — the orchestrator's next daily `describe()`-scan picks up `has_<method>: false` on each exchange and dispatches the relevant maintainer per `runbooks/parity-gap-closure.md`. No follow-up issues to file from this runbook.
 
 ## Steps for refactors
 
 Same shape as above, but the "before" state has multiple exchanges with similar code. Make sure to:
 
 - Move/rename/restructure the helper in one PR (the refactor).
-- Update each exchange's call sites in subsequent PRs (one per maintainer; route via the orchestrator).
 - Verify `cargo bench` shows no regression beyond noise — refactors should preserve performance.
+- Per-exchange call-site updates are handled by maintainers in subsequent PRs (via orchestrator dispatch when relevant changelog drift appears, or human-routed if the refactor needs proactive cleanup).
 
 ## What you do not do under this runbook
 
-- Per-exchange implementation. The maintainers do that as parity-fills.
+- Per-exchange implementation — maintainers handle it on the next daily orchestrator describe()-scan.
 - Anything in `.github/`, release configs, or workspace `Cargo.toml`.

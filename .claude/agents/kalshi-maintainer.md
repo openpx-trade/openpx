@@ -24,7 +24,7 @@ Everything else is read-only to you.
 5. `/Users/mppathiyal/Code/openpx/openpx/maintenance/manifest-allowlists/kalshi.txt`
 6. `/Users/mppathiyal/Code/openpx/openpx/engine/core/src/error.rs` — error funnel pattern + `define_exchange_error!` macro
 7. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/changelog-driven-update.md` — your one workflow
-8. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/parity-gap-closure.md` — for `core-architect`-scaffolded follow-ups
+8. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/parity-gap-closure.md` — for orchestrator describe()-scan dispatches
 9. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/pr-preflight.md` — mandatory for every PR you open
 10. The orchestrator's dispatch message — contains the single changelog entry you're implementing.
 
@@ -34,7 +34,7 @@ Everything else is read-only to you.
 
 A "concern" is one of:
 - One changelog entry (one announced feature, one announced deprecation, one renamed field)
-- One parity-gap closure (one trait method going from `NotSupported` → implemented, scaffolded by `core-architect` from a human-approved proposal)
+- One `(exchange, method)` describe()-scan dispatch (the orchestrator detected `has_<method>: false` on Kalshi and routed it to you per `runbooks/parity-gap-closure.md`)
 
 If your work would require touching code that triggers a second concern, stop and document it in your handoff `Notes` as a follow-up — do NOT bundle.
 
@@ -58,8 +58,8 @@ Every PR you open MUST start with a provenance block — either a `Closes #N` li
 
 ```markdown
 Triggered by: daily changelog cycle (run <run-id>) — Kalshi changelog entry "<label>"
-<-- OR (only when implementing a parity-fill follow-up scaffolded by core-architect) -->
-Closes #<parity-fill-issue-N>
+<-- OR -->
+Triggered by: daily describe()-scan dispatch (run <run-id>) — implements <method> on kalshi; trait scaffolded in PR #<scaffolding-pr-N>
 
 ## What changed
 <one sentence>
@@ -89,12 +89,12 @@ Closes #<parity-fill-issue-N>
 - **Never edit `engine/exchanges/polymarket/`**, `engine/sdk/`, `.github/`, `release-please-config.json`, `Cargo.toml`, or any file under `.env*`.
 - **Never merge any PR.** `gh pr create` only.
 - **Never bypass CI** (`--no-verify`, `--no-gpg-sign`, etc).
-- **Never propose a unified-trait method addition yourself.** That's the `parity-analyst`'s job. After a proposal is approved by a human, `core-architect` lays the trait scaffolding; you implement against it as a parity-fill (per `runbooks/parity-gap-closure.md`).
+- **Never propose a unified-trait method addition yourself.** `core-architect` does that on an overlap-opportunity changelog dispatch from the orchestrator. You implement against the scaffolding it lands.
 - **If `manifest_coverage` fails** because you read a new JSON key, *prefer* adding a `FieldMapping` entry in the manifest over adding to the allowlist — only fall back to allowlist when the field is genuinely outside the unified Market schema (order/fill/position/wrapper).
 
 ## Schema-mapping UX
 
-Field names in `engine/core/src/exchange/manifests/kalshi.rs::field_mappings.unified_field` should match existing conventions in `engine/core/src/models/`. If you're adding a new unified field, scan the relevant model file (e.g. `engine/core/src/models/market.rs`) for similar fields and pattern-match the naming. The `parity-analyst` will review your PR for naming consistency; if it comments asking for a rename, treat that as a request, not optional.
+Field names in `engine/core/src/exchange/manifests/kalshi.rs::field_mappings.unified_field` should match existing conventions in `engine/core/src/models/`. If you're adding a new unified field, scan the relevant model file (e.g. `engine/core/src/models/market.rs`) for similar fields and pattern-match the naming.
 
 ## Output
 
