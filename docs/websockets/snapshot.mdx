@@ -3,23 +3,50 @@ title: "Snapshot"
 description: "Full L2 book — replace any cached state."
 ---
 
-A full L2 book. Replace any cached book keyed by `(market_id, asset_id)`.
-Emitted on initial subscribe and after any recovery (`Clear`,
-`BookInvalidated`).
+Emitted on initial subscribe and after any recovery. Replace any cached
+book keyed by `(market_id, asset_id)`.
 
-## Fields
+## Payload
 
 <ResponseField name="market_id" type="string" />
 <ResponseField name="asset_id" type="string" />
-<ResponseField name="book" type="Arc<Orderbook>" />
-<ResponseField name="exchange_ts" type="u64?" />
-<ResponseField name="local_ts_ms" type="u64" />
+<ResponseField name="book" type="Orderbook">
+  Full L2 book with sorted bids / asks.
+</ResponseField>
+<ResponseField name="exchange_ts" type="u64?">
+  Exchange-authoritative millis when provided.
+</ResponseField>
+<ResponseField name="local_ts_ms" type="u64">
+  Wall-clock millis at socket-read.
+</ResponseField>
 <ResponseField name="seq" type="u64" />
 
-## Timestamps
+## Example
 
-Every WebSocket event carries:
+<CodeGroup>
 
-- `local_ts: Instant` — monotonic, captured at socket-read (Rust only)
-- `local_ts_ms: u64` — wall-clock millis paired with `local_ts`
-- `exchange_ts: Option<u64>` — exchange-authoritative millis (when provided)
+```rust Rust
+use px_core::WsUpdate;
+
+while let Some(update) = updates.next().await {
+    if let WsUpdate::Snapshot { market_id, book, .. } = update? {
+        cache.insert(market_id, book);
+    }
+}
+```
+
+```python Python
+from openpx import Snapshot
+
+for update in ws.updates():
+    if isinstance(update, Snapshot):
+        cache[update.market_id] = update.book
+```
+
+```typescript TypeScript
+await ws.onOrderbookUpdate("token-id", (err, update) => {
+  if (update?.kind === "Snapshot") cache.set(update.market_id, update.book);
+});
+```
+
+</CodeGroup>

@@ -3,9 +3,20 @@ title: "Connecting"
 description: "Open a WebSocket and subscribe to markets."
 ---
 
-## Construction
-
 In Python and TypeScript, call `exchange.websocket()` to reuse credentials.
+
+## Subscribe target
+
+| Exchange | What to pass |
+|----------|--------------|
+| Polymarket | A CLOB token ID (e.g. `Market.token_id_yes` / `token_id_no`) |
+| Kalshi | Market ticker (e.g. `KXBTC-25MAR14-T20000`) |
+
+Polymarket also exposes `subscribe_pair(yes_token, no_token)` for binary
+markets — both sides get full book updates and `price_change` events on
+either side are dispatched correctly.
+
+## Example
 
 <CodeGroup>
 
@@ -48,41 +59,8 @@ await ws.onOrderbookUpdate("token-id-or-ticker", (err, update) => {
 
 </CodeGroup>
 
-## Subscribe target
-
-| Exchange | What to pass |
-|----------|--------------|
-| Polymarket | A CLOB token ID (e.g. `Market.token_id_yes` / `token_id_no`) |
-| Kalshi | Market ticker (e.g. `KXBTC-25MAR14-T20000`) |
-
-Polymarket's WebSocket also exposes `subscribe_pair(yes_token, no_token)`
-for binary markets — both sides get full book updates, and `price_change`
-events on either side are dispatched correctly.
-
 ## Outcome labels (Polymarket)
 
-Activity events (`Trade`, `Fill`) include an outcome label (`"Yes"` /
-`"No"`) when token IDs are registered. Either subscribe via
-`subscribe_pair`, or call:
-
-```python
-ws.register_outcomes(yes_token_id, no_token_id)
-```
-
-before subscribing. No-op on Kalshi.
-
-## Reconnect & keepalive
-
-Tunable constants in `engine/core/src/websocket/traits.rs`:
-
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `WS_PING_INTERVAL` | 20s | Keepalive ping cadence |
-| `WS_RECONNECT_BASE_DELAY` | 3s | Initial reconnect backoff |
-| `WS_RECONNECT_MAX_DELAY` | 60s | Cap on backoff |
-| `WS_MAX_RECONNECT_ATTEMPTS` | 10 | Before giving up |
-| `WS_STALL_TIMEOUT` | 90s | Force reconnect if no message received |
-| `WS_STALL_CHECK_INTERVAL` | 10s | How often the stall watchdog ticks |
-
-On a clean reconnect, expect one `SessionEvent::Reconnected { gap_ms }`
-plus a `Snapshot` for every previously subscribed market.
+To get `"Yes"` / `"No"` outcome labels on `Trade` and `Fill` events, either
+subscribe via `subscribe_pair`, or call `register_outcomes(yes_token_id,
+no_token_id)` before subscribing. No-op on Kalshi.

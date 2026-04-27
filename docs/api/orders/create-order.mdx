@@ -1,0 +1,94 @@
+---
+title: "create_order"
+description: "Place an order on the book."
+---
+
+```rust
+async fn create_order(
+    market_id: &str,
+    outcome: &str,        // "Yes" / "No"
+    side: OrderSide,      // Buy / Sell
+    price: f64,           // 0.0..1.0
+    size: f64,            // contracts
+    params: HashMap<String, String>,
+) -> Result<Order, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market ID.
+</ParamField>
+
+<ParamField path="outcome" type="string" required>
+  `"Yes"` or `"No"`.
+</ParamField>
+
+<ParamField path="side" type="OrderSide" required>
+  `buy` or `sell`.
+</ParamField>
+
+<ParamField path="price" type="f64" required>
+  Decimal in `[0.0, 1.0]`.
+</ParamField>
+
+<ParamField path="size" type="f64" required>
+  Contracts.
+</ParamField>
+
+<ParamField path="params.order_type" type="string">
+  `gtc`, `ioc`, `fok`, or `market`. Defaults to `gtc`.
+</ParamField>
+
+<ParamField path="params.token_id" type="string">
+  Polymarket only. Derived from `market_id` + `outcome` if omitted.
+</ParamField>
+
+## Returns
+
+[`Order`](/api/unified-schema#order) — the created order.
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::OrderSide;
+use std::collections::HashMap;
+
+let mut params = HashMap::new();
+params.insert("order_type".into(), "gtc".into());
+
+let order = ex.create_order(
+    "KXBTC-25MAR14-T20000",
+    "Yes",
+    OrderSide::Buy,
+    0.55,
+    10.0,
+    params,
+).await?;
+```
+
+```python Python
+order = ex.create_order(
+    "KXBTC-25MAR14-T20000",
+    "Yes",
+    "buy",
+    0.55,
+    10.0,
+    order_type="gtc",
+)
+```
+
+```typescript TypeScript
+const order = await ex.createOrder(
+  "KXBTC-25MAR14-T20000",
+  "Yes",
+  "buy",
+  0.55,
+  10.0,
+  { order_type: "gtc" },
+);
+```
+
+</CodeGroup>

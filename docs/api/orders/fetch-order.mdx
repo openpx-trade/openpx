@@ -1,0 +1,43 @@
+---
+title: "fetch_order"
+description: "Look up a single order by ID."
+---
+
+```rust
+async fn fetch_order(
+    order_id: &str,
+    market_id: Option<&str>,
+) -> Result<Order, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="order_id" type="string" required>
+  Native order ID.
+</ParamField>
+
+<ParamField path="market_id" type="string?">
+  Optional, but accelerates Polymarket lookups.
+</ParamField>
+
+## Returns
+
+[`Order`](/api/unified-schema#order).
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let order = ex.fetch_order("ord_abc123", None).await?;
+```
+
+```python Python
+order = ex.fetch_order("ord_abc123")
+```
+
+```typescript TypeScript
+const order = await ex.fetchOrder("ord_abc123");
+```
+
+</CodeGroup>

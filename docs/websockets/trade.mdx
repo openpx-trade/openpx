@@ -3,9 +3,9 @@ title: "Trade"
 description: "Public trade on a subscribed market."
 ---
 
-A public trade on a subscribed market. Not tied to a local order.
+A public market trade. Not tied to one of your orders.
 
-## `ActivityTrade` payload
+## Payload
 
 <ResponseField name="market_id" type="string" />
 <ResponseField name="asset_id" type="string" />
@@ -15,10 +15,34 @@ A public trade on a subscribed market. Not tied to a local order.
 <ResponseField name="side" type="string?" />
 <ResponseField name="aggressor_side" type="string?" />
 <ResponseField name="outcome" type="string?">
-  E.g. `"Yes"` / `"No"`.
+  `"Yes"` / `"No"` (Polymarket).
 </ResponseField>
-<ResponseField name="fee_rate_bps" type="u32?">
-  Polymarket `last_trade_price` events.
-</ResponseField>
+<ResponseField name="fee_rate_bps" type="u32?" />
 <ResponseField name="exchange_ts_ms" type="u64?" />
-<ResponseField name="source_channel" type="Cow<'static, str>" />
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use px_core::WsUpdate;
+
+if let WsUpdate::Trade { trade, .. } = update? {
+    println!("{} @ {}", trade.size, trade.price);
+}
+```
+
+```python Python
+from openpx import Trade
+
+if isinstance(update, Trade):
+    print(update.trade.size, update.trade.price)
+```
+
+```typescript TypeScript
+if (update?.kind === "Trade") {
+  console.log(update.trade.size, update.trade.price);
+}
+```
+
+</CodeGroup>

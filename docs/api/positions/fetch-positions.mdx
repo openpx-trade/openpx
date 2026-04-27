@@ -1,0 +1,44 @@
+---
+title: "fetch_positions"
+description: "List open positions, optionally scoped to one market."
+---
+
+```rust
+async fn fetch_positions(
+    market_id: Option<&str>,
+) -> Result<Vec<Position>, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="market_id" type="string?">
+  Filter to one market. Pass `None` for every open position.
+</ParamField>
+
+## Returns
+
+[`Position[]`](/api/unified-schema#position).
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="outcome" type="string" />
+<ResponseField name="size" type="f64" />
+<ResponseField name="average_price" type="f64" />
+<ResponseField name="current_price" type="f64" />
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let positions = ex.fetch_positions(None).await?;
+```
+
+```python Python
+positions = ex.fetch_positions()
+```
+
+```typescript TypeScript
+const positions = await ex.fetchPositions();
+```
+
+</CodeGroup>

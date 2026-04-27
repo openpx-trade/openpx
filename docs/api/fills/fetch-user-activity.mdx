@@ -1,0 +1,50 @@
+---
+title: "fetch_user_activity"
+description: "Polymarket activity feed (positions, trades, portfolio)."
+---
+
+Polymarket only — Kalshi returns `NotSupported`. Returns unparsed JSON
+from Polymarket's activity API.
+
+```rust
+async fn fetch_user_activity(
+    params: FetchUserActivityParams,
+) -> Result<serde_json::Value, OpenPxError>
+```
+
+## Parameters
+
+<ParamField path="address" type="string" required>
+  Wallet address to query.
+</ParamField>
+
+<ParamField path="limit" type="usize?">
+  Max entries.
+</ParamField>
+
+## Returns
+
+Raw JSON from Polymarket's activity API.
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::FetchUserActivityParams;
+
+let activity = ex.fetch_user_activity(FetchUserActivityParams {
+    address: "0xabc…".into(),
+    limit: Some(100),
+}).await?;
+```
+
+```python Python
+activity = ex.fetch_user_activity(address="0xabc…", limit=100)
+```
+
+```typescript TypeScript
+const activity = await ex.fetchUserActivity("0xabc…", 100);
+```
+
+</CodeGroup>

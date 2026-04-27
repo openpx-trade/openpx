@@ -3,15 +3,37 @@ title: "Lagged"
 description: "Slow consumer dropped messages."
 ---
 
-The outbound dispatch channel overflowed: a slow consumer missed deltas.
-OpenPX raises this explicitly rather than silently skipping (the way
-`tokio::sync::broadcast` would).
+The outbound dispatch channel overflowed. Followed by a
+[`BookInvalidated`](/websockets/session/book-invalidated) with `reason: Lag`
+for every affected market.
 
-## Fields
+## Payload
 
 <ResponseField name="dropped" type="u64" />
 <ResponseField name="first_seq" type="u64" />
 <ResponseField name="last_seq" type="u64" />
 
-A `Lagged` event is followed by a [`BookInvalidated`](/websockets/session/book-invalidated)
-with `reason: Lag` for every affected market.
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use px_core::websocket::SessionEvent;
+
+if let SessionEvent::Lagged { dropped, .. } = event? {
+    log::warn!("dropped {dropped} ws messages");
+}
+```
+
+```python Python
+from openpx import Lagged
+
+if isinstance(event, Lagged):
+    print("dropped", event.dropped)
+```
+
+```typescript TypeScript
+ws.on("lagged", (dropped) => console.warn("dropped", dropped));
+```
+
+</CodeGroup>

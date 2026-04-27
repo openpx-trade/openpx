@@ -4,32 +4,18 @@ description: "Real-time orderbooks, trades, and fills."
 ---
 
 OpenPX exposes a single multiplexed WebSocket per exchange. One connection
-handles every subscribed market; consumers read from two streams:
+handles every subscribed market; consumers read from two streams.
 
 | Stream | Type | Carries |
 |--------|------|---------|
 | `updates()` | `WsUpdate` | Per-market events: `Snapshot`, `Delta`, `Clear`, `Trade`, `Fill` |
 | `session_events()` | `SessionEvent` | Connection-level: `Connected`, `Reconnected`, `Lagged`, `BookInvalidated`, `Error` |
 
-Both are **single-consumer**. Calling `updates()` or `session_events()`
-twice returns `None` (Rust) or raises (Python/TS). Fan out by running one
-consumer that re-broadcasts.
+Both streams are **single-consumer** — calling either method twice returns
+`None` (Rust) or raises (Python/TS). To fan out, run one consumer that
+re-broadcasts.
 
-## Driver trait
-
-Defined at `engine/core/src/websocket/traits.rs`:
-
-```rust
-pub trait OrderBookWebSocket: Send + Sync {
-    async fn connect(&mut self) -> Result<(), WebSocketError>;
-    async fn disconnect(&mut self) -> Result<(), WebSocketError>;
-    async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
-    async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
-    fn state(&self) -> WebSocketState;
-    fn updates(&self) -> Option<UpdateStream>;
-    fn session_events(&self) -> Option<SessionStream>;
-}
-```
+## States
 
 `WebSocketState`: `Disconnected`, `Connecting`, `Connected`, `Reconnecting`,
 `Closed`.
