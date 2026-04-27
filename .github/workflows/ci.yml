@@ -139,7 +139,9 @@ jobs:
       - name: Build Python SDK against current Rust core
         run: just python-build
       - name: Smoke-import the built package
-        run: cd sdks/python && ../../.venv/bin/python -c "import openpx; print(openpx.__version__)"
+        run: |
+          ../../.venv/bin/python -c "import openpx; assert 'Exchange' in dir(openpx) and 'WebSocket' in dir(openpx), f'unexpected exports: {sorted(a for a in dir(openpx) if not a.startswith(chr(95)))}'; print('ok')"
+        working-directory: sdks/python
 
   node-sdk-build:
     name: Node.js SDK Build
