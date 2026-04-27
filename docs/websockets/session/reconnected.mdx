@@ -1,0 +1,15 @@
+---
+title: "Reconnected"
+description: "Socket re-established after an outage."
+---
+
+Socket re-established after an observed outage.
+
+## Fields
+
+<ResponseField name="gap_ms" type="u64">
+  Wall-clock gap between the last received message and recovery.
+</ResponseField>
+
+Callers maintaining cached books should discard them and wait for fresh
+[`Snapshot`](/websockets/snapshot) events on each subscribed market.

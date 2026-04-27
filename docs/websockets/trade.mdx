@@ -1,0 +1,24 @@
+---
+title: "Trade"
+description: "Public trade on a subscribed market."
+---
+
+A public trade on a subscribed market. Not tied to a local order.
+
+## `ActivityTrade` payload
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="asset_id" type="string" />
+<ResponseField name="trade_id" type="string?" />
+<ResponseField name="price" type="f64" />
+<ResponseField name="size" type="f64" />
+<ResponseField name="side" type="string?" />
+<ResponseField name="aggressor_side" type="string?" />
+<ResponseField name="outcome" type="string?">
+  E.g. `"Yes"` / `"No"`.
+</ResponseField>
+<ResponseField name="fee_rate_bps" type="u32?">
+  Polymarket `last_trade_price` events.
+</ResponseField>
+<ResponseField name="exchange_ts_ms" type="u64?" />
+<ResponseField name="source_channel" type="Cow<'static, str>" />

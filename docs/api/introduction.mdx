@@ -1,0 +1,40 @@
+---
+title: "OpenPX"
+description: "A unified, low-latency SDK for prediction markets."
+---
+
+OpenPX is an open-source, CCXT-style SDK for prediction markets. One
+`Exchange` interface — Rust, Python, or TypeScript — talks to every
+supported venue.
+
+## What you get
+
+- **One interface, many venues.** Identical method signatures and return
+  shapes across Kalshi and Polymarket.
+- **Speed first.** Rust core with `simd-json` decoding, tuned HTTP
+  defaults, zero-allocation hot paths.
+- **Bring your own credentials.** OpenPX never custodies keys.
+
+## Supported exchanges
+
+| Exchange | REST | WebSocket | Notes |
+|----------|------|-----------|-------|
+| Polymarket | Yes | Yes | On-chain CLOB on Polygon |
+| Kalshi | Yes | Auth only | CFTC-regulated US event contracts |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/api/quickstart">
+    Fetch your first market in under a minute.
+  </Card>
+  <Card title="Methods" icon="terminal" href="/api/methods/overview">
+    Every method on the unified `Exchange` interface.
+  </Card>
+  <Card title="WebSockets" icon="bolt" href="/websockets/overview">
+    Real-time orderbooks, trades, and fills.
+  </Card>
+  <Card title="SDKs" icon="cube" href="/api/sdks/rust">
+    Rust, Python, and TypeScript bindings.
+  </Card>
+</CardGroup>

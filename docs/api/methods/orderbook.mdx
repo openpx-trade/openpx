@@ -1,10 +1,10 @@
 ---
 title: "Orderbook"
-description: "Fetch L2 orderbooks via REST."
+description: "Fetch a one-shot L2 orderbook snapshot."
 ---
 
-For real-time books, use [WebSockets](/websockets/overview) — `fetch_orderbook`
-is a one-shot snapshot.
+For real-time books use [WebSockets](/websockets/overview) — `fetch_orderbook`
+is a snapshot.
 
 ## `fetch_orderbook`
 
@@ -14,17 +14,23 @@ async fn fetch_orderbook(
 ) -> Result<Orderbook, OpenPxError>
 ```
 
-**`OrderbookRequest`**
+### Parameters
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `market_id` | `string` | Native market ID |
-| `outcome` | `string?` | `"Yes"` or `"No"` (binary markets) |
-| `token_id` | `string?` | Polymarket CLOB token; takes precedence over `outcome` |
+<ParamField path="market_id" type="string" required>
+  Native market ID.
+</ParamField>
+
+<ParamField path="outcome" type="string?">
+  `"Yes"` or `"No"` (binary markets).
+</ParamField>
+
+<ParamField path="token_id" type="string?">
+  Polymarket CLOB token. Takes precedence over `outcome`.
+</ParamField>
 
 Returns `Orderbook { market_id, asset_id, bids, asks, last_update_id?, timestamp?, hash? }`
 with bids sorted high-to-low and asks low-to-high. See
-[`Orderbook`](/getting-started/unified-schema#orderbook) for the full shape.
+[`Orderbook`](/api/unified-schema#orderbook).
 
 <CodeGroup>
 
@@ -52,16 +58,15 @@ const book = await ex.fetchOrderbook("KXBTC-25MAR14-T20000", "Yes");
 
 </CodeGroup>
 
-## Helpers on `Orderbook`
+## Helpers (Rust)
 
-The Rust type exposes a few zero-copy helpers (Python/TS receive them as
-plain dicts and have to compute equivalents):
+The Rust `Orderbook` exposes zero-copy helpers; Python/TS receive plain dicts.
 
 | Method | Returns |
 |--------|---------|
 | `best_bid()` | `Option<f64>` |
 | `best_ask()` | `Option<f64>` |
-| `mid_price()` | `Option<f64>` — exact midpoint via `FixedPrice` |
+| `mid_price()` | `Option<f64>` (exact midpoint via `FixedPrice`) |
 | `spread()` | `Option<f64>` |
 | `has_data()` | `bool` |
 | `sort()` | sorts bids descending, asks ascending |

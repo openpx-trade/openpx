@@ -1,0 +1,21 @@
+---
+title: "BookInvalidated"
+description: "A specific market's book is no longer trustworthy."
+---
+
+A specific market's book is no longer trustworthy. Discard your cache for
+that `market_id`; the next [`Snapshot`](/websockets/snapshot) will rebuild it.
+
+## Fields
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="reason" type="InvalidationReason" />
+
+## `InvalidationReason`
+
+| Variant | Meaning |
+|---------|---------|
+| `Reconnect` | Recovered after a session reconnect |
+| `Lag` | Slow consumer dropped messages |
+| `SequenceGap { expected, received }` | Detected gap in the exchange stream |
+| `ExchangeReset` | Exchange-side reset / channel restart |

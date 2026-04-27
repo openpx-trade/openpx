@@ -4,57 +4,68 @@
   "name": "OpenPX",
   "description": "Open-source, CCXT-style unified SDK for prediction markets.",
   "colors": {
-    "primary": "#0EA5E9",
-    "light": "#38BDF8",
-    "dark": "#0369A1"
+    "primary": "#22C55E",
+    "light": "#4ADE80",
+    "dark": "#16A34A"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/images/favicon.png",
   "logo": {
-    "light": "/logo-light.svg",
-    "dark": "/logo-dark.svg"
+    "light": "/images/logo-light.png",
+    "dark": "/images/logo-dark.png"
   },
   "navigation": {
     "tabs": [
       {
-        "tab": "Getting Started",
+        "tab": "API",
         "groups": [
           {
-            "group": "Introduction",
+            "group": "Getting Started",
             "pages": [
-              "getting-started/introduction",
-              "getting-started/installation",
-              "getting-started/quickstart",
-              "getting-started/unified-schema"
+              "api/introduction",
+              "api/installation",
+              "api/quickstart",
+              "api/unified-schema"
             ]
           },
           {
-            "group": "Exchange setup",
+            "group": "Polymarket",
             "pages": [
-              "getting-started/exchanges/kalshi",
-              "getting-started/exchanges/polymarket"
+              "api/exchanges/polymarket"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "API Methods",
-        "groups": [
+          },
+          {
+            "group": "Kalshi",
+            "pages": [
+              "api/exchanges/kalshi"
+            ]
+          },
+          {
+            "group": "Methods",
+            "pages": [
+              "api/methods/overview",
+              "api/methods/markets",
+              "api/methods/orderbook",
+              "api/methods/orders",
+              "api/methods/positions",
+              "api/methods/balance",
+              "api/methods/trades",
+              "api/methods/price-history",
+              "api/methods/fills",
+              "api/methods/orderbook-history"
+            ]
+          },
+          {
+            "group": "SDKs",
+            "pages": [
+              "api/sdks/rust",
+              "api/sdks/python",
+              "api/sdks/typescript"
+            ]
+          },
           {
             "group": "Reference",
             "pages": [
-              "api-methods/overview",
-              "api-methods/markets",
-              "api-methods/orderbook",
-              "api-methods/orders",
-              "api-methods/positions-balance",
-              "api-methods/trades-history"
-            ]
-          },
-          {
-            "group": "Generated reference",
-            "pages": [
-              "reference/types",
-              "parity/STATUS"
+              "reference/types"
             ]
           }
         ]
@@ -63,25 +74,41 @@
         "tab": "WebSockets",
         "groups": [
           {
-            "group": "Streaming",
+            "group": "Connection",
             "pages": [
               "websockets/overview",
-              "websockets/connecting",
-              "websockets/events",
-              "websockets/session-events"
+              "websockets/connecting"
+            ]
+          },
+          {
+            "group": "Updates",
+            "pages": [
+              "websockets/snapshot",
+              "websockets/delta",
+              "websockets/clear",
+              "websockets/trade",
+              "websockets/fill"
+            ]
+          },
+          {
+            "group": "Session Events",
+            "pages": [
+              "websockets/session/connected",
+              "websockets/session/reconnected",
+              "websockets/session/lagged",
+              "websockets/session/book-invalidated",
+              "websockets/session/error"
             ]
           }
         ]
       },
       {
-        "tab": "SDKs",
+        "tab": "Changelog",
         "groups": [
           {
-            "group": "Languages",
+            "group": "Releases",
             "pages": [
-              "sdks/rust",
-              "sdks/python",
-              "sdks/typescript"
+              "changelog"
             ]
           }
         ]
@@ -89,11 +116,12 @@
     ]
   },
   "navbar": {
-    "primary": {
-      "type": "button",
-      "label": "Changelog",
-      "href": "/changelog"
-    }
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/openpx-trade/openpx"
+      }
+    ]
   },
   "footer": {
     "socials": {

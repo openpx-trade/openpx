@@ -1,0 +1,25 @@
+---
+title: "Clear"
+description: "Per-market book invalidation on the same stream."
+---
+
+Per-market book invalidation, on the same stream as `Snapshot` / `Delta`.
+A consumer can act inline: drop everything ≤ this seq, wait for the next
+`Snapshot`.
+
+## Fields
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="asset_id" type="string" />
+<ResponseField name="reason" type="InvalidationReason" />
+<ResponseField name="local_ts_ms" type="u64" />
+<ResponseField name="seq" type="u64" />
+
+## `InvalidationReason`
+
+| Variant | Meaning |
+|---------|---------|
+| `Reconnect` | Recovered after a session reconnect |
+| `Lag` | Slow consumer dropped messages |
+| `SequenceGap { expected, received }` | Detected gap in the exchange stream |
+| `ExchangeReset` | Exchange-side reset / channel restart |

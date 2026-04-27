@@ -1,0 +1,52 @@
+---
+title: "Polymarket"
+description: "Connect to Polymarket — config, identifiers, and limits."
+---
+
+Polymarket is an on-chain CLOB on Polygon, settled in USDC. OpenPX handles
+EIP-712 signing, CTF interactions, CLOB API auth, and the WebSocket surface.
+
+## Config
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `private_key` | `string` | for auth | EOA private key (hex) — signs orders |
+| `funder` | `string` | for proxy/safe | Funder/proxy/safe address holding USDC |
+| `signature_type` | `"eoa"` \| `"proxy"` \| `"gnosis_safe"` | optional | Defaults to `gnosis_safe` if `funder` is set, else `eoa` |
+| `api_key` / `api_secret` / `api_passphrase` | `string` | optional | L2 CLOB credentials. If absent, derived on first call |
+| `gamma_url` / `clob_url` | `string` | optional | Override service base URLs |
+| `polygon_rpc_url` | `string` | optional | Polygon RPC for on-chain reads |
+| `verbose` | `bool` | optional | Verbose logging |
+
+## Environment variables
+
+```
+POLYMARKET_PRIVATE_KEY
+POLYMARKET_FUNDER
+POLYMARKET_API_KEY
+POLYMARKET_API_SECRET
+POLYMARKET_API_PASSPHRASE
+```
+
+## Identifiers
+
+- **`Market.id`** is the **`condition_id`** hex string (e.g. `0x311d0c4b…`).
+- **`Market.native_numeric_id`** holds the legacy numeric DB id for UI deep links.
+- **WebSocket subscribe target** is a CLOB **token ID**, not the condition id.
+  Use `token_id_yes` / `token_id_no` from `Market`.
+- **Outcomes**: `"Yes"` / `"No"`.
+
+## Capabilities
+
+Every method on the unified surface is implemented. Inspect `ex.describe()`
+at runtime to confirm.
+
+## Rate limits
+
+Defined in `engine/core/src/exchange/manifests/polymarket.rs`:
+
+| Bucket | Limit |
+|--------|-------|
+| Default | 150 req/sec, burst 10 |
+| Write (orders) | 350 req/sec, burst 20 |
+| Bulk | 20 req/sec, burst 5 |

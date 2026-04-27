@@ -1,0 +1,59 @@
+---
+title: "Overview"
+description: "Every method on the unified Exchange interface."
+---
+
+`Exchange` is the single trait every venue implements
+(`engine/core/src/exchange/traits.rs`).
+
+| Group | Methods |
+|-------|---------|
+| Identity | `id`, `name`, `describe` |
+| [Markets](/api/methods/markets) | `fetch_markets`, `fetch_market` |
+| [Orderbook](/api/methods/orderbook) | `fetch_orderbook` |
+| [Orders](/api/methods/orders) | `create_order`, `cancel_order`, `fetch_order`, `fetch_open_orders` |
+| [Positions](/api/methods/positions) | `fetch_positions` |
+| [Balance](/api/methods/balance) | `fetch_balance`, `fetch_balance_raw`, `refresh_balance` |
+| [Trades](/api/methods/trades) | `fetch_trades` |
+| [Price History](/api/methods/price-history) | `fetch_price_history` |
+| [Fills](/api/methods/fills) | `fetch_fills` |
+| [Orderbook History](/api/methods/orderbook-history) | `fetch_orderbook_history` |
+
+## Capability flags
+
+`describe()` returns an `ExchangeInfo` with one `bool` per method. Calling
+an unsupported method returns `OpenPxError::Exchange(ExchangeError::NotSupported(...))`.
+
+```rust
+pub struct ExchangeInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub has_fetch_markets: bool,
+    pub has_create_order: bool,
+    pub has_cancel_order: bool,
+    pub has_fetch_positions: bool,
+    pub has_fetch_balance: bool,
+    pub has_fetch_orderbook: bool,
+    pub has_fetch_price_history: bool,
+    pub has_fetch_trades: bool,
+    pub has_fetch_user_activity: bool,
+    pub has_fetch_fills: bool,
+    pub has_approvals: bool,
+    pub has_refresh_balance: bool,
+    pub has_websocket: bool,
+    pub has_fetch_orderbook_history: bool,
+}
+```
+
+## Pagination
+
+Paginated methods return `(items, next_cursor)`. `next_cursor` is `None` on
+the last page; pass it back in `params.cursor`.
+
+| Exchange | Style | Max page |
+|----------|-------|----------|
+| Kalshi | Cursor | 1000 |
+| Polymarket | Offset | 500 |
+
+The TypeScript binding's `fetchMarkets()` auto-paginates; Rust and Python
+expose the cursor.

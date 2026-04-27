@@ -7,23 +7,34 @@ description: "fetch_markets and fetch_market."
 
 Returns one page of markets plus an opaque cursor.
 
-**Signature**
-
 ```rust
 async fn fetch_markets(
     params: &FetchMarketsParams,
 ) -> Result<(Vec<Market>, Option<String>), OpenPxError>
 ```
 
-**`FetchMarketsParams`**
+### Parameters
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `limit` | `usize?` | Per-page limit. Capped at 1000 (Kalshi) / 500 (Polymarket). |
-| `cursor` | `string?` | Opaque cursor returned from a prior call. |
-| `status` | `MarketStatusFilter?` | `active`, `closed`, `resolved`, or `all`. Defaults to `active`. |
-| `series_id` | `string?` | Kalshi series ticker (e.g. `"KXBTC"`) or Polymarket series ID. |
-| `event_id` | `string?` | Kalshi event ticker or Polymarket event ID/slug. When set, `series_id`, `cursor`, and `limit` are ignored. |
+<ParamField path="limit" type="usize?">
+  Per-page limit. Capped at 1000 (Kalshi) / 500 (Polymarket).
+</ParamField>
+
+<ParamField path="cursor" type="string?">
+  Opaque cursor returned from a prior call.
+</ParamField>
+
+<ParamField path="status" type="MarketStatusFilter?">
+  `active`, `closed`, `resolved`, or `all`. Defaults to `active`.
+</ParamField>
+
+<ParamField path="series_id" type="string?">
+  Kalshi series ticker (e.g. `"KXBTC"`) or Polymarket series ID.
+</ParamField>
+
+<ParamField path="event_id" type="string?">
+  Kalshi event ticker or Polymarket event ID/slug. When set, `series_id`,
+  `cursor`, and `limit` are ignored.
+</ParamField>
 
 <CodeGroup>
 
@@ -44,7 +55,6 @@ markets, cursor = result["markets"], result["cursor"]
 ```
 
 ```typescript TypeScript
-// TypeScript auto-paginates and returns all markets
 const markets = await ex.fetchMarkets();
 ```
 
@@ -53,8 +63,6 @@ const markets = await ex.fetchMarkets();
 ## `fetch_market`
 
 Fetch a single market by its native ID.
-
-**Signature**
 
 ```rust
 async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
@@ -81,5 +89,4 @@ const market = await ex.fetchMarket("KXBTC-25MAR14-T20000");
 
 </CodeGroup>
 
-See the [`Market` schema](/getting-started/unified-schema#market) for every
-field returned.
+See [`Market`](/api/unified-schema#market) for every field returned.
