@@ -59,17 +59,61 @@ Parse the markdown to enumerate every `<Update label="MMM DD, YYYY" ...>` block 
 
 ### Step 2 — classify and dispatch each new entry
 
-For each new `<Update>` block, choose one classification:
+Classification is **mechanical, not prose-judged.** For every `<Update>` block, run the surface-area protocol below and let the result drive the bucket. Free-form rationales like "operational-only — OpenPX uses cursor pagination natively" are forbidden — they hide misclassifications. Every classification must cite either a code reference (file:line, manifest entry, or trait method) or an empty-grep result as evidence.
 
-| Classification | Signal | Action |
+#### Step 2a — extract the upstream surface area
+
+From the `<Update>` body, enumerate everything the change touches:
+
+- **JSON keys** (e.g. `yes_price`, `occurrence_datetime`, `ts_ms`) — fields added, removed, renamed, or changed in shape.
+- **Endpoint paths** (e.g. `GET /markets`, `/events/keyset`) — URLs added, removed, deprecated, or behavior-changed.
+- **WebSocket channels / event types** (e.g. `multivariate_market_lifecycle`, `orderbook_snapshot`) — channels added, removed, or shape-changed.
+- **Auth, signing, or contract addresses** — changes to authentication flow, signing scheme, or on-chain addresses.
+- **Deprecation verbs** — "will be deprecated", "will be removed", "replaced by", "must migrate by". Treat these as forward-looking action signals even when nothing breaks today.
+
+#### Step 2b — cross-reference our surface area
+
+For each item from 2a, run the corresponding mechanical check against the matching exchange (`<id>` is `kalshi` or `polymarket`):
+
+| Upstream item | Mechanical check |
+|---|---|
+| JSON key `K` | `rg -n '"K"' engine/exchanges/<id>/src/` — and check `engine/core/src/exchange/manifests/<id>.rs::field_mappings` for `source_paths` containing `K`, plus `maintenance/manifest-allowlists/<id>.txt` |
+| Endpoint path `/p` | `rg -n '"/p"' engine/exchanges/<id>/src/exchange.rs engine/exchanges/<id>/src/fetcher.rs` |
+| WS channel `chan` | `rg -n '"chan"' engine/exchanges/<id>/src/websocket.rs` |
+| Auth / signing change | scope check: any change to `auth.rs` is human-only — escalate via comment on the daily PR, do not dispatch |
+| Contract address | scope check: dispatch to `polymarket-maintainer` per the contracts-redeployment section of `runbooks/changelog-driven-update.md` |
+| Cross-exchange overlap | `rg -n 'fn fetch_<concept>\|has_<concept>' engine/core/src/exchange/traits.rs engine/exchanges/<other-id>/src/exchange.rs` to determine whether the other exchange already implements an equivalent |
+
+Quote the actual `rg` command(s) run + their hit count (or `0 hits`) as evidence in your handoff and in the daily PR body. **No prose substitutes.** A misclassification that says "OpenPX doesn't use this" without a `0 hits` rg quote is a runbook violation.
+
+#### Step 2c — pick the bucket
+
+| Classification | Mechanical signal | Action |
 |---|---|---|
-| **overlap-opportunity** | The new entry describes a feature that the *other* exchange already supports OR has its own equivalent of (e.g. both Kalshi and Polymarket announce a "server time" endpoint). | Dispatch `core-architect` via `Task` to design the unified trait, scaffold it, and open ONE PR. The PR body itself contains the proposal — there is no separate proposal-issue step. The human reviews the PR shape; if the trait needs adjustment, comments on the PR drive iteration. |
-| **critical-exchange-specific** | The new entry is a breaking change, mandatory cutover, on-chain migration, or v2/v3 surface that must be implemented even though the other exchange has no equivalent. Examples: Polymarket CLOB V2 cutover, Polymarket pUSD migration, a new Kalshi auth-v2 flow. | Dispatch the relevant maintainer via `Task` (`kalshi-maintainer` or `polymarket-maintainer`) to implement the change in a single-purpose PR, following `runbooks/changelog-driven-update.md`. |
-| **operational-only** | New rate-limit headroom, Discord notice, RSS feed announcement, doc reorganization, deprecated endpoint OpenPX never used. No code path is affected. | Skip — no dispatch. Note in your handoff so the human can see what was reviewed and skipped. |
+| **overlap-opportunity** | The cross-exchange overlap check from 2b returned ≥1 hit on the other exchange — both exchanges have or are gaining the same concept. | Dispatch `core-architect` via `Task` to design the unified trait, scaffold it, and open ONE PR. The PR body itself contains the proposal — no separate proposal-issue step. |
+| **critical-exchange-specific** | EITHER (a) any mechanical check from 2b returned ≥1 hit on this exchange (we touch the surface), OR (b) deprecation verbiage applies to a path/key/channel/method this exchange's code currently uses. | Dispatch the relevant maintainer (`kalshi-maintainer` or `polymarket-maintainer`) via `Task` to implement the change in a single-purpose PR, following `runbooks/changelog-driven-update.md`. |
+| **no-surface-area** | All mechanical checks from 2b returned `0 hits`, no manifest entry, no allowlist entry, no deprecation hit on a surface we use, and the other exchange has no equivalent. | Skip — no dispatch. The handoff entry MUST quote the exact `rg` command(s) run and their `0 hits` result. |
 
-If unsure, default to `overlap-opportunity` — the human can comment on the resulting PR if they want to change the trait shape, and reverting a too-eager scaffolding PR is cheaper than missing a real overlap.
+The previous `operational-only` bucket is retired. It allowed prose-only justifications (e.g. "Kalshi already has cursor pagination natively" used to skip a *Polymarket* keyset migration) that hid real surface-area changes our code uses. If a change is genuinely cosmetic (Discord post, doc reorganization, no shape effect), the mechanical checks return zero hits and you classify as `no-surface-area` with that evidence.
+
+If unsure, **dispatch.** Reverting a too-eager dispatch PR is cheaper than missing a real surface change. Default `overlap-opportunity` for ambiguous cross-exchange features, `critical-exchange-specific` otherwise. **Never** skip on prose alone.
 
 **One Task per concern.** Three new entries → up to three Task calls. Never bundle.
+
+#### Step 2d — dedup pre-flight before each dispatch
+
+Before any `Task` call in this step, check whether a prior cycle already opened a PR for the same `<Update>` block (the human may not have merged it yet). The lock in `main` only advances when the daily PR merges, so an unmerged prior cycle re-surfaces the same drift the next day; without this check you would dispatch a duplicate every 24h until the human catches up.
+
+Use the entry's exchange + label as the dedup key — every bot PR carries them in the `Triggered by:` provenance line:
+
+```
+gh pr list --state open --author "@me" \
+  --search "in:body \"<exchange> changelog entry \\\"<label>\\\"\"" \
+  --json number,url,title
+```
+
+- **Match found** → do NOT dispatch. Add one comment to the existing PR: `Re-detected on run <run-id>; not re-dispatching. Original dispatch still open.` Record `dedup-skipped: <existing-pr-url>` in your handoff for that entry. Move on.
+- **No match** → dispatch via `Task` as normal.
 
 ### Step 3 — scan describe() for unimplemented scaffolded methods
 
@@ -88,6 +132,19 @@ The maintainer follows `runbooks/parity-gap-closure.md`.
 This is a separate Task per `(exchange, method)` pair. If both Kalshi and Polymarket have `has_fetch_server_time: false` unmarked, that's two Task calls.
 
 If a method is `has_<method>: false` on BOTH exchanges and neither exchange's upstream announcement has triggered scaffolding, that's a `core-architect` situation — but `core-architect` already wouldn't have scaffolded both flags as `false` unless the trait is brand new in this same cycle. In normal operation, scaffolded methods get one or both flags flipped within a few cycles of merging the scaffold.
+
+#### Step 3a — dedup pre-flight before each dispatch
+
+Apply the same guard as Step 2a, keyed on `(exchange, method)`. The `has_<method>: false` flag stays bare until the dispatched PR merges, so an unmerged prior cycle re-surfaces every 24h:
+
+```
+gh pr list --state open --author "@me" \
+  --search "in:body \"implements <method> on <exchange>\"" \
+  --json number,url,title
+```
+
+- **Match found** → do NOT dispatch. Comment on the existing PR: `Re-detected on run <run-id>; not re-dispatching. Original dispatch still open.` Record `dedup-skipped: <existing-pr-url>` in your handoff for that `(exchange, method)`. Move on.
+- **No match** → dispatch via `Task` as normal.
 
 ### Step 4 — append openpx's own changelog entries
 
@@ -132,13 +189,24 @@ If a method is `has_<method>: false` on BOTH exchanges and neither exchange's up
 python3 maintenance/scripts/check_docs_drift.py --update
 ```
 
-Open ONE PR with both the lock-file change and the changelog appends. Title:
+Before opening a new PR, check for an open daily PR from a prior cycle the human hasn't merged yet:
+
+```
+gh pr list --state open --author "@me" \
+  --search "in:title \"chore(daily): refresh changelog lock\"" \
+  --json number,url,title,headRefName
+```
+
+- **Match found** → push your updated lock + `docs/changelog.mdx` onto the existing branch (`git checkout <headRefName> && git commit ... && git push`) and add a comment: `Rebased onto <YYYY-MM-DD> on run <run-id>.` Do NOT open a second daily PR.
+- **No match** → open ONE new PR with both the lock-file change and the changelog appends.
+
+Title:
 
 - Daily: `chore(daily): refresh changelog lock + append openpx changelog for <YYYY-MM-DD>`
 - Backfill: `chore(daily): backfill changelog lock since <since>`
 
 Body must start with `Triggered by: daily changelog cycle (run ${{ github.run_id }})` (daily) or `Triggered by: backfill since <since> (run ${{ github.run_id }})` (backfill). List in the body:
-- Each upstream changelog entry seen + classification + dispatch result (PR URL, or `skipped`).
+- Each upstream changelog entry seen + classification (`overlap-opportunity` | `critical-exchange-specific` | `no-surface-area`) + dispatch result (PR URL, or `skipped`). For every `no-surface-area` skip, include the exact `rg` command(s) run and the `0 hits` result that justified the skip — humans review this list to verify the orchestrator actually checked the code.
 - Each `(exchange, method)` pair from the describe()-scan + dispatch result.
 - The merged PRs appended to `docs/changelog.mdx` (or `none — no user-facing changes since last tick`).
 
@@ -147,10 +215,10 @@ Body must start with `Triggered by: daily changelog cycle (run ${{ github.run_id
 ### Step 6 — submit handoff
 
 Include in `Notes`:
-- Each new changelog entry, classification, dispatch result.
-- Each `(exchange, method)` describe()-scan dispatch result.
+- Each new changelog entry, classification, dispatch result (including `dedup-skipped: <existing-pr-url>` for entries skipped by Step 2d). For every `no-surface-area` classification, quote the exact `rg` command(s) run and the `0 hits` evidence — free-form prose justifications are rejected.
+- Each `(exchange, method)` describe()-scan dispatch result (including `dedup-skipped: <existing-pr-url>` for hits skipped by Step 3a).
 - The list of merged PRs appended to `docs/changelog.mdx` (or `none`).
-- The daily PR URL.
+- The daily PR URL — and whether it was a fresh PR or a rebase onto an existing one (Step 5).
 - Any classification or describe()-scan decision you weren't confident about — flag for the human to confirm.
 
 ## Hard constraints
