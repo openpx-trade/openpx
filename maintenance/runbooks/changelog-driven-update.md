@@ -1,6 +1,6 @@
 # Runbook: changelog-driven update
 
-Followed by `kalshi-maintainer` or `polymarket-maintainer` when the orchestrator's daily changelog cycle classifies a changelog entry as `critical-exchange-specific` and dispatches it to you.
+Followed by `exchange-maintainer` when the orchestrator's daily changelog cycle classifies a changelog entry as `critical-exchange-specific` and dispatches it to you. The dispatch payload's `exchange` field tells you which exchange you operate on (`kalshi` or `polymarket`).
 
 The upstream changelog is the single drift signal. When an entry needs more detail than the changelog body provides (full request/response shape, exact param types, error codes), `WebFetch` the exchange's machine-readable specs as a reference — never as a drift source:
 
@@ -32,23 +32,23 @@ Identify exactly which OpenPX files this change touches. Typical patterns:
 
 | Entry shape | OpenPX impact |
 |---|---|
-| New endpoint (e.g. "added `GET /server-time`") | If the unified trait method already exists (look for `fetch_<thing>` in `engine/core/src/exchange/traits.rs`), implement it on this exchange and flip `has_<method>` to `true`. If the trait method does not exist yet, this is an `overlap-opportunity` for `core-architect`, not a `critical-exchange-specific` for you — comment on the orchestrator's daily PR with what you found and exit `status: blocked`. |
+| New endpoint (e.g. "added `GET /server-time`") | If the unified trait method already exists (look for `fetch_<thing>` in `engine/core/src/exchange/traits.rs`), implement it on this exchange and flip `has_<method>` to `true`. If the trait method does not exist yet, this is an `overlap-opportunity` for `core-architect`, not a `critical-exchange-specific` for you — write what you found to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`. |
 | Renamed field on an existing endpoint | Update `field_mappings` in `engine/core/src/exchange/manifests/<id>.rs`. |
 | Removed field | Drop the `FieldMapping` entry. If a unified model field is no longer fillable, escalate to `core-architect`. |
 | New optional field | Add to `field_mappings` if it maps to the unified Market/Order/etc.; otherwise to `maintenance/manifest-allowlists/<id>.txt` with a one-line comment. |
 | Breaking signature change on existing endpoint | Update `exchange.rs` parsing + `field_mappings`. Body of the changelog entry usually lists the old and new shapes. |
 | On-chain contract redeployment (Polymarket) | Funds-moving change — see "Special case: Polymarket contract redeployment" section below. |
-| Auth flow change | Stop. `auth.rs` is human-only. Comment on the dispatch with what you found; the human takes it. |
+| Auth flow change | Stop. `auth.rs` is human-only. Write to `$GITHUB_STEP_SUMMARY`; the human takes it. |
 | Service-level change (new service appeared, e.g. Polymarket adds a 5th service) | Stop. New service onboarding is a human decision. Comment and exit. |
 
-If the entry doesn't fit any of the above, comment on the orchestrator's lock-refresh PR with what you found and exit with `status: blocked` — don't guess.
+If the entry doesn't fit any of the above, write to `$GITHUB_STEP_SUMMARY` with what you found and exit with `status: blocked` — don't guess.
 
 ### 3. Apply the changes
 
 Edit the relevant files in your scope:
 
-- `kalshi-maintainer`: `engine/exchanges/kalshi/src/` (excluding `auth.rs`), `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt`.
-- `polymarket-maintainer`: `engine/exchanges/polymarket/src/` (all of it including funds-moving files), `engine/core/src/exchange/manifests/polymarket.rs`, `maintenance/manifest-allowlists/polymarket.txt`, `maintenance/snapshots/polymarket-contracts.snapshot.json`.
+- When `exchange == kalshi`: `engine/exchanges/kalshi/src/` (excluding `auth.rs`), `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt`.
+- When `exchange == polymarket`: `engine/exchanges/polymarket/src/` (all of it including funds-moving files), `engine/core/src/exchange/manifests/polymarket.rs`, `maintenance/manifest-allowlists/polymarket.txt`, `maintenance/snapshots/polymarket-contracts.snapshot.json`.
 
 Reuse existing `Transform` variants in manifest entries (`Direct`, `CentsToDollars`, `Iso8601ToDateTime`, etc.). New `Transform` variants are core-architect work — escalate, don't add one yourself.
 
@@ -83,7 +83,7 @@ All must pass.
 
 Before `gh pr create`, complete `maintenance/runbooks/pr-preflight.md` to its conclusion: `just sync-all`, `just check-sync` clean, `python -m py_compile` + `tsc --noEmit` smoke checks, Python and Node SDK builds, smoke imports, docs check.
 
-If any preflight step fails because of missing tooling in your sandbox, **do NOT open the PR** — comment on the orchestrator's lock-refresh PR with the exact failure and exit `status: blocked`.
+If any preflight step fails because of missing tooling in your sandbox, **do NOT open the PR** — write the failure to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`.
 
 ### 6. Open the PR
 
@@ -102,11 +102,14 @@ Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entr
 
 The rest of the body uses the maintainer template (What changed / Why / Files / Tests / Review focus). The "Why" must link to the upstream changelog URL and quote the relevant `<Update>` block.
 
-### 7. Request reviewer
+### 7. Apply the dedup label and request reviewer
 
 ```
+gh pr edit <PR> --add-label cl/<exchange>/<id>
 gh pr edit <PR> --add-reviewer MilindPathiyal
 ```
+
+The `<id>` matches the dispatch payload's `id` field (e.g. `2026-04-15`). Without the label the orchestrator's next dedup query (`gh pr list --label cl/<exchange>/<id> --state all`) won't find your PR, and the next cycle will dispatch a duplicate.
 
 ### 8. Watch CI
 
@@ -121,11 +124,11 @@ In `Notes`:
 
 ## When to abort instead of finishing
 
-- The entry implies a trait change → escalate to `core-architect`. Comment on the orchestrator's lock-refresh PR with the proposal context; exit `status: blocked`.
+- The entry implies a trait change → escalate to `core-architect`. Write to `$GITHUB_STEP_SUMMARY` with the proposal context; exit `status: blocked`.
 - The entry implies a unified-model change → same; escalate.
 - The entry touches `auth.rs` → human-only. Comment and exit.
 - The entry implies a new service or new exchange → human decision. Comment and exit.
-- Any preflight step fails because of missing tooling → comment with the exact failure; do NOT open the PR.
+- Any preflight step fails because of missing tooling → write the exact failure to `$GITHUB_STEP_SUMMARY`; do NOT open the PR.
 
 ## Special case: Polymarket contract redeployment
 
@@ -159,7 +162,7 @@ When the changelog entry mentions a contract redeployment (CTF Exchange, NegRisk
 
 **NEVER:** bypass `contracts_test` (`#[ignore]`, `#[cfg(skip)]`), edit a contract address without the matching snapshot change, or merge yourself.
 
-**Escalate** (comment on the orchestrator's daily PR + exit `status: blocked`) if:
+**Escalate** (write to `$GITHUB_STEP_SUMMARY` + exit `status: blocked`) if:
 - The new addresses' deployer doesn't match a known Polymarket multisig.
 - A "deployed" address shows no recent Polygonscan activity (could be docs typo or pre-launch contract).
 - The redeployment removes a contract you can't find a replacement for in the docs.

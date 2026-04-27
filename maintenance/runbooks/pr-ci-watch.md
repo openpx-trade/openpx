@@ -1,6 +1,6 @@
 # Runbook: watch CI on your own PR until it's green
 
-Followed by every PR-opening agent (`kalshi-maintainer`, `polymarket-maintainer`, `core-architect`, `orchestrator`) **after** running `gh pr create`. Opening the PR is not the end of your work — green CI is.
+Followed by every PR-opening agent (`exchange-maintainer`, `core-architect`, `orchestrator`) **after** running `gh pr create`. Opening the PR is not the end of your work — green CI is.
 
 ## Why
 

@@ -57,13 +57,17 @@ The repo is pre-users; backward compatibility is not a goal. Lean is. Treat all 
    cargo test --workspace
    cargo test -p px-core --test manifest_coverage
    ```
-   The preflight runs `just sync-all`, `just check-sync`, the smoke checks (`python -m py_compile` + `tsc --noEmit`), the Python and Node SDK builds, and the smoke imports. If any preflight step fails because of missing tooling in your sandbox, do NOT open the PR — comment on the orchestrator's daily PR with the exact failure and exit `status: blocked`.
+   The preflight runs `just sync-all`, `just check-sync`, the smoke checks (`python -m py_compile` + `tsc --noEmit`), the Python and Node SDK builds, and the smoke imports. If any preflight step fails because of missing tooling in your sandbox, do NOT open the PR — write the exact failure to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`.
 
 9. **Commit the regenerated artifacts** in the same PR: `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, `docs/reference/types.mdx`. They MUST land together — the `sdk-sync`, `Python SDK Build`, and `Node.js SDK Build` CI gates collectively verify this.
 
 10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. **PR body MUST start with `Triggered by: daily changelog cycle (run <run-id>) — <exchange> changelog entry "<label>" classified as overlap-opportunity`** and contain the proposal as the body itself (per `.claude/agents/core-architect.md`). Label `area:core`.
 
-11. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
+11. **Apply the dedup label and request reviewer:**
+    ```
+    gh pr edit <PR> --add-label cl/<exchange>/<id>
+    gh pr edit <PR> --add-reviewer MilindPathiyal
+    ```
 
 12. **Watch CI per `runbooks/pr-ci-watch.md`.** Up to 3 fix attempts.
 

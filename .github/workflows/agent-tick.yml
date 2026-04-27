@@ -1,8 +1,15 @@
-# Daily entry point for the orchestrator. Fires at 00:00 UTC and on
-# workflow_dispatch. The orchestrator diffs the Kalshi + Polymarket changelogs
-# against the lock, scans both exchanges' describe() for unimplemented
-# scaffolded methods, and dispatches core-architect or a maintainer per
-# concern — that is the bot's entire scope.
+# Daily entry point for the autonomous-maintenance system. Two-job pipeline:
+#
+#   1. classify  — orchestrator runs once, classifies upstream drift, writes
+#                  /tmp/dispatches.json, opens the lock-refresh PR if any
+#                  drift was detected. Quiet days end here.
+#   2. dispatch  — matrix job, one parallel runner per element of dispatches.
+#                  Each runner reads .claude/agents/<agent>.md and runs that
+#                  specialist against one concern.
+#
+# This split exists so backfills (potentially N >> 1 dispatches) don't share
+# the orchestrator's --max-turns budget and humans can debug each specialist
+# in its own run log.
 
 name: agent-tick
 
@@ -12,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Run mode: 'daily' (default — diff vs lock) or 'backfill' (re-process every entry since `since`)"
+        description: "Run mode: 'daily' (default — diff vs lock) or 'backfill' (process every entry whose id is >= since)"
         required: false
         default: "daily"
         type: choice
@@ -37,27 +44,25 @@ permissions:
   issues: write
 
 jobs:
-  orchestrate:
-    name: Run orchestrator
+  classify:
+    name: Classify upstream drift
     runs-on: ubuntu-latest
     # Kill switch: pause-bots label OR OPENPX_AGENTS_DISABLED=1 repo var.
     if: |
       vars.OPENPX_AGENTS_DISABLED != '1'
       && !contains(github.event.repository.labels.*.name, 'pause-bots')
+    outputs:
+      dispatches: ${{ steps.emit.outputs.dispatches }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Tooling for the bot's preflight (maintenance/runbooks/pr-preflight.md).
-      # The orchestrator dispatches core-architect / maintainers in this same
-      # runner; they all need to be able to run `just sync-all`,
-      # `just python-build`, `just node-build`, and the smoke imports before
-      # opening any PR. Without this setup the bot would silently skip the
-      # preflight and ship partial syncs (the failure mode that produced
-      # PR #26's TS-skip). Mirror exactly what the python-sdk-build and
-      # node-sdk-build CI jobs install.
+      # Tooling the classify job needs:
+      # - python (check_docs_drift.py)
+      # - just + rust + node + maturin only if a lock-refresh PR is opened
+      #   (the preflight runs even on the lock-refresh PR for coherence)
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
@@ -77,7 +82,7 @@ jobs:
       - name: Install Node SDK dependencies
         run: cd sdks/typescript && npm install
 
-      - name: Run orchestrator agent
+      - name: Run orchestrator
         uses: anthropics/claude-code-action@v1
         with:
           # Bills against the Max subscription via the long-lived OAuth token
@@ -89,24 +94,18 @@ jobs:
             instructions exactly.
 
             Run mode: `${{ github.event.inputs.mode || 'daily' }}`.
-            Backfill since (only meaningful when mode is `backfill`):
-            `${{ github.event.inputs.since }}`.
+            Backfill since: `${{ github.event.inputs.since }}`.
 
-            - `daily` (the default — also used by the cron and by `just maintain`):
-              fetch both upstream changelogs, diff against
-              `maintenance/scripts/exchange-docs.lock.json`, classify each
-              new <Update> entry, and dispatch core-architect or the
-              relevant maintainer per the runbook. Then scan both
-              exchanges' describe() for unimplemented scaffolded methods
-              and dispatch maintainers per `parity-gap-closure.md`.
-              Finally append docs/changelog.mdx for any user-facing
-              merged PRs since last tick and open one daily PR.
-            - `backfill`: instead of diffing against the lock, walk every
-              <Update> entry in both changelogs whose label date is
-              on/after the `since` value and classify it the same way as
-              the daily cycle. Use when the repo has fallen behind and
-              the lock's last-seen state predates entries the bot needs
-              to catch up on.
+            You MUST write your dispatch list to `/tmp/dispatches.json` as a
+            JSON array, even if it is empty (`[]`). The matrix `dispatch`
+            job reads that file via this job's `dispatches` step output.
+
+            On a quiet day (no drift, no parity gaps), write `[]` to
+            `/tmp/dispatches.json` and exit without opening any PR.
+
+            On real drift, refresh the lock and open one
+            `chore(bot): refresh changelog lock for <YYYY-MM-DD>` PR with
+            the dispatch summary table per Step 5 of orchestrator.md.
 
             End with the standard handoff message from
             `.claude/agents/HANDOFF.md`.
@@ -115,7 +114,101 @@ jobs:
           # net is CODEOWNERS + branch protection + contracts_test +
           # manifest_coverage + the SDK Sync / Build CI gates — not per-tool
           # prompts. Agent prompts forbid destructive ops.
+          # --max-turns 60 covers daily mode (~2-3 turns per entry × few
+          # entries) and small-to-medium backfills (~15-20 entries).
+          # Larger backfills should be chunked by running `just backfill`
+          # multiple times with rolling `since` dates.
           claude_args: --max-turns 60 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          RUN_ID: ${{ github.run_id }}
+
+      - id: emit
+        name: Emit dispatch list
+        run: |
+          if [[ ! -f /tmp/dispatches.json ]]; then
+            echo "orchestrator did not write /tmp/dispatches.json — defaulting to []"
+            echo "dispatches=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # jq -c collapses whitespace; the output must fit GitHub's ~1MB
+          # step output limit. Backfills > 256 dispatches will overflow the
+          # matrix entry cap regardless — orchestrator should chunk by
+          # warning the human to split the backfill.
+          DISPATCHES=$(jq -c . /tmp/dispatches.json)
+          echo "Emitting $(echo "$DISPATCHES" | jq 'length') dispatches"
+          {
+            echo "dispatches<<EOF"
+            echo "$DISPATCHES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  dispatch:
+    name: ${{ matrix.item.kind }} → ${{ matrix.item.agent }} (${{ matrix.item.exchange || 'core' }} ${{ matrix.item.id || matrix.item.method }})
+    needs: classify
+    # An empty matrix expansion (`[]`) automatically skips this job, so no
+    # explicit if-guard is required. The job runs once per dispatch element.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Cap parallelism to keep within Anthropic API rate limits and to
+      # avoid 5+ simultaneous CI runs hammering the runner pool. Backfills
+      # of 50+ entries simply queue.
+      max-parallel: 4
+      matrix:
+        item: ${{ fromJson(needs.classify.outputs.dispatches) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Full preflight toolchain — every dispatched specialist runs
+      # `pr-preflight.md` end-to-end, which means cargo + maturin + napi +
+      # smoke imports + sync-all. Mirror the python-sdk-build / node-sdk-build
+      # CI jobs exactly.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Set up .venv with maturin + datamodel-code-generator
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install datamodel-code-generator maturin pydantic
+      - name: Install Node SDK dependencies
+        run: cd sdks/typescript && npm install
+
+      - name: Run specialist
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.OPENPX_BOT_TOKEN }}
+          prompt: |
+            Read `.claude/agents/${{ matrix.item.agent }}.md` and follow
+            those instructions exactly.
+
+            Dispatch payload (your input — this is the single concern you
+            must implement):
+
+            ```json
+            ${{ toJson(matrix.item) }}
+            ```
+
+            End with the standard handoff message from
+            `.claude/agents/HANDOFF.md`.
+          # --max-turns 60: each specialist runs the full preflight (cargo
+          # gauntlet + sync-all + builds + smoke imports) plus the workflow
+          # work. 60 covers normal cases; CI-fix loops up to 3 attempts add
+          # turn cost but stay within budget.
+          claude_args: --max-turns 60 --permission-mode bypassPermissions
+        env:
+          RUN_ID: ${{ github.run_id }}

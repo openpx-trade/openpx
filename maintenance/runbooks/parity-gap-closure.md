@@ -21,7 +21,7 @@ First read the upstream API for your exchange. One of two outcomes:
   has_<method>: false,
   ```
 
-  PR title: `chore(<id>): mark <method> intentionally unsupported`. Body provenance: `Triggered by: daily describe()-scan dispatch (run <run-id>)`. Complete `pr-preflight.md`. Done — handoff with `status: success`.
+  PR title: `chore(<id>): mark <method> intentionally unsupported`. Body provenance: `Triggered by: daily describe()-scan dispatch (run <run-id>)`. After `gh pr create`, apply the dedup label `gh pr edit <PR> --add-label parity/<exchange>/<method>`. Complete `pr-preflight.md`. Done — handoff with `status: success`.
 
 The marker comment is the signal to the orchestrator's next describe()-scan that this `(exchange, method)` pair is settled and should not be re-dispatched.
 
@@ -41,7 +41,7 @@ The marker comment is the signal to the orchestrator's next describe()-scan that
 4. **Implement the method:**
    - Wrap the HTTP call in `timed!("openpx.exchange.http_request_us", "exchange" => self.id(), "operation" => "<method-name>"; ...)`.
    - Use `define_exchange_error!`-defined variants for exchange-specific errors; map them via the existing `From<<Id>Error> for px_core::ExchangeError` impl.
-   - If the response shape doesn't fit existing unified models, **stop and escalate** — model changes belong to `core-architect`. Comment on the orchestrator's daily PR with what you found and exit `status: blocked`.
+   - If the response shape doesn't fit existing unified models, **stop and escalate** — model changes belong to `core-architect`. Write what you found to `$GITHUB_STEP_SUMMARY` and exit `status: blocked`.
    - If parsing requires reading a JSON key not in the manifest, prefer adding a `FieldMapping` entry over the allowlist (unless the field is genuinely outside the unified Market schema).
 
 5. **Update `describe()`.** Set `has_<method>: true`. Don't lie — only flip the flag if the implementation is actually working, not just compiling.
@@ -69,7 +69,12 @@ The marker comment is the signal to the orchestrator's next describe()-scan that
 
    Body uses the maintainer template (What changed / Why / Files / Tests / Review focus). Label `area:<id>`.
 
-10. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
+10. **Apply the dedup label and request reviewer:**
+   ```
+   gh pr edit <PR> --add-label parity/<exchange>/<method>
+   gh pr edit <PR> --add-reviewer MilindPathiyal
+   ```
+   The label is the orchestrator's dedup key — without it, the next describe()-scan cycle will dispatch a duplicate.
 
 11. **Watch CI per `runbooks/pr-ci-watch.md`.** Up to 3 fix attempts.
 
@@ -78,5 +83,5 @@ The marker comment is the signal to the orchestrator's next describe()-scan that
 ## When to abort
 
 - The upstream API doesn't actually have the endpoint → mark intentionally unsupported (the small-PR path above) instead.
-- Implementing requires changing the trait signature → comment on the orchestrator's daily PR, exit `status: blocked` (this is `core-architect`'s next overlap-opportunity dispatch).
-- Implementing requires changing a unified model → same; comment + `status: blocked`.
+- Implementing requires changing the trait signature → write to `$GITHUB_STEP_SUMMARY`, exit `status: blocked` (this is `core-architect`'s next overlap-opportunity dispatch).
+- Implementing requires changing a unified model → same; write to step summary + `status: blocked`.

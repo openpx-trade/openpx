@@ -6,6 +6,17 @@
 #     bash maintenance/scripts/bootstrap-labels.sh
 #     # or via just:
 #     just labels
+#
+# Dynamic namespaces (NOT enumerated here — created on first use by the
+# specialist's `gh pr edit --add-label` call):
+#
+#     cl/<exchange>/<id>        # changelog-entry dedup key, e.g. cl/kalshi/2026-04-15
+#     parity/<exchange>/<method> # describe()-scan dedup key, e.g. parity/polymarket/fetch_server_time
+#
+# These are the orchestrator's dedup keys — every dispatched PR carries one,
+# and `gh pr list --label <key> --state all` is the next cycle's pre-flight
+# query. They proliferate over time (one per shipped concern); that's
+# expected and harmless.
 
 set -euo pipefail
 
