@@ -115,15 +115,9 @@ jobs:
       - name: Verify every JSON key read in exchange.rs is declared in the manifest or allowlist
         run: cargo test -p px-core --test manifest_coverage
 
-  ci-success:
-    name: CI Success
-    if: always()
-    needs: [fmt, clippy, test, check, version-sync, sdk-sync, bench, manifest-coverage]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check all jobs passed
-        run: |
-          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            echo "One or more CI jobs failed or were cancelled."
-            exit 1
-          fi
+  # ci-success aggregator removed — it was a needless wrapper. Each underlying
+  # job (fmt, clippy, test, check, version-sync, sdk-sync, bench, manifest-coverage)
+  # is required independently by branch protection, which is the actual gate.
+  # The aggregator's status-check name also drifted from what GitHub Actions
+  # reported, leaving branch protection waiting on a context that was never
+  # emitted.
