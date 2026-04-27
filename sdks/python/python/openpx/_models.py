@@ -66,6 +66,7 @@ class ExchangeInfo(BaseModel):
     has_fetch_orderbook_history: bool
     has_fetch_positions: bool
     has_fetch_price_history: bool
+    has_fetch_server_time: bool
     has_fetch_trades: bool
     has_fetch_user_activity: bool
     has_refresh_balance: bool
