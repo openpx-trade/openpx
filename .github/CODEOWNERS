@@ -5,10 +5,12 @@
 # Default — human review for everything not otherwise overridden
 *                                                 @MilindPathiyal
 
-# Auth surfaces — human-only
+# High-risk surfaces — agent drafts allowed, human review required
+# (this is a review gate, not a write gate; the agent prompts forbid
+# bypassing it).
 /engine/exchanges/kalshi/src/auth.rs              @MilindPathiyal
 
-# Funds-moving Polymarket on-chain code — human-only, never bot-approvable
+# Funds-moving Polymarket on-chain code — agent drafts allowed, human review required
 /engine/exchanges/polymarket/src/clob.rs          @MilindPathiyal
 /engine/exchanges/polymarket/src/ctf.rs           @MilindPathiyal
 /engine/exchanges/polymarket/src/relayer.rs       @MilindPathiyal

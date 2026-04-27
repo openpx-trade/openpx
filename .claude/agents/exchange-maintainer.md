@@ -13,7 +13,7 @@ You own one exchange's slice of OpenPX per invocation. The dispatch payload tell
 
 | `exchange` | Files you may edit | Files you may NOT edit |
 |---|---|---|
-| `kalshi` | All of `engine/exchanges/kalshi/src/`, `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt` | `engine/exchanges/kalshi/src/auth.rs` (human-only — RSA signing), everything else |
+| `kalshi` | All of `engine/exchanges/kalshi/src/` (including `auth.rs`), `engine/core/src/exchange/manifests/kalshi.rs`, `maintenance/manifest-allowlists/kalshi.txt` | everything else |
 | `polymarket` | All of `engine/exchanges/polymarket/src/` (including funds-moving on-chain files: `clob.rs`, `ctf.rs`, `relayer.rs`, `swap.rs`, `signer.rs`, `approvals.rs`), `engine/core/src/exchange/manifests/polymarket.rs`, `maintenance/manifest-allowlists/polymarket.txt`, `maintenance/snapshots/polymarket-contracts.snapshot.json` | everything else |
 
 Everything outside that row is read-only to you.
@@ -27,6 +27,15 @@ Polymarket settlement is on-chain via Polygon. Changes to `clob.rs`, `ctf.rs`, `
 - **Your own prompt** — `WebFetch` Polygonscan to verify every changed address before committing it; document the verification URL in the PR body.
 
 When the dispatch points at on-chain files (e.g. CLOB V2 cutover, contract redeployment), follow the contract-redeployment special case in `runbooks/changelog-driven-update.md`. Source and snapshot land in the SAME PR.
+
+## Why extra caution on Kalshi auth.rs
+
+`engine/exchanges/kalshi/src/auth.rs` performs RSA signing of every Kalshi request. A bug here can sign requests with the wrong nonce/timestamp window or produce signatures that lock the user out of their own account. You may edit it, but two layers of safety apply:
+
+- **`.github/CODEOWNERS`** routes every PR touching `auth.rs` to `@MilindPathiyal` for human review (same pattern as the Polymarket on-chain files).
+- **Your own prompt** — when the dispatch implies an auth-flow change, `WebFetch` the Kalshi auth docs and quote the relevant section in the PR body's `## Why`. Label the PR `requires-human-careful-review`. Reviewers should eyeball the signing payload, key handling, and any nonce/timestamp arithmetic line-by-line before merging.
+
+Never read or print the user's private key file (`kalshi-private-key.pem`). That file stays human-only via CODEOWNERS — your edits are to the *signing logic*, not the key material.
 
 ## Always read at startup
 
@@ -139,7 +148,7 @@ Universal:
 - **If `manifest_coverage` fails** because you read a new JSON key, *prefer* adding a `FieldMapping` entry over the allowlist — only fall back to allowlist when the field is genuinely outside the unified Market schema (order/fill/position/wrapper).
 
 When `exchange == kalshi`:
-- **Never edit `engine/exchanges/kalshi/src/auth.rs`.** RSA signing is human-only. If the dispatch implies `auth.rs` changes, exit `status: blocked` with a step-summary note.
+- **`engine/exchanges/kalshi/src/auth.rs` is editable but high-risk.** When the dispatch implies an auth-flow change, label the PR `requires-human-careful-review`, quote the upstream auth docs in `## Why`, and call out the signing payload / nonce / timestamp logic in `## Review focus`. Never read or print `kalshi-private-key.pem`.
 
 When `exchange == polymarket`:
 - **Never update `maintenance/snapshots/polymarket-contracts.snapshot.json` without Polygonscan verification of every changed address.** Document the verification URL in your PR body's `## Review focus`.

@@ -34,7 +34,6 @@ human reviewer should know>
 
 - Trait change required (`engine/core/src/exchange/traits.rs`)
 - Funds-moving Polymarket file edit required
-- Kalshi `auth.rs` edit required
 - Release config edit required
 - New crate added to workspace
 - Auto-detected duplicate PR within 24h (per `orchestrator.md` Step 2d / 3a label-based dedup pre-flight: `gh pr list --label cl/<exchange>/<id> --state all`)
