@@ -66,7 +66,15 @@ After applying changes:
 
 ## PR body template (mandatory)
 
+Every PR you open MUST start with a provenance block — either a `Closes #N` line if a single source issue exists, or a `Triggered by:` line for routine maintenance. No exceptions.
+
 ```markdown
+Closes #<N>
+<-- OR -->
+Triggered by: weekly drift cycle (run <run-id>)
+Triggered by: parity-analyst proposal #<N>
+Triggered by: PR-merged changelog (PR #<N>)
+
 ## What changed
 <one sentence>
 
@@ -86,10 +94,6 @@ After applying changes:
 1. <the most-likely-to-be-wrong thing>
 2. <second thing>
 3. <third thing if any>
-
-## On-chain follow-up (if applicable)
-<list any contract-address changes, calldata changes, signing changes that
-require a human edit to clob.rs/ctf.rs/relayer.rs/swap.rs/signer.rs/approvals.rs>
 ```
 
 ## Hard constraints

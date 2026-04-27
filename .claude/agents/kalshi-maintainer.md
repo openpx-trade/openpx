@@ -52,7 +52,15 @@ If your work would require touching code that triggers a second concern, stop an
 
 ## PR body template (mandatory)
 
+Every PR you open MUST start with a provenance block — either a `Closes #N` line if a single source issue exists, or a `Triggered by:` line for routine maintenance. No exceptions.
+
 ```markdown
+Closes #<N>
+<-- OR -->
+Triggered by: weekly drift cycle (run <run-id>)
+Triggered by: parity-analyst proposal #<N>
+Triggered by: PR-merged changelog (PR #<N>)
+
 ## What changed
 <one sentence>
 

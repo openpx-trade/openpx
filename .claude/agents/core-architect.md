@@ -55,9 +55,33 @@ One concern per PR. Same as the maintainers. If you're tempted to bundle a trait
    - `feat(core): add <method/field/type>` for additive
    - `refactor(core): hoist <pattern> from exchanges into normalizers` for refactors
    - `feat(core)!: <change>` (with the `!`) for breaking changes — and label `breaking-change`. Avoid breaking changes unless explicitly approved.
-   Body uses the standard structured template.
+
+   PR body MUST start with `Closes #<proposal-N>` so the proposal issue auto-closes when this PR merges. If you were dispatched without a proposal issue (rare; refactors only), use `Triggered by: <reason>` instead.
+
 8. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
-9. **Submit handoff.** In `Notes`, list which exchanges' `describe()` you updated and any maintainer follow-up needed (typically: each maintainer should implement the new method on their exchange; that's a separate parity-fill PR per `runbooks/parity-gap-closure.md`).
+
+9. **File per-exchange parity-fill follow-up issues** — one per exchange whose `describe()` flag you set to `false`. Use this exact template so reviewers can see at a glance these are downstream impl tasks, not new proposals:
+
+   ```
+   Title: [parity-fill] {exchange}: implement {method} (proposal #{N}, scaffolding PR #{M})
+
+   Body:
+   Implementation task for the `{method}` unified trait method.
+
+   - Original proposal: #{N}
+   - Trait scaffolding: PR #{M} (closes #{N} on merge)
+   - Runbook: `maintenance/runbooks/parity-gap-closure.md`
+
+   When you pick this up, change `has_{method}: false` to `true` in
+   `engine/exchanges/{exchange}/src/exchange.rs::describe()` and replace the
+   default `NotSupported` impl with a real one that hits the upstream endpoint.
+
+   cc @{exchange}-maintainer
+   ```
+
+   Labels: `parity-fill`, `area:{exchange}`, `enhancement`. Assignee: `openpx-bot` (every `gh issue create` MUST include `--assignee openpx-bot`). Run dedup pre-flight (`gh issue list --search` for the same method+exchange) before creating.
+
+10. **Submit handoff.** In `Notes`, list which exchanges' `describe()` you updated and the per-exchange parity-fill issue numbers you filed.
 
 ## Hard constraints
 
