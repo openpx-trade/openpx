@@ -61,11 +61,38 @@ The repo is pre-users; backward compatibility is not a goal. Lean is. Treat all 
 
 9. **Commit the regenerated artifacts** in the same PR: `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, `docs/reference/types.mdx`. They MUST land together — the `sdk-sync` CI gate verifies this.
 
-10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. Body uses the standard structured template. Label `area:core` + the `parity-fill` label if this closes a parity proposal.
+10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. **PR body MUST start with `Closes #<proposal-N>`** so the originating proposal auto-closes on merge. Label `area:core` + the `parity-fill` label if this closes a parity proposal.
 
 11. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
 
-12. **File follow-up parity-fill issues** for each maintainer to implement the new method on their exchange (link to `runbooks/parity-gap-closure.md`). One issue per maintainer.
+12. **File follow-up parity-fill issues** — one per exchange whose `describe()` flag you set to `false`. Use the explicit "this is impl follow-up, not a duplicate proposal" template:
+
+    ```
+    Title: [parity-fill] {exchange}: implement {method} (proposal #{N}, scaffolding PR #{M})
+
+    Body:
+    Implementation task for the `{method}` unified trait method.
+
+    - Original proposal: #{N}
+    - Trait scaffolding: PR #{M} (closes #{N} on merge)
+    - Runbook: `maintenance/runbooks/parity-gap-closure.md`
+
+    When the assignee picks this up, change `has_{method}: false` to `true` in
+    `engine/exchanges/{exchange}/src/exchange.rs::describe()` and replace the
+    default `NotSupported` impl with a real one that hits the upstream endpoint.
+
+    cc @{exchange}-maintainer
+    ```
+
+    Labels: `parity-fill`, `area:{exchange}`, `enhancement`. Assignee: `openpx-bot` (every `gh issue create` MUST include `--assignee openpx-bot`). Run dedup pre-flight (`gh issue list --search` for the same `{method}` and `{exchange}`) before creating each one.
+
+13. **Comment on the proposal issue** noting where the impl is tracked. Format:
+
+    ```
+    Trait scaffolding ready in PR #{M}. Per-exchange implementation:
+    - kalshi: #{kalshi-followup}
+    - polymarket: #{polymarket-followup}
+    ```
 
 ## Steps for refactors
 

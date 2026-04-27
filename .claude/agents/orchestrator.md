@@ -33,7 +33,7 @@ Run the **weekly drift cycle**:
 3. Wait (briefly) for maintainer dispatches to return their handoff messages. You do not need to wait for CI green; you only need each Task call to settle so you have the list of PRs that were opened.
 4. Check open `parity-fill-approved` issues — if a parity proposal has been approved by a human since last cycle, dispatch `core-architect` to lay the trait scaffolding (per `runbooks/trait-evolution.md`). Then in the same cycle (or next), dispatch each maintainer to implement the new method on their exchange (per `runbooks/parity-gap-closure.md`).
 5. Dispatch `parity-analyst` once. Pass it the list of PRs opened this cycle so it can post schema-naming review comments where relevant, and so it knows which exchanges' code may have changed for the parity report.
-6. Cross-cutting (always run, since the cost is low and `just check-sync` will catch any divergence): run `just sync-all`. This regenerates `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, and `docs/reference/types.mdx`. If `git diff` shows changes, open a `chore: regen SDK + docs` PR labeled `regen`. If no changes, skip — nothing drifted.
+6. Cross-cutting (always run, since the cost is low and `just check-sync` will catch any divergence): run `just sync-all`. This regenerates `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, and `docs/reference/types.mdx`. If `git diff` shows changes, open a `chore: regen SDK + docs` PR labeled `regen`. **PR body must start with `Triggered by: scheduled SDK + docs regen (run ${{ github.run_id }})`.** If no changes, skip — nothing drifted.
 7. The Mintlify `docs/reference/types.mdx` page is the auto-generated 1-1 reflection of `engine/core/` types and doc-comments via the JSON schema. Keeping it in sync is a hard requirement of this orchestrator role.
 8. Submit the standard handoff message at the end.
 
@@ -65,9 +65,24 @@ You are the changelog maintainer.
    ```
    Skip pure-mechanical PRs that don't change end-user behaviour (regen-only PRs that flow generated artifacts, internal refactors with no API change). Use your judgment; lean toward including when in doubt.
 3. Append the entry to `docs/changelog.mdx` under a `## Unreleased` heading at the very top of the changelog (after the intro paragraph). If `## Unreleased` doesn't exist yet, create it. Released versions stay below — release-please's bot or a human moves entries from `## Unreleased` into the new version section at release time.
-4. Open a PR `chore(docs): changelog #<N>` labeled `regen` + `docs-only` against `main`.
+4. Open a PR `chore(docs): changelog #<N>` labeled `regen` + `docs-only` against `main`. **The PR body must start with `Triggered by: PR-merged changelog (PR #<N>)`** so reviewers see the source.
 5. Run `gh pr edit <new-pr> --add-reviewer MilindPathiyal`.
-6. Submit handoff.
+6. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`** until green or `status: blocked` after 3 fix attempts. Same rule applies for the cross-cutting `chore: regen SDK + docs` PR you may have opened in step 6 of the weekly cycle.
+7. Submit handoff once CI is green (or status: blocked with detailed Notes).
+
+## PR-body provenance — required on every PR you (or any agent you dispatch) open
+
+Every bot PR must start with one of these lines so the source is always discoverable:
+
+```
+Closes #<N>                                       ← when a single source issue exists
+Triggered by: weekly drift cycle (run <run-id>)
+Triggered by: parity-analyst proposal #<N>
+Triggered by: PR-merged changelog (PR #<N>)
+Triggered by: scheduled SDK + docs regen (run <run-id>)
+```
+
+If a maintainer or core-architect handoff comes back with a PR whose body lacks this line, comment on it via `gh pr comment` requesting the linkage be added before you mark the cycle complete.
 
 ## Hard constraints
 
