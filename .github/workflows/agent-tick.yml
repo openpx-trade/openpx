@@ -112,7 +112,10 @@ jobs:
           # makes). The real safety net is CODEOWNERS + branch protection +
           # contracts_test + manifest_coverage — not per-tool prompts.
           # Agent prompts forbid destructive ops (merge, force-push, --no-verify).
-          claude_args: --max-turns 30 --permission-mode bypassPermissions
+          # --max-turns 60: previous 30-turn budget was tight once we added
+          # the pr-ci-watch protocol (each PR-opening agent now spends turns
+          # waiting on CI and potentially fixing failures up to 3 times).
+          claude_args: --max-turns 60 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}

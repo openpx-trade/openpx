@@ -67,7 +67,8 @@ You are the changelog maintainer.
 3. Append the entry to `docs/changelog.mdx` under a `## Unreleased` heading at the very top of the changelog (after the intro paragraph). If `## Unreleased` doesn't exist yet, create it. Released versions stay below — release-please's bot or a human moves entries from `## Unreleased` into the new version section at release time.
 4. Open a PR `chore(docs): changelog #<N>` labeled `regen` + `docs-only` against `main`. **The PR body must start with `Triggered by: PR-merged changelog (PR #<N>)`** so reviewers see the source.
 5. Run `gh pr edit <new-pr> --add-reviewer MilindPathiyal`.
-6. Submit handoff.
+6. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`** until green or `status: blocked` after 3 fix attempts. Same rule applies for the cross-cutting `chore: regen SDK + docs` PR you may have opened in step 6 of the weekly cycle.
+7. Submit handoff once CI is green (or status: blocked with detailed Notes).
 
 ## PR-body provenance — required on every PR you (or any agent you dispatch) open
 

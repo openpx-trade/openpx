@@ -60,6 +60,8 @@ One concern per PR. Same as the maintainers. If you're tempted to bundle a trait
 
 8. **Request reviewer:** `gh pr edit <PR> --add-reviewer MilindPathiyal`.
 
+8a. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`.** Run `gh pr checks <PR> --watch`, fix any failures (up to 3 attempts), and only proceed to step 9 once CI is green. If you can't get it green after 3 attempts, submit `status: blocked` and stop — do NOT file the per-exchange parity-fill follow-ups, because the trait scaffolding isn't safely landed yet. **The PR is not your handoff artifact — green CI on the PR is.**
+
 9. **File per-exchange parity-fill follow-up issues** — one per exchange whose `describe()` flag you set to `false`. Use this exact template so reviewers can see at a glance these are downstream impl tasks, not new proposals:
 
    ```

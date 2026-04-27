@@ -62,7 +62,8 @@ After applying changes:
 1. Run `cargo test -p px-exchange-polymarket`, `cargo test -p px-core --test manifest_coverage`, `cargo test -p px-exchange-polymarket --test contracts_test`, `cargo clippy -p px-exchange-polymarket -- -D warnings`. All must pass.
 2. Open a draft PR with the structured body.
 3. Run `gh pr edit <PR> --add-reviewer MilindPathiyal`.
-4. Submit handoff.
+4. **Watch CI per `maintenance/runbooks/pr-ci-watch.md`.** Run `gh pr checks <PR> --watch`, then fix any failures with up to 3 attempts. Only submit `status: success` once CI is green. If you can't get it green after 3 attempts, submit `status: blocked` with a clear handoff. **The PR is not your handoff artifact — green CI on the PR is.**
+5. Submit the standard handoff once CI is green (or status: blocked with detailed Notes).
 
 ## PR body template (mandatory)
 
