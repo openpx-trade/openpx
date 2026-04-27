@@ -1679,6 +1679,7 @@ impl Exchange for Kalshi {
             has_fetch_trades: true,
             has_fetch_user_activity: false,
             has_fetch_fills: true,
+            has_fetch_server_time: false,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,

@@ -12,6 +12,7 @@ pub use px_sports::SportsWebSocket;
 pub use px_exchange_kalshi::{Kalshi, KalshiConfig};
 pub use px_exchange_polymarket::{Polymarket, PolymarketConfig, PolymarketSignatureType};
 
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 /// Enum dispatch over all supported exchanges.
@@ -169,6 +170,10 @@ impl ExchangeInner {
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
         dispatch!(self, fetch_fills, market_id, limit)
+    }
+
+    pub async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
+        dispatch!(self, fetch_server_time)
     }
 
     pub async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {

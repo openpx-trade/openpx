@@ -3051,6 +3051,7 @@ impl Exchange for Polymarket {
             has_fetch_trades: true,
             has_fetch_user_activity: true,
             has_fetch_fills: true,
+            has_fetch_server_time: false,
             has_approvals: true,
             has_refresh_balance: true,
             has_websocket: true,
