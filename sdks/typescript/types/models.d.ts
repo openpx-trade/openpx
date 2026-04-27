@@ -6,8 +6,776 @@
  */
 
 /**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "LiquidityRole".
+ */
+export type LiquidityRole = "maker" | "taker";
+/**
+ * Filter for market status in fetch queries.
+ *
+ * Unlike `MarketStatus` (which represents a market's actual status), this enum includes an `All` variant for fetching markets regardless of status.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketStatusFilter".
+ */
+export type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderSide".
+ */
+export type OrderSide = "buy" | "sell";
+/**
+ * Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "InvalidationReason".
+ */
+export type InvalidationReason =
+  | ("Reconnect" | "Lag" | "ExchangeReset")
+  | {
+      SequenceGap: {
+        expected: number;
+        received: number;
+        [k: string]: unknown;
+      };
+    };
+/**
+ * Market type classification.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketType".
+ */
+export type MarketType = "binary" | "categorical" | "scalar";
+/**
+ * Normalized market status across all exchanges.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketStatus".
+ */
+export type MarketStatus = "active" | "closed" | "resolved";
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderStatus".
+ */
+export type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancelled" | "rejected";
+/**
+ * Order time-in-force / execution type.
+ *
+ * Normalized across all exchanges: - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest. - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderType".
+ */
+export type OrderType = "gtc" | "ioc" | "fok";
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "number".
+ */
+export type Number = number;
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "PriceHistoryInterval".
+ */
+export type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
+/**
+ * Bid or ask side. Serializes as "bid"/"ask" on the wire.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "PriceLevelSide".
+ */
+export type PriceLevelSide = "bid" | "ask";
+/**
+ * Connection-level events, emitted on a channel separate from `WsUpdate` so a reconnect is observable as a single global signal rather than per-market.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "SessionEvent".
+ */
+export type SessionEvent =
+  | {
+      kind: "Connected";
+      [k: string]: unknown;
+    }
+  | {
+      gap_ms: number;
+      kind: "Reconnected";
+      [k: string]: unknown;
+    }
+  | {
+      dropped: number;
+      first_seq: number;
+      kind: "Lagged";
+      last_seq: number;
+      [k: string]: unknown;
+    }
+  | {
+      kind: "BookInvalidated";
+      market_id: string;
+      reason: InvalidationReason;
+      [k: string]: unknown;
+    }
+  | {
+      kind: "Error";
+      message: string;
+      [k: string]: unknown;
+    };
+/**
+ * Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "WsUpdate".
+ */
+export type WsUpdate =
+  | {
+      asset_id: string;
+      book: Orderbook;
+      exchange_ts?: number | null;
+      kind: "Snapshot";
+      local_ts_ms: number;
+      market_id: string;
+      seq: number;
+      [k: string]: unknown;
+    }
+  | {
+      asset_id: string;
+      changes: PriceLevelChange[];
+      exchange_ts?: number | null;
+      kind: "Delta";
+      local_ts_ms: number;
+      market_id: string;
+      seq: number;
+      [k: string]: unknown;
+    }
+  | {
+      asset_id: string;
+      kind: "Clear";
+      local_ts_ms: number;
+      market_id: string;
+      reason: InvalidationReason;
+      seq: number;
+      [k: string]: unknown;
+    }
+  | {
+      kind: "Trade";
+      local_ts_ms: number;
+      trade: ActivityTrade;
+      [k: string]: unknown;
+    }
+  | {
+      fill: ActivityFill;
+      kind: "Fill";
+      local_ts_ms: number;
+      [k: string]: unknown;
+    };
+
+/**
  * Auto-generated JSON Schema for OpenPX core types
  */
 export interface OpenPX {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "ActivityFill".
+ */
+export interface ActivityFill {
+  asset_id: string;
+  /**
+   * Exchange-authoritative timestamp (millis since epoch).
+   */
+  exchange_ts_ms?: number | null;
+  /**
+   * Fee charged for this fill, when the exchange publishes one.
+   */
+  fee?: number | null;
+  fill_id?: string | null;
+  liquidity_role?: LiquidityRole | null;
+  market_id: string;
+  order_id?: string | null;
+  outcome?: string | null;
+  price: number;
+  side?: string | null;
+  size: number;
+  source_channel: string;
+  /**
+   * On-chain transaction hash, when the exchange publishes one.
+   */
+  tx_hash?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Activity events still carried inside `WsUpdate::Trade` / `WsUpdate::Fill`. Retained as a typed payload alongside the stream rather than as a separate per-token surface.
+ *
+ * `exchange_ts_ms` is exchange-authoritative millis since epoch — uniform with `WsUpdate::{Snapshot, Delta}::exchange_ts`, so every timestamp on the WS surface is the same type (`u64` millis). `chrono::DateTime` was more expressive but cost a representation mismatch at every FFI boundary.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "ActivityTrade".
+ */
+export interface ActivityTrade {
+  aggressor_side?: string | null;
+  asset_id: string;
+  /**
+   * Exchange-authoritative timestamp (millis since epoch).
+   */
+  exchange_ts_ms?: number | null;
+  /**
+   * Fee rate in basis points (e.g. 0 = no fee, 200 = 2%). Polymarket `last_trade_price` events populate this.
+   */
+  fee_rate_bps?: number | null;
+  market_id: string;
+  outcome?: string | null;
+  price: number;
+  side?: string | null;
+  size: number;
+  source_channel: string;
+  trade_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 1.0). Timestamp is the period START (not end). Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Candlestick".
+ */
+export interface Candlestick {
+  close: number;
+  high: number;
+  low: number;
+  open: number;
+  /**
+   * Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).
+   */
+  open_interest?: number | null;
+  /**
+   * Period start timestamp (UTC). lightweight-charts expects start-of-period.
+   */
+  timestamp: string;
+  /**
+   * Trade volume in contracts. 0.0 if exchange doesn't provide volume.
+   */
+  volume: number;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "ExchangeInfo".
+ */
+export interface ExchangeInfo {
+  has_approvals: boolean;
+  has_cancel_order: boolean;
+  has_create_order: boolean;
+  has_fetch_balance: boolean;
+  has_fetch_fills: boolean;
+  has_fetch_markets: boolean;
+  has_fetch_orderbook: boolean;
+  has_fetch_orderbook_history: boolean;
+  has_fetch_positions: boolean;
+  has_fetch_price_history: boolean;
+  has_fetch_server_time: boolean;
+  has_fetch_trades: boolean;
+  has_fetch_user_activity: boolean;
+  has_refresh_balance: boolean;
+  has_websocket: boolean;
+  id: string;
+  name: string;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "FetchMarketsParams".
+ */
+export interface FetchMarketsParams {
+  /**
+   * Exchange-specific cursor (offset, page number, or cursor string)
+   */
+  cursor?: string | null;
+  /**
+   * Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+   */
+  event_id?: string | null;
+  /**
+   * Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.
+   */
+  limit?: number | null;
+  /**
+   * Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.
+   */
+  series_id?: string | null;
+  /**
+   * Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All` to fetch markets of any status.
+   */
+  status?: MarketStatusFilter | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "FetchOrdersParams".
+ */
+export interface FetchOrdersParams {
+  market_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "FetchUserActivityParams".
+ */
+export interface FetchUserActivityParams {
+  address: string;
+  limit?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * A single fill (trade execution) from a user's order.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Fill".
+ */
+export interface Fill {
+  created_at: string;
+  fee: number;
+  fill_id: string;
+  is_taker: boolean;
+  market_id: string;
+  order_id: string;
+  outcome: string;
+  price: number;
+  side: OrderSide;
+  size: number;
+  [k: string]: unknown;
+}
+/**
+ * Unified prediction market model.
+ *
+ * All exchanges produce this single type directly — no intermediate conversion.
+ *
+ * # Price Format
+ *
+ * All prices are normalized to decimal format (0.0 to 1.0). Exchange-specific conversions are handled during parsing:
+ *
+ * - **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration). - **Polymarket**: Native prices already in decimal (0.0-1.0).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Market".
+ */
+export interface Market {
+  /**
+   * Whether the market is currently accepting orders
+   */
+  accepting_orders?: boolean;
+  /**
+   * Best ask price (normalized 0-1)
+   */
+  best_ask?: number | null;
+  /**
+   * Best bid price (normalized 0-1)
+   */
+  best_bid?: number | null;
+  /**
+   * Kalshi: can close early
+   */
+  can_close_early?: boolean | null;
+  /**
+   * Chain ID for on-chain markets
+   */
+  chain_id?: string | null;
+  /**
+   * Market close time
+   */
+  close_time?: string | null;
+  /**
+   * Condition ID for CTF
+   */
+  condition_id?: string | null;
+  /**
+   * Market creation time
+   */
+  created_at?: string | null;
+  /**
+   * Denomination token (e.g. USDC address)
+   */
+  denomination_token?: string | null;
+  /**
+   * Full description
+   */
+  description: string;
+  /**
+   * Canonical OpenPX event ID for cross-exchange event grouping.
+   */
+  event_id?: string | null;
+  /**
+   * Exchange identifier (kalshi, polymarket)
+   */
+  exchange: string;
+  /**
+   * Source-native event/group ID from the exchange.
+   */
+  group_id?: string | null;
+  /**
+   * Market icon URL
+   */
+  icon_url?: string | null;
+  /**
+   * Native exchange market ID
+   */
+  id: string;
+  /**
+   * Market image URL
+   */
+  image_url?: string | null;
+  /**
+   * Last trade price (normalized 0-1)
+   */
+  last_trade_price?: number | null;
+  /**
+   * Current liquidity
+   */
+  liquidity?: number | null;
+  /**
+   * Maker fee rate (basis points)
+   */
+  maker_fee_bps?: number | null;
+  /**
+   * Market type classification
+   */
+  market_type: MarketType;
+  /**
+   * Minimum order size (contracts)
+   */
+  min_order_size?: number | null;
+  /**
+   * Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.
+   */
+  native_numeric_id?: string | null;
+  /**
+   * Polymarket: neg-risk flag
+   */
+  neg_risk?: boolean | null;
+  /**
+   * Polymarket: neg-risk market ID
+   */
+  neg_risk_market_id?: string | null;
+  /**
+   * Notional value per contract (Kalshi)
+   */
+  notional_value?: number | null;
+  /**
+   * Current open interest
+   */
+  open_interest?: number | null;
+  /**
+   * Market open time
+   */
+  open_time?: string | null;
+  /**
+   * Primary key: {exchange}:{native_id}
+   */
+  openpx_id: string;
+  /**
+   * Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})
+   */
+  outcome_prices?: {
+    [k: string]: number;
+  };
+  /**
+   * Outcome-to-token mapping for orderbook subscriptions
+   */
+  outcome_tokens?: OutcomeToken[];
+  /**
+   * Outcome labels (e.g., ["Yes", "No"] for binary markets)
+   */
+  outcomes?: string[];
+  /**
+   * Kalshi: previous price
+   */
+  previous_price?: number | null;
+  /**
+   * 24-hour YES price change (decimal, e.g. 0.05 = +5%)
+   */
+  price_change_1d?: number | null;
+  /**
+   * 1-hour YES price change
+   */
+  price_change_1h?: number | null;
+  /**
+   * 30-day YES price change
+   */
+  price_change_1mo?: number | null;
+  /**
+   * 7-day YES price change
+   */
+  price_change_1wk?: number | null;
+  /**
+   * Kalshi sub-penny pricing structure
+   */
+  price_level_structure?: string | null;
+  /**
+   * Market question (may differ from title)
+   */
+  question?: string | null;
+  /**
+   * Question ID (Polymarket)
+   */
+  question_id?: string | null;
+  /**
+   * Resolution result
+   */
+  result?: string | null;
+  /**
+   * Resolution rules
+   */
+  rules?: string | null;
+  /**
+   * Settlement / resolution time
+   */
+  settlement_time?: string | null;
+  /**
+   * Kalshi: settlement value
+   */
+  settlement_value?: number | null;
+  /**
+   * URL-friendly identifier
+   */
+  slug?: string | null;
+  /**
+   * Bid-ask spread (decimal)
+   */
+  spread?: number | null;
+  /**
+   * Normalized status: Active, Closed, Resolved
+   */
+  status: MarketStatus;
+  /**
+   * Taker fee rate (basis points)
+   */
+  taker_fee_bps?: number | null;
+  /**
+   * Tick size (minimum price increment, normalized decimal e.g. 0.01)
+   */
+  tick_size?: number | null;
+  /**
+   * Market title
+   */
+  title: string;
+  /**
+   * No outcome token ID
+   */
+  token_id_no?: string | null;
+  /**
+   * Yes outcome token ID
+   */
+  token_id_yes?: string | null;
+  /**
+   * Total volume (USD)
+   */
+  volume: number;
+  /**
+   * 30-day rolling trading volume (USD)
+   */
+  volume_1mo?: number | null;
+  /**
+   * 7-day rolling trading volume (USD)
+   */
+  volume_1wk?: number | null;
+  /**
+   * 24-hour trading volume (USD)
+   */
+  volume_24h?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OutcomeToken".
+ */
+export interface OutcomeToken {
+  outcome: string;
+  token_id: string;
+  [k: string]: unknown;
+}
+/**
+ * Normalized public market trade, suitable for "tape" UIs.
+ *
+ * - `price` is normalized to [0.0, 1.0] across all exchanges. - `timestamp` is the exchange-provided trade timestamp (UTC).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketTrade".
+ */
+export interface MarketTrade {
+  aggressor_side?: string | null;
+  id?: string | null;
+  no_price?: number | null;
+  outcome?: string | null;
+  price: number;
+  side?: string | null;
+  size: number;
+  source_channel: string;
+  taker_address?: string | null;
+  timestamp: string;
+  tx_hash?: string | null;
+  yes_price?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Order".
+ */
+export interface Order {
+  created_at: string;
+  filled: number;
+  id: string;
+  market_id: string;
+  outcome: string;
+  price: number;
+  side: OrderSide;
+  size: number;
+  status: OrderStatus;
+  updated_at?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Orderbook".
+ */
+export interface Orderbook {
+  asks: PriceLevel[];
+  asset_id: string;
+  bids: PriceLevel[];
+  /**
+   * Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.
+   */
+  hash?: string | null;
+  last_update_id?: number | null;
+  market_id: string;
+  timestamp?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "PriceLevel".
+ */
+export interface PriceLevel {
+  price: Number;
+  size: number;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookHistoryRequest".
+ */
+export interface OrderbookHistoryRequest {
+  cursor?: string | null;
+  end_ts?: number | null;
+  limit?: number | null;
+  market_id: string;
+  start_ts?: number | null;
+  token_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Request for fetching an L2 orderbook.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookRequest".
+ */
+export interface OrderbookRequest {
+  market_id: string;
+  outcome?: string | null;
+  token_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * A point-in-time L2 orderbook snapshot, used for historical orderbook data.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookSnapshot".
+ */
+export interface OrderbookSnapshot {
+  asks: PriceLevel[];
+  bids: PriceLevel[];
+  hash?: string | null;
+  recorded_at?: string | null;
+  timestamp: string;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Position".
+ */
+export interface Position {
+  average_price: number;
+  current_price: number;
+  market_id: string;
+  outcome: string;
+  size: number;
+  [k: string]: unknown;
+}
+/**
+ * Request for fetching price history / candlestick data.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "PriceHistoryRequest".
+ */
+export interface PriceHistoryRequest {
+  /**
+   * Condition ID for OI enrichment (Polymarket).
+   */
+  condition_id?: string | null;
+  /**
+   * Unix seconds
+   */
+  end_ts?: number | null;
+  interval: PriceHistoryInterval;
+  market_id: string;
+  outcome?: string | null;
+  /**
+   * Unix seconds
+   */
+  start_ts?: number | null;
+  token_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * A single price level change. Absolute replacement semantics: size > 0 = set level to this size, size == 0 = remove level.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "PriceLevelChange".
+ */
+export interface PriceLevelChange {
+  price: Number;
+  side: PriceLevelSide;
+  size: number;
+  [k: string]: unknown;
+}
+/**
+ * Request for fetching recent public trades ("tape") for a market outcome.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "TradesRequest".
+ */
+export interface TradesRequest {
+  /**
+   * Opaque pagination cursor from a previous response.
+   */
+  cursor?: string | null;
+  /**
+   * Unix seconds (inclusive)
+   */
+  end_ts?: number | null;
+  /**
+   * Max number of trades to return (exchange-specific caps may apply).
+   */
+  limit?: number | null;
+  /**
+   * Exchange-native market identifier.
+   */
+  market_id: string;
+  /**
+   * Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`.
+   */
+  market_ref?: string | null;
+  outcome?: string | null;
+  /**
+   * Unix seconds (inclusive)
+   */
+  start_ts?: number | null;
+  token_id?: string | null;
   [k: string]: unknown;
 }

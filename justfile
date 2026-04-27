@@ -36,7 +36,8 @@ python: python-stubs
 node-models: schema
     cd sdks/typescript && npx json-schema-to-typescript@15 \
         ../../schema/openpx.schema.json \
-        --output types/models.d.ts
+        --output types/models.d.ts \
+        --unreachableDefinitions
 
 node-build: node-models
     cd sdks/typescript && npm run build
