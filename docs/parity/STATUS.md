@@ -10,7 +10,7 @@ on each exchange impl. **Do not hand-edit** — your changes will be overwritten
 on the next cycle.
 </Note>
 
-_Last refreshed: 2026-04-26._
+_Last refreshed: 2026-04-27._
 
 ## Capability matrix
 
@@ -37,6 +37,7 @@ configured with credentials — public/read-only callers see it as unsupported.
 | `fetch_balance_raw`           |   ✓    |     ✓      |
 | `fetch_user_activity`         |   ✗    |     ✓      |
 | `fetch_fills`                 |   ✓    |     ✓      |
+| `fetch_server_time`           |   ✗    |     ✗      |
 | `approvals` (token allowances) |   —   |     ✓      |
 | WebSocket session             | partial (auth, non-demo) | ✓ |
 
@@ -46,27 +47,50 @@ to this exchange.
 
 ## Drift summary (this cycle)
 
-The orchestrator reported no real Tier 1 or Tier 2 drift this cycle. The
-`watch_removed` signal that surfaced was a known false positive caused by the
-drift script running without `--full` (an empty `curr_watch` always triggers
-`watch_removed` for every lock-file entry). No maintainer PRs were opened, and
-no `parity-fill-approved` issues exist.
+The orchestrator dispatched both maintainers this cycle. The kalshi-maintainer
+acknowledged a Tier 1 changelog + `llms.txt` hash refresh in PR #25 (lock-file
+update only — `info.version` on `openapi.yaml` is still `3.14.0`, no API
+contract change). PR #26 (core-architect) landed the `fetch_server_time` trait
+method that closes proposal #17; both exchanges advertise
+`has_fetch_server_time: false` until the per-exchange parity-fill PRs land
+(tracked as #27 and #28).
+
+Five Kalshi changelog items were prose-acknowledged in PR #25 without code
+changes; this analyst evaluated each and filed proposals for the two that
+warrant unified-trait coverage (see below). The remaining three are
+exchange-internal (deprecated `ts_ms` field rename, `client_order_id` removal
+from fill responses, WebSocket `orderbook_delta::get_snapshot` action) and do
+not motivate cross-exchange parity work.
 
 ## Open parity-fill candidates
 
-Proposal issues filed this cycle for human review (see Issues tab, label
-`parity-proposal`):
+Proposal issues filed for human review (label `parity-gap`):
 
-- `[parity] proposed unified method: fetch_events` — both exchanges expose
-  first-class event APIs (Kalshi `/events`, Polymarket `/events`) but the
-  unified trait only surfaces `Market`. Adding `fetch_events` would let SDK
-  consumers iterate the cross-exchange event graph without dropping to
+- **#16** `[parity] proposed unified method: fetch_events` — both exchanges
+  expose first-class event APIs (Kalshi `/events`, Polymarket `/events`) but
+  the unified trait only surfaces `Market`. Adding `fetch_events` would let
+  SDK consumers iterate the cross-exchange event graph without dropping to
   exchange-specific code.
-- `[parity] proposed unified method: server_time` — both exchanges expose a
-  server-time endpoint (Kalshi `/exchange/status`, Polymarket `/server-time`).
-  HFT callers need this for clock-skew correction; today they reach into
-  exchange-specific impls.
-- `[ux] surface Polymarket relayer / gasless transactions in docs` —
+- **#17** `[parity] proposed unified method: fetch_server_time` — **APPROVED**
+  (label `parity-fill-approved`); trait scaffolding landed in PR #26.
+  Per-exchange fills tracked as #27 (kalshi) and #28 (polymarket).
+- **#21 / #22 / #23 / #24** `[parity] proposed unified method: fetch_series` —
+  multiple variants of the same Series proposal in flight; needs human
+  triage to pick the canonical one and close the duplicates.
+- **#29** `[parity] proposed unified method: fetch_orderbooks (batch)` —
+  filed this cycle. Kalshi shipped `GET /markets/orderbooks` (changelog
+  2026-03-30) and Polymarket has `POST /books`; today the unified trait only
+  exposes the singular form, so watchlist UIs and arb scanners pay N
+  round-trips instead of 1.
+- **#30** `[parity] proposed Market field: event_occurrence_at` — filed this
+  cycle. Kalshi added `occurrence_datetime` (changelog 2026-04-16); Polymarket
+  exposes `gameStartTime` on event objects. The unified `Market` struct
+  models exchange-side lifecycle (`open_time`, `close_time`, `settlement_time`)
+  but has no field for when the underlying real-world event actually occurs.
+
+UX issues filed (label `documentation`):
+
+- **#18** `[ux] surface Polymarket relayer / gasless transactions in docs` —
   the relayer pipeline is implemented in
   `engine/exchanges/polymarket/src/relayer.rs` but is not documented
   publicly, leaving a high-leverage Polymarket UX feature invisible to
