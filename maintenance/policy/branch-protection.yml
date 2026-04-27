@@ -12,16 +12,21 @@ main:
   required_status_checks:
     strict: true  # branches must be up-to-date before merge
     contexts:
-      - fmt
-      - clippy
-      - test (ubuntu-latest)
-      - test (macos-latest)
-      - check
-      - version-sync
-      - sdk-sync
-      - bench
-      - manifest-coverage    # added by Wave 1 of the autonomous-maintenance plan
-      - ci-success
+      # These names match the `name:` field of each job in .github/workflows/ci.yml
+      # exactly. GitHub Actions reports the status under the job's display name;
+      # the branch-protection rule must use the same string verbatim.
+      - Format
+      - Clippy
+      - Test (ubuntu-latest)
+      - Test (macos-latest)
+      - Check
+      - Version Sync Check
+      - SDK Sync Check
+      - Benchmarks
+      - Manifest Coverage
+      # ci-success removed — it was a needless aggregator and its status-check
+      # name drifted from what Actions reported, leaving the rule forever
+      # pending on a context never emitted.
 
   require_conversation_resolution: true
 
@@ -35,17 +40,18 @@ main:
 notes: |
   Applying via gh CLI:
 
-    gh api repos/{owner}/{repo}/branches/main/protection \
+    gh api repos/openpx-trade/openpx/branches/main/protection \
       --method PUT \
-      --raw-field required_status_checks='{"strict":true,"contexts":["fmt","clippy","test (ubuntu-latest)","test (macos-latest)","check","version-sync","sdk-sync","bench","manifest-coverage","ci-success"]}' \
+      --raw-field 'required_status_checks={"strict":true,"contexts":["Format","Clippy","Test (ubuntu-latest)","Test (macos-latest)","Check","Version Sync Check","SDK Sync Check","Benchmarks","Manifest Coverage"]}' \
       --raw-field enforce_admins=false \
-      --raw-field required_pull_request_reviews='{"dismiss_stale_reviews":true,"require_code_owner_reviews":true,"required_approving_review_count":1}' \
+      --raw-field 'required_pull_request_reviews={"dismiss_stale_reviews":true,"require_code_owner_reviews":true,"required_approving_review_count":1}' \
       --raw-field restrictions=null \
       --raw-field allow_force_pushes=false \
       --raw-field allow_deletions=false \
       --raw-field required_conversation_resolution=true \
       --raw-field allow_auto_merge=false
 
-  When `manifest-coverage` doesn't yet exist as a status check (i.e. no PR has run
-  it yet), GitHub will reject the protection update. Land Wave 1's CI changes
-  first; merge a no-op PR so the check name is registered; then apply protection.
+  All listed contexts must match the actual `name:` field of each job in
+  .github/workflows/ci.yml exactly (capitalization, spaces, parentheses
+  included). If a check name in the workflow changes, this command must
+  change in lockstep.
