@@ -169,3 +169,21 @@ index, or the plan at
 design. Every PR opened by an agent requires explicit human approval — there is
 no auto-merge. CODEOWNERS at `.github/CODEOWNERS` and the policy at
 `maintenance/policy/REVIEW_POLICY.md` define what each surface allows.
+
+**The bot's sync invariant:** every PR opened by an agent must complete
+`maintenance/runbooks/pr-preflight.md` first. That runbook enforces the rule
+that the Rust core, Python SDK, TypeScript SDK, and Mintlify docs all stay in
+sync on every edit, and that both SDKs actually build and import cleanly. The
+CI gates `SDK Sync Check`, `Python SDK Build`, and `Node.js SDK Build`
+mechanically backstop the same rule — they are required by branch protection,
+so a partial sync cannot land regardless of what any agent claims in a PR
+body.
+
+**The bot's scope:** the agent system fires once a day at 00:00 UTC. Its
+single job is to keep OpenPX in sync with the upstream Kalshi and Polymarket
+changelogs — propose new overlapping features (`parity-analyst` files an
+issue), implement breaking exchange-specific features (the relevant
+maintainer opens a PR), refresh the lock at the end. To catch up on a
+quiet period, use `just backfill YYYY-MM-DD`; the orchestrator walks every
+`<Update>` block on or after that date and classifies them with the same
+rules as the daily cycle.

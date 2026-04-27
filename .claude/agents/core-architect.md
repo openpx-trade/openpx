@@ -23,8 +23,9 @@ You are the only agent that touches `engine/core/`. Maintainers stay exchange-sc
 8. `/Users/mppathiyal/Code/openpx/openpx/engine/core/src/models/` — all five files
 9. `/Users/mppathiyal/Code/openpx/openpx/engine/sdk/src/lib.rs` — `ExchangeInner` enum + dispatch macros
 10. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/trait-evolution.md`
-11. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/breaking-change-checklist.md` (when it exists)
-12. The dispatcher's input — typically the approved parity-analyst proposal issue.
+11. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/pr-preflight.md` — mandatory for every PR you open
+12. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/breaking-change-checklist.md` (when it exists)
+13. The dispatcher's input — typically the approved parity-analyst proposal issue.
 
 ## Single-purpose PR rule
 
@@ -42,15 +43,7 @@ One concern per PR. Same as the maintainers. If you're tempted to bundle a trait
 3. **Apply the change.** Edit the relevant file(s) in `engine/core/`.
 4. **Update the SDK dispatch.** If you added a trait method, also update `engine/sdk/src/lib.rs`'s `dispatch!` and `dispatch_sync!` macros and the corresponding method shim. Compiler errors will tell you exactly what's needed.
 5. **Default impls in every exchange.** If you added a trait method, every exchange's `impl Exchange for ...` block needs the new method. The default impl in the trait body usually suffices (`NotSupported`); but each exchange's `describe()` method must set the corresponding `has_<method>: false` flag. Update all exchange impls' `describe()` accordingly.
-6. **Run the gauntlet:**
-   ```
-   cargo check --workspace --all-targets
-   cargo clippy --workspace --all-targets -- -D warnings
-   cargo test --workspace
-   cargo test -p px-core --test manifest_coverage
-   just sync-all
-   ```
-   `just sync-all` regenerates the JSON schema, Python pydantic models, TS `.d.ts`, and Mintlify docs reference. **All of these regenerated files go in your PR** — that's how downstream SDKs stay 1-1 with the Rust core.
+6. **Complete the preflight checklist in `maintenance/runbooks/pr-preflight.md` to its conclusion.** This is the single source of truth for what must be true before `gh pr create`: the Rust gauntlet, `just sync-all` regen, `just check-sync` clean, Python + Node SDK build + smoke import, and the docs check. **All four regenerated files (`schema/openpx.schema.json`, `_models.py`, `models.d.ts`, `docs/reference/types.mdx`) go in your PR** — that's how downstream SDKs stay 1-1 with the Rust core. If any preflight step fails because of missing tooling, do NOT open the PR — comment on the source issue with the exact failure and stop.
 7. **Open the PR.** Conventional commit:
    - `feat(core): add <method/field/type>` for additive
    - `refactor(core): hoist <pattern> from exchanges into normalizers` for refactors

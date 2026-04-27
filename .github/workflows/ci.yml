@@ -100,6 +100,57 @@ jobs:
         run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models docs
       - name: Check generated files are in sync
         run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/reference/
+      # Smoke checks: a regen can produce a syntactically degenerate file
+      # (e.g. an empty stub) that drifts undetectably under git diff alone.
+      # PR #26 hid for an indeterminate amount of time because models.d.ts
+      # was a 13-line stub that never changed regardless of schema edits.
+      # These two checks make the drift impossible to hide.
+      - name: Smoke-check generated Python models parse
+        run: python -m py_compile sdks/python/python/openpx/_models.py
+      - name: Smoke-check generated TS models type-check
+        run: cd sdks/typescript && npx tsc --noEmit types/models.d.ts
+
+  python-sdk-build:
+    name: Python SDK Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: pip install datamodel-code-generator maturin pydantic
+      - name: Build Python SDK against current Rust core
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" python-build
+      - name: Smoke-import the built package
+        run: cd sdks/python && python -c "import openpx; print(openpx.__version__)"
+
+  node-sdk-build:
+    name: Node.js SDK Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: pip install datamodel-code-generator
+      - run: cd sdks/typescript && npm install
+      - name: Build Node SDK against current Rust core
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" node-build
+      - name: Smoke-import the built package
+        run: cd sdks/typescript && node -e "const o = require('./index.js'); const keys = Object.keys(o).sort(); console.log(keys); if (keys.length === 0) { console.error('no exports'); process.exit(1); }"
 
   bench:
     name: Benchmarks

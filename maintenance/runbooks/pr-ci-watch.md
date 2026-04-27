@@ -51,6 +51,10 @@ For each attempt:
    | `manifest_coverage` test fails | Manifest gap | Add `FieldMapping` (preferred) or allowlist entry; per `runbooks/spec-version-bump.md` |
    | `contracts_test` test fails | Snapshot drift | Per `runbooks/contract-redeployment.md` — re-verify on Polygonscan, update either source or snapshot |
    | `sdk-sync` shows diff in `schema/`, `_models.py`, `models.d.ts`, or `docs/reference/` | Codegen | Run `just sync-all`, stage the regenerated files, push |
+   | `sdk-sync` smoke check fails (`py_compile` or `tsc --noEmit`) | Codegen produced invalid file | Inspect the regenerated file; the codegen tool or its flags need a fix (see PR #34 for an example — `--unreachableDefinitions` was missing). Don't paper over by hand-editing the generated file. |
+   | `Python SDK Build` fails (maturin) | PyO3 binding broke | A Rust-side change is incompatible with the Python binding layer. Read the maturin error, fix the Rust source. |
+   | `Node.js SDK Build` fails (napi) | NAPI binding broke | A Rust-side change is incompatible with the Node binding layer. Read the napi error, fix the Rust source. |
+   | SDK build smoke import fails (`import openpx` or `require('./index.js')`) | Package entry point broke | Check `pyproject.toml` / `package.json` `main` and that the regenerated `_models.py` / `index.js` exists at the expected path. |
    | `version-sync` mismatch | Version drift | Don't touch this — escalate. Versions are release-please's domain. |
    | HTTP 502 / network error / timeout | Transient infra | `gh run rerun <run-id> --failed`. Do NOT push a code change. |
    | Permission denied on `gh pr edit` / `gh pr comment` | Auth issue | Escalate; not fixable in-loop. |

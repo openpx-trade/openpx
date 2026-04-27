@@ -50,16 +50,16 @@ The repo is pre-users; backward compatibility is not a goal. Lean is. Treat all 
 
 7. **Add a manifest `Transform` variant?** Edit `engine/core/src/exchange/manifest.rs`. Update `engine/core/src/exchange/normalizers.rs::apply_transform` to handle it.
 
-8. **Run the gauntlet:**
+8. **Run the gauntlet, then complete `maintenance/runbooks/pr-preflight.md` to its conclusion:**
    ```
    cargo check --workspace --all-targets
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
    cargo test -p px-core --test manifest_coverage
-   just sync-all
    ```
+   The preflight runs `just sync-all`, `just check-sync`, the smoke checks (`python -m py_compile` + `tsc --noEmit`), the Python and Node SDK builds, and the smoke imports. If any preflight step fails because of missing tooling in your sandbox, do NOT open the PR — comment on the source issue with the exact failure and stop.
 
-9. **Commit the regenerated artifacts** in the same PR: `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, `docs/reference/types.mdx`. They MUST land together — the `sdk-sync` CI gate verifies this.
+9. **Commit the regenerated artifacts** in the same PR: `schema/openpx.schema.json`, `sdks/python/python/openpx/_models.py`, `sdks/typescript/types/models.d.ts`, `docs/reference/types.mdx`. They MUST land together — the `sdk-sync`, `Python SDK Build`, and `Node.js SDK Build` CI gates collectively verify this.
 
 10. **Open the PR.** Conventional commit `feat(core): <one-sentence-summary>`. **PR body MUST start with `Closes #<proposal-N>`** so the originating proposal auto-closes on merge. Label `area:core` + the `parity-fill` label if this closes a parity proposal.
 
