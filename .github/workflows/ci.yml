@@ -87,12 +87,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: extractions/setup-just@v2
+      - uses: taiki-e/install-action@v2
         with:
-          # Pin a specific version. The action's default-latest resolution
-          # has been failing intermittently with `no release for just matching
-          # version specifier .` — pinning sidesteps the issue.
-          just-version: "1.50.0"
+          # extractions/setup-just@v2 has been failing release-lookup even for
+          # exact pinned versions (`no release for just matching version
+          # specifier 1.50.0`). taiki-e/install-action downloads prebuilt
+          # binaries from a curated index — fast and reliable.
+          tool: just
       - run: pip install datamodel-code-generator
       - run: cd sdks/typescript && npm install
       - name: Generate schema, SDK models, and docs
