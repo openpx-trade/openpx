@@ -37,7 +37,7 @@ Identify exactly which OpenPX files this change touches. Typical patterns:
 | Removed field | Drop the `FieldMapping` entry. If a unified model field is no longer fillable, escalate to `core-architect`. |
 | New optional field | Add to `field_mappings` if it maps to the unified Market/Order/etc.; otherwise to `maintenance/manifest-allowlists/<id>.txt` with a one-line comment. |
 | Breaking signature change on existing endpoint | Update `exchange.rs` parsing + `field_mappings`. Body of the changelog entry usually lists the old and new shapes. |
-| On-chain contract redeployment (Polymarket) | Follow `runbooks/contract-redeployment.md` instead of this one — verify on Polygonscan, update `maintenance/snapshots/polymarket-contracts.snapshot.json` AND the affected file under `engine/exchanges/polymarket/src/{clob,ctf,relayer,swap,signer,approvals}.rs` in the same PR. |
+| On-chain contract redeployment (Polymarket) | Funds-moving change — see "Special case: Polymarket contract redeployment" section below. |
 | Auth flow change | Stop. `auth.rs` is human-only. Comment on the dispatch with what you found; the human takes it. |
 | Service-level change (new service appeared, e.g. Polymarket adds a 5th service) | Stop. New service onboarding is a human decision. Comment and exit. |
 
@@ -127,3 +127,39 @@ In `Notes`:
 - The entry implies a new service or new exchange → human decision. Comment and exit.
 - Any preflight step fails because of missing tooling → comment with the exact failure; do NOT open the PR.
 
+## Special case: Polymarket contract redeployment
+
+A wrong contract address can move user funds to a contract under someone else's control. Verify every address against an external source — never paste blindly from documentation. CODEOWNERS forces human review on `engine/exchanges/polymarket/src/{clob,ctf,relayer,swap,signer,approvals}.rs` and the `contracts_test` snapshot guards source-vs-snapshot drift; the agent drafts confidently because both gates catch a mistake.
+
+When the changelog entry mentions a contract redeployment (CTF Exchange, NegRisk Adapter, USDC.e proxy, CLOB V2 cutover, etc.):
+
+1. **Pull every changed address.** `WebFetch https://docs.polymarket.com/resources/contracts.md` and extract every `0x...` that the entry says changed.
+
+2. **Cross-verify each on Polygonscan.** For each address:
+   - `WebFetch https://polygonscan.com/address/<address>`
+   - Confirm: contract is deployed; deployer matches a known Polymarket multisig; recent activity matches the contract's stated purpose.
+   - Note the deployment block + the tx hash that deployed it — these go in the snapshot's `purpose` field as provenance.
+
+3. **Update `maintenance/snapshots/polymarket-contracts.snapshot.json`:**
+   - Update `address` for each changed constant.
+   - Update `_last_verified` to today's date.
+   - Add provenance to `purpose` (e.g. `"CLOB V2 deployment, 2026-04-28; Polygonscan: <url>; deployed at block <N>, tx <hash>"`).
+   - Add new constants if the redeployment introduced any; remove constants that the redeployment removed.
+
+4. **Update the source.** Edit the corresponding `engine/exchanges/polymarket/src/*.rs` files to match the snapshot:
+   - `approvals.rs` for `USDC_ADDRESS`, `CTF_ADDRESS`, `CTF_EXCHANGE`, `NEG_RISK_CTF_EXCHANGE`, `NEG_RISK_ADAPTER`
+   - `swap.rs` for `NATIVE_USDC_ADDRESS`, `BRIDGED_USDC_E_ADDRESS`, `UNISWAP_V3_ROUTER`
+   - Any other file the snapshot's `file` field points to
+
+5. **Source + snapshot land in the SAME PR.** Splitting them guarantees `contracts_test` fails. `cargo test -p px-exchange-polymarket --test contracts_test` must pass before you `gh pr create`.
+
+6. **PR labels:** add `requires-human-careful-review` + `area:onchain`. Title: `feat(polymarket)!: migrate to <name>` for major migrations (the `!` marks breaking) or `chore(polymarket): update contract <name> address` for single-contract redeploys.
+
+7. **PR body's `## Review focus` lists every changed address with its Polygonscan URL.** Reviewers eyeball each address against Polygonscan before merging.
+
+**NEVER:** bypass `contracts_test` (`#[ignore]`, `#[cfg(skip)]`), edit a contract address without the matching snapshot change, or merge yourself.
+
+**Escalate** (comment on the orchestrator's daily PR + exit `status: blocked`) if:
+- The new addresses' deployer doesn't match a known Polymarket multisig.
+- A "deployed" address shows no recent Polygonscan activity (could be docs typo or pre-launch contract).
+- The redeployment removes a contract you can't find a replacement for in the docs.

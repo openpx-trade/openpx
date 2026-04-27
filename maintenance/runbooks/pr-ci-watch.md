@@ -49,7 +49,7 @@ For each attempt:
    | `cargo clippy` warning | Lint | Read the warning location, edit the source, push |
    | `cargo test` test panic | Logic | Reproduce locally with `cargo test --workspace`, fix the source, push |
    | `manifest_coverage` test fails | Manifest gap | Add `FieldMapping` (preferred) or allowlist entry; per `runbooks/spec-version-bump.md` |
-   | `contracts_test` test fails | Snapshot drift | Per `runbooks/contract-redeployment.md` — re-verify on Polygonscan, update either source or snapshot |
+   | `contracts_test` test fails | Snapshot drift | Per the contract-redeployment special case in `runbooks/changelog-driven-update.md` — re-verify on Polygonscan, update either source or snapshot |
    | `sdk-sync` shows diff in `schema/`, `_models.py`, `models.d.ts`, or `docs/reference/` | Codegen | Run `just sync-all`, stage the regenerated files, push |
    | `sdk-sync` smoke check fails (`py_compile` or `tsc --noEmit`) | Codegen produced invalid file | Inspect the regenerated file; the codegen tool or its flags need a fix (see PR #34 for an example — `--unreachableDefinitions` was missing). Don't paper over by hand-editing the generated file. |
    | `Python SDK Build` fails (maturin) | PyO3 binding broke | A Rust-side change is incompatible with the Python binding layer. Read the maturin error, fix the Rust source. |

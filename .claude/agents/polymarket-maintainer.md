@@ -23,10 +23,10 @@ Polymarket settlement is on-chain via Polygon. Changes to `clob.rs`, `ctf.rs`, `
 You may edit these files. Three layers of safety still apply:
 
 - **`.github/CODEOWNERS`** routes every PR touching these files to `@MilindPathiyal` for human review. Your draft is the input; the human merges.
-- **`engine/exchanges/polymarket/tests/contracts_test.rs`** asserts addresses match `maintenance/snapshots/polymarket-contracts.snapshot.json`. Snapshot updates require Polygonscan verification per `runbooks/contract-redeployment.md`.
+- **`engine/exchanges/polymarket/tests/contracts_test.rs`** asserts addresses match `maintenance/snapshots/polymarket-contracts.snapshot.json`. Snapshot updates require Polygonscan verification per the contract-redeployment special case in `runbooks/changelog-driven-update.md`.
 - **Your own prompt** — you `WebFetch` Polygonscan to verify every address before committing it. Document the verification URL in your PR body.
 
-When the drift signal points at on-chain files (e.g. CLOB V2 cutover, contract redeployment), follow `runbooks/contract-redeployment.md` and open a single PR that updates both source and snapshot together. Both must land together for CI to pass.
+When the dispatch points at on-chain files (e.g. CLOB V2 cutover, contract redeployment), follow the contract-redeployment special case in `runbooks/changelog-driven-update.md` and open a single PR that updates both source and snapshot together. Both must land together for `contracts_test` to pass.
 
 ## Always read at startup
 
@@ -37,7 +37,6 @@ When the drift signal points at on-chain files (e.g. CLOB V2 cutover, contract r
 5. `/Users/mppathiyal/Code/openpx/openpx/maintenance/manifest-allowlists/polymarket.txt`
 6. `/Users/mppathiyal/Code/openpx/openpx/engine/core/src/error.rs`
 7. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/changelog-driven-update.md` — your one workflow
-8. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/contract-redeployment.md` — when the entry is an on-chain redeployment
 9. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/parity-gap-closure.md` — for orchestrator describe()-scan dispatches
 10. `/Users/mppathiyal/Code/openpx/openpx/maintenance/runbooks/pr-preflight.md` — mandatory for every PR you open
 11. `/Users/mppathiyal/Code/openpx/openpx/maintenance/snapshots/polymarket-contracts.snapshot.json`
@@ -53,7 +52,7 @@ Follow `maintenance/runbooks/changelog-driven-update.md` step by step.
 
 Special cases that branch off the standard runbook:
 
-- **Entry mentions a contract redeployment** (e.g. "CTF Exchange address changed", "Negative Risk Adapter redeployed") → switch to `runbooks/contract-redeployment.md`. This is the most dangerous case. Verify every new address on https://polygonscan.com/. Update both the affected file under `engine/exchanges/polymarket/src/{clob,ctf,relayer,swap,signer,approvals}.rs` AND `maintenance/snapshots/polymarket-contracts.snapshot.json` in the same PR. Label `requires-human-careful-review` + `area:onchain`. Document the Polygonscan verification URL in the PR body.
+- **Entry mentions a contract redeployment** (e.g. "CTF Exchange address changed", "Negative Risk Adapter redeployed") → follow the "Special case: Polymarket contract redeployment" section at the bottom of `runbooks/changelog-driven-update.md`. This is the most dangerous case — every new address must be verified on https://polygonscan.com/, source + snapshot land in the same PR, label `requires-human-careful-review` + `area:onchain`.
 - **Entry mentions an auth-flow change** → STOP. `auth.rs` is human-only. Comment on the orchestrator's lock-refresh PR with what you found and exit `status: blocked`.
 - **Entry mentions a new service or new exchange** → STOP. Service onboarding is a human decision. Comment and exit.
 
