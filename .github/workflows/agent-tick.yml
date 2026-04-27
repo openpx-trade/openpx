@@ -50,9 +50,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Tooling for the bot's preflight (maintenance/runbooks/pr-preflight.md).
+      # The orchestrator dispatches core-architect / maintainers in this same
+      # runner; they all need to be able to run `just sync-all`,
+      # `just python-build`, `just node-build`, and the smoke imports before
+      # opening any PR. Without this setup the bot would silently skip the
+      # preflight and ship partial syncs (the failure mode that produced
+      # PR #26's TS-skip). Mirror exactly what the python-sdk-build and
+      # node-sdk-build CI jobs install.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Set up .venv with maturin + datamodel-code-generator
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install datamodel-code-generator maturin pydantic
+      - name: Install Node SDK dependencies
+        run: cd sdks/typescript && npm install
 
       - name: Run orchestrator agent
         uses: anthropics/claude-code-action@v1
