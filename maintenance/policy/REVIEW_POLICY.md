@@ -20,8 +20,8 @@ These paths are co-owned by `@openpx-bot` in `.github/CODEOWNERS`, meaning a bot
 
 Funds-moving, signature-affecting, release-affecting, or trait-shaping code. `@openpx-bot` is *not* a co-owner of these:
 
-- `engine/exchanges/polymarket/src/{clob.rs, ctf.rs, relayer.rs, swap.rs, signer.rs, approvals.rs}` — on-chain contract calls and signing
-- `engine/exchanges/kalshi/src/auth.rs` — RSA signing of Kalshi requests
+- `engine/exchanges/polymarket/src/{clob.rs, ctf.rs, relayer.rs, swap.rs, signer.rs, approvals.rs}` — on-chain contract calls and signing (agent drafts; CODEOWNERS forces human review)
+- `engine/exchanges/kalshi/src/auth.rs` — RSA signing of Kalshi requests (agent drafts; CODEOWNERS forces human review; key file `kalshi-private-key.pem` is separately human-only)
 - `engine/core/` — `Exchange` trait, manifest schema, error hierarchy, unified models
 - `engine/sdk/` — `ExchangeInner` enum + dispatch macros
 - `.github/` — CI / release / publish / agent workflows
@@ -95,14 +95,14 @@ Every agent-opened PR carries exactly one **maintenance type** label and zero or
 
 These remain human-only by policy and by CODEOWNERS:
 
-- Edit the `Exchange` trait signature
-- Edit funds-moving Polymarket files (`clob.rs`, `ctf.rs`, `relayer.rs`, `swap.rs`, `signer.rs`, `approvals.rs`)
-- Edit `engine/exchanges/kalshi/src/auth.rs`
+- Edit the `Exchange` trait signature (`core-architect` proposes; humans merge)
 - Edit `.github/workflows/`, CODEOWNERS, this file
 - Edit release-please configs or version-bump manifests
 - Read or write `.env*`, `kalshi-private-key.pem`, or any credential
 - Merge PRs (any agent or bot review-approval is advisory; humans always merge)
 - Force-push, retag, delete branches, skip CI checks (`--no-verify`)
+
+Agents *may* draft edits to high-risk files — funds-moving Polymarket on-chain code (`clob.rs`, `ctf.rs`, `relayer.rs`, `swap.rs`, `signer.rs`, `approvals.rs`) and Kalshi `auth.rs` — but CODEOWNERS forces human review on every such PR. The agent's prompt requires the `requires-human-careful-review` label and an upstream-docs quote in `## Why`.
 
 ## Kill switches
 

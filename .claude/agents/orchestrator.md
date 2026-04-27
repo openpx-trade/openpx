@@ -93,7 +93,7 @@ For each item from 2a, run the corresponding mechanical check against the matchi
 | JSON key `K` | `rg -n '"K"' engine/exchanges/<id>/src/` — and check `engine/core/src/exchange/manifests/<id>.rs::field_mappings` for `source_paths` containing `K`, plus `maintenance/manifest-allowlists/<id>.txt` |
 | Endpoint path `/p` | `rg -n '"/p"' engine/exchanges/<id>/src/exchange.rs engine/exchanges/<id>/src/fetcher.rs` |
 | WS channel `chan` | `rg -n '"chan"' engine/exchanges/<id>/src/websocket.rs` |
-| Auth / signing change | scope check: any change to `auth.rs` is human-only — write a one-line note to `$GITHUB_STEP_SUMMARY` and do not dispatch |
+| Auth / signing change | dispatch to `exchange-maintainer`; the specialist must label the PR `requires-human-careful-review` and CODEOWNERS routes review to `@MilindPathiyal`. Never read or print credential files — those remain human-only. |
 | Contract address | scope check: dispatch to `exchange-maintainer` (with `exchange: polymarket`) per the contracts-redeployment section of `runbooks/changelog-driven-update.md` |
 | Cross-exchange overlap | `rg -n 'fn fetch_<concept>\|has_<concept>' engine/core/src/exchange/traits.rs engine/exchanges/<other-id>/src/exchange.rs` to determine whether the other exchange already implements an equivalent |
 
@@ -212,7 +212,7 @@ Body must start with `Triggered by: daily changelog cycle (run ${RUN_ID})` (dail
 
 - Every Step 2 candidate (new + amended) with its classification (`overlap-opportunity` | `critical-exchange-specific` | `no-surface-area`) and dispatch outcome (`emitted` with the dispatch index, `dedup-skipped: <pr-url>`, or `escalated`). For every `no-surface-area` skip, quote the exact `rg` command(s) run and the `0 hits` result — humans scan this to verify the orchestrator actually checked the code.
 - Every Step 3 `(exchange, method)` describe()-scan candidate and its dispatch outcome.
-- Every escalation (auth.rs change, removed entry, amended-after-merge, closed-not-merged dedup hit) so the human sees every signal that didn't auto-flow.
+- Every escalation (removed entry, amended-after-merge, closed-not-merged dedup hit) so the human sees every signal that didn't auto-flow.
 
 **Complete `maintenance/runbooks/pr-preflight.md` for this PR like any other.** This PR is pure-mechanical — skip the changelog-bullet step. `just sync-all` is a no-op; smoke checks + SDK builds run as the coherence guarantee.
 
