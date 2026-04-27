@@ -88,6 +88,11 @@ jobs:
         with:
           node-version: "22"
       - uses: extractions/setup-just@v2
+        with:
+          # Pin a specific version. The action's default-latest resolution
+          # has been failing intermittently with `no release for just matching
+          # version specifier .` — pinning sidesteps the issue.
+          just-version: "1.50.0"
       - run: pip install datamodel-code-generator
       - run: cd sdks/typescript && npm install
       - name: Generate schema, SDK models, and docs
