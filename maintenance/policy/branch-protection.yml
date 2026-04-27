@@ -12,26 +12,30 @@ main:
   required_status_checks:
     strict: true  # branches must be up-to-date before merge
     contexts:
-      # GitHub Actions reports check contexts as `<workflow-name> / <job-name> (<event>)`.
-      # The trailing `(pull_request)` is auto-appended by GitHub for any workflow
-      # triggered on `pull_request`. Branch protection only gates PR merges (direct
-      # pushes to main are blocked), so we only require the pull_request variant.
-      # If the rule omits the `(pull_request)` suffix, GitHub treats it as a
-      # different context and waits forever for a status that never reports under
-      # that name (this is the same bug pattern that previously left
-      # `CI / CI Success` stuck — see history).
-      - CI / Format (pull_request)
-      - CI / Clippy (pull_request)
-      - CI / Test (ubuntu-latest) (pull_request)
-      - CI / Test (macos-latest) (pull_request)
-      - CI / Check (pull_request)
-      - CI / Version Sync Check (pull_request)
-      - CI / SDK Sync Check (pull_request)
-      - CI / Benchmarks (pull_request)
-      - CI / Manifest Coverage (pull_request)
-      # ci-success removed — it was a needless aggregator and its status-check
-      # name drifted from what Actions reported, leaving the rule forever
-      # pending on a context never emitted.
+      # IMPORTANT: contexts must match the *actual* check_run.name field that
+      # GitHub Actions writes to the API — which is just the job's `name:` field
+      # in .github/workflows/ci.yml. Verbatim, no prefix, no suffix.
+      #
+      # The PR UI displays each check as "CI / Format (pull_request)" but that
+      # rendering is a UI-side courtesy that prepends the workflow name and
+      # appends the triggering event. The API stores just "Format".
+      #
+      # Verify with:
+      #   gh api repos/openpx-trade/openpx/commits/<sha>/check-runs \
+      #     | jq -r '.check_runs[].name'
+      #
+      # If a job's `name:` field changes in ci.yml, update the matching entry
+      # here in lockstep.
+      - Format
+      - Clippy
+      - Test (ubuntu-latest)
+      - Test (macos-latest)
+      - Check
+      - Version Sync Check
+      - SDK Sync Check
+      - Benchmarks
+      - Manifest Coverage
+      # ci-success removed — it was a needless aggregator that stayed stuck.
 
   require_conversation_resolution: true
 
@@ -52,15 +56,15 @@ notes: |
       "required_status_checks": {
         "strict": true,
         "contexts": [
-          "CI / Format (pull_request)",
-          "CI / Clippy (pull_request)",
-          "CI / Test (ubuntu-latest) (pull_request)",
-          "CI / Test (macos-latest) (pull_request)",
-          "CI / Check (pull_request)",
-          "CI / Version Sync Check (pull_request)",
-          "CI / SDK Sync Check (pull_request)",
-          "CI / Benchmarks (pull_request)",
-          "CI / Manifest Coverage (pull_request)"
+          "Format",
+          "Clippy",
+          "Test (ubuntu-latest)",
+          "Test (macos-latest)",
+          "Check",
+          "Version Sync Check",
+          "SDK Sync Check",
+          "Benchmarks",
+          "Manifest Coverage"
         ]
       },
       "enforce_admins": false,
@@ -80,11 +84,12 @@ notes: |
     gh api repos/openpx-trade/openpx/branches/main/protection \
       --method PUT --input /tmp/protection.json
 
-  All listed contexts must include:
-    1. `CI / ` workflow-name prefix
-    2. The job's `name:` field verbatim (capitalization, spaces, parens incl.)
-    3. The trailing ` (pull_request)` suffix that GitHub auto-appends
+  Listed contexts must match the API-side `check_run.name` exactly. That's
+  just the job's `name:` field — no `CI / ` prefix, no `(pull_request)` suffix.
+  The PR UI shows the prefixed/suffixed form purely as a display style; the
+  underlying name is bare.
 
-  Drop any of those three pieces and the rule will wait forever for a status
-  that never reports under that name (the bug pattern that left CI / CI Success
-  pending in history).
+  When in doubt, fetch the actual names with:
+
+    gh api repos/openpx-trade/openpx/commits/<head-sha>/check-runs \
+      | jq -r '.check_runs[].name' | sort -u
