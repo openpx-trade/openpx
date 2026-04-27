@@ -12,16 +12,30 @@ main:
   required_status_checks:
     strict: true  # branches must be up-to-date before merge
     contexts:
-      - fmt
-      - clippy
-      - test (ubuntu-latest)
-      - test (macos-latest)
-      - check
-      - version-sync
-      - sdk-sync
-      - bench
-      - manifest-coverage    # added by Wave 1 of the autonomous-maintenance plan
-      - ci-success
+      # IMPORTANT: contexts must match the *actual* check_run.name field that
+      # GitHub Actions writes to the API — which is just the job's `name:` field
+      # in .github/workflows/ci.yml. Verbatim, no prefix, no suffix.
+      #
+      # The PR UI displays each check as "CI / Format (pull_request)" but that
+      # rendering is a UI-side courtesy that prepends the workflow name and
+      # appends the triggering event. The API stores just "Format".
+      #
+      # Verify with:
+      #   gh api repos/openpx-trade/openpx/commits/<sha>/check-runs \
+      #     | jq -r '.check_runs[].name'
+      #
+      # If a job's `name:` field changes in ci.yml, update the matching entry
+      # here in lockstep.
+      - Format
+      - Clippy
+      - Test (ubuntu-latest)
+      - Test (macos-latest)
+      - Check
+      - Version Sync Check
+      - SDK Sync Check
+      - Benchmarks
+      - Manifest Coverage
+      # ci-success removed — it was a needless aggregator that stayed stuck.
 
   require_conversation_resolution: true
 
@@ -33,19 +47,49 @@ main:
   allow_auto_merge: false  # explicitly disabled — every PR human-merged
 
 notes: |
-  Applying via gh CLI:
+  Apply via the JSON-file pattern below. `gh api --raw-field` sends complex
+  values as JSON-encoded strings (which the API rejects); use `--input <file>`
+  with a real JSON document instead.
 
-    gh api repos/{owner}/{repo}/branches/main/protection \
-      --method PUT \
-      --raw-field required_status_checks='{"strict":true,"contexts":["fmt","clippy","test (ubuntu-latest)","test (macos-latest)","check","version-sync","sdk-sync","bench","manifest-coverage","ci-success"]}' \
-      --raw-field enforce_admins=false \
-      --raw-field required_pull_request_reviews='{"dismiss_stale_reviews":true,"require_code_owner_reviews":true,"required_approving_review_count":1}' \
-      --raw-field restrictions=null \
-      --raw-field allow_force_pushes=false \
-      --raw-field allow_deletions=false \
-      --raw-field required_conversation_resolution=true \
-      --raw-field allow_auto_merge=false
+    cat > /tmp/protection.json <<'JSON'
+    {
+      "required_status_checks": {
+        "strict": true,
+        "contexts": [
+          "Format",
+          "Clippy",
+          "Test (ubuntu-latest)",
+          "Test (macos-latest)",
+          "Check",
+          "Version Sync Check",
+          "SDK Sync Check",
+          "Benchmarks",
+          "Manifest Coverage"
+        ]
+      },
+      "enforce_admins": false,
+      "required_pull_request_reviews": {
+        "dismiss_stale_reviews": true,
+        "require_code_owner_reviews": true,
+        "required_approving_review_count": 1
+      },
+      "restrictions": null,
+      "allow_force_pushes": false,
+      "allow_deletions": false,
+      "required_conversation_resolution": true,
+      "allow_auto_merge": false
+    }
+    JSON
 
-  When `manifest-coverage` doesn't yet exist as a status check (i.e. no PR has run
-  it yet), GitHub will reject the protection update. Land Wave 1's CI changes
-  first; merge a no-op PR so the check name is registered; then apply protection.
+    gh api repos/openpx-trade/openpx/branches/main/protection \
+      --method PUT --input /tmp/protection.json
+
+  Listed contexts must match the API-side `check_run.name` exactly. That's
+  just the job's `name:` field — no `CI / ` prefix, no `(pull_request)` suffix.
+  The PR UI shows the prefixed/suffixed form purely as a display style; the
+  underlying name is bare.
+
+  When in doubt, fetch the actual names with:
+
+    gh api repos/openpx-trade/openpx/commits/<head-sha>/check-runs \
+      | jq -r '.check_runs[].name' | sort -u

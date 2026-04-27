@@ -37,7 +37,7 @@ Don't second-guess this. Proceed.
 4. **Route:**
 
    - **bug** in a specific exchange's code → dispatch that exchange's maintainer with the issue number. The maintainer investigates and either opens a fix PR (single-purpose) or comments on the issue with reproduction-needed.
-   - **parity-gap** or **unified-trait-proposal** → dispatch `parity-analyst`. Analyst posts a technical assessment as a comment on the issue, including a draft trait signature. **Do not open a PR.** The human approves the trait shape; only after that does a maintainer implement.
+   - **parity-gap** or **unified-trait-proposal** → dispatch `parity-analyst`. Analyst posts a technical assessment as a **comment on the existing issue, NOT a new issue.** Filing a new proposal when the user has already filed the source issue produces duplicates. **Do not open a PR.** The human approves the trait shape; only after that does a maintainer implement.
    - **exchange-specific-feature** → dispatch the relevant maintainer. Maintainer either opens a docs PR (if the feature exists in code but isn't documented) or files a sub-issue for implementation work, depending on what's needed.
    - **new-exchange-request** → comment with `cc @MilindPathiyal — adding a new exchange is a human decision (jurisdiction, ToS, scope). The exchange-onboarding agent is deferred until you decide to proceed.` Do not action.
    - **question** → comment with pointers to relevant runbooks/docs. If the question is about a feature, link to the corresponding code or docs page. Close the issue once answered, with `gh issue close <N> --comment "<answer>"`.
