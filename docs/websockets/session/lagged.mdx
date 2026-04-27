@@ -1,0 +1,17 @@
+---
+title: "Lagged"
+description: "Slow consumer dropped messages."
+---
+
+The outbound dispatch channel overflowed: a slow consumer missed deltas.
+OpenPX raises this explicitly rather than silently skipping (the way
+`tokio::sync::broadcast` would).
+
+## Fields
+
+<ResponseField name="dropped" type="u64" />
+<ResponseField name="first_seq" type="u64" />
+<ResponseField name="last_seq" type="u64" />
+
+A `Lagged` event is followed by a [`BookInvalidated`](/websockets/session/book-invalidated)
+with `reason: Lag` for every affected market.

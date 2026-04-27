@@ -1,0 +1,64 @@
+---
+title: "Price History"
+description: "OHLCV candles."
+---
+
+## `fetch_price_history`
+
+```rust
+async fn fetch_price_history(
+    req: PriceHistoryRequest,
+) -> Result<Vec<Candlestick>, OpenPxError>
+```
+
+### Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market ID.
+</ParamField>
+
+<ParamField path="outcome" type="string?">
+  Outcome label. Kalshi infers Yes/No from the market.
+</ParamField>
+
+<ParamField path="token_id" type="string?">
+  Polymarket CLOB token.
+</ParamField>
+
+<ParamField path="condition_id" type="string?">
+  Polymarket condition ID for OI enrichment.
+</ParamField>
+
+<ParamField path="interval" type="PriceHistoryInterval" required>
+  `1m`, `1h`, `6h`, `1d`, `1w`, or `max`.
+</ParamField>
+
+<ParamField path="start_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+<ParamField path="end_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+`Candlestick`: `{ timestamp, open, high, low, close, volume, open_interest? }`.
+Open interest is currently provided only by Kalshi.
+
+<CodeGroup>
+
+```python Python
+candles = ex.fetch_price_history(
+    "KXBTC-25MAR14-T20000",
+    "1h",
+    start_ts=1735689600,
+)
+```
+
+```typescript TypeScript
+const candles = await ex.fetchPriceHistory(
+  "KXBTC-25MAR14-T20000",
+  "1h",
+);
+```
+
+</CodeGroup>

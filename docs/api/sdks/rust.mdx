@@ -3,23 +3,18 @@ title: "Rust"
 description: "Use OpenPX from Rust."
 ---
 
-The Rust crate is the canonical implementation — Python and TypeScript are
-thin wrappers around it.
+The Rust crate is the canonical implementation; Python and TypeScript are
+thin wrappers.
 
 ## Install
 
 ```bash
 cargo add openpx
-```
-
-OpenPX requires `tokio` and `serde_json`:
-
-```bash
 cargo add tokio --features full
 cargo add serde_json
 ```
 
-## Constructing an exchange
+## Construction
 
 ```rust
 use openpx::ExchangeInner;
@@ -36,7 +31,7 @@ let ex = ExchangeInner::new("polymarket", json!({
 
 ## Direct exchange types
 
-If you don't need the unified facade, construct exchanges directly:
+If you don't need the unified facade:
 
 ```rust
 use openpx::{Kalshi, KalshiConfig, Polymarket, PolymarketConfig};
@@ -48,7 +43,7 @@ Both implement the `Exchange` trait, so callers can be generic over either.
 
 `openpx::*` re-exports everything from `px-core`, plus:
 
-- `ExchangeInner` and `WebSocketInner` — enum-dispatched facades
+- `ExchangeInner`, `WebSocketInner` — enum-dispatched facades
 - `Kalshi`, `KalshiConfig`
 - `Polymarket`, `PolymarketConfig`, `PolymarketSignatureType`
 - `CryptoPriceWebSocket` (from `px-crypto`)
@@ -82,17 +77,12 @@ while let Some(update) = updates.next().await {
 
 ## Errors
 
-All methods return `Result<T, OpenPxError>`. The hierarchy is defined in
+All methods return `Result<T, OpenPxError>`. Hierarchy at
 `engine/core/src/error.rs`:
 
 - `OpenPxError::Network`
-- `OpenPxError::Exchange(ExchangeError)` — includes `NotSupported`,
-  `MarketNotFound`, `Authentication`, `InsufficientFunds`, `Api`,
-  `RateLimited`
+- `OpenPxError::Exchange(ExchangeError)` — `NotSupported`, `MarketNotFound`,
+  `Authentication`, `InsufficientFunds`, `Api`, `RateLimited`
 - `OpenPxError::Config`
 - `OpenPxError::Serialization`
 - `OpenPxError::WebSocket(WebSocketError)`
-
-Per-exchange error types map into `ExchangeError`. See the
-[`define_exchange_error!` macro](https://github.com/openpx-trade/openpx/blob/main/engine/core/src/error.rs)
-for the canonical pattern.

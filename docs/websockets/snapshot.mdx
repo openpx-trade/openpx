@@ -1,0 +1,25 @@
+---
+title: "Snapshot"
+description: "Full L2 book — replace any cached state."
+---
+
+A full L2 book. Replace any cached book keyed by `(market_id, asset_id)`.
+Emitted on initial subscribe and after any recovery (`Clear`,
+`BookInvalidated`).
+
+## Fields
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="asset_id" type="string" />
+<ResponseField name="book" type="Arc<Orderbook>" />
+<ResponseField name="exchange_ts" type="u64?" />
+<ResponseField name="local_ts_ms" type="u64" />
+<ResponseField name="seq" type="u64" />
+
+## Timestamps
+
+Every WebSocket event carries:
+
+- `local_ts: Instant` — monotonic, captured at socket-read (Rust only)
+- `local_ts_ms: u64` — wall-clock millis paired with `local_ts`
+- `exchange_ts: Option<u64>` — exchange-authoritative millis (when provided)

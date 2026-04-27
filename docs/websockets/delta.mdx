@@ -1,0 +1,26 @@
+---
+title: "Delta"
+description: "Incremental change to an existing book."
+---
+
+Apply in place; discard if you've seen a `Clear` / `BookInvalidated` for
+this market without a follow-up `Snapshot`.
+
+## Fields
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="asset_id" type="string" />
+<ResponseField name="changes" type="ChangeVec" >
+  Stack-allocated up to 4 entries.
+</ResponseField>
+<ResponseField name="exchange_ts" type="u64?" />
+<ResponseField name="local_ts_ms" type="u64" />
+<ResponseField name="seq" type="u64" />
+
+## Change semantics
+
+Each `PriceLevelChange` is `{ side: Bid | Ask, price: FixedPrice, size: f64 }`
+with **absolute-replacement** semantics:
+
+- `size > 0` sets the level
+- `size == 0` removes it

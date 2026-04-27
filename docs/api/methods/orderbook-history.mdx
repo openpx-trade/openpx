@@ -1,0 +1,42 @@
+---
+title: "Orderbook History"
+description: "Historical L2 orderbook snapshots."
+---
+
+## `fetch_orderbook_history`
+
+Polymarket only — Kalshi returns `NotSupported`.
+
+```rust
+async fn fetch_orderbook_history(
+    req: OrderbookHistoryRequest,
+) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError>
+```
+
+### Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market ID.
+</ParamField>
+
+<ParamField path="token_id" type="string?">
+  Polymarket CLOB token.
+</ParamField>
+
+<ParamField path="start_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+<ParamField path="end_ts" type="i64?">
+  Unix seconds.
+</ParamField>
+
+<ParamField path="limit" type="usize?">
+  Max snapshots.
+</ParamField>
+
+<ParamField path="cursor" type="string?">
+  From a prior response.
+</ParamField>
+
+`OrderbookSnapshot`: `{ timestamp, recorded_at?, hash?, bids, asks }`.

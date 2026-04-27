@@ -1,0 +1,25 @@
+---
+title: "Error"
+description: "A non-fatal connection error."
+---
+
+A non-fatal error observed on the connection. The session continues —
+surface this for logging or alerting.
+
+## Fields
+
+<ResponseField name="message" type="string" />
+
+## Pattern matching (Python)
+
+```python
+from openpx import Connected, Reconnected, Lagged, BookInvalidated, SessionError
+
+for event in ws.session_events():
+    match event:
+        case Connected(): ...
+        case Reconnected(gap_ms): ...
+        case Lagged(dropped, first_seq, last_seq): ...
+        case BookInvalidated(market_id, reason): ...
+        case SessionError(message): ...
+```

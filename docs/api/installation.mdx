@@ -1,0 +1,35 @@
+---
+title: "Installation"
+description: "Add OpenPX to your project."
+---
+
+All three bindings are powered by the same Rust engine and share an
+identical API surface.
+
+<CodeGroup>
+
+```bash Rust
+cargo add openpx
+```
+
+```bash Python
+pip install openpx
+```
+
+```bash TypeScript
+npm install openpx
+```
+
+</CodeGroup>
+
+## Requirements
+
+| Language   | Minimum | Notes |
+|------------|---------|-------|
+| Rust       | 1.75    | — |
+| Python     | 3.9     | Pydantic v2 models auto-generated |
+| Node.js    | 18      | NAPI-RS native addon |
+
+<Tip>
+  Python and TypeScript ship prebuilt binaries. No Rust toolchain needed.
+</Tip>

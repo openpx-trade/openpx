@@ -1,18 +1,16 @@
 ---
-title: "Kalshi setup"
-description: "Configure credentials and connect to Kalshi."
+title: "Kalshi"
+description: "Connect to Kalshi — config, identifiers, and limits."
 ---
 
 Kalshi is a CFTC-regulated US event-contract exchange. OpenPX talks to its
 REST API (`api.elections.kalshi.com`) and authenticated WebSocket.
 
-## Config fields
-
-Pass these in the second argument of `Exchange.new`:
+## Config
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `api_key_id` | `string` | for auth | API key identifier from your Kalshi account |
+| `api_key_id` | `string` | for auth | API key identifier |
 | `private_key_pem` | `string` | for auth | RSA private key contents (PEM) |
 | `private_key_path` | `string` | alt. to PEM | Filesystem path to a `.pem` file |
 | `api_url` | `string` | optional | Override the API base URL |
@@ -24,16 +22,16 @@ credentials. Orders, balances, and WebSocket require auth.
 
 ## Environment variables
 
-The CLI and recorder read these by default:
-
-- `KALSHI_API_KEY_ID`
-- `KALSHI_PRIVATE_KEY_PEM` *or* `KALSHI_PRIVATE_KEY_PATH`
+```
+KALSHI_API_KEY_ID
+KALSHI_PRIVATE_KEY_PEM      # or KALSHI_PRIVATE_KEY_PATH
+```
 
 ## Identifiers
 
-- **`Market.id`** is the Kalshi ticker, e.g. `KXBTC-25MAR14-T20000`.
+- **`Market.id`** is the Kalshi ticker (e.g. `KXBTC-25MAR14-T20000`).
 - **WebSocket subscribe target** is the same ticker.
-- **Outcomes** are `"Yes"` / `"No"` for binary markets.
+- **Outcomes**: `"Yes"` / `"No"`.
 
 ## Capabilities
 
@@ -51,8 +49,10 @@ Inspect `ex.describe()` at runtime for the source of truth.
 
 ## Rate limits
 
-Defined in the manifest at `engine/core/src/exchange/manifests/kalshi.rs`:
+Defined in `engine/core/src/exchange/manifests/kalshi.rs`:
 
-- Default: **20 req/sec**, burst 5
-- Write endpoints (orders): **10 req/sec**, burst 3
-- Bulk endpoints: **10 req/sec**, burst 3
+| Bucket | Limit |
+|--------|-------|
+| Default | 20 req/sec, burst 5 |
+| Write (orders) | 10 req/sec, burst 3 |
+| Bulk | 10 req/sec, burst 3 |

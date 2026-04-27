@@ -1,0 +1,17 @@
+---
+title: "Connected"
+description: "Initial socket establishment."
+---
+
+Initial socket establishment. Fires once per call to `connect()`.
+
+`SessionEvent::Connected` carries no payload.
+
+```python
+from openpx import Connected
+
+for event in ws.session_events():
+    match event:
+        case Connected():
+            print("connected")
+```

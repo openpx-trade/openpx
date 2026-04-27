@@ -16,8 +16,6 @@ Requires Python 3.9+. Prebuilt wheels ship for common platforms.
 
 ## Public surface
 
-Importable from `openpx`:
-
 ```python
 from openpx import (
     Exchange,
@@ -77,7 +75,7 @@ class Exchange:
                                 limit=None, cursor=None) -> dict: ...
 ```
 
-`fetch_markets`, `fetch_trades`, and `fetch_orderbook_history` return a dict
+`fetch_markets`, `fetch_trades`, `fetch_orderbook_history` return a dict
 with the items list under its plural name and a `cursor` key.
 
 <Note>
@@ -94,14 +92,10 @@ ws.subscribe("token-id-or-ticker")
 
 for update in ws.updates():       # blocking iterator, single-consumer
     match update:
-        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq):
-            ...
-        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq):
-            ...
-        case Trade(trade, local_ts_ms):
-            ...
-        case Fill(fill, local_ts_ms):
-            ...
+        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq): ...
+        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq): ...
+        case Trade(trade, local_ts_ms): ...
+        case Fill(fill, local_ts_ms): ...
 
 for event in ws.session_events():
     match event:
@@ -116,10 +110,10 @@ raises.
 
 `openpx._models` exports auto-generated Pydantic types: `Market`, `Order`,
 `Fill`, `Position`, `Orderbook`, `OrderbookSnapshot`, `MarketTrade`,
-`Candlestick`, and friends. They mirror the Rust structs documented in the
-[unified schema](/getting-started/unified-schema).
+`Candlestick`. They mirror the Rust structs in
+[unified schema](/api/unified-schema).
 
 ## Errors
 
 Catch `OpenPxError` for everything; subclasses are `NetworkError`,
-`ExchangeError`, and `AuthenticationError`.
+`ExchangeError`, `AuthenticationError`.

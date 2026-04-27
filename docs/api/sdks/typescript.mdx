@@ -91,7 +91,7 @@ class Exchange {
 
 ## `WebSocket`
 
-The TypeScript binding exposes a callback-based API rather than a stream.
+The TypeScript binding exposes a callback-based API.
 
 ```typescript
 class WebSocket {
@@ -102,7 +102,6 @@ class WebSocket {
   unsubscribe(marketId: string): Promise<void>;
   get state(): string;
 
-  // Resolves when the stream ends. Callback receives each update.
   onOrderbookUpdate(
     marketId: string,
     callback: (err: Error | null, update: any) => void,

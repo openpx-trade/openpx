@@ -3,8 +3,7 @@ title: "Orders"
 description: "Create, cancel, and look up orders."
 ---
 
-All four methods return the unified `Order` shape — see
-[`Order`](/getting-started/unified-schema#order) for fields.
+All four methods return the unified [`Order`](/api/unified-schema#order) shape.
 
 ## `create_order`
 
@@ -19,21 +18,25 @@ async fn create_order(
 ) -> Result<Order, OpenPxError>
 ```
 
-**`params` keys**
+### `params`
 
-| Key | Values | Default |
-|-----|--------|---------|
-| `order_type` | `gtc`, `ioc`, `fok`, `market` | `gtc` |
-| `token_id` (Polymarket only) | CLOB token ID | derived from `market_id` + `outcome` |
+<ParamField path="order_type" type="string">
+  `gtc`, `ioc`, `fok`, or `market`. Defaults to `gtc`.
+</ParamField>
+
+<ParamField path="token_id" type="string">
+  Polymarket only — CLOB token ID. Derived from `market_id` + `outcome`
+  if omitted.
+</ParamField>
 
 <CodeGroup>
 
 ```rust Rust
-use openpx::{OrderSide};
+use openpx::OrderSide;
 use std::collections::HashMap;
 
 let mut params = HashMap::new();
-params.insert("order_type".to_string(), "gtc".to_string());
+params.insert("order_type".into(), "gtc".into());
 
 let order = ex.create_order(
     "KXBTC-25MAR14-T20000",
@@ -78,7 +81,7 @@ async fn cancel_order(
 ) -> Result<Order, OpenPxError>
 ```
 
-`market_id` is optional but accelerates Polymarket cancels (avoids a lookup).
+`market_id` is optional but accelerates Polymarket cancels.
 
 ## `fetch_order`
 
@@ -97,7 +100,7 @@ async fn fetch_open_orders(
 ) -> Result<Vec<Order>, OpenPxError>
 ```
 
-`FetchOrdersParams { market_id: Option<String> }` — pass `None` to list every
+`FetchOrdersParams { market_id: Option<String> }` — pass `None` for every
 open order across all markets.
 
 <CodeGroup>

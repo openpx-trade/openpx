@@ -1,0 +1,82 @@
+---
+title: "Quickstart"
+description: "Construct an exchange and fetch your first market."
+---
+
+## Construct an exchange
+
+<CodeGroup>
+
+```rust Rust
+use openpx::ExchangeInner;
+use serde_json::json;
+
+let ex = ExchangeInner::new("polymarket", json!({
+    "private_key": std::env::var("POLYMARKET_PRIVATE_KEY")?,
+    "funder": std::env::var("POLYMARKET_FUNDER")?,
+}))?;
+```
+
+```python Python
+from openpx import Exchange
+import os
+
+ex = Exchange("polymarket", {
+    "private_key": os.environ["POLYMARKET_PRIVATE_KEY"],
+    "funder": os.environ["POLYMARKET_FUNDER"],
+})
+```
+
+```typescript TypeScript
+import { Exchange } from "openpx";
+
+const ex = new Exchange("polymarket", {
+  private_key: process.env.POLYMARKET_PRIVATE_KEY!,
+  funder: process.env.POLYMARKET_FUNDER!,
+});
+```
+
+</CodeGroup>
+
+## Fetch markets
+
+<CodeGroup>
+
+```rust Rust
+use openpx::FetchMarketsParams;
+
+let (markets, cursor) = ex.fetch_markets(&FetchMarketsParams::default()).await?;
+```
+
+```python Python
+result = ex.fetch_markets()
+markets, cursor = result["markets"], result["cursor"]
+```
+
+```typescript TypeScript
+const markets = await ex.fetchMarkets();
+```
+
+</CodeGroup>
+
+<Note>
+  The TypeScript binding's `fetchMarkets()` auto-paginates and returns
+  every market in one call. Rust and Python expose the cursor.
+</Note>
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Polymarket setup" icon="key" href="/api/exchanges/polymarket">
+    Configure Polymarket credentials.
+  </Card>
+  <Card title="Kalshi setup" icon="key" href="/api/exchanges/kalshi">
+    Configure Kalshi credentials.
+  </Card>
+  <Card title="Unified schema" icon="diagram-project" href="/api/unified-schema">
+    Field-by-field mapping across exchanges.
+  </Card>
+  <Card title="Methods" icon="terminal" href="/api/methods/overview">
+    Full reference for every `Exchange` method.
+  </Card>
+</CardGroup>

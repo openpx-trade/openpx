@@ -1,0 +1,35 @@
+---
+title: "Fill"
+description: "A fill on one of your orders."
+---
+
+A fill on one of *your* orders.
+
+## `ActivityFill` payload
+
+<ResponseField name="market_id" type="string" />
+<ResponseField name="asset_id" type="string" />
+<ResponseField name="fill_id" type="string?" />
+<ResponseField name="order_id" type="string?" />
+<ResponseField name="price" type="f64" />
+<ResponseField name="size" type="f64" />
+<ResponseField name="side" type="string?" />
+<ResponseField name="outcome" type="string?" />
+<ResponseField name="tx_hash" type="string?" />
+<ResponseField name="fee" type="f64?" />
+<ResponseField name="liquidity_role" type="Maker | Taker | null" />
+<ResponseField name="exchange_ts_ms" type="u64?" />
+<ResponseField name="source_channel" type="Cow<'static, str>" />
+
+## Pattern matching (Python)
+
+```python
+from openpx import Snapshot, Delta, Trade, Fill
+
+for update in ws.updates():
+    match update:
+        case Snapshot(market_id, asset_id, book, exchange_ts, local_ts_ms, seq): ...
+        case Delta(market_id, asset_id, changes, exchange_ts, local_ts_ms, seq): ...
+        case Trade(trade, local_ts_ms): ...
+        case Fill(fill, local_ts_ms): ...
+```
