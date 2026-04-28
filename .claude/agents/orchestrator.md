@@ -35,7 +35,7 @@ In this exact order (cache-friendly):
 The agent-tick workflow passes you a `mode` (`daily` | `backfill`) and, when `backfill`, a `since` date.
 
 - `daily` (cron and `just maintain`): run `check_docs_drift.py --json`; classify every entry in `new` and `amended`.
-- `backfill` (only via `just backfill <YYYY-MM-DD>` or manual workflow_dispatch): refresh the lock first (`check_docs_drift.py --update`), then read it directly, take every entry whose `id >= since` (lexical compare on `YYYY-MM-DD-…`), and classify each. Label-based dedup (Step 2d) keeps the work idempotent — entries you already shipped a PR for are silently skipped.
+- `backfill` (only via `just backfill <YYYY-MM-DD>` or manual workflow_dispatch): refresh the lock first (`check_docs_drift.py --update`), then read it directly, take every entry whose `id >= since` (lexical compare on `YYYY-MM-DD-…`), cap to the oldest 15 (see Step 1 backfill cap), and classify each. Label-based dedup (Step 2d) keeps the work idempotent — entries you already shipped a PR for are silently skipped.
 
 Both modes share the same classification, dispatch emission, and lock-refresh-PR rules. Only difference: which entries you classify.
 
@@ -68,7 +68,11 @@ Exit codes: `0` = clean (no drift on any exchange — skip to Step 3 for `descri
 
 Each item in `new` and `amended` is a candidate for Step 2 classification. Each item in `removed` is an upstream withdrawal — write a one-line `removed: <id>` note to `$GITHUB_STEP_SUMMARY` for the human to review and continue (no dispatch).
 
-If `mode == backfill`: skip the drift script. Instead, read the current lock at `maintenance/scripts/exchange-docs.lock.json`, take every entry whose `id` (sort lexically) is `>= since`, and treat each as a candidate for Step 2 classification. Label-based dedup (Step 2d) keeps the work idempotent.
+If `mode == backfill`: skip the drift script. Instead, read the current lock at `maintenance/scripts/exchange-docs.lock.json` and take every entry across both exchanges whose `id` is `>= since` (sort lexically by `id`).
+
+**Per-run cap: 15 entries.** The agent-tick workflow runs the classify job under `--max-turns 60`. Each candidate consumes ~3 turns (rg checks + dispatch emission); 15 entries fits in budget with headroom for the lock-refresh PR. If you found > 15 candidates after dedup label-checks (Step 2d) but before classification, take only the oldest 15 by `id` and remember the **next chunk's start date**: that's the `id` of the 16th entry (the first one you dropped). Pass that date through to Step 5 so the lock-refresh PR body tells the human exactly how to resume.
+
+Label-based dedup (Step 2d) keeps the work idempotent across chunks — entries you already shipped a PR for in an earlier chunk are silently skipped.
 
 ### Step 2 — classify and dispatch each new entry
 
@@ -213,6 +217,7 @@ Body must start with `Triggered by: daily changelog cycle (run ${RUN_ID})` (dail
 - Every Step 2 candidate (new + amended) with its classification (`overlap-opportunity` | `critical-exchange-specific` | `no-surface-area`) and dispatch outcome (`emitted` with the dispatch index, `dedup-skipped: <pr-url>`, or `escalated`). For every `no-surface-area` skip, quote the exact `rg` command(s) run and the `0 hits` result — humans scan this to verify the orchestrator actually checked the code.
 - Every Step 3 `(exchange, method)` describe()-scan candidate and its dispatch outcome.
 - Every escalation (removed entry, amended-after-merge, closed-not-merged dedup hit) so the human sees every signal that didn't auto-flow.
+- **If backfill mode hit the 15-entry cap (Step 1):** a final `Next backfill chunk: just backfill <next-since-date>` line, where `<next-since-date>` is the `id` of the first entry you dropped. The human re-runs that command to process the next chunk; label-based dedup ensures already-shipped entries from this chunk are skipped on the next pass.
 
 **Complete `maintenance/runbooks/pr-preflight.md` for this PR like any other.** This PR is pure-mechanical — skip the changelog-bullet step. `just sync-all` is a no-op; smoke checks + SDK builds run as the coherence guarantee.
 

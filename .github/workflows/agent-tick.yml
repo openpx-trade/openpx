@@ -115,9 +115,12 @@ jobs:
           # manifest_coverage + the SDK Sync / Build CI gates — not per-tool
           # prompts. Agent prompts forbid destructive ops.
           # --max-turns 60 covers daily mode (~2-3 turns per entry × few
-          # entries) and small-to-medium backfills (~15-20 entries).
-          # Larger backfills should be chunked by running `just backfill`
-          # multiple times with rolling `since` dates.
+          # entries). Backfill mode is self-capped at 15 entries per run
+          # (orchestrator.md Step 1), well within the turn budget; if more
+          # entries remain past the cap, the lock-refresh PR body emits a
+          # `Next backfill chunk: just backfill <date>` line for the human
+          # to resume. Label-based dedup (Step 2d) makes chunked passes
+          # idempotent, so no orchestrator state is needed across runs.
           claude_args: --max-turns 60 --permission-mode bypassPermissions
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
