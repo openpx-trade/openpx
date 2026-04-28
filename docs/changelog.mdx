@@ -9,6 +9,21 @@ This page summarizes user-facing releases.
 
 ## Unreleased
 
+### Breaking
+
+- **Polymarket CLOB V2 + pUSD migration (cutover 2026-04-28 ~11:00 UTC)** —
+  no V1 backward compatibility. The OpenPX Polymarket adapter now depends
+  on `polymarket_client_sdk_v2 = "=0.5.1"` and signs orders against the
+  V2 EIP-712 domain (`version: "2"`). The order struct drops `nonce`,
+  `feeRateBps`, and `taker`; adds `timestamp` (ms), `metadata` (bytes32),
+  and `builder` (bytes32). Trading collateral is now **pUSD** (not USDC.e);
+  approvals + balance reads target `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`.
+  V1 builder-promotion (HMAC headers on order signing) is removed; builder
+  attribution moves into the signed order's `builder` field via
+  `SdkConfig::builder().builder_code(...)`. Relayer `POLY_BUILDER_*` HMAC
+  headers are preserved for gasless tx auth (per the Polymarket migration
+  guide). ([#54](https://github.com/openpx-trade/openpx/pull/54))
+
 ### Added
 
 - **core**: `Exchange::fetch_server_time()` returns each venue's wall-clock as `DateTime<Utc>` for clock-skew correction in signing-sensitive paths. `ExchangeInfo` gains `has_fetch_server_time: bool`. ([#26](https://github.com/openpx-trade/openpx/pull/26))
