@@ -1608,8 +1608,11 @@ impl Exchange for Kalshi {
             portfolio_value: Option<i64>,
         }
 
-        let path = "/portfolio/balance";
-        let resp: BalanceResponse = self.get(path).await.map_err(to_openpx)?;
+        let path = match self.config.subaccount {
+            Some(n) if n > 0 => format!("/portfolio/balance?subaccount={n}"),
+            _ => "/portfolio/balance".to_string(),
+        };
+        let resp: BalanceResponse = self.get(&path).await.map_err(to_openpx)?;
 
         let mut result = HashMap::new();
         result.insert("USD".to_string(), resp.balance as f64 / 100.0);
@@ -1660,8 +1663,13 @@ impl Exchange for Kalshi {
     async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
-        let path = "/portfolio/balance";
-        self.get::<serde_json::Value>(path).await.map_err(to_openpx)
+        let path = match self.config.subaccount {
+            Some(n) if n > 0 => format!("/portfolio/balance?subaccount={n}"),
+            _ => "/portfolio/balance".to_string(),
+        };
+        self.get::<serde_json::Value>(&path)
+            .await
+            .map_err(to_openpx)
     }
 
     fn describe(&self) -> ExchangeInfo {

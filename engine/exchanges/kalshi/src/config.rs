@@ -15,6 +15,10 @@ pub struct KalshiConfig {
     pub private_key_pem: Option<String>,
     /// Use demo environment
     pub demo: bool,
+    /// Subaccount number for portfolio endpoints (FCM members only).
+    /// `None` or `Some(0)` targets the primary account (default).
+    /// `Some(n)` where n ∈ 1..=32 targets that numbered subaccount.
+    pub subaccount: Option<u32>,
 }
 
 impl Default for KalshiConfig {
@@ -26,6 +30,7 @@ impl Default for KalshiConfig {
             private_key_path: None,
             private_key_pem: None,
             demo: false,
+            subaccount: None,
         }
     }
 }
@@ -60,6 +65,15 @@ impl KalshiConfig {
 
     pub fn with_private_key_pem(mut self, pem: impl Into<String>) -> Self {
         self.private_key_pem = Some(pem.into());
+        self
+    }
+
+    pub fn with_subaccount(mut self, subaccount: u32) -> Self {
+        self.subaccount = if subaccount == 0 {
+            None
+        } else {
+            Some(subaccount)
+        };
         self
     }
 
