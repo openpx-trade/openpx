@@ -3055,10 +3055,7 @@ impl Exchange for Polymarket {
             has_approvals: true,
             has_refresh_balance: true,
             has_websocket: true,
-            // CLOB /orderbook-history indexer was temporarily offline (Feb 20-24 2026),
-            // now restored. Data range: Nov 12 2025 → Feb 20 2026 (indexer ceiling).
-            // Flag is false because historical data is now served from S3 Parquet
-            // (backfilled via historical data pipeline), not proxied through CLOB.
+            // intentionally unsupported: CLOB /orderbook-history indexer ceiling is 2026-02-20; historical snapshots served from S3 Parquet pipeline, not proxied through CLOB
             has_fetch_orderbook_history: false,
         }
     }
