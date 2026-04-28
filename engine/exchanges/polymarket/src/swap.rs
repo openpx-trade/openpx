@@ -16,8 +16,13 @@ use crate::config::DEFAULT_POLYGON_RPC;
 /// Native USDC on Polygon (what MetaMask shows as "USDC")
 pub const NATIVE_USDC_ADDRESS: &str = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
 
-/// Bridged USDC.e on Polygon (what Polymarket uses)
+/// Bridged USDC.e on Polygon (input to CollateralOnramp.wrap() in V2)
 pub const BRIDGED_USDC_E_ADDRESS: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+
+/// CollateralOnramp — wraps USDC.e into pUSD (V2 trading collateral).
+/// API-only flow: approve USDC.e to this address, then call wrap(amount).
+/// Source: https://docs.polymarket.com/resources/contracts
+pub const COLLATERAL_ONRAMP: &str = "0x93070a847efEf7F70739046A929D47a521F5B8ee";
 
 /// Uniswap V3 SwapRouter on Polygon
 const UNISWAP_V3_ROUTER: &str = "0xE592427A0AEce92De3Edee1F18E0157C05861564";

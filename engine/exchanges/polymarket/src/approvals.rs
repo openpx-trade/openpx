@@ -20,11 +20,14 @@ use std::str::FromStr;
 use crate::config::DEFAULT_POLYGON_RPC;
 use crate::error::PolymarketError;
 
-// Contract addresses on Polygon Mainnet
-pub const USDC_ADDRESS: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+// Contract addresses on Polygon Mainnet — refreshed for CLOB V2 + pUSD cutover (2026-04-28).
+// Source of truth: https://docs.polymarket.com/resources/contracts.
+// Mirrored in maintenance/snapshots/polymarket-contracts.snapshot.json (contracts_test gates drift).
+pub const PUSD_ADDRESS: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
+pub const PUSD_IMPL_ADDRESS: &str = "0x6bBCef9f7ef3B6C592c99e0f206a0DE94Ad0925f";
 pub const CTF_ADDRESS: &str = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
-pub const CTF_EXCHANGE: &str = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E";
-pub const NEG_RISK_CTF_EXCHANGE: &str = "0xC5d563A36AE78145C45a50134d48A1215220f80a";
+pub const CTF_EXCHANGE: &str = "0xE111180000d2663C0091e4f400237545B87B996B";
+pub const NEG_RISK_CTF_EXCHANGE: &str = "0xe2222d279d744050d28e00520010520000310F59";
 pub const NEG_RISK_ADAPTER: &str = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296";
 
 // Max approval amount (2^256 - 1)
@@ -207,7 +210,7 @@ pub fn encode_approval_calldata(token: &TokenType, target: &ApprovalTarget) -> (
                 amount: U256::MAX,
             };
             let calldata = alloy::primitives::hex::encode(call.abi_encode());
-            (USDC_ADDRESS.to_string(), format!("0x{calldata}"))
+            (PUSD_ADDRESS.to_string(), format!("0x{calldata}"))
         }
         TokenType::Ctf => {
             let call = IERC1155::setApprovalForAllCall {
@@ -229,7 +232,7 @@ pub fn encode_usdc_approval(spender_address: &str) -> (String, String) {
         amount: U256::MAX,
     };
     let calldata = alloy::primitives::hex::encode(call.abi_encode());
-    (USDC_ADDRESS.to_string(), format!("0x{calldata}"))
+    (PUSD_ADDRESS.to_string(), format!("0x{calldata}"))
 }
 
 /// Result of a single approval transaction
@@ -272,7 +275,7 @@ impl TokenApprover {
             .await
             .map_err(|e| PolymarketError::Network(format!("failed to connect to RPC: {e}")))?;
 
-        let usdc_addr = Address::from_str(USDC_ADDRESS)
+        let usdc_addr = Address::from_str(PUSD_ADDRESS)
             .map_err(|e| PolymarketError::Config(format!("invalid USDC address: {e}")))?;
         let ctf_addr = Address::from_str(CTF_ADDRESS)
             .map_err(|e| PolymarketError::Config(format!("invalid CTF address: {e}")))?;
@@ -355,7 +358,7 @@ impl TokenApprover {
             .await
             .map_err(|e| PolymarketError::Network(format!("failed to connect to RPC: {e}")))?;
 
-        let usdc_addr = Address::from_str(USDC_ADDRESS)
+        let usdc_addr = Address::from_str(PUSD_ADDRESS)
             .map_err(|e| PolymarketError::Config(format!("invalid USDC address: {e}")))?;
         let ctf_addr = Address::from_str(CTF_ADDRESS)
             .map_err(|e| PolymarketError::Config(format!("invalid CTF address: {e}")))?;
