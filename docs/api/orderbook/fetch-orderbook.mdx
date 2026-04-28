@@ -27,16 +27,19 @@ async fn fetch_orderbook(
 
 ## Returns
 
-[`Orderbook`](/api/unified-schema#orderbook) with bids sorted high-to-low
-and asks low-to-high.
+<ResponseField name="orderbook" type="Orderbook">
+  Bids sorted high-to-low, asks low-to-high.
 
-<ResponseField name="market_id" type="string" />
-<ResponseField name="asset_id" type="string" />
-<ResponseField name="bids" type="PriceLevel[]" />
-<ResponseField name="asks" type="PriceLevel[]" />
-<ResponseField name="last_update_id" type="u64?" />
-<ResponseField name="timestamp" type="DateTime?" />
-<ResponseField name="hash" type="string?" />
+  <Expandable title="Orderbook">
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="asset_id" type="string">Per-outcome (Kalshi: ticker, Polymarket: token).</ResponseField>
+    <ResponseField name="bids" type="PriceLevel[]">Each: `{ price: f64, size: f64 }`.</ResponseField>
+    <ResponseField name="asks" type="PriceLevel[]" />
+    <ResponseField name="last_update_id" type="u64?">Sequence number when provided.</ResponseField>
+    <ResponseField name="timestamp" type="DateTime?" />
+    <ResponseField name="hash" type="string?">Polymarket book integrity hash.</ResponseField>
+  </Expandable>
+</ResponseField>
 
 ## Example
 

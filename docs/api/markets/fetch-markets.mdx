@@ -35,7 +35,26 @@ async fn fetch_markets(
 ## Returns
 
 <ResponseField name="markets" type="Market[]">
-  One page of markets. See [`Market`](/api/unified-schema#market) for every field.
+  One page of markets.
+
+  <Expandable title="Market">
+    <ResponseField name="id" type="string">Native ID — Kalshi ticker or Polymarket condition ID.</ResponseField>
+    <ResponseField name="native_numeric_id" type="string?">Polymarket numeric DB id, for UI deep-links.</ResponseField>
+    <ResponseField name="event_id" type="string?">Canonical OpenPX event ID grouping related markets.</ResponseField>
+    <ResponseField name="title" type="string" />
+    <ResponseField name="description" type="string" />
+    <ResponseField name="slug" type="string?" />
+    <ResponseField name="status" type="MarketStatus">`Active`, `Closed`, or `Resolved`.</ResponseField>
+    <ResponseField name="outcomes" type="string[]">E.g. `["Yes", "No"]`.</ResponseField>
+    <ResponseField name="token_id_yes" type="string?">Polymarket CLOB token for the Yes outcome.</ResponseField>
+    <ResponseField name="token_id_no" type="string?">Polymarket CLOB token for the No outcome.</ResponseField>
+    <ResponseField name="condition_id" type="string?">Polymarket condition ID.</ResponseField>
+    <ResponseField name="volume" type="f64" />
+    <ResponseField name="liquidity" type="f64?" />
+    <ResponseField name="open_interest" type="f64?">Kalshi only.</ResponseField>
+    <ResponseField name="open_time" type="DateTime?" />
+    <ResponseField name="close_time" type="DateTime?" />
+  </Expandable>
 </ResponseField>
 
 <ResponseField name="cursor" type="string?">
