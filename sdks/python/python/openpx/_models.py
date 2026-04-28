@@ -55,20 +55,72 @@ class Candlestick(BaseModel):
     )
 
 
+class Event(BaseModel):
+    category: str | None = None
+    description: str | None = None
+    end_ts: AwareDatetime | None = None
+    id: str
+    last_updated_ts: AwareDatetime | None = None
+    market_ids: list[str] | None = []
+    mutually_exclusive: bool | None = None
+    open_interest: float | None = None
+    series_id: str | None = None
+    slug: str | None = None
+    start_ts: AwareDatetime | None = None
+    status: str | None = None
+    title: str
+    volume: float | None = None
+
+
+class EventsRequest(BaseModel):
+    cursor: str | None = None
+    limit: conint(ge=0) | None = None
+    min_close_ts: int | None = Field(
+        None,
+        description="Unix seconds — only events closing at or after this timestamp.",
+    )
+    min_updated_ts: int | None = Field(
+        None,
+        description="Unix seconds — only events updated at or after this timestamp.",
+    )
+    series_id: str | None = Field(None, description="Filter by series ID / ticker.")
+    status: str | None = Field(
+        None,
+        description="Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).",
+    )
+    with_nested_markets: bool | None = Field(
+        None, description="Include the events' nested `Market` objects when supported."
+    )
+
+
 class ExchangeInfo(BaseModel):
     has_approvals: bool
+    has_cancel_all_orders: bool
     has_cancel_order: bool
     has_create_order: bool
+    has_create_orders_batch: bool
     has_fetch_balance: bool
+    has_fetch_event: bool
+    has_fetch_events: bool
     has_fetch_fills: bool
+    has_fetch_last_trade_price: bool
+    has_fetch_market_tags: bool
     has_fetch_markets: bool
+    has_fetch_midpoint: bool
+    has_fetch_midpoints_batch: bool
+    has_fetch_open_interest: bool
     has_fetch_orderbook: bool
     has_fetch_orderbook_history: bool
+    has_fetch_orderbooks_batch: bool
     has_fetch_positions: bool
     has_fetch_price_history: bool
+    has_fetch_series: bool
+    has_fetch_series_one: bool
     has_fetch_server_time: bool
+    has_fetch_spread: bool
     has_fetch_trades: bool
     has_fetch_user_activity: bool
+    has_fetch_user_trades: bool
     has_refresh_balance: bool
     has_websocket: bool
     id: str
@@ -148,6 +200,12 @@ class MarketType(Enum):
     scalar = "scalar"
 
 
+class MidpointRequest(BaseModel):
+    market_id: str
+    outcome: str | None = None
+    token_id: str | None = None
+
+
 class OrderSide(Enum):
     buy = "buy"
     sell = "sell"
@@ -222,6 +280,18 @@ class PriceLevelSide(Enum):
     ask = "ask"
 
 
+class SeriesRequest(BaseModel):
+    category: str | None = Field(
+        None, description="Filter by category (e.g. `Politics`, `Sports`)."
+    )
+    cursor: str | None = None
+    include_volume: bool | None = Field(
+        None,
+        description="Include traded volume in the response when the venue supports it.",
+    )
+    limit: conint(ge=0) | None = None
+
+
 class Kind(Enum):
     Connected = "Connected"
 
@@ -283,6 +353,24 @@ class SessionEvent(
     )
 
 
+class SettlementSource(BaseModel):
+    name: str | None = None
+    url: str | None = None
+
+
+class Spread(BaseModel):
+    ask: float
+    bid: float
+    spread: float
+    ts_ms: int | None = None
+
+
+class Tag(BaseModel):
+    id: str
+    name: str
+    slug: str | None = None
+
+
 class TradesRequest(BaseModel):
     cursor: str | None = Field(
         None, description="Opaque pagination cursor from a previous response."
@@ -300,6 +388,35 @@ class TradesRequest(BaseModel):
     outcome: str | None = None
     start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     token_id: str | None = None
+
+
+class UserTrade(BaseModel):
+    asset_id: str | None = None
+    condition_id: str | None = None
+    fee: float | None = None
+    id: str
+    market_id: str
+    owner: str | None = None
+    price: float
+    realized_pnl: float | None = None
+    role: LiquidityRole | None = None
+    side: OrderSide
+    size: float
+    ts_ms: int
+    tx_hash: str | None = None
+
+
+class UserTradesRequest(BaseModel):
+    cursor: str | None = None
+    end_ts: int | None = Field(None, description="Unix seconds (inclusive)")
+    limit: conint(ge=0) | None = None
+    market_id: str | None = None
+    side: OrderSide | None = None
+    start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
+    user_address: str | None = Field(
+        None,
+        description="`None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).",
+    )
 
 
 class Kind5(Enum):
@@ -397,6 +514,13 @@ class Fill(BaseModel):
     price: float
     side: OrderSide
     size: float
+
+
+class LastTrade(BaseModel):
+    price: float
+    side: OrderSide
+    size: float
+    ts_ms: int
 
 
 class Market(BaseModel):
@@ -506,6 +630,29 @@ class Market(BaseModel):
     volume_24h: float | None = Field(None, description="24-hour trading volume (USD)")
 
 
+class NewOrder(BaseModel):
+    client_order_id: str | None = Field(
+        None, description="Kalshi-specific idempotency key."
+    )
+    expiration_ts: int | None = Field(
+        None,
+        description="Unix seconds. Required for `OrderType::Gtc` orders that should expire.",
+    )
+    market_id: str
+    order_type: OrderType
+    outcome: str
+    post_only: bool | None = Field(
+        None, description="Polymarket: pin maker-only. Ignored on Kalshi."
+    )
+    price: float
+    reduce_only: bool | None = Field(
+        None,
+        description="Kalshi: only allow size reductions. Maps to `reduce_only=true`.",
+    )
+    side: OrderSide
+    size: float
+
+
 class Order(BaseModel):
     created_at: AwareDatetime
     filled: float
@@ -528,6 +675,18 @@ class PriceLevelChange(BaseModel):
     price: Number
     side: PriceLevelSide
     size: float
+
+
+class Series(BaseModel):
+    category: str | None = None
+    fee_type: str | None = None
+    frequency: str | None = None
+    id: str
+    last_updated_ts: AwareDatetime | None = None
+    settlement_sources: list[SettlementSource] | None = Field([], validate_default=True)
+    tags: list[str] | None = []
+    title: str
+    volume: float | None = None
 
 
 class WsUpdate2(BaseModel):

@@ -54,11 +54,6 @@ export type MarketType = "binary" | "categorical" | "scalar";
  */
 export type MarketStatus = "active" | "closed" | "resolved";
 /**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderStatus".
- */
-export type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancelled" | "rejected";
-/**
  * Order time-in-force / execution type.
  *
  * Normalized across all exchanges: - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest. - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
@@ -67,6 +62,11 @@ export type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "
  * via the `definition` "OrderType".
  */
 export type OrderType = "gtc" | "ioc" | "fok";
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderStatus".
+ */
+export type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "cancelled" | "rejected";
 /**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "number".
@@ -256,23 +256,91 @@ export interface Candlestick {
   [k: string]: unknown;
 }
 /**
+ * A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. "2028 US Presidential Election" with markets per candidate).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Event".
+ */
+export interface Event {
+  category?: string | null;
+  description?: string | null;
+  end_ts?: string | null;
+  id: string;
+  last_updated_ts?: string | null;
+  market_ids?: string[];
+  mutually_exclusive?: boolean | null;
+  open_interest?: number | null;
+  series_id?: string | null;
+  slug?: string | null;
+  start_ts?: string | null;
+  status?: string | null;
+  title: string;
+  volume?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * Request for fetching events.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "EventsRequest".
+ */
+export interface EventsRequest {
+  cursor?: string | null;
+  limit?: number | null;
+  /**
+   * Unix seconds — only events closing at or after this timestamp.
+   */
+  min_close_ts?: number | null;
+  /**
+   * Unix seconds — only events updated at or after this timestamp.
+   */
+  min_updated_ts?: number | null;
+  /**
+   * Filter by series ID / ticker.
+   */
+  series_id?: string | null;
+  /**
+   * Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).
+   */
+  status?: string | null;
+  /**
+   * Include the events' nested `Market` objects when supported.
+   */
+  with_nested_markets?: boolean | null;
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "ExchangeInfo".
  */
 export interface ExchangeInfo {
   has_approvals: boolean;
+  has_cancel_all_orders: boolean;
   has_cancel_order: boolean;
   has_create_order: boolean;
+  has_create_orders_batch: boolean;
   has_fetch_balance: boolean;
+  has_fetch_event: boolean;
+  has_fetch_events: boolean;
   has_fetch_fills: boolean;
+  has_fetch_last_trade_price: boolean;
+  has_fetch_market_tags: boolean;
   has_fetch_markets: boolean;
+  has_fetch_midpoint: boolean;
+  has_fetch_midpoints_batch: boolean;
+  has_fetch_open_interest: boolean;
   has_fetch_orderbook: boolean;
   has_fetch_orderbook_history: boolean;
+  has_fetch_orderbooks_batch: boolean;
   has_fetch_positions: boolean;
   has_fetch_price_history: boolean;
+  has_fetch_series: boolean;
+  has_fetch_series_one: boolean;
   has_fetch_server_time: boolean;
+  has_fetch_spread: boolean;
   has_fetch_trades: boolean;
   has_fetch_user_activity: boolean;
+  has_fetch_user_trades: boolean;
   has_refresh_balance: boolean;
   has_websocket: boolean;
   id: string;
@@ -340,6 +408,19 @@ export interface Fill {
   price: number;
   side: OrderSide;
   size: number;
+  [k: string]: unknown;
+}
+/**
+ * Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just "what just printed?" — common UI need that doesn't require the full trade history.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "LastTrade".
+ */
+export interface LastTrade {
+  price: number;
+  side: OrderSide;
+  size: number;
+  ts_ms: number;
   [k: string]: unknown;
 }
 /**
@@ -614,6 +695,49 @@ export interface MarketTrade {
   [k: string]: unknown;
 }
 /**
+ * Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MidpointRequest".
+ */
+export interface MidpointRequest {
+  market_id: string;
+  outcome?: string | null;
+  token_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "NewOrder".
+ */
+export interface NewOrder {
+  /**
+   * Kalshi-specific idempotency key.
+   */
+  client_order_id?: string | null;
+  /**
+   * Unix seconds. Required for `OrderType::Gtc` orders that should expire.
+   */
+  expiration_ts?: number | null;
+  market_id: string;
+  order_type: OrderType;
+  outcome: string;
+  /**
+   * Polymarket: pin maker-only. Ignored on Kalshi.
+   */
+  post_only?: boolean | null;
+  price: number;
+  /**
+   * Kalshi: only allow size reductions. Maps to `reduce_only=true`.
+   */
+  reduce_only?: boolean | null;
+  side: OrderSide;
+  size: number;
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "Order".
  */
@@ -745,6 +869,77 @@ export interface PriceLevelChange {
   [k: string]: unknown;
 }
 /**
+ * A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Series".
+ */
+export interface Series {
+  category?: string | null;
+  fee_type?: string | null;
+  frequency?: string | null;
+  id: string;
+  last_updated_ts?: string | null;
+  settlement_sources?: SettlementSource[];
+  tags?: string[];
+  title: string;
+  volume?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "SettlementSource".
+ */
+export interface SettlementSource {
+  name?: string | null;
+  url?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Request for fetching series.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "SeriesRequest".
+ */
+export interface SeriesRequest {
+  /**
+   * Filter by category (e.g. `Politics`, `Sports`).
+   */
+  category?: string | null;
+  cursor?: string | null;
+  /**
+   * Include traded volume in the response when the venue supports it.
+   */
+  include_volume?: boolean | null;
+  limit?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` — useful for liquidity scoring and PnL marks where only the best levels are needed.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Spread".
+ */
+export interface Spread {
+  ask: number;
+  bid: number;
+  spread: number;
+  ts_ms?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Tag".
+ */
+export interface Tag {
+  id: string;
+  name: string;
+  slug?: string | null;
+  [k: string]: unknown;
+}
+/**
  * Request for fetching recent public trades ("tape") for a market outcome.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -777,5 +972,52 @@ export interface TradesRequest {
    */
   start_ts?: number | null;
   token_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills` returns a subset, with `realized_pnl` and `tx_hash` left as `None`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "UserTrade".
+ */
+export interface UserTrade {
+  asset_id?: string | null;
+  condition_id?: string | null;
+  fee?: number | null;
+  id: string;
+  market_id: string;
+  owner?: string | null;
+  price: number;
+  realized_pnl?: number | null;
+  role?: LiquidityRole | null;
+  side: OrderSide;
+  size: number;
+  ts_ms: number;
+  tx_hash?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Request for `fetch_user_trades`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "UserTradesRequest".
+ */
+export interface UserTradesRequest {
+  cursor?: string | null;
+  /**
+   * Unix seconds (inclusive)
+   */
+  end_ts?: number | null;
+  limit?: number | null;
+  market_id?: string | null;
+  side?: OrderSide | null;
+  /**
+   * Unix seconds (inclusive)
+   */
+  start_ts?: number | null;
+  /**
+   * `None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).
+   */
+  user_address?: string | null;
   [k: string]: unknown;
 }

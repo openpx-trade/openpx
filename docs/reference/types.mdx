@@ -64,23 +64,74 @@ OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 
 | `volume` | `number` | Trade volume in contracts. 0.0 if exchange doesn't provide volume. |
 
 
+## `Event`
+
+A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. "2028 US Presidential Election" with markets per candidate).
+
+| Field | Type | Description |
+|---|---|---|
+| `category` | `['string', 'null']` *(optional)* |  |
+| `description` | `['string', 'null']` *(optional)* |  |
+| `end_ts` | `['string', 'null']` *(optional)* |  |
+| `id` | `string` |  |
+| `last_updated_ts` | `['string', 'null']` *(optional)* |  |
+| `market_ids` | `string`[] *(optional)* |  |
+| `mutually_exclusive` | `['boolean', 'null']` *(optional)* |  |
+| `open_interest` | `['number', 'null']` *(optional)* |  |
+| `series_id` | `['string', 'null']` *(optional)* |  |
+| `slug` | `['string', 'null']` *(optional)* |  |
+| `start_ts` | `['string', 'null']` *(optional)* |  |
+| `status` | `['string', 'null']` *(optional)* |  |
+| `title` | `string` |  |
+| `volume` | `['number', 'null']` *(optional)* |  |
+
+
+## `EventsRequest`
+
+Request for fetching events.
+
+| Field | Type | Description |
+|---|---|---|
+| `cursor` | `['string', 'null']` *(optional)* |  |
+| `limit` | `['integer', 'null']` *(optional)* |  |
+| `min_close_ts` | `['integer', 'null']` *(optional)* | Unix seconds — only events closing at or after this timestamp. |
+| `min_updated_ts` | `['integer', 'null']` *(optional)* | Unix seconds — only events updated at or after this timestamp. |
+| `series_id` | `['string', 'null']` *(optional)* | Filter by series ID / ticker. |
+| `status` | `['string', 'null']` *(optional)* | Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket). |
+| `with_nested_markets` | `['boolean', 'null']` *(optional)* | Include the events' nested `Market` objects when supported. |
+
+
 ## `ExchangeInfo`
 
 | Field | Type | Description |
 |---|---|---|
 | `has_approvals` | `boolean` |  |
+| `has_cancel_all_orders` | `boolean` |  |
 | `has_cancel_order` | `boolean` |  |
 | `has_create_order` | `boolean` |  |
+| `has_create_orders_batch` | `boolean` |  |
 | `has_fetch_balance` | `boolean` |  |
+| `has_fetch_event` | `boolean` |  |
+| `has_fetch_events` | `boolean` |  |
 | `has_fetch_fills` | `boolean` |  |
+| `has_fetch_last_trade_price` | `boolean` |  |
+| `has_fetch_market_tags` | `boolean` |  |
 | `has_fetch_markets` | `boolean` |  |
+| `has_fetch_midpoint` | `boolean` |  |
+| `has_fetch_midpoints_batch` | `boolean` |  |
+| `has_fetch_open_interest` | `boolean` |  |
 | `has_fetch_orderbook` | `boolean` |  |
 | `has_fetch_orderbook_history` | `boolean` |  |
+| `has_fetch_orderbooks_batch` | `boolean` |  |
 | `has_fetch_positions` | `boolean` |  |
 | `has_fetch_price_history` | `boolean` |  |
+| `has_fetch_series` | `boolean` |  |
+| `has_fetch_series_one` | `boolean` |  |
 | `has_fetch_server_time` | `boolean` |  |
+| `has_fetch_spread` | `boolean` |  |
 | `has_fetch_trades` | `boolean` |  |
 | `has_fetch_user_activity` | `boolean` |  |
+| `has_fetch_user_trades` | `boolean` |  |
 | `has_refresh_balance` | `boolean` |  |
 | `has_websocket` | `boolean` |  |
 | `id` | `string` |  |
@@ -141,6 +192,18 @@ Why a specific book was invalidated — handed to users so they can decide wheth
 - `'Lag'`
 - `'ExchangeReset'`
 - `SequenceGap`
+
+
+## `LastTrade`
+
+Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just "what just printed?" — common UI need that doesn't require the full trade history.
+
+| Field | Type | Description |
+|---|---|---|
+| `price` | `number` |  |
+| `side` | [`OrderSide`](#orderside) |  |
+| `size` | `number` |  |
+| `ts_ms` | `integer` |  |
 
 
 ## `LiquidityRole`
@@ -278,6 +341,35 @@ Market type classification.
 - `'binary'`
 - `'categorical'`
 - `'scalar'`
+
+
+## `MidpointRequest`
+
+Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.
+
+| Field | Type | Description |
+|---|---|---|
+| `market_id` | `string` |  |
+| `outcome` | `['string', 'null']` *(optional)* |  |
+| `token_id` | `['string', 'null']` *(optional)* |  |
+
+
+## `NewOrder`
+
+One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).
+
+| Field | Type | Description |
+|---|---|---|
+| `client_order_id` | `['string', 'null']` *(optional)* | Kalshi-specific idempotency key. |
+| `expiration_ts` | `['integer', 'null']` *(optional)* | Unix seconds. Required for `OrderType::Gtc` orders that should expire. |
+| `market_id` | `string` |  |
+| `order_type` | [`OrderType`](#ordertype) |  |
+| `outcome` | `string` |  |
+| `post_only` | `['boolean', 'null']` *(optional)* | Polymarket: pin maker-only. Ignored on Kalshi. |
+| `price` | `number` |  |
+| `reduce_only` | `['boolean', 'null']` *(optional)* | Kalshi: only allow size reductions. Maps to `reduce_only=true`. |
+| `side` | [`OrderSide`](#orderside) |  |
+| `size` | `number` |  |
 
 
 ## `Order`
@@ -453,6 +545,35 @@ Bid or ask side. Serializes as "bid"/"ask" on the wire.
 - `'ask'`
 
 
+## `Series`
+
+A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
+
+| Field | Type | Description |
+|---|---|---|
+| `category` | `['string', 'null']` *(optional)* |  |
+| `fee_type` | `['string', 'null']` *(optional)* |  |
+| `frequency` | `['string', 'null']` *(optional)* |  |
+| `id` | `string` |  |
+| `last_updated_ts` | `['string', 'null']` *(optional)* |  |
+| `settlement_sources` | [`SettlementSource`](#settlementsource)[] *(optional)* |  |
+| `tags` | `string`[] *(optional)* |  |
+| `title` | `string` |  |
+| `volume` | `['number', 'null']` *(optional)* |  |
+
+
+## `SeriesRequest`
+
+Request for fetching series.
+
+| Field | Type | Description |
+|---|---|---|
+| `category` | `['string', 'null']` *(optional)* | Filter by category (e.g. `Politics`, `Sports`). |
+| `cursor` | `['string', 'null']` *(optional)* |  |
+| `include_volume` | `['boolean', 'null']` *(optional)* | Include traded volume in the response when the venue supports it. |
+| `limit` | `['integer', 'null']` *(optional)* |  |
+
+
 ## `SessionEvent`
 
 Connection-level events, emitted on a channel separate from `WsUpdate` so a reconnect is observable as a single global signal rather than per-market.
@@ -473,6 +594,37 @@ Connection-level events, emitted on a channel separate from `WsUpdate` so a reco
 - `message`
 
 
+## `SettlementSource`
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | `['string', 'null']` *(optional)* |  |
+| `url` | `['string', 'null']` *(optional)* |  |
+
+
+## `Spread`
+
+Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` — useful for liquidity scoring and PnL marks where only the best levels are needed.
+
+| Field | Type | Description |
+|---|---|---|
+| `ask` | `number` |  |
+| `bid` | `number` |  |
+| `spread` | `number` |  |
+| `ts_ms` | `['integer', 'null']` *(optional)* |  |
+
+
+## `Tag`
+
+A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` |  |
+| `name` | `string` |  |
+| `slug` | `['string', 'null']` *(optional)* |  |
+
+
 ## `TradesRequest`
 
 Request for fetching recent public trades ("tape") for a market outcome.
@@ -487,6 +639,42 @@ Request for fetching recent public trades ("tape") for a market outcome.
 | `outcome` | `['string', 'null']` *(optional)* |  |
 | `start_ts` | `['integer', 'null']` *(optional)* | Unix seconds (inclusive) |
 | `token_id` | `['string', 'null']` *(optional)* |  |
+
+
+## `UserTrade`
+
+A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills` returns a subset, with `realized_pnl` and `tx_hash` left as `None`.
+
+| Field | Type | Description |
+|---|---|---|
+| `asset_id` | `['string', 'null']` *(optional)* |  |
+| `condition_id` | `['string', 'null']` *(optional)* |  |
+| `fee` | `['number', 'null']` *(optional)* |  |
+| `id` | `string` |  |
+| `market_id` | `string` |  |
+| `owner` | `['string', 'null']` *(optional)* |  |
+| `price` | `number` |  |
+| `realized_pnl` | `['number', 'null']` *(optional)* |  |
+| `role` | [`LiquidityRole`](#liquidityrole) \| `null` *(optional)* |  |
+| `side` | [`OrderSide`](#orderside) |  |
+| `size` | `number` |  |
+| `ts_ms` | `integer` |  |
+| `tx_hash` | `['string', 'null']` *(optional)* |  |
+
+
+## `UserTradesRequest`
+
+Request for `fetch_user_trades`.
+
+| Field | Type | Description |
+|---|---|---|
+| `cursor` | `['string', 'null']` *(optional)* |  |
+| `end_ts` | `['integer', 'null']` *(optional)* | Unix seconds (inclusive) |
+| `limit` | `['integer', 'null']` *(optional)* |  |
+| `market_id` | `['string', 'null']` *(optional)* |  |
+| `side` | [`OrderSide`](#orderside) \| `null` *(optional)* |  |
+| `start_ts` | `['integer', 'null']` *(optional)* | Unix seconds (inclusive) |
+| `user_address` | `['string', 'null']` *(optional)* | `None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`). |
 
 
 ## `WsUpdate`

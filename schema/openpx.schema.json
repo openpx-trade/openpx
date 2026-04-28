@@ -211,9 +211,165 @@
       "title": "Candlestick",
       "type": "object"
     },
+    "Event": {
+      "description": "A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. \"Will Candidate X win State Y?\") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. \"2028 US Presidential Election\" with markets per candidate).",
+      "properties": {
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_ts": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "last_updated_ts": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "market_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mutually_exclusive": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "open_interest": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "series_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_ts": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "volume": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
+    "EventsRequest": {
+      "description": "Request for fetching events.",
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "min_close_ts": {
+          "description": "Unix seconds — only events closing at or after this timestamp.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "min_updated_ts": {
+          "description": "Unix seconds — only events updated at or after this timestamp.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "series_id": {
+          "description": "Filter by series ID / ticker.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "with_nested_markets": {
+          "description": "Include the events' nested `Market` objects when supported.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "title": "EventsRequest",
+      "type": "object"
+    },
     "ExchangeInfo": {
       "properties": {
         "has_approvals": {
+          "type": "boolean"
+        },
+        "has_cancel_all_orders": {
           "type": "boolean"
         },
         "has_cancel_order": {
@@ -222,13 +378,37 @@
         "has_create_order": {
           "type": "boolean"
         },
+        "has_create_orders_batch": {
+          "type": "boolean"
+        },
         "has_fetch_balance": {
+          "type": "boolean"
+        },
+        "has_fetch_event": {
+          "type": "boolean"
+        },
+        "has_fetch_events": {
           "type": "boolean"
         },
         "has_fetch_fills": {
           "type": "boolean"
         },
+        "has_fetch_last_trade_price": {
+          "type": "boolean"
+        },
+        "has_fetch_market_tags": {
+          "type": "boolean"
+        },
         "has_fetch_markets": {
+          "type": "boolean"
+        },
+        "has_fetch_midpoint": {
+          "type": "boolean"
+        },
+        "has_fetch_midpoints_batch": {
+          "type": "boolean"
+        },
+        "has_fetch_open_interest": {
           "type": "boolean"
         },
         "has_fetch_orderbook": {
@@ -237,19 +417,34 @@
         "has_fetch_orderbook_history": {
           "type": "boolean"
         },
+        "has_fetch_orderbooks_batch": {
+          "type": "boolean"
+        },
         "has_fetch_positions": {
           "type": "boolean"
         },
         "has_fetch_price_history": {
           "type": "boolean"
         },
+        "has_fetch_series": {
+          "type": "boolean"
+        },
+        "has_fetch_series_one": {
+          "type": "boolean"
+        },
         "has_fetch_server_time": {
+          "type": "boolean"
+        },
+        "has_fetch_spread": {
           "type": "boolean"
         },
         "has_fetch_trades": {
           "type": "boolean"
         },
         "has_fetch_user_activity": {
+          "type": "boolean"
+        },
+        "has_fetch_user_trades": {
           "type": "boolean"
         },
         "has_refresh_balance": {
@@ -267,18 +462,32 @@
       },
       "required": [
         "has_approvals",
+        "has_cancel_all_orders",
         "has_cancel_order",
         "has_create_order",
+        "has_create_orders_batch",
         "has_fetch_balance",
+        "has_fetch_event",
+        "has_fetch_events",
         "has_fetch_fills",
+        "has_fetch_last_trade_price",
+        "has_fetch_market_tags",
         "has_fetch_markets",
+        "has_fetch_midpoint",
+        "has_fetch_midpoints_batch",
+        "has_fetch_open_interest",
         "has_fetch_orderbook",
         "has_fetch_orderbook_history",
+        "has_fetch_orderbooks_batch",
         "has_fetch_positions",
         "has_fetch_price_history",
+        "has_fetch_series",
+        "has_fetch_series_one",
         "has_fetch_server_time",
+        "has_fetch_spread",
         "has_fetch_trades",
         "has_fetch_user_activity",
+        "has_fetch_user_trades",
         "has_refresh_balance",
         "has_websocket",
         "id",
@@ -463,6 +672,34 @@
           "type": "object"
         }
       ]
+    },
+    "LastTrade": {
+      "description": "Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just \"what just printed?\" — common UI need that doesn't require the full trade history.",
+      "properties": {
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "$ref": "#/definitions/OrderSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "ts_ms": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "price",
+        "side",
+        "size",
+        "ts_ms"
+      ],
+      "title": "LastTrade",
+      "type": "object"
     },
     "LiquidityRole": {
       "enum": [
@@ -991,6 +1228,95 @@
       "title": "MarketType",
       "type": "string"
     },
+    "MidpointRequest": {
+      "description": "Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.",
+      "properties": {
+        "market_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "market_id"
+      ],
+      "title": "MidpointRequest",
+      "type": "object"
+    },
+    "NewOrder": {
+      "description": "One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).",
+      "properties": {
+        "client_order_id": {
+          "description": "Kalshi-specific idempotency key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiration_ts": {
+          "description": "Unix seconds. Required for `OrderType::Gtc` orders that should expire.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "order_type": {
+          "$ref": "#/definitions/OrderType"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "post_only": {
+          "description": "Polymarket: pin maker-only. Ignored on Kalshi.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "reduce_only": {
+          "description": "Kalshi: only allow size reductions. Maps to `reduce_only=true`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "side": {
+          "$ref": "#/definitions/OrderSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "market_id",
+        "order_type",
+        "outcome",
+        "price",
+        "side",
+        "size"
+      ],
+      "title": "NewOrder",
+      "type": "object"
+    },
     "Order": {
       "properties": {
         "created_at": {
@@ -1073,7 +1399,6 @@
         "ioc",
         "fok"
       ],
-      "title": "OrderType",
       "type": "string"
     },
     "Orderbook": {
@@ -1394,6 +1719,104 @@
       ],
       "type": "string"
     },
+    "Series": {
+      "description": "A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.",
+      "properties": {
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fee_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frequency": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "last_updated_ts": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "settlement_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/SettlementSource"
+          },
+          "type": "array"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "volume": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "Series",
+      "type": "object"
+    },
+    "SeriesRequest": {
+      "description": "Request for fetching series.",
+      "properties": {
+        "category": {
+          "description": "Filter by category (e.g. `Politics`, `Sports`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "include_volume": {
+          "description": "Include traded volume in the response when the venue supports it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "SeriesRequest",
+      "type": "object"
+    },
     "SessionEvent": {
       "description": "Connection-level events, emitted on a channel separate from `WsUpdate` so a reconnect is observable as a single global signal rather than per-market.",
       "oneOf": [
@@ -1511,6 +1934,78 @@
       ],
       "title": "SessionEvent"
     },
+    "SettlementSource": {
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "SettlementSource",
+      "type": "object"
+    },
+    "Spread": {
+      "description": "Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` — useful for liquidity scoring and PnL marks where only the best levels are needed.",
+      "properties": {
+        "ask": {
+          "format": "double",
+          "type": "number"
+        },
+        "bid": {
+          "format": "double",
+          "type": "number"
+        },
+        "spread": {
+          "format": "double",
+          "type": "number"
+        },
+        "ts_ms": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ask",
+        "bid",
+        "spread"
+      ],
+      "title": "Spread",
+      "type": "object"
+    },
+    "Tag": {
+      "description": "A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Tag",
+      "type": "object"
+    },
     "TradesRequest": {
       "description": "Request for fetching recent public trades (\"tape\") for a market outcome.",
       "properties": {
@@ -1574,6 +2069,150 @@
         "market_id"
       ],
       "title": "TradesRequest",
+      "type": "object"
+    },
+    "UserTrade": {
+      "description": "A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills` returns a subset, with `realized_pnl` and `tx_hash` left as `None`.",
+      "properties": {
+        "asset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "condition_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fee": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "market_id": {
+          "type": "string"
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "format": "double",
+          "type": "number"
+        },
+        "realized_pnl": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LiquidityRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "side": {
+          "$ref": "#/definitions/OrderSide"
+        },
+        "size": {
+          "format": "double",
+          "type": "number"
+        },
+        "ts_ms": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "market_id",
+        "price",
+        "side",
+        "size",
+        "ts_ms"
+      ],
+      "title": "UserTrade",
+      "type": "object"
+    },
+    "UserTradesRequest": {
+      "description": "Request for `fetch_user_trades`.",
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_ts": {
+          "description": "Unix seconds (inclusive)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "market_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "side": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OrderSide"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start_ts": {
+          "description": "Unix seconds (inclusive)",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "user_address": {
+          "description": "`None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "UserTradesRequest",
       "type": "object"
     },
     "WsUpdate": {
