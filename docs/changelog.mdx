@@ -15,6 +15,7 @@ This page summarizes user-facing releases.
 
 ### Fixed
 
+- **kalshi**: `create_order` no longer sends the removed `type` field in `POST /portfolio/orders`; Kalshi dropped market-order support on Feb 11, 2026.
 - **sdk**: TypeScript `models.d.ts` was a 13-line empty stub; the codegen now emits all 35+ interfaces (`ExchangeInfo`, `Market`, `Fill`, `WsUpdate`, `OrderStatus`, and more). ([#34](https://github.com/openpx-trade/openpx/pull/34))
 
 ## 0.2.6 — 2026-04-24
