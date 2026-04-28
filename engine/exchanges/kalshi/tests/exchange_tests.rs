@@ -1,6 +1,6 @@
 use px_core::{
-    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest,
-    PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
+    Exchange, FetchMarketsParams, FetchUserActivityParams, MarketStatus, MarketStatusFilter,
+    OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
 };
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
@@ -1059,8 +1059,9 @@ fn test_describe_unauthenticated() {
         !info.has_websocket,
         "should not have websocket without auth"
     );
+    // Implemented but auth-gated at runtime
+    assert!(info.has_fetch_user_activity);
     // Unsupported features
-    assert!(!info.has_fetch_user_activity);
     assert!(!info.has_approvals);
     assert!(!info.has_refresh_balance);
     assert!(!info.has_fetch_orderbook_history);
@@ -1611,4 +1612,86 @@ async fn test_fetch_markets_with_event_id_status_all() {
     // #then
     assert_eq!(markets.len(), 2);
     assert!(cursor.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// fetch_user_activity: happy path and auth-required error path
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_user_activity_returns_fills_json() {
+    use pkcs8::EncodePrivateKey;
+    use rsa::RsaPrivateKey;
+
+    // #given — generate a test RSA key so ensure_auth() passes
+    let private_key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+    let pem = private_key
+        .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+        .unwrap();
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/portfolio/fills"))
+        .and(query_param("limit", "50"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "fills": [
+                {
+                    "fill_id": "f1",
+                    "ticker": "INXD-24DEC31-B5000",
+                    "created_time": "2024-12-31T10:00:00Z",
+                    "yes_price": "0.65",
+                    "no_price": "0.35",
+                    "count": "10",
+                    "side": "yes",
+                    "action": "buy",
+                    "is_taker": true,
+                    "fee_paid": "0.01"
+                }
+            ],
+            "cursor": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_api_key_id("test-key")
+        .with_private_key_pem(pem.as_str())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when — address is not applicable to Kalshi (centralized, API-key auth)
+    let params = FetchUserActivityParams {
+        address: String::new(),
+        limit: Some(50),
+    };
+    let result = exchange.fetch_user_activity(params).await.unwrap();
+
+    // #then — raw fills JSON returned
+    let fills = result["fills"].as_array().unwrap();
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0]["fill_id"], "f1");
+    assert_eq!(fills[0]["ticker"], "INXD-24DEC31-B5000");
+}
+
+#[tokio::test]
+async fn test_fetch_user_activity_requires_auth() {
+    // #given — no credentials
+    let config = KalshiConfig::new().with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchUserActivityParams {
+        address: String::new(),
+        limit: None,
+    };
+    let result = exchange.fetch_user_activity(params).await;
+
+    // #then
+    assert!(result.is_err());
+    let err_str = result.unwrap_err().to_string();
+    assert!(
+        err_str.to_lowercase().contains("auth"),
+        "expected auth required error, got: {err_str}"
+    );
 }

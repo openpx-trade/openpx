@@ -12,6 +12,7 @@ This page summarizes user-facing releases.
 ### Added
 
 - **core**: `Exchange::fetch_server_time()` returns each venue's wall-clock as `DateTime<Utc>` for clock-skew correction in signing-sensitive paths. `ExchangeInfo` gains `has_fetch_server_time: bool`. ([#26](https://github.com/openpx-trade/openpx/pull/26))
+- **kalshi**: `Exchange::fetch_user_activity()` implemented via `GET /portfolio/fills`, returning raw fill history JSON. `ExchangeInfo.has_fetch_user_activity` is now `true` for Kalshi.
 
 ### Fixed
 
