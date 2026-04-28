@@ -8,7 +8,7 @@ use alloy::sol;
 use alloy::sol_types::SolCall;
 use std::str::FromStr;
 
-use crate::approvals::{CTF_ADDRESS, NEG_RISK_ADAPTER, USDC_ADDRESS};
+use crate::approvals::{CTF_ADDRESS, NEG_RISK_ADAPTER, PUSD_ADDRESS};
 use crate::error::PolymarketError;
 
 sol! {
@@ -51,7 +51,7 @@ const BINARY_PARTITION: [u64; 2] = [1, 2];
 /// Encode splitPosition calldata for binary markets.
 /// Returns (to_address, hex_calldata) targeting the CTF contract.
 pub fn encode_split_calldata(condition_id: B256, amount: U256) -> (String, String) {
-    let collateral = Address::from_str(USDC_ADDRESS).expect("USDC_ADDRESS constant must be valid");
+    let collateral = Address::from_str(PUSD_ADDRESS).expect("PUSD_ADDRESS constant must be valid");
     let partition: Vec<U256> = BINARY_PARTITION.iter().map(|&v| U256::from(v)).collect();
 
     let call = IConditionalTokens::splitPositionCall {
@@ -68,7 +68,7 @@ pub fn encode_split_calldata(condition_id: B256, amount: U256) -> (String, Strin
 /// Encode mergePositions calldata for binary markets.
 /// Returns (to_address, hex_calldata) targeting the CTF contract.
 pub fn encode_merge_calldata(condition_id: B256, amount: U256) -> (String, String) {
-    let collateral = Address::from_str(USDC_ADDRESS).expect("USDC_ADDRESS constant must be valid");
+    let collateral = Address::from_str(PUSD_ADDRESS).expect("PUSD_ADDRESS constant must be valid");
     let partition: Vec<U256> = BINARY_PARTITION.iter().map(|&v| U256::from(v)).collect();
 
     let call = IConditionalTokens::mergePositionsCall {
@@ -85,7 +85,7 @@ pub fn encode_merge_calldata(condition_id: B256, amount: U256) -> (String, Strin
 /// Encode redeemPositions calldata for standard (non-neg-risk) markets.
 /// Returns (to_address, hex_calldata) targeting the CTF contract.
 pub fn encode_redeem_calldata(condition_id: B256) -> (String, String) {
-    let collateral = Address::from_str(USDC_ADDRESS).expect("USDC_ADDRESS constant must be valid");
+    let collateral = Address::from_str(PUSD_ADDRESS).expect("PUSD_ADDRESS constant must be valid");
     let index_sets: Vec<U256> = BINARY_PARTITION.iter().map(|&v| U256::from(v)).collect();
 
     let call = IConditionalTokens::redeemPositionsCall {

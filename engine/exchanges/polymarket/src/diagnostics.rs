@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tracing::{debug, info};
 
-use crate::approvals::USDC_ADDRESS;
+use crate::approvals::PUSD_ADDRESS;
 use crate::config::{PolymarketSignatureType, DEFAULT_POLYGON_RPC};
 use crate::error::PolymarketError;
 
@@ -61,8 +61,8 @@ pub async fn diagnose_wallets(
         .await
         .map_err(|e| PolymarketError::Network(format!("failed to connect to RPC: {e}")))?;
 
-    let usdc_addr = Address::from_str(USDC_ADDRESS)
-        .map_err(|e| PolymarketError::Config(format!("invalid USDC address: {e}")))?;
+    let usdc_addr = Address::from_str(PUSD_ADDRESS)
+        .map_err(|e| PolymarketError::Config(format!("invalid pUSD address: {e}")))?;
     let usdc = IERC20Balance::new(usdc_addr, &provider);
 
     let eoa_usdc = usdc
