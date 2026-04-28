@@ -6,7 +6,6 @@ mod orderbook;
 mod position;
 mod series;
 mod sport;
-mod sports;
 mod tag;
 mod trade;
 
@@ -18,6 +17,5 @@ pub use orderbook::*;
 pub use position::*;
 pub use series::*;
 pub use sport::*;
-pub use sports::*;
 pub use tag::*;
 pub use trade::*;
