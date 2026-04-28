@@ -1,0 +1,35 @@
+/* Tighter sidebar density — matches the information density users expect
+   from a per-method API reference. Mintlify exposes #sidebar as a stable
+   selector hook; everything below is scoped to it. */
+
+#sidebar li {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+#sidebar a {
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+  line-height: 1.35 !important;
+}
+
+/* Reduce vertical spacing on the group labels (Markets, Orderbook, …)
+   so the section breaks read as section breaks, not full-on gaps. */
+#sidebar h5,
+#sidebar h6 {
+  margin-top: 16px !important;
+  margin-bottom: 4px !important;
+  line-height: 1.2 !important;
+}
+
+/* Pull the first group up tight against the tab bar so there's no
+   floating empty space at the top of the sidebar. */
+#sidebar > ul:first-child > li:first-child > h5:first-child,
+#sidebar > ul:first-child > li:first-child > h6:first-child {
+  margin-top: 4px !important;
+}
+
+/* Shrink the gap between sibling groups. */
+#sidebar ul + ul {
+  margin-top: 8px !important;
+}
