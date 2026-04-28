@@ -47,7 +47,14 @@ Polymarket only — Kalshi returns `NotSupported`.
 <RequestExample>
 
 ```rust Rust
+use openpx::ExchangeInner;
+use serde_json::json;
 use openpx::OrderbookHistoryRequest;
+
+let ex = ExchangeInner::new("polymarket", json!({
+    "private_key": std::env::var("POLYMARKET_PRIVATE_KEY")?,
+    "funder": std::env::var("POLYMARKET_FUNDER")?,
+}))?;
 
 let (snapshots, cursor) = ex.fetch_orderbook_history(OrderbookHistoryRequest {
     market_id: "0x311d0c4b…".into(),
@@ -57,11 +64,26 @@ let (snapshots, cursor) = ex.fetch_orderbook_history(OrderbookHistoryRequest {
 ```
 
 ```python Python
+import os
+from openpx import Exchange
+
+ex = Exchange("polymarket", {
+    "private_key": os.environ["POLYMARKET_PRIVATE_KEY"],
+    "funder": os.environ["POLYMARKET_FUNDER"],
+})
+
 result = ex.fetch_orderbook_history("0x311d0c4b…", limit=100)
 snapshots, cursor = result["snapshots"], result["cursor"]
 ```
 
 ```typescript TypeScript
+import { Exchange } from "openpx";
+
+const ex = new Exchange("polymarket", {
+  private_key: process.env.POLYMARKET_PRIVATE_KEY!,
+  funder: process.env.POLYMARKET_FUNDER!,
+});
+
 const result = await ex.fetchOrderbookHistory("0x311d0c4b…");
 ```
 
