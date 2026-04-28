@@ -257,6 +257,19 @@ impl Orderbook {
     }
 }
 
+/// Top-of-book bid/ask + spread for a market outcome. Lighter than a full
+/// `Orderbook` — useful for liquidity scoring and PnL marks where only the
+/// best levels are needed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Spread {
+    pub bid: f64,
+    pub ask: f64,
+    pub spread: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ts_ms: Option<i64>,
+}
+
 /// A point-in-time L2 orderbook snapshot, used for historical orderbook data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

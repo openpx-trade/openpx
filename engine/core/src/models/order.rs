@@ -131,6 +131,36 @@ pub struct Fill {
     pub created_at: DateTime<Utc>,
 }
 
+/// A user-facing trade row: distinct from `Fill` because it carries
+/// auxiliary fields some venues expose (realized PnL, on-chain tx hash,
+/// owner wallet) but others do not. Polymarket Data `/trades` returns
+/// these natively; Kalshi `/portfolio/fills` returns a subset, with
+/// `realized_pnl` and `tx_hash` left as `None`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct UserTrade {
+    pub id: String,
+    pub market_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    pub side: OrderSide,
+    pub size: f64,
+    pub price: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<LiquidityRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realized_pnl: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    pub ts_ms: i64,
+}
+
 // TODO(fill-sim): Add local fill simulation for backtesting strategies offline.
 // Sketch of a FillEngine that simulates order execution against a local
 // orderbook copy:

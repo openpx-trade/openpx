@@ -1684,6 +1684,20 @@ impl Exchange for Kalshi {
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
             has_fetch_orderbook_history: false,
+            has_fetch_events: false,
+            has_fetch_event: false,
+            has_fetch_orderbooks_batch: false,
+            has_fetch_series: false,
+            has_fetch_series_one: false,
+            has_fetch_midpoint: false,
+            has_fetch_midpoints_batch: false,
+            has_fetch_spread: false,
+            has_fetch_last_trade_price: false,
+            has_fetch_open_interest: false,
+            has_fetch_user_trades: false,
+            has_fetch_market_tags: false,
+            has_cancel_all_orders: false,
+            has_create_orders_batch: false,
         }
     }
 }

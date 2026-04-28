@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Candlestick, Fill, Market, MarketTrade, Order, OrderSide, Orderbook, OrderbookSnapshot,
-    Position, PriceHistoryInterval,
+    Candlestick, Event, Fill, LastTrade, Market, MarketTrade, Order, OrderSide, OrderType,
+    Orderbook, OrderbookSnapshot, Position, PriceHistoryInterval, Series, Spread, Tag, UserTrade,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams};
@@ -154,6 +154,160 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
+    /// Fetch a page of events. An event groups one or more markets that share
+    /// a resolution (Kalshi) or theme (Polymarket).
+    /// Returns `(events, next_cursor)`.
+    async fn fetch_events(
+        &self,
+        req: EventsRequest,
+    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_events".into()),
+        ))
+    }
+
+    /// Fetch a single event by ID or slug (whichever the venue accepts).
+    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
+        let _ = id;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_event".into()),
+        ))
+    }
+
+    /// Fetch L2 orderbooks for multiple markets in one round-trip. Both
+    /// venues expose a batch book endpoint (Kalshi `/markets/orderbooks`,
+    /// Polymarket `/books`); this method exposes that as a unified primitive.
+    async fn fetch_orderbooks_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<Vec<Orderbook>, OpenPxError> {
+        let _ = market_ids;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_orderbooks_batch".into()),
+        ))
+    }
+
+    /// Fetch a page of series. A series is a recurring family of events
+    /// (weekly inflation prints, monthly NFP, sports seasons, etc.).
+    /// Returns `(series, next_cursor)`.
+    async fn fetch_series(
+        &self,
+        req: SeriesRequest,
+    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_series".into()),
+        ))
+    }
+
+    /// Fetch a single series by ID or ticker.
+    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
+        let _ = id;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_series_one".into()),
+        ))
+    }
+
+    /// Fetch the midpoint price for a single market outcome. Cheaper than
+    /// pulling a full orderbook when only the mark price is needed.
+    async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_midpoint".into()),
+        ))
+    }
+
+    /// Fetch midpoints for multiple market outcomes in one round-trip.
+    /// Returns a map keyed by the input identifier (token_id on Polymarket,
+    /// ticker on Kalshi).
+    async fn fetch_midpoints_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<HashMap<String, f64>, OpenPxError> {
+        let _ = market_ids;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_midpoints_batch".into()),
+        ))
+    }
+
+    /// Fetch the top-of-book spread (best bid, best ask, ask - bid).
+    async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_spread".into()),
+        ))
+    }
+
+    /// Fetch the most recent public trade for a market outcome.
+    async fn fetch_last_trade_price(
+        &self,
+        req: MidpointRequest,
+    ) -> Result<LastTrade, OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_last_trade_price".into()),
+        ))
+    }
+
+    /// Fetch the open interest (total outstanding contracts) for a market.
+    async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
+        let _ = market_id;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_open_interest".into()),
+        ))
+    }
+
+    /// Fetch a user's trade history. Distinct from `fetch_fills` because some
+    /// venues (Polymarket) carry on-chain fields like `tx_hash` and a
+    /// `realized_pnl` that don't fit the `Fill` model. When
+    /// `req.user_address` is `None`, returns the authenticated caller's own
+    /// trades. When `Some(addr)`, returns a public lookup for that wallet
+    /// (Polymarket only — Kalshi returns `NotSupported` in that case).
+    async fn fetch_user_trades(
+        &self,
+        req: UserTradesRequest,
+    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
+        let _ = req;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_user_trades".into()),
+        ))
+    }
+
+    /// Fetch the tag set associated with a market (or its parent event).
+    async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
+        let _ = market_id;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("fetch_market_tags".into()),
+        ))
+    }
+
+    /// Cancel all of the caller's open orders. When `market_id.is_some()`,
+    /// cancel only orders on that market.
+    async fn cancel_all_orders(
+        &self,
+        market_id: Option<&str>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        let _ = market_id;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),
+        ))
+    }
+
+    /// Submit multiple orders in a single round-trip. Both venues cap the
+    /// batch size — Polymarket at 15, Kalshi at a token-budget-dependent
+    /// number. Implementations should reject batches that exceed their cap
+    /// up-front rather than splitting silently.
+    async fn create_orders_batch(
+        &self,
+        orders: Vec<NewOrder>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        let _ = orders;
+        Err(OpenPxError::Exchange(
+            crate::error::ExchangeError::NotSupported("create_orders_batch".into()),
+        ))
+    }
+
     fn describe(&self) -> ExchangeInfo {
         ExchangeInfo {
             id: self.id(),
@@ -173,6 +327,20 @@ pub trait Exchange: Send + Sync {
             has_refresh_balance: false,
             has_websocket: false,
             has_fetch_orderbook_history: false,
+            has_fetch_events: false,
+            has_fetch_event: false,
+            has_fetch_orderbooks_batch: false,
+            has_fetch_series: false,
+            has_fetch_series_one: false,
+            has_fetch_midpoint: false,
+            has_fetch_midpoints_batch: false,
+            has_fetch_spread: false,
+            has_fetch_last_trade_price: false,
+            has_fetch_open_interest: false,
+            has_fetch_user_trades: false,
+            has_fetch_market_tags: false,
+            has_cancel_all_orders: false,
+            has_create_orders_batch: false,
         }
     }
 
@@ -200,6 +368,20 @@ pub struct ExchangeInfo {
     pub has_refresh_balance: bool,
     pub has_websocket: bool,
     pub has_fetch_orderbook_history: bool,
+    pub has_fetch_events: bool,
+    pub has_fetch_event: bool,
+    pub has_fetch_orderbooks_batch: bool,
+    pub has_fetch_series: bool,
+    pub has_fetch_series_one: bool,
+    pub has_fetch_midpoint: bool,
+    pub has_fetch_midpoints_batch: bool,
+    pub has_fetch_spread: bool,
+    pub has_fetch_last_trade_price: bool,
+    pub has_fetch_open_interest: bool,
+    pub has_fetch_user_trades: bool,
+    pub has_fetch_market_tags: bool,
+    pub has_cancel_all_orders: bool,
+    pub has_create_orders_batch: bool,
 }
 
 /// Request for fetching an L2 orderbook.
@@ -257,4 +439,85 @@ pub struct OrderbookHistoryRequest {
     pub end_ts: Option<i64>,
     pub limit: Option<usize>,
     pub cursor: Option<String>,
+}
+
+/// Request for fetching events.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct EventsRequest {
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+    /// Filter by lifecycle status — venue-specific values (e.g. `open`,
+    /// `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).
+    pub status: Option<String>,
+    /// Filter by series ID / ticker.
+    pub series_id: Option<String>,
+    /// Include the events' nested `Market` objects when supported.
+    pub with_nested_markets: Option<bool>,
+    /// Unix seconds — only events closing at or after this timestamp.
+    pub min_close_ts: Option<i64>,
+    /// Unix seconds — only events updated at or after this timestamp.
+    pub min_updated_ts: Option<i64>,
+}
+
+/// Request for fetching series.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct SeriesRequest {
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+    /// Filter by category (e.g. `Politics`, `Sports`).
+    pub category: Option<String>,
+    /// Include traded volume in the response when the venue supports it.
+    pub include_volume: Option<bool>,
+}
+
+/// Request for midpoint / spread / last-trade-price methods. The same shape
+/// is reused for all three since they target the same outcome and accept the
+/// same identifier inputs.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct MidpointRequest {
+    pub market_id: String,
+    pub outcome: Option<String>,
+    pub token_id: Option<String>,
+}
+
+/// Request for `fetch_user_trades`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct UserTradesRequest {
+    /// `None` = caller's own trades (auth required on both venues).
+    /// `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi
+    /// returns `NotSupported`).
+    pub user_address: Option<String>,
+    pub market_id: Option<String>,
+    pub side: Option<OrderSide>,
+    /// Unix seconds (inclusive)
+    pub start_ts: Option<i64>,
+    /// Unix seconds (inclusive)
+    pub end_ts: Option<i64>,
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+}
+
+/// One order in a `create_orders_batch` call. Each venue caps the batch size
+/// (Polymarket: 15; Kalshi: token-budget-dependent).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct NewOrder {
+    pub market_id: String,
+    pub outcome: String,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub price: f64,
+    pub size: f64,
+    /// Polymarket: pin maker-only. Ignored on Kalshi.
+    pub post_only: Option<bool>,
+    /// Kalshi: only allow size reductions. Maps to `reduce_only=true`.
+    pub reduce_only: Option<bool>,
+    /// Kalshi-specific idempotency key.
+    pub client_order_id: Option<String>,
+    /// Unix seconds. Required for `OrderType::Gtc` orders that should expire.
+    pub expiration_ts: Option<i64>,
 }
