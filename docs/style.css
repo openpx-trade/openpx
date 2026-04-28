@@ -15,27 +15,42 @@
   line-height: 1.35 !important;
 }
 
-/* --- group headings + dividers between groups --- */
+/* --- group dividers + headings ---
+   Cast a wide net for what Mintlify uses to render a group label so the
+   selector hits regardless of whether the theme renders it as h5/h6, a
+   styled div, or a button. The divider is a high-contrast neutral so it
+   reads in both light and dark themes. */
 
-/* Each group label (Markets, Orderbook, Orders, …) gets a thin rule
-   above it, so the bolded section labels read as section dividers. */
+#sidebar h2,
+#sidebar h3,
+#sidebar h4,
 #sidebar h5,
-#sidebar h6 {
-  padding-top: 14px !important;
+#sidebar h6,
+#sidebar [class*="GroupHeading" i],
+#sidebar [class*="group-heading" i],
+#sidebar [class*="SidebarGroup" i] > :first-child,
+#sidebar [class*="sidebar-group" i] > :first-child {
+  padding-top: 16px !important;
   margin-top: 14px !important;
-  margin-bottom: 4px !important;
-  border-top: 1px solid rgba(127, 127, 127, 0.18) !important;
+  margin-bottom: 6px !important;
+  border-top: 1px solid rgba(160, 160, 160, 0.45) !important;
   line-height: 1.2 !important;
 }
 
 /* Suppress the divider on the very first group so the sidebar doesn't
-   open with a stray rule. */
+   open with a stray rule at the top. */
+#sidebar h2:first-of-type,
+#sidebar h3:first-of-type,
+#sidebar h4:first-of-type,
 #sidebar h5:first-of-type,
 #sidebar h6:first-of-type,
+#sidebar > *:first-child h2,
+#sidebar > *:first-child h3,
+#sidebar > *:first-child h4,
 #sidebar > *:first-child h5,
 #sidebar > *:first-child h6,
-#sidebar > ul:first-child h5,
-#sidebar > ul:first-child h6 {
+#sidebar [class*="GroupHeading" i]:first-of-type,
+#sidebar [class*="group-heading" i]:first-of-type {
   border-top: none !important;
   padding-top: 0 !important;
   margin-top: 4px !important;
