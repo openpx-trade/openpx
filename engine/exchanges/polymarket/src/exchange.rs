@@ -18,12 +18,13 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use px_core::{
-    canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick,
-    Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    FetchUserActivityParams, Fill, Market, MarketStatus, MarketStatusFilter, MarketTrade,
-    MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OrderbookHistoryRequest,
-    OrderbookSnapshot, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
-    PriceLevel, PublicTrade, RateLimiter, TradesRequest,
+    canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
+    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams,
+    FetchOrdersParams, FetchUserActivityParams, Fill, Market, MarketStatus, MarketStatusFilter,
+    MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
+    OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series, SeriesRequest,
+    SettlementSource, Tag, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -2989,6 +2990,176 @@ impl Exchange for Polymarket {
         }))
     }
 
+    async fn fetch_events(
+        &self,
+        req: EventsRequest,
+    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        #[serde(untagged)]
+        enum EventsResp {
+            Wrapped {
+                #[serde(default)]
+                events: Vec<serde_json::Value>,
+                #[serde(default)]
+                next_cursor: Option<String>,
+            },
+            Bare(Vec<serde_json::Value>),
+        }
+
+        let limit = req.limit.unwrap_or(20).clamp(1, 500);
+        let mut endpoint = format!("/events/keyset?limit={limit}");
+        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
+            endpoint.push_str(&format!("&after_cursor={c}"));
+        }
+        if let Some(s) = req.status.as_deref() {
+            // Polymarket uses `closed=true|false` rather than a free-form status.
+            match s {
+                "closed" => endpoint.push_str("&closed=true"),
+                "open" => endpoint.push_str("&closed=false"),
+                other => endpoint.push_str(&format!("&{other}")),
+            }
+        }
+        if let Some(s) = req.series_id.as_deref() {
+            endpoint.push_str(&format!("&series_id={s}"));
+        }
+        if let Some(ts) = req.min_close_ts {
+            endpoint.push_str(&format!("&end_date_min={ts}"));
+        }
+
+        let resp: EventsResp = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let (raw, next_cursor) = match resp {
+            EventsResp::Wrapped { events, next_cursor } => {
+                (events, next_cursor.filter(|c| !c.is_empty()))
+            }
+            EventsResp::Bare(events) => (events, None),
+        };
+        let events = raw.iter().filter_map(parse_polymarket_event).collect();
+        Ok((events, next_cursor))
+    }
+
+    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
+        // Polymarket accepts both UUID-shaped IDs and slugs. UUID-like input
+        // hits `/events/{id}`; everything else falls back to `/events/slug/{slug}`.
+        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+            && id.len() >= 32
+        {
+            format!("/events/{id}")
+        } else {
+            format!("/events/slug/{id}")
+        };
+
+        let value: serde_json::Value = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        parse_polymarket_event(&value).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse event: {id}"
+            )))
+        })
+    }
+
+    async fn fetch_series(
+        &self,
+        req: SeriesRequest,
+    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        #[serde(untagged)]
+        enum SeriesResp {
+            Wrapped {
+                #[serde(default)]
+                series: Vec<serde_json::Value>,
+                #[serde(default)]
+                next_cursor: Option<String>,
+            },
+            Bare(Vec<serde_json::Value>),
+        }
+
+        let limit = req.limit.unwrap_or(20).clamp(1, 500);
+        let mut endpoint = format!("/series?limit={limit}");
+        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
+            endpoint.push_str(&format!("&after_cursor={c}"));
+        }
+        if let Some(c) = req.category.as_deref() {
+            endpoint.push_str(&format!("&category={c}"));
+        }
+
+        let resp: SeriesResp = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let (raw, next_cursor) = match resp {
+            SeriesResp::Wrapped { series, next_cursor } => {
+                (series, next_cursor.filter(|c| !c.is_empty()))
+            }
+            SeriesResp::Bare(series) => (series, None),
+        };
+        let series = raw.iter().filter_map(parse_polymarket_series).collect();
+        Ok((series, next_cursor))
+    }
+
+    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
+        let endpoint = format!("/series/{id}");
+        let value: serde_json::Value = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        parse_polymarket_series(&value).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse series: {id}"
+            )))
+        })
+    }
+
+    async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        #[serde(untagged)]
+        enum TagsResp {
+            Wrapped {
+                #[serde(default)]
+                tags: Vec<serde_json::Value>,
+            },
+            Bare(Vec<serde_json::Value>),
+        }
+
+        let endpoint = format!("/markets/{market_id}/tags");
+        let resp: TagsResp = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let raw = match resp {
+            TagsResp::Wrapped { tags } => tags,
+            TagsResp::Bare(tags) => tags,
+        };
+
+        let tags = raw
+            .iter()
+            .filter_map(|t| {
+                let obj = t.as_object()?;
+                let id = obj
+                    .get("id")
+                    .and_then(|v| v.as_str().map(String::from).or_else(|| v.as_i64().map(|i| i.to_string())))?;
+                let name = obj.get("label").or_else(|| obj.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let slug = obj.get("slug").and_then(|v| v.as_str()).map(String::from);
+                Some(Tag { id, name, slug })
+            })
+            .collect();
+        Ok(tags)
+    }
+
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -3013,22 +3184,171 @@ impl Exchange for Polymarket {
             // Flag is false because historical data is now served from S3 Parquet
             // (backfilled via historical data pipeline), not proxied through CLOB.
             has_fetch_orderbook_history: false,
-            has_fetch_events: false,
-            has_fetch_event: false,
+            has_fetch_events: true,
+            has_fetch_event: true,
             has_fetch_orderbooks_batch: false,
-            has_fetch_series: false,
-            has_fetch_series_one: false,
+            has_fetch_series: true,
+            has_fetch_series_one: true,
             has_fetch_midpoint: false,
             has_fetch_midpoints_batch: false,
             has_fetch_spread: false,
             has_fetch_last_trade_price: false,
             has_fetch_open_interest: false,
             has_fetch_user_trades: false,
-            has_fetch_market_tags: false,
+            has_fetch_market_tags: true,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
         }
     }
+}
+
+fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
+    let obj = value.as_object()?;
+
+    let id = obj
+        .get("id")
+        .and_then(|v| {
+            v.as_str()
+                .map(String::from)
+                .or_else(|| v.as_i64().map(|i| i.to_string()))
+                .or_else(|| v.as_u64().map(|u| u.to_string()))
+        })?;
+
+    let slug = obj.get("slug").and_then(|v| v.as_str()).map(String::from);
+    let title = obj
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let description = obj
+        .get("description")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let category = obj
+        .get("category")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let series_id = obj
+        .get("series")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|s| s.get("id"))
+        .and_then(|v| {
+            v.as_str()
+                .map(String::from)
+                .or_else(|| v.as_i64().map(|i| i.to_string()))
+        });
+
+    let parse_dt = |key: &str| -> Option<chrono::DateTime<chrono::Utc>> {
+        obj.get(key)
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    };
+    let parse_f64 = |key: &str| -> Option<f64> {
+        obj.get(key).and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
+    };
+
+    let start_ts = parse_dt("startDate");
+    let end_ts = parse_dt("endDate");
+    let last_updated_ts = parse_dt("updatedAt");
+    let volume = parse_f64("volume");
+    let open_interest = parse_f64("openInterest");
+
+    let mutually_exclusive = obj
+        .get("negRisk")
+        .or_else(|| obj.get("mutuallyExclusive"))
+        .and_then(|v| v.as_bool());
+
+    let market_ids = obj
+        .get("markets")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    m.get("id")
+                        .or_else(|| m.get("conditionId"))
+                        .and_then(|v| v.as_str().map(String::from))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let status = obj
+        .get("closed")
+        .and_then(|v| v.as_bool())
+        .map(|c| if c { "closed" } else { "open" }.to_string());
+
+    Some(Event {
+        id,
+        slug,
+        title,
+        description,
+        category,
+        series_id,
+        status,
+        market_ids,
+        start_ts,
+        end_ts,
+        volume,
+        open_interest,
+        mutually_exclusive,
+        last_updated_ts,
+    })
+}
+
+fn parse_polymarket_series(value: &serde_json::Value) -> Option<Series> {
+    let obj = value.as_object()?;
+
+    let id = obj.get("id").and_then(|v| {
+        v.as_str()
+            .map(String::from)
+            .or_else(|| v.as_i64().map(|i| i.to_string()))
+            .or_else(|| v.as_u64().map(|u| u.to_string()))
+    })?;
+
+    let title = obj
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let category = obj
+        .get("category")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let frequency = obj
+        .get("frequency")
+        .or_else(|| obj.get("recurrence"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let last_updated_ts = obj
+        .get("updatedAt")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
+
+    let volume = obj.get("volume").and_then(|v| {
+        v.as_f64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    });
+
+    Some(Series {
+        id,
+        title,
+        category,
+        frequency,
+        tags: Vec::new(),
+        settlement_sources: Vec::<SettlementSource>::new(),
+        fee_type: None,
+        volume,
+        last_updated_ts,
+    })
 }
 
 #[cfg(test)]
@@ -3081,6 +3401,78 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("order_type".to_string(), "market".to_string());
         assert!(polymarket_order_type(&params).is_err());
+    }
+
+    // --- Event / Series parser tests (Batch 2) ---
+
+    use super::{parse_polymarket_event, parse_polymarket_series};
+
+    #[test]
+    fn parse_polymarket_event_full_payload() {
+        let v = serde_json::json!({
+            "id": "abc-123",
+            "slug": "us-2028-election",
+            "title": "2028 US Election",
+            "description": "Who wins?",
+            "category": "Politics",
+            "startDate": "2028-01-01T00:00:00Z",
+            "endDate": "2028-11-07T00:00:00Z",
+            "updatedAt": "2026-04-27T12:00:00Z",
+            "volume": 1234567.5,
+            "openInterest": "50000",
+            "negRisk": true,
+            "closed": false,
+            "markets": [
+                { "id": "0xMARKET1", "conditionId": "0xCID1" },
+                { "conditionId": "0xCID2" },
+            ],
+            "series": [{ "id": "ser-99" }],
+        });
+        let e = parse_polymarket_event(&v).expect("parse");
+        assert_eq!(e.id, "abc-123");
+        assert_eq!(e.slug.as_deref(), Some("us-2028-election"));
+        assert_eq!(e.category.as_deref(), Some("Politics"));
+        assert_eq!(e.series_id.as_deref(), Some("ser-99"));
+        assert_eq!(e.status.as_deref(), Some("open"));
+        assert_eq!(e.volume, Some(1_234_567.5));
+        assert_eq!(e.open_interest, Some(50_000.0));
+        assert_eq!(e.mutually_exclusive, Some(true));
+        assert_eq!(e.market_ids, vec!["0xMARKET1".to_string(), "0xCID2".to_string()]);
+        assert!(e.start_ts.is_some());
+        assert!(e.end_ts.is_some());
+    }
+
+    #[test]
+    fn parse_polymarket_event_numeric_id_coerces_to_string() {
+        let v = serde_json::json!({ "id": 42, "title": "n" });
+        let e = parse_polymarket_event(&v).expect("parse");
+        assert_eq!(e.id, "42");
+    }
+
+    #[test]
+    fn parse_polymarket_event_closed_event_yields_closed_status() {
+        let v = serde_json::json!({ "id": "x", "title": "t", "closed": true });
+        let e = parse_polymarket_event(&v).expect("parse");
+        assert_eq!(e.status.as_deref(), Some("closed"));
+    }
+
+    #[test]
+    fn parse_polymarket_series_minimal() {
+        let v = serde_json::json!({
+            "id": 7,
+            "title": "Weekly NFP",
+            "category": "Economics",
+            "recurrence": "weekly",
+            "updatedAt": "2026-04-27T00:00:00Z",
+            "volume": "98765.43",
+        });
+        let s = parse_polymarket_series(&v).expect("parse");
+        assert_eq!(s.id, "7");
+        assert_eq!(s.title, "Weekly NFP");
+        assert_eq!(s.category.as_deref(), Some("Economics"));
+        assert_eq!(s.frequency.as_deref(), Some("weekly"));
+        assert_eq!(s.volume, Some(98_765.43));
+        assert!(s.last_updated_ts.is_some());
     }
 
     // --- Reconstructed OHLCV tests ---

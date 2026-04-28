@@ -56,3 +56,21 @@ message                 # error.message
 # --- Status field name (specific values "active"/"unopened"/etc are in status_map) ---
 status                  # status field; values are matched via map_status
 accepting_orders        # Boolean flag complementary to status; not part of map_status enum
+
+# --- Event / Series / Tags parsing (new in Batch 2; Event, Series, Tag models, not Market) ---
+event_ticker            # Event.id (Kalshi event identifier)
+series_ticker           # Event.series_id / Series root identifier
+sub_title               # Event.description fallback (Kalshi `sub_title` is event subtitle)
+mutually_exclusive      # Event.mutually_exclusive flag
+strike_date             # Event.end_ts (resolution date)
+last_updated_ts         # Event/Series last_updated_ts (ISO 8601)
+markets                 # Nested markets array on event payload (when with_nested_markets=true)
+frequency               # Series.frequency (e.g. "weekly", "monthly")
+tags                    # Series.tags (Vec<String>) — distinct from market_tags result
+settlement_sources      # Series.settlement_sources (Vec<{name, url}>)
+name                    # SettlementSource.name field
+url                     # SettlementSource.url field
+fee_type                # Series.fee_type (e.g. "quadratic")
+category                # Series.category — used to filter SeriesRequest, not Market.category
+tags_by_categories      # Tags-by-category response wrapper (/search/tags_by_categories)
+/search/tags_by_categories  # URL path passed to self.get() — not a JSON key, test is over-broad

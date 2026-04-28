@@ -1,0 +1,64 @@
+---
+title: "fetch_market_tags"
+sidebarTitle: "Fetch market tags"
+openapi: GET /v1/tags/fetch_market_tags
+playground: simple
+description: "Get the tag set associated with a market."
+---
+
+Returns the tag/category metadata used for filtering and search.
+
+<Note>
+  **Kalshi:** doesn't expose per-market tags — instead returns the flattened
+  global category-keyed map. The `market_id` argument is ignored on Kalshi
+  (every input returns the same union).
+
+  **Polymarket:** returns the tags attached to the specific market via
+  `GET /markets/{id}/tags`.
+</Note>
+
+## Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market identifier — Kalshi ticker or Polymarket condition ID.
+</ParamField>
+
+## Returns
+
+<ResponseField name="tags" type="Tag[]">
+  <Expandable title="Tag">
+    <ResponseField name="id" type="string" />
+    <ResponseField name="name" type="string" />
+    <ResponseField name="slug" type="string?" />
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```rust Rust
+let tags = ex.fetch_market_tags("KXBTC-25MAR14-T20000").await?;
+for t in &tags {
+    println!("{}", t.name);
+}
+```
+
+```python Python
+tags = ex.fetch_market_tags("KXBTC-25MAR14-T20000")
+```
+
+```typescript TypeScript
+const tags = await ex.fetchMarketTags("KXBTC-25MAR14-T20000");
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+[
+  { "id": "Politics", "name": "Politics", "slug": "politics" },
+  { "id": "US Elections", "name": "US Elections", "slug": "us-elections" }
+]
+```
+
+</ResponseExample>

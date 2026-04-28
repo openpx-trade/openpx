@@ -1,0 +1,64 @@
+---
+title: "fetch_event"
+sidebarTitle: "Fetch event"
+openapi: GET /v1/events/fetch_event
+playground: simple
+description: "Look up a single event by ID or slug."
+---
+
+Looks up one event. Pass a Kalshi `event_ticker`, a Polymarket UUID, or a
+Polymarket slug — the venue is auto-detected.
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+  Event identifier. Kalshi: `event_ticker` (e.g. `KXPRES-2028`).
+  Polymarket: either a UUID-shaped event ID or a URL slug. The
+  Polymarket implementation dispatches between `/events/{id}` and
+  `/events/slug/{slug}` based on a length+charset heuristic.
+</ParamField>
+
+## Returns
+
+The matching `Event`. See [`fetch_events`](/api/events/fetch-events) for the
+full field list.
+
+<RequestExample>
+
+```rust Rust
+let event = ex.fetch_event("KXPRES-2028").await?;
+println!("{} ({} markets)", event.title, event.market_ids.len());
+```
+
+```python Python
+event = ex.fetch_event("KXPRES-2028")
+```
+
+```typescript TypeScript
+const event = await ex.fetchEvent("KXPRES-2028");
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "id": "KXPRES-2028",
+  "slug": null,
+  "title": "2028 US Presidential Election",
+  "description": "Winning candidate",
+  "category": null,
+  "series_id": "KXPRES",
+  "status": null,
+  "market_ids": ["KXPRES-2028-DEM", "KXPRES-2028-REP", "KXPRES-2028-IND"],
+  "start_ts": null,
+  "end_ts": "2028-11-07T00:00:00Z",
+  "volume": null,
+  "open_interest": null,
+  "mutually_exclusive": true,
+  "last_updated_ts": "2026-04-26T12:34:56Z"
+}
+```
+
+</ResponseExample>

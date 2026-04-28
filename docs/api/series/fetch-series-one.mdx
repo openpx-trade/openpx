@@ -1,0 +1,52 @@
+---
+title: "fetch_series_one"
+sidebarTitle: "Fetch series (one)"
+openapi: GET /v1/series/fetch_series_one
+playground: simple
+description: "Look up a single series by ID or ticker."
+---
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+  Series identifier. Kalshi: `series_ticker` (e.g. `KXSPX`). Polymarket: UUID.
+</ParamField>
+
+## Returns
+
+The matching `Series`. See [`fetch_series`](/api/series/fetch-series) for the
+full field list. Kalshi includes `volume` automatically.
+
+<RequestExample>
+
+```rust Rust
+let series = ex.fetch_series_one("KXSPX").await?;
+```
+
+```python Python
+series = ex.fetch_series_one("KXSPX")
+```
+
+```typescript TypeScript
+const series = await ex.fetchSeriesOne("KXSPX");
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "id": "KXSPX",
+  "title": "S&P 500 Daily",
+  "category": "Economics",
+  "frequency": "daily",
+  "tags": ["finance", "indices"],
+  "settlement_sources": [{ "name": "S&P Dow Jones", "url": "https://www.spglobal.com" }],
+  "fee_type": "quadratic",
+  "volume": 1234567.89,
+  "last_updated_ts": "2026-04-27T00:00:00Z"
+}
+```
+
+</ResponseExample>
