@@ -1734,8 +1734,8 @@ impl Exchange for Kalshi {
 
         let tags = resp
             .tags_by_categories
-            .into_iter()
-            .flat_map(|(_category, names)| {
+            .into_values()
+            .flat_map(|names| {
                 names.into_iter().map(|name| Tag {
                     id: name.clone(),
                     slug: Some(name.to_ascii_lowercase().replace(' ', "-")),
