@@ -22,98 +22,130 @@
         "tab": "API",
         "groups": [
           {
-            "group": "Markets",
+            "group": "Reference Data",
             "pages": [
-              "api/markets/fetch-markets",
-              "api/markets/fetch-market"
+              {
+                "group": "Markets",
+                "pages": [
+                  "api/markets/fetch-markets",
+                  "api/markets/fetch-market"
+                ]
+              },
+              {
+                "group": "Events",
+                "pages": [
+                  "api/events/fetch-events",
+                  "api/events/fetch-event"
+                ]
+              },
+              {
+                "group": "Series",
+                "pages": [
+                  "api/series/fetch-series",
+                  "api/series/fetch-series-one"
+                ]
+              },
+              {
+                "group": "Tags",
+                "pages": [
+                  "api/tags/fetch-market-tags"
+                ]
+              }
             ]
           },
           {
-            "group": "Events",
+            "group": "Market Data",
             "pages": [
-              "api/events/fetch-events",
-              "api/events/fetch-event"
+              {
+                "group": "Orderbook",
+                "pages": [
+                  "api/orderbook/fetch-orderbook",
+                  "api/orderbook/fetch-orderbooks-batch"
+                ]
+              },
+              {
+                "group": "Pricing",
+                "pages": [
+                  "api/pricing/fetch-midpoint",
+                  "api/pricing/fetch-midpoints-batch",
+                  "api/pricing/fetch-spread",
+                  "api/pricing/fetch-last-trade-price",
+                  "api/pricing/fetch-open-interest"
+                ]
+              },
+              {
+                "group": "Trades",
+                "pages": [
+                  "api/trades/fetch-trades"
+                ]
+              },
+              {
+                "group": "Price History",
+                "pages": [
+                  "api/price-history/fetch-price-history"
+                ]
+              },
+              {
+                "group": "Orderbook History",
+                "pages": [
+                  "api/orderbook-history/fetch-orderbook-history"
+                ]
+              }
             ]
           },
           {
-            "group": "Series",
+            "group": "Trading",
             "pages": [
-              "api/series/fetch-series",
-              "api/series/fetch-series-one"
+              {
+                "group": "Orders",
+                "pages": [
+                  "api/orders/create-order",
+                  "api/orders/create-orders-batch",
+                  "api/orders/cancel-order",
+                  "api/orders/cancel-all-orders",
+                  "api/orders/fetch-order",
+                  "api/orders/fetch-open-orders"
+                ]
+              }
             ]
           },
           {
-            "group": "Tags",
+            "group": "Account",
             "pages": [
-              "api/tags/fetch-market-tags"
+              {
+                "group": "Positions",
+                "pages": [
+                  "api/positions/fetch-positions"
+                ]
+              },
+              {
+                "group": "Balance",
+                "pages": [
+                  "api/balance/fetch-balance",
+                  "api/balance/fetch-balance-raw",
+                  "api/balance/refresh-balance"
+                ]
+              },
+              {
+                "group": "Fills",
+                "pages": [
+                  "api/fills/fetch-fills",
+                  "api/fills/fetch-user-trades",
+                  "api/fills/fetch-user-activity"
+                ]
+              }
             ]
           },
           {
-            "group": "Orderbook",
+            "group": "Sports",
             "pages": [
-              "api/orderbook/fetch-orderbook",
-              "api/orderbook/fetch-orderbooks-batch"
+              "api/sports/overview"
             ]
           },
           {
-            "group": "Pricing",
+            "group": "Crypto",
             "pages": [
-              "api/pricing/fetch-midpoint",
-              "api/pricing/fetch-midpoints-batch",
-              "api/pricing/fetch-spread",
-              "api/pricing/fetch-last-trade-price",
-              "api/pricing/fetch-open-interest"
-            ]
-          },
-          {
-            "group": "Orders",
-            "pages": [
-              "api/orders/create-order",
-              "api/orders/create-orders-batch",
-              "api/orders/cancel-order",
-              "api/orders/cancel-all-orders",
-              "api/orders/fetch-order",
-              "api/orders/fetch-open-orders"
-            ]
-          },
-          {
-            "group": "Positions",
-            "pages": [
-              "api/positions/fetch-positions"
-            ]
-          },
-          {
-            "group": "Balance",
-            "pages": [
-              "api/balance/fetch-balance",
-              "api/balance/fetch-balance-raw",
-              "api/balance/refresh-balance"
-            ]
-          },
-          {
-            "group": "Trades",
-            "pages": [
-              "api/trades/fetch-trades"
-            ]
-          },
-          {
-            "group": "Price History",
-            "pages": [
-              "api/price-history/fetch-price-history"
-            ]
-          },
-          {
-            "group": "Fills",
-            "pages": [
-              "api/fills/fetch-fills",
-              "api/fills/fetch-user-trades",
-              "api/fills/fetch-user-activity"
-            ]
-          },
-          {
-            "group": "Orderbook History",
-            "pages": [
-              "api/orderbook-history/fetch-orderbook-history"
+              "api/crypto/overview"
             ]
           }
         ]
