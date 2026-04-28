@@ -29,6 +29,26 @@
             ]
           },
           {
+            "group": "Events",
+            "pages": [
+              "api/events/fetch-events",
+              "api/events/fetch-event"
+            ]
+          },
+          {
+            "group": "Series",
+            "pages": [
+              "api/series/fetch-series",
+              "api/series/fetch-series-one"
+            ]
+          },
+          {
+            "group": "Tags",
+            "pages": [
+              "api/tags/fetch-market-tags"
+            ]
+          },
+          {
             "group": "Orderbook",
             "pages": [
               "api/orderbook/fetch-orderbook"
