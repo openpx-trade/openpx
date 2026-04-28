@@ -6,13 +6,6 @@ playground: simple
 description: "Look up a single order by ID."
 ---
 
-```rust
-async fn fetch_order(
-    order_id: &str,
-    market_id: Option<&str>,
-) -> Result<Order, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="order_id" type="string" required>
@@ -42,9 +35,7 @@ async fn fetch_order(
   </Expandable>
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 let order = ex.fetch_order("ord_abc123", None).await?;
@@ -58,4 +49,4 @@ order = ex.fetch_order("ord_abc123")
 const order = await ex.fetchOrder("ord_abc123");
 ```
 
-</CodeGroup>
+</RequestExample>

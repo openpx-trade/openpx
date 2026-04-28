@@ -6,12 +6,6 @@ playground: simple
 description: "Public market trade tape."
 ---
 
-```rust
-async fn fetch_trades(
-    req: TradesRequest,
-) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string" required>
@@ -65,9 +59,7 @@ async fn fetch_trades(
   Pagination cursor; `null` on last page.
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::TradesRequest;
@@ -88,4 +80,4 @@ trades, cursor = result["trades"], result["cursor"]
 const trades = await ex.fetchTrades("KXBTC-25MAR14-T20000");
 ```
 
-</CodeGroup>
+</RequestExample>

@@ -6,17 +6,6 @@ playground: simple
 description: "Place an order on the book."
 ---
 
-```rust
-async fn create_order(
-    market_id: &str,
-    outcome: &str,        // "Yes" / "No"
-    side: OrderSide,      // Buy / Sell
-    price: f64,           // 0.0..1.0
-    size: f64,            // contracts
-    params: HashMap<String, String>,
-) -> Result<Order, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string" required>
@@ -66,9 +55,7 @@ async fn create_order(
   </Expandable>
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::OrderSide;
@@ -109,4 +96,4 @@ const order = await ex.createOrder(
 );
 ```
 
-</CodeGroup>
+</RequestExample>

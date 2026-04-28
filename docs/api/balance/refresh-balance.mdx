@@ -9,10 +9,6 @@ description: "Force a refetch of cached balance / allowance state."
 No-op on exchanges that don't cache. Polymarket uses this to refresh USDC
 and CTF allowances after on-chain approvals.
 
-```rust
-async fn refresh_balance() -> Result<(), OpenPxError>
-```
-
 ## Parameters
 
 None.
@@ -21,9 +17,7 @@ None.
 
 `()` on success.
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 ex.refresh_balance().await?;
@@ -37,4 +31,4 @@ ex.refresh_balance()
 await ex.refreshBalance();
 ```
 
-</CodeGroup>
+</RequestExample>

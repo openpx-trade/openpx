@@ -6,12 +6,6 @@ playground: simple
 description: "Page through markets on an exchange."
 ---
 
-```rust
-async fn fetch_markets(
-    params: &FetchMarketsParams,
-) -> Result<(Vec<Market>, Option<String>), OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="limit" type="usize?">
@@ -64,9 +58,7 @@ async fn fetch_markets(
   Opaque pagination cursor. `null` on the last page.
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::{FetchMarketsParams, MarketStatusFilter};
@@ -88,4 +80,4 @@ markets, cursor = result["markets"], result["cursor"]
 const markets = await ex.fetchMarkets();
 ```
 
-</CodeGroup>
+</RequestExample>

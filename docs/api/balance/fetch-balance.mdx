@@ -6,10 +6,6 @@ playground: simple
 description: "Account balances, keyed by currency / token symbol."
 ---
 
-```rust
-async fn fetch_balance() -> Result<HashMap<String, f64>, OpenPxError>
-```
-
 ## Parameters
 
 None.
@@ -23,9 +19,7 @@ A map keyed by currency / token symbol.
 | Kalshi | `{ "USD": 1234.56 }` |
 | Polymarket | `{ "USDC": 120.00 }` |
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 let balance = ex.fetch_balance().await?;
@@ -39,4 +33,4 @@ balance = ex.fetch_balance()
 const balance = await ex.fetchBalance();
 ```
 
-</CodeGroup>
+</RequestExample>

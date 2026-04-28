@@ -6,13 +6,6 @@ playground: simple
 description: "Your own executed fills."
 ---
 
-```rust
-async fn fetch_fills(
-    market_id: Option<&str>,
-    limit: Option<usize>,
-) -> Result<Vec<Fill>, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string?">
@@ -38,9 +31,7 @@ async fn fetch_fills(
 <ResponseField name="fee" type="f64?" />
 <ResponseField name="created_at" type="DateTime<Utc>" />
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 let fills = ex.fetch_fills(None, Some(50)).await?;
@@ -54,4 +45,4 @@ fills = ex.fetch_fills(limit=50)
 const fills = await ex.fetchFills(undefined, 50);
 ```
 
-</CodeGroup>
+</RequestExample>
