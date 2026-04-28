@@ -83,3 +83,14 @@ taker_side              # Trade.taker_side (yes|no) used to derive LastTrade.sid
 trade_id                # UserTrade.id source on /portfolio/fills (Kalshi treats trade_id == fill_id)
 yes_price_dollars       # UserTrade.price (yes side, fixed-point dollar string)
 no_price_dollars        # UserTrade.price (no side, fixed-point dollar string)
+
+# --- Batch order request body keys (Batch 5 — write-side, not read) ---
+client_order_id         # NewOrder.client_order_id → POST /portfolio/orders/batched body field
+post_only               # NewOrder.post_only → POST /portfolio/orders/batched body field
+reduce_only             # NewOrder.reduce_only → POST /portfolio/orders/batched body field
+time_in_force           # NewOrder.order_type → POST /portfolio/orders/batched body field
+expiration_ts           # NewOrder.expiration_ts → POST /portfolio/orders/batched body field
+
+# --- Batch order response keys (Batch 5 — read-side) ---
+fill_count_fp           # Order.filled (fixed-point) on /portfolio/orders/batched response
+initial_count_fp        # Order.size (fixed-point) on /portfolio/orders/batched response
