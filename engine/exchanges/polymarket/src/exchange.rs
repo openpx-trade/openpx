@@ -19,10 +19,10 @@ use tracing::info;
 
 use px_core::{
     canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
-    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams,
-    FetchOrdersParams, FetchUserActivityParams, Fill, LastTrade, Market, MarketStatus,
-    MarketStatusFilter, MarketTrade, MarketType, MidpointRequest, OpenPxError, Order, OrderSide,
-    OrderStatus, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position,
+    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
+    FetchUserActivityParams, Fill, LastTrade, Market, MarketStatus, MarketStatusFilter,
+    MarketTrade, MarketType, MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus,
+    Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position,
     PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series,
     SeriesRequest, SettlementSource, Spread, Tag, TradesRequest,
 };
@@ -3064,9 +3064,10 @@ impl Exchange for Polymarket {
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
         let (raw, next_cursor) = match resp {
-            EventsResp::Wrapped { events, next_cursor } => {
-                (events, next_cursor.filter(|c| !c.is_empty()))
-            }
+            EventsResp::Wrapped {
+                events,
+                next_cursor,
+            } => (events, next_cursor.filter(|c| !c.is_empty())),
             EventsResp::Bare(events) => (events, None),
         };
         let events = raw.iter().filter_map(parse_polymarket_event).collect();
@@ -3076,9 +3077,7 @@ impl Exchange for Polymarket {
     async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
         // Polymarket accepts both UUID-shaped IDs and slugs. UUID-like input
         // hits `/events/{id}`; everything else falls back to `/events/slug/{slug}`.
-        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-            && id.len() >= 32
-        {
+        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') && id.len() >= 32 {
             format!("/events/{id}")
         } else {
             format!("/events/slug/{id}")
@@ -3128,9 +3127,10 @@ impl Exchange for Polymarket {
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
         let (raw, next_cursor) = match resp {
-            SeriesResp::Wrapped { series, next_cursor } => {
-                (series, next_cursor.filter(|c| !c.is_empty()))
-            }
+            SeriesResp::Wrapped {
+                series,
+                next_cursor,
+            } => (series, next_cursor.filter(|c| !c.is_empty())),
             SeriesResp::Bare(series) => (series, None),
         };
         let series = raw.iter().filter_map(parse_polymarket_series).collect();
@@ -3178,10 +3178,14 @@ impl Exchange for Polymarket {
             .iter()
             .filter_map(|t| {
                 let obj = t.as_object()?;
-                let id = obj
-                    .get("id")
-                    .and_then(|v| v.as_str().map(String::from).or_else(|| v.as_i64().map(|i| i.to_string())))?;
-                let name = obj.get("label").or_else(|| obj.get("name"))
+                let id = obj.get("id").and_then(|v| {
+                    v.as_str()
+                        .map(String::from)
+                        .or_else(|| v.as_i64().map(|i| i.to_string()))
+                })?;
+                let name = obj
+                    .get("label")
+                    .or_else(|| obj.get("name"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -3310,10 +3314,7 @@ impl Exchange for Polymarket {
         })
     }
 
-    async fn fetch_last_trade_price(
-        &self,
-        req: MidpointRequest,
-    ) -> Result<LastTrade, OpenPxError> {
+    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
         let token_id = self.resolve_token_id_for_pricing(&req).await?;
         let endpoint = format!("/last-trade-price?token_id={token_id}");
         let v: serde_json::Value = self
@@ -3407,14 +3408,12 @@ impl Exchange for Polymarket {
 fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
     let obj = value.as_object()?;
 
-    let id = obj
-        .get("id")
-        .and_then(|v| {
-            v.as_str()
-                .map(String::from)
-                .or_else(|| v.as_i64().map(|i| i.to_string()))
-                .or_else(|| v.as_u64().map(|u| u.to_string()))
-        })?;
+    let id = obj.get("id").and_then(|v| {
+        v.as_str()
+            .map(String::from)
+            .or_else(|| v.as_i64().map(|i| i.to_string()))
+            .or_else(|| v.as_u64().map(|u| u.to_string()))
+    })?;
 
     let slug = obj.get("slug").and_then(|v| v.as_str()).map(String::from);
     let title = obj
@@ -3710,7 +3709,10 @@ mod tests {
         assert_eq!(e.volume, Some(1_234_567.5));
         assert_eq!(e.open_interest, Some(50_000.0));
         assert_eq!(e.mutually_exclusive, Some(true));
-        assert_eq!(e.market_ids, vec!["0xMARKET1".to_string(), "0xCID2".to_string()]);
+        assert_eq!(
+            e.market_ids,
+            vec!["0xMARKET1".to_string(), "0xCID2".to_string()]
+        );
         assert!(e.start_ts.is_some());
         assert!(e.end_ts.is_some());
     }

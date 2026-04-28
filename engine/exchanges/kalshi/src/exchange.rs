@@ -69,7 +69,10 @@ fn parse_iso_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 
 fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
     let obj = value.as_object()?;
-    let id = obj.get("event_ticker").and_then(|v| v.as_str())?.to_string();
+    let id = obj
+        .get("event_ticker")
+        .and_then(|v| v.as_str())?
+        .to_string();
 
     let title = obj
         .get("title")
@@ -106,11 +109,7 @@ fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|m| {
-                    m.get("ticker")
-                        .and_then(|v| v.as_str())
-                        .map(String::from)
-                })
+                .filter_map(|m| m.get("ticker").and_then(|v| v.as_str()).map(String::from))
                 .collect()
         })
         .unwrap_or_default();
@@ -1639,11 +1638,7 @@ impl Exchange for Kalshi {
 
         let resp: EventsResp = self.get(&path).await.map_err(to_openpx)?;
         let next_cursor = resp.cursor.filter(|c| !c.is_empty());
-        let events = resp
-            .events
-            .iter()
-            .filter_map(parse_kalshi_event)
-            .collect();
+        let events = resp.events.iter().filter_map(parse_kalshi_event).collect();
         Ok((events, next_cursor))
     }
 
@@ -1670,11 +1665,7 @@ impl Exchange for Kalshi {
             if let Some(markets) = resp.markets {
                 event.market_ids = markets
                     .iter()
-                    .filter_map(|m| {
-                        m.get("ticker")
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
+                    .filter_map(|m| m.get("ticker").and_then(|v| v.as_str()).map(String::from))
                     .collect();
             }
         }
@@ -1801,9 +1792,7 @@ impl Exchange for Kalshi {
                 if let Some(data) = entry.orderbook_fp {
                     if let Some(yes) = data.yes_dollars {
                         for [p, s] in yes {
-                            if let (Ok(price), Ok(size)) =
-                                (p.parse::<f64>(), s.parse::<f64>())
-                            {
+                            if let (Ok(price), Ok(size)) = (p.parse::<f64>(), s.parse::<f64>()) {
                                 if price > 0.0 && size > 0.0 {
                                     bids.push(PriceLevel::new(price, size));
                                 }
@@ -1812,9 +1801,7 @@ impl Exchange for Kalshi {
                     }
                     if let Some(no) = data.no_dollars {
                         for [p, s] in no {
-                            if let (Ok(price), Ok(size)) =
-                                (p.parse::<f64>(), s.parse::<f64>())
-                            {
+                            if let (Ok(price), Ok(size)) = (p.parse::<f64>(), s.parse::<f64>()) {
                                 // NO bids at price X mean YES asks at 1-X.
                                 let yes_ask = 1.0 - price;
                                 if yes_ask > 0.0 && yes_ask < 1.0 && size > 0.0 {
@@ -1915,10 +1902,7 @@ impl Exchange for Kalshi {
         }
     }
 
-    async fn fetch_last_trade_price(
-        &self,
-        req: MidpointRequest,
-    ) -> Result<LastTrade, OpenPxError> {
+    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
         let market = self.fetch_kalshi_market_raw(&req.market_id).await?;
         let wants_no = req
             .outcome

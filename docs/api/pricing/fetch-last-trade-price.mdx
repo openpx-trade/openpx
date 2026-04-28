@@ -1,0 +1,63 @@
+---
+title: "fetch_last_trade_price"
+sidebarTitle: "Fetch last trade price"
+openapi: GET /v1/pricing/fetch_last_trade_price
+playground: simple
+description: "Get the most recent public trade for a market outcome."
+---
+
+Single-print summary — what just executed. Cheaper than fetching the full
+[`fetch_trades`](/api/trades/fetch-trades) tape.
+
+## Parameters
+
+Same shape as [`fetch_midpoint`](/api/pricing/fetch-midpoint) — uses the
+unified `MidpointRequest` type.
+
+<ParamField path="market_id" type="string" required />
+<ParamField path="outcome" type="string?" />
+<ParamField path="token_id" type="string?" />
+
+## Returns
+
+<ResponseField name="LastTrade" type="object">
+  <ResponseField name="price" type="f64" />
+  <ResponseField name="side" type="OrderSide">`buy` or `sell`.</ResponseField>
+  <ResponseField name="size" type="f64" />
+  <ResponseField name="ts_ms" type="i64">Trade timestamp (Unix milliseconds).</ResponseField>
+</ResponseField>
+
+<Note>
+  **Kalshi** uses `last_price_dollars` from the market summary plus a
+  `/markets/trades?limit=1` lookup to enrich `size` and `side`. **Polymarket**
+  uses CLOB `GET /last-trade-price?token_id=…`.
+</Note>
+
+<RequestExample>
+
+```rust Rust
+use openpx::MidpointRequest;
+
+let t = ex.fetch_last_trade_price(MidpointRequest {
+    market_id: "KXBTC-25MAR14-T20000".into(),
+    ..Default::default()
+}).await?;
+```
+
+```python Python
+t = ex.fetch_last_trade_price(market_id="KXBTC-25MAR14-T20000")
+```
+
+```typescript TypeScript
+const t = await ex.fetchLastTradePrice({ marketId: "KXBTC-25MAR14-T20000" });
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{ "price": 0.45, "side": "buy", "size": 100.0, "ts_ms": 1714000000000 }
+```
+
+</ResponseExample>
