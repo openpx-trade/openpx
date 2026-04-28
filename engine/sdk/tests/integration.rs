@@ -265,8 +265,8 @@ fn kalshi_describe_capabilities() {
         "kalshi should not have refresh_balance"
     );
     assert!(
-        !info.has_fetch_user_activity,
-        "kalshi should not have fetch_user_activity"
+        info.has_fetch_user_activity,
+        "kalshi should have fetch_user_activity"
     );
 }
 

@@ -7,10 +7,10 @@ use tokio::sync::Mutex;
 
 use px_core::{
     canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderSide,
-    OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
-    PriceLevel, RateLimiter, TradesRequest,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
+    Fill, Market, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
+    OrderSide, OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, RateLimiter, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -1657,6 +1657,20 @@ impl Exchange for Kalshi {
         Ok(fills)
     }
 
+    async fn fetch_user_activity(
+        &self,
+        params: FetchUserActivityParams,
+    ) -> Result<serde_json::Value, OpenPxError> {
+        self.ensure_auth().map_err(to_openpx)?;
+
+        let limit = params.limit.unwrap_or(100).clamp(1, 200);
+        // `params.address` is not used — Kalshi identifies the user via signed auth headers
+        let path = format!("/portfolio/fills?limit={limit}");
+        self.get::<serde_json::Value>(&path)
+            .await
+            .map_err(to_openpx)
+    }
+
     async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
@@ -1677,7 +1691,7 @@ impl Exchange for Kalshi {
             has_fetch_orderbook: true,
             has_fetch_price_history: true,
             has_fetch_trades: true,
-            has_fetch_user_activity: false,
+            has_fetch_user_activity: true,
             has_fetch_fills: true,
             has_fetch_server_time: false,
             has_approvals: false,

@@ -11,6 +11,7 @@ This page summarizes user-facing releases.
 
 ### Added
 
+- **kalshi**: `Exchange::fetch_user_activity()` is now implemented — returns the authenticated user's fill history (fees, timestamps, maker/taker) from `GET /portfolio/fills`. `ExchangeInfo::has_fetch_user_activity` is now `true` for Kalshi.
 - **core**: `Exchange::fetch_server_time()` returns each venue's wall-clock as `DateTime<Utc>` for clock-skew correction in signing-sensitive paths. `ExchangeInfo` gains `has_fetch_server_time: bool`. ([#26](https://github.com/openpx-trade/openpx/pull/26))
 
 ### Fixed
