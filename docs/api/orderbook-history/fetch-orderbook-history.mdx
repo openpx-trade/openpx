@@ -66,3 +66,26 @@ const result = await ex.fetchOrderbookHistory("0x311d0c4b…");
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "snapshots": [
+    {
+      "timestamp": "2026-03-14T15:00:00Z",
+      "recorded_at": "2026-03-14T15:00:01Z",
+      "hash": "0x9fa1…",
+      "bids": [
+        { "price": 0.62, "size": 1500 }
+      ],
+      "asks": [
+        { "price": 0.63, "size": 1100 }
+      ]
+    }
+  ],
+  "cursor": "eyJsYXN0VHMiOjE3NDIwMDAwMDB9"
+}
+```
+
+</ResponseExample>

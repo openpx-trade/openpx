@@ -50,3 +50,22 @@ const order = await ex.cancelOrder("ord_abc123");
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
+  "market_id": "KXBTC-25MAR14-T20000",
+  "outcome": "Yes",
+  "side": "buy",
+  "price": 0.55,
+  "size": 10.0,
+  "filled": 0.0,
+  "status": "cancelled",
+  "created_at": "2026-03-14T15:42:18Z",
+  "updated_at": "2026-03-14T15:43:02Z"
+}
+```
+
+</ResponseExample>

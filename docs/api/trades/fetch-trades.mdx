@@ -81,3 +81,25 @@ const trades = await ex.fetchTrades("KXBTC-25MAR14-T20000");
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "trades": [
+    {
+      "trade_id": "trd_01HXY2Z3K4N5P6Q7R8S9T0V",
+      "market_id": "KXBTC-25MAR14-T20000",
+      "asset_id": "KXBTC-25MAR14-T20000-YES",
+      "outcome": "Yes",
+      "price": 0.62,
+      "size": 5.0,
+      "side": "buy",
+      "timestamp": "2026-03-14T15:41:02Z"
+    }
+  ],
+  "cursor": "eyJsYXN0VHMiOjE3NDIwMDAwMDB9"
+}
+```
+
+</ResponseExample>

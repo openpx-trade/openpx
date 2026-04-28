@@ -46,3 +46,24 @@ const fills = await ex.fetchFills(undefined, 50);
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+[
+  {
+    "fill_id": "fll_01HXY2Z3K4N5P6Q7R8S9T0V",
+    "order_id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
+    "market_id": "KXBTC-25MAR14-T20000",
+    "outcome": "Yes",
+    "side": "buy",
+    "price": 0.55,
+    "size": 4.0,
+    "is_taker": true,
+    "fee": 0.022,
+    "created_at": "2026-03-14T15:42:31Z"
+  }
+]
+```
+
+</ResponseExample>
