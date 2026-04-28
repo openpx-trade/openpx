@@ -15,11 +15,12 @@
   line-height: 1.35 !important;
 }
 
-/* --- group dividers + headings ---
-   Cast a wide net for what Mintlify uses to render a group label so the
-   selector hits regardless of whether the theme renders it as h5/h6, a
-   styled div, or a button. The divider is a high-contrast neutral so it
-   reads in both light and dark themes. */
+/* --- group heading dividers ---
+   Match only the actual group label element (heading tags or any element
+   with a class containing GroupHeading / group-heading). Earlier broad
+   selectors like `[class*="SidebarGroup"] > :first-child` also picked up
+   the first <li> inside each group's list, which produced a stray rule
+   between the heading and the first link — fixed by removing them. */
 
 #sidebar h2,
 #sidebar h3,
@@ -27,9 +28,7 @@
 #sidebar h5,
 #sidebar h6,
 #sidebar [class*="GroupHeading" i],
-#sidebar [class*="group-heading" i],
-#sidebar [class*="SidebarGroup" i] > :first-child,
-#sidebar [class*="sidebar-group" i] > :first-child {
+#sidebar [class*="group-heading" i] {
   padding-top: 16px !important;
   margin-top: 14px !important;
   margin-bottom: 6px !important;
@@ -44,11 +43,6 @@
 #sidebar h4:first-of-type,
 #sidebar h5:first-of-type,
 #sidebar h6:first-of-type,
-#sidebar > *:first-child h2,
-#sidebar > *:first-child h3,
-#sidebar > *:first-child h4,
-#sidebar > *:first-child h5,
-#sidebar > *:first-child h6,
 #sidebar [class*="GroupHeading" i]:first-of-type,
 #sidebar [class*="group-heading" i]:first-of-type {
   border-top: none !important;
