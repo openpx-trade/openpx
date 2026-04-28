@@ -11,7 +11,7 @@ use crate::config::{PolymarketSignatureType, DEFAULT_POLYGON_RPC};
 use crate::error::PolymarketError;
 
 // Polymarket SDK utilities to derive proxy/safe wallets.
-use polymarket_client_sdk::{derive_proxy_wallet, derive_safe_wallet};
+use polymarket_client_sdk_v2::{derive_proxy_wallet, derive_safe_wallet};
 
 sol! {
     #[sol(rpc)]

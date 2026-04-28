@@ -1,15 +1,14 @@
 use alloy::primitives::{Address, ChainId, Signature as AlloySig, B256};
 use k256::ecdsa::SigningKey;
 use metrics::{counter, histogram};
-use polymarket_client_sdk::auth::builder::{Builder as SdkBuilder, Config as BuilderConfig};
-use polymarket_client_sdk::auth::state::Authenticated;
-use polymarket_client_sdk::auth::{Credentials as SdkCredentials, LocalSigner, Normal, Signer};
-use polymarket_client_sdk::clob::types::request::{BalanceAllowanceRequest, OrdersRequest};
-use polymarket_client_sdk::clob::types::{AssetType, OrderType, Side, SignedOrder};
-use polymarket_client_sdk::clob::{Client as SdkClient, Config as SdkConfig};
-use polymarket_client_sdk::contract_config;
-use polymarket_client_sdk::types::{Decimal, U256};
-use polymarket_client_sdk::POLYGON;
+use polymarket_client_sdk_v2::auth::state::Authenticated;
+use polymarket_client_sdk_v2::auth::{LocalSigner, Normal, Signer};
+use polymarket_client_sdk_v2::clob::types::request::{BalanceAllowanceRequest, OrdersRequest};
+use polymarket_client_sdk_v2::clob::types::{AssetType, OrderType, Side, SignedOrder};
+use polymarket_client_sdk_v2::clob::{Client as SdkClient, Config as SdkConfig};
+use polymarket_client_sdk_v2::contract_config;
+use polymarket_client_sdk_v2::types::{Decimal, U256};
+use polymarket_client_sdk_v2::POLYGON;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -66,24 +65,20 @@ impl Signer for AddressOnlySigner {
     }
 }
 
-/// Holds the SDK client in either Normal or Builder auth mode.
-/// Builder mode adds `POLY_BUILDER_*` headers to every authenticated request
-/// for affiliate attribution. All trading methods are available on both via
-/// `impl<K: Kind> Client<Authenticated<K>>`.
-pub(crate) enum AuthenticatedSdkClient {
-    Normal(SdkClient<Authenticated<Normal>>),
-    Builder(SdkClient<Authenticated<SdkBuilder>>),
-}
+/// Wraps the authenticated SDK client. In V1 this enum had a `Builder` variant
+/// that promoted the client to attach `POLY_BUILDER_*` HMAC headers for builder
+/// attribution. In V2 (CLOB V2 cutover 2026-04-28) the SDK builder-promotion
+/// flow is removed — builder attribution is now per-order via the `builder` field
+/// (bytes32 builder code) on the signed order itself, configurable via
+/// `SdkConfig::builder().builder_code(...)`. The wrapper is preserved as a
+/// transparent struct so the `sdk_dispatch!` macro and existing call sites can
+/// stay unchanged.
+pub(crate) struct AuthenticatedSdkClient(SdkClient<Authenticated<Normal>>);
 
-/// Dispatches a method call chain to the inner SDK client regardless of auth kind.
-/// Both `Normal` and `Builder` expose identical trading methods via the generic
-/// `impl<K: Kind> Client<Authenticated<K>>` so each arm compiles identically.
+/// Dispatches a method call chain to the inner SDK client.
 macro_rules! sdk_dispatch {
     ($client:expr, $($rest:tt)*) => {
-        match $client {
-            AuthenticatedSdkClient::Normal(c) => c.$($rest)*,
-            AuthenticatedSdkClient::Builder(c) => c.$($rest)*,
-        }
+        $client.0.$($rest)*
     };
 }
 
@@ -307,7 +302,7 @@ impl Polymarket {
 
     /// Core initialization: derive CLOB credentials + authenticate the SDK client.
     async fn init_sdk_state_inner(&self) -> Result<SdkState, PolymarketError> {
-        use polymarket_client_sdk::auth::{Credentials, ExposeSecret};
+        use polymarket_client_sdk_v2::auth::{Credentials, ExposeSecret};
 
         let signer = self
             .signer
@@ -363,10 +358,8 @@ impl Polymarket {
             .await
             .map_err(PolymarketError::from)?;
 
-        let sdk_client = self.maybe_promote_to_builder(sdk_client).await?;
-
         Ok(SdkState {
-            client: Arc::new(RwLock::new(sdk_client)),
+            client: Arc::new(RwLock::new(AuthenticatedSdkClient(sdk_client))),
             creds,
         })
     }
@@ -391,7 +384,7 @@ impl Polymarket {
         &mut self,
         wallet_address: &str,
     ) -> Result<(), PolymarketError> {
-        use polymarket_client_sdk::auth::Credentials;
+        use polymarket_client_sdk_v2::auth::Credentials;
         use uuid::Uuid;
 
         if self.sdk_state.initialized() {
@@ -441,11 +434,8 @@ impl Polymarket {
             .await
             .map_err(PolymarketError::from)?;
 
-        // Promote to Builder if builder credentials are configured (affiliate attribution)
-        let sdk_client = self.maybe_promote_to_builder(sdk_client).await?;
-
         let state = SdkState {
-            client: Arc::new(RwLock::new(sdk_client)),
+            client: Arc::new(RwLock::new(AuthenticatedSdkClient(sdk_client))),
             creds: creds.clone(),
         };
         let _ = self.sdk_state.set(state);
@@ -456,48 +446,6 @@ impl Polymarket {
         }
 
         Ok(())
-    }
-
-    /// Promote a Normal SDK client to Builder if builder credentials are configured.
-    /// Builder mode attaches `POLY_BUILDER_*` headers to every authenticated CLOB request,
-    /// enabling affiliate revenue attribution.
-    async fn maybe_promote_to_builder(
-        &self,
-        client: SdkClient<Authenticated<Normal>>,
-    ) -> Result<AuthenticatedSdkClient, PolymarketError> {
-        if self.config.has_builder_credentials() {
-            let key: uuid::Uuid = self
-                .config
-                .builder_api_key
-                .as_ref()
-                .ok_or_else(|| PolymarketError::Config("missing builder_api_key".into()))?
-                .parse()
-                .map_err(|e| {
-                    PolymarketError::Config(format!("invalid builder API key UUID: {e}"))
-                })?;
-            let creds = SdkCredentials::new(
-                key,
-                self.config
-                    .builder_secret
-                    .as_ref()
-                    .ok_or_else(|| PolymarketError::Config("missing builder_secret".into()))?
-                    .clone(),
-                self.config
-                    .builder_passphrase
-                    .as_ref()
-                    .ok_or_else(|| PolymarketError::Config("missing builder_passphrase".into()))?
-                    .clone(),
-            );
-            let config = BuilderConfig::local(creds);
-            let builder_client = client
-                .promote_to_builder(config)
-                .await
-                .map_err(PolymarketError::from)?;
-            info!("Polymarket SDK client promoted to Builder (affiliate attribution enabled)");
-            Ok(AuthenticatedSdkClient::Builder(builder_client))
-        } else {
-            Ok(AuthenticatedSdkClient::Normal(client))
-        }
     }
 
     fn get_signer(&self) -> Result<&PrivateKeySigner, OpenPxError> {
@@ -611,7 +559,7 @@ impl Polymarket {
 
     fn parse_sdk_order(
         &self,
-        resp: &polymarket_client_sdk::clob::types::response::OpenOrderResponse,
+        resp: &polymarket_client_sdk_v2::clob::types::response::OpenOrderResponse,
     ) -> Order {
         let side = match resp.side {
             Side::Buy => OrderSide::Buy,
@@ -621,14 +569,14 @@ impl Polymarket {
         };
 
         let status = match &resp.status {
-            polymarket_client_sdk::clob::types::OrderStatusType::Live => OrderStatus::Open,
-            polymarket_client_sdk::clob::types::OrderStatusType::Matched => OrderStatus::Filled,
-            polymarket_client_sdk::clob::types::OrderStatusType::Canceled => OrderStatus::Cancelled,
-            polymarket_client_sdk::clob::types::OrderStatusType::Delayed => OrderStatus::Open,
-            polymarket_client_sdk::clob::types::OrderStatusType::Unmatched => {
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Live => OrderStatus::Open,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Matched => OrderStatus::Filled,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Canceled => OrderStatus::Cancelled,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Delayed => OrderStatus::Open,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Unmatched => {
                 OrderStatus::Cancelled
             }
-            polymarket_client_sdk::clob::types::OrderStatusType::Unknown(_) => OrderStatus::Open,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Unknown(_) => OrderStatus::Open,
             _ => OrderStatus::Open, // Handle non-exhaustive enum
         };
 
@@ -2452,7 +2400,7 @@ impl Exchange for Polymarket {
             let ext_signer = self.external_signer.as_ref().ok_or_else(|| {
                 OpenPxError::Config("external signer required but not configured".into())
             })?;
-            let order = &signable_order.order;
+            let order = signable_order.order();
 
             // Determine neg_risk for correct exchange contract
             let neg_risk_result = sdk_dispatch!(
@@ -2471,7 +2419,12 @@ impl Exchange for Polymarket {
                 })?
                 .exchange;
 
-            // Build EIP-712 typed data for Polymarket Order
+            // Build EIP-712 typed data for Polymarket Order — V2 schema.
+            // Domain version bumped to "2" (CTF Exchange V2 cutover 2026-04-28).
+            // V1 fields removed: taker, expiration, nonce, feeRateBps.
+            // V2 fields added: timestamp (ms), metadata (bytes32), builder (bytes32).
+            // Expiration moved out of the signed struct; it travels on the wire body
+            // (signable_order.payload), not the EIP-712 message.
             let typed_data = serde_json::json!({
                 "types": {
                     "EIP712Domain": [
@@ -2484,21 +2437,20 @@ impl Exchange for Polymarket {
                         {"name": "salt", "type": "uint256"},
                         {"name": "maker", "type": "address"},
                         {"name": "signer", "type": "address"},
-                        {"name": "taker", "type": "address"},
                         {"name": "tokenId", "type": "uint256"},
                         {"name": "makerAmount", "type": "uint256"},
                         {"name": "takerAmount", "type": "uint256"},
-                        {"name": "expiration", "type": "uint256"},
-                        {"name": "nonce", "type": "uint256"},
-                        {"name": "feeRateBps", "type": "uint256"},
                         {"name": "side", "type": "uint8"},
-                        {"name": "signatureType", "type": "uint8"}
+                        {"name": "signatureType", "type": "uint8"},
+                        {"name": "timestamp", "type": "uint256"},
+                        {"name": "metadata", "type": "bytes32"},
+                        {"name": "builder", "type": "bytes32"}
                     ]
                 },
                 "primary_type": "Order",
                 "domain": {
                     "name": "Polymarket CTF Exchange",
-                    "version": "1",
+                    "version": "2",
                     "chainId": POLYGON.to_string(),
                     "verifyingContract": format!("{:?}", exchange_contract)
                 },
@@ -2506,15 +2458,14 @@ impl Exchange for Polymarket {
                     "salt": order.salt.to_string(),
                     "maker": format!("{:?}", order.maker),
                     "signer": format!("{:?}", order.signer),
-                    "taker": format!("{:?}", order.taker),
                     "tokenId": order.tokenId.to_string(),
                     "makerAmount": order.makerAmount.to_string(),
                     "takerAmount": order.takerAmount.to_string(),
-                    "expiration": order.expiration.to_string(),
-                    "nonce": order.nonce.to_string(),
-                    "feeRateBps": order.feeRateBps.to_string(),
                     "side": order.side,
-                    "signatureType": order.signatureType
+                    "signatureType": order.signatureType,
+                    "timestamp": order.timestamp.to_string(),
+                    "metadata": format!("{:?}", order.metadata),
+                    "builder": format!("{:?}", order.builder)
                 }
             });
 
@@ -2541,7 +2492,7 @@ impl Exchange for Polymarket {
             })?;
 
             SignedOrder::builder()
-                .order(signable_order.order)
+                .payload(signable_order.payload)
                 .signature(signature)
                 .order_type(signable_order.order_type)
                 .owner(owner)
@@ -3067,7 +3018,7 @@ impl Exchange for Polymarket {
 #[cfg(test)]
 mod tests {
     use super::polymarket_order_type;
-    use polymarket_client_sdk::clob::types::OrderType;
+    use polymarket_client_sdk_v2::clob::types::OrderType;
     use std::collections::HashMap;
 
     #[test]
