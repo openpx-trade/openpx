@@ -37,9 +37,9 @@ impl From<PolymarketError> for px_core::ExchangeError {
     }
 }
 
-impl From<polymarket_client_sdk::error::Error> for PolymarketError {
-    fn from(err: polymarket_client_sdk::error::Error) -> Self {
-        use polymarket_client_sdk::error::Kind;
+impl From<polymarket_client_sdk_v2::error::Error> for PolymarketError {
+    fn from(err: polymarket_client_sdk_v2::error::Error) -> Self {
+        use polymarket_client_sdk_v2::error::Kind;
         match err.kind() {
             Kind::Status => PolymarketError::Api(err.to_string()),
             Kind::Validation => PolymarketError::Config(err.to_string()),

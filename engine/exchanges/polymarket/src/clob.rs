@@ -4,8 +4,8 @@
 //! and the official polymarket-client-sdk. The SDK handles all authentication,
 //! signing, and API interactions.
 
-use polymarket_client_sdk::auth::{Credentials, ExposeSecret};
-use polymarket_client_sdk::clob::types::{Side, SignatureType};
+use polymarket_client_sdk_v2::auth::{Credentials, ExposeSecret};
+use polymarket_client_sdk_v2::clob::types::{Side, SignatureType};
 use serde::{Deserialize, Serialize};
 
 use crate::config::PolymarketSignatureType;
@@ -49,12 +49,12 @@ pub enum ClobOrderType {
     Ioc,
 }
 
-impl From<ClobOrderType> for polymarket_client_sdk::clob::types::OrderType {
+impl From<ClobOrderType> for polymarket_client_sdk_v2::clob::types::OrderType {
     fn from(t: ClobOrderType) -> Self {
         match t {
-            ClobOrderType::Gtc => polymarket_client_sdk::clob::types::OrderType::GTC,
-            ClobOrderType::Fok => polymarket_client_sdk::clob::types::OrderType::FOK,
-            ClobOrderType::Ioc => polymarket_client_sdk::clob::types::OrderType::FAK,
+            ClobOrderType::Gtc => polymarket_client_sdk_v2::clob::types::OrderType::GTC,
+            ClobOrderType::Fok => polymarket_client_sdk_v2::clob::types::OrderType::FOK,
+            ClobOrderType::Ioc => polymarket_client_sdk_v2::clob::types::OrderType::FAK,
         }
     }
 }
