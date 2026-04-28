@@ -59,3 +59,27 @@ const book = await ex.fetchOrderbook("KXBTC-25MAR14-T20000", "Yes");
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "market_id": "KXBTC-25MAR14-T20000",
+  "asset_id": "KXBTC-25MAR14-T20000-YES",
+  "bids": [
+    { "price": 0.62, "size": 1500 },
+    { "price": 0.61, "size": 2400 },
+    { "price": 0.60, "size": 5800 }
+  ],
+  "asks": [
+    { "price": 0.63, "size": 1100 },
+    { "price": 0.64, "size": 3200 },
+    { "price": 0.65, "size": 4500 }
+  ],
+  "last_update_id": 192847,
+  "timestamp": "2026-03-14T15:42:18Z",
+  "hash": null
+}
+```
+
+</ResponseExample>

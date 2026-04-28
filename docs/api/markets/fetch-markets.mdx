@@ -81,3 +81,33 @@ const markets = await ex.fetchMarkets();
 ```
 
 </RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "markets": [
+    {
+      "id": "KXBTC-25MAR14-T20000",
+      "native_numeric_id": null,
+      "event_id": "kalshi:KXBTC-25MAR14",
+      "title": "Bitcoin above $20,000 on Mar 14?",
+      "description": "Resolves Yes if BTC > $20,000 at 4pm ET on 2026-03-14.",
+      "slug": "btc-above-20k-mar14",
+      "status": "Active",
+      "outcomes": ["Yes", "No"],
+      "token_id_yes": null,
+      "token_id_no": null,
+      "condition_id": null,
+      "volume": 12453.5,
+      "liquidity": null,
+      "open_interest": 4280.0,
+      "open_time": "2026-03-13T00:00:00Z",
+      "close_time": "2026-03-14T20:00:00Z"
+    }
+  ],
+  "cursor": "eyJsYXN0SWQiOiJLWEJUQy0yNU1BUjE0LVQyMDAwMCJ9"
+}
+```
+
+</ResponseExample>
