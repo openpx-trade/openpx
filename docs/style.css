@@ -15,43 +15,42 @@
   line-height: 1.35 !important;
 }
 
-/* --- group heading dividers ---
-   Match only the actual group label element (heading tags or any element
-   with a class containing GroupHeading / group-heading). Earlier broad
-   selectors like `[class*="SidebarGroup"] > :first-child` also picked up
-   the first <li> inside each group's list, which produced a stray rule
-   between the heading and the first link — fixed by removing them. */
+/* --- group heading + divider ---
+   Match the actual group label only — never first-child of a wrapper,
+   since that also catches the first <li> inside the group's list and
+   produces a stray rule between the heading and the first link.
 
-#sidebar h2,
-#sidebar h3,
-#sidebar h4,
+   Selector tries h5/h6 first (Mintlify's common rendering) and also
+   matches anything with an explicit GroupHeading / group-label /
+   GroupLabel class so the rule lands across theme variants. */
+
 #sidebar h5,
 #sidebar h6,
 #sidebar [class*="GroupHeading" i],
-#sidebar [class*="group-heading" i] {
-  padding-top: 16px !important;
-  margin-top: 14px !important;
-  margin-bottom: 6px !important;
-  border-top: 1px solid rgba(160, 160, 160, 0.45) !important;
-  line-height: 1.2 !important;
+#sidebar [class*="group-heading" i],
+#sidebar [class*="GroupLabel" i],
+#sidebar [class*="group-label" i] {
+  padding-top: 22px !important;
+  margin-top: 22px !important;
+  margin-bottom: 10px !important;
+  border-top: 1px solid rgba(150, 150, 150, 0.35) !important;
+  line-height: 1.3 !important;
 }
 
-/* Suppress the divider on the very first group so the sidebar doesn't
+/* Suppress the divider on the very first group — the sidebar shouldn't
    open with a stray rule at the top. */
-#sidebar h2:first-of-type,
-#sidebar h3:first-of-type,
-#sidebar h4:first-of-type,
 #sidebar h5:first-of-type,
 #sidebar h6:first-of-type,
 #sidebar [class*="GroupHeading" i]:first-of-type,
-#sidebar [class*="group-heading" i]:first-of-type {
+#sidebar [class*="group-heading" i]:first-of-type,
+#sidebar [class*="GroupLabel" i]:first-of-type,
+#sidebar [class*="group-label" i]:first-of-type {
   border-top: none !important;
   padding-top: 0 !important;
   margin-top: 4px !important;
 }
 
-/* Tight gap between adjacent <ul> blocks so the divider above each
-   group label is the only visible separator. */
+/* Tight gap between adjacent <ul> blocks. */
 #sidebar ul + ul {
   margin-top: 0 !important;
 }
