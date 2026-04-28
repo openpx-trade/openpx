@@ -1,0 +1,16 @@
+# Polymarket sports.rs allowlist — JSON keys read by the source that are NOT
+# part of the unified Game/GameState schema mapping in
+# engine/sports/src/manifests/polymarket.rs.
+# Format: <key>  # justification
+# Lines starting with '#' are comments. Inline trailing comments stripped.
+
+# --- /sports response shape (Sport entity, not Game/GameState) ---
+sport                   # Polymarket sport id field on /sports objects
+slug                    # Sport/event slug fallback id
+name                    # Sport display name
+displayName             # Sport display name (alternate spelling)
+
+# --- list-response wrappers around /events/results ---
+events                  # Wrapped response array key
+data                    # Alternate wrapped response array key
+next_cursor             # Pagination cursor on wrapped responses

@@ -6,7 +6,7 @@ use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFun
 use napi_derive::napi;
 use tokio::sync::Mutex;
 
-use px_sports::SportsWebSocket as InnerSportsWebSocket;
+use openpx::SportsWebSocket as InnerSportsWebSocket;
 
 use crate::error::to_napi_err;
 

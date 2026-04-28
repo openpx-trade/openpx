@@ -1,12 +1,73 @@
 ---
 title: "Sports"
-description: "Sports prediction markets on OpenPX."
+description: "Unified sports research data across Polymarket, Kalshi, and ESPN."
 ---
 
-Sports markets coverage is in progress. This section will document endpoints
-for fetching sports-specific markets, events, and series across supported
-venues.
+OpenPX exposes a unified `SportsProvider` surface alongside the trading
+`Exchange` trait. Every provider — the prediction-market venues that already
+ship sports primitives (Polymarket, Kalshi) and pure-data sources (ESPN) —
+implements the same parity-core contract: list sports, list games, fetch a
+game by id, and subscribe to live game-state updates.
 
-In the meantime, sports markets surface through the standard reference-data
-endpoints — see [Fetch markets](/api/markets/fetch-markets) and
-[Fetch events](/api/events/fetch-events).
+Provider-specific endpoints (ESPN's news/standings/play-by-play, Kalshi's
+milestone game stats, Polymarket's team metadata) live as inherent methods
+on the concrete provider type, not on the unified trait.
+
+## Status
+
+| Provider | `list_sports` | `list_games` | `get_game` | `subscribe_game_state` |
+|---|---|---|---|---|
+| Polymarket | available | available | available | available (WebSocket) |
+| Kalshi | next PR | next PR | next PR | next PR (HTTP polling) |
+| ESPN | later PR | later PR | later PR | later PR (HTTP polling) |
+
+## Unified types
+
+The unified shape lives in `engine/core/src/models/sports/` and is exposed in
+all three SDKs (Rust, Python, TypeScript) via the schema export pipeline. See
+the [reference types](/reference/types) page for the auto-generated field
+listings:
+
+- [`Sport`](/reference/types#sport) — top-level category (football, basketball, hockey, ...).
+- [`League`](/reference/types#league) — competition within a sport (NFL, NBA, EPL, ...).
+- [`Game`](/reference/types#game) — a scheduled, live, or completed event.
+- [`GameId`](/reference/types#gameid) — opaque, provider-scoped identifier.
+- [`GameStatus`](/reference/types#gamestatus) — normalized lifecycle status.
+- [`GameFilter`](/reference/types#gamefilter) — filter for `list_games`.
+- [`GameState`](/reference/types#gamestate) — live or post-game state.
+- [`Score`](/reference/types#score) — head-to-head score with raw fallback for exotic formats.
+
+## Quickstart (Rust)
+
+```rust
+use openpx::{Polymarket, PolymarketConfig, SportsProvider, GameFilter};
+use futures::StreamExt;
+
+let polymarket = Polymarket::new(PolymarketConfig::default())?;
+
+// Catalog
+let sports = polymarket.list_sports().await?;
+let (games, _next_cursor) = polymarket.list_games(GameFilter {
+    league: Some("nfl".into()),
+    ..Default::default()
+}).await?;
+
+// Live state
+let mut stream = polymarket.subscribe_game_state();
+while let Some(state) = stream.next().await {
+    println!("{:?}", state?);
+}
+```
+
+## Capability flags
+
+`SportsProvider::capabilities()` returns a flag struct describing what each
+provider supports. Branch on flags rather than catching `NotSupported` at
+runtime.
+
+```rust
+let caps = polymarket.capabilities();
+if caps.has_live_state_stream {
+    // ...
+}
+```

@@ -11,7 +11,7 @@ use px_core::{
     PriceHistoryRequest, TradesRequest,
 };
 use px_crypto::CryptoPriceWebSocket;
-use px_sports::SportsWebSocket;
+use px_exchange_polymarket::SportsWebSocket;
 
 #[derive(Parser)]
 #[command(

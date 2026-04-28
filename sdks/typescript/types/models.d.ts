@@ -25,6 +25,20 @@ export type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
  */
 export type OrderSide = "buy" | "sell";
 /**
+ * Opaque, provider-scoped game identifier. Only meaningful in the context of the `Game::provider` that produced it.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameId".
+ */
+export type GameId = string;
+/**
+ * Normalized lifecycle status. Unit enum so manifest `status_map`s can be declared as `&'static [(&'static str, GameStatus)]`. Providers ship a wide vocabulary of status strings; anything we can't map normalizes to `Unknown` and the original value is preserved in `Game::raw_status`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameStatus".
+ */
+export type GameStatus = "scheduled" | "live" | "final" | "postponed" | "cancelled" | "unknown";
+/**
  * Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -411,6 +425,122 @@ export interface Fill {
   [k: string]: unknown;
 }
 /**
+ * A scheduled, live, or completed sporting event. The unified shape across every `SportsProvider`. Provider-specific fields stay in the provider's own DTO and are only surfaced via the provider's inherent methods.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Game".
+ */
+export interface Game {
+  /**
+   * Away team display name. Same caveat as `home_team`.
+   */
+  away_team?: string | null;
+  /**
+   * Home team display name. May be `None` on providers that don't model teams as first-class (Kalshi).
+   */
+  home_team?: string | null;
+  id: GameId;
+  /**
+   * Canonical league id (`League::id`). Always set.
+   */
+  league: string;
+  /**
+   * Provider id this game was fetched from (e.g., "espn", "kalshi", "polymarket").
+   */
+  provider: string;
+  /**
+   * Verbatim status string from the provider before normalization. Useful when `status` is `GameStatus::Unknown` (caller can branch on `raw_status`).
+   */
+  raw_status?: string | null;
+  /**
+   * Scheduled start time. May be `None` for providers that publish games only after kickoff.
+   */
+  start_time?: string | null;
+  status: GameStatus;
+  [k: string]: unknown;
+}
+/**
+ * Filter for `SportsProvider::list_games`. All fields optional — providers apply only those they support and ignore the rest.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameFilter".
+ */
+export interface GameFilter {
+  /**
+   * Opaque pagination cursor from a previous response.
+   */
+  cursor?: string | null;
+  /**
+   * Restrict to games on a specific calendar day (UTC).
+   */
+  date?: string | null;
+  /**
+   * Restrict to one league id (e.g., "nfl").
+   */
+  league?: string | null;
+  /**
+   * Page size hint; providers may clamp.
+   */
+  limit?: number | null;
+  /**
+   * Restrict to a normalized status.
+   */
+  status?: GameStatus | null;
+  /**
+   * Restrict to games involving a team (matches home or away).
+   */
+  team?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Live or post-game state for a single `Game`. The unit emitted by `SportsProvider::subscribe_game_state`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameState".
+ */
+export interface GameState {
+  /**
+   * Provider-formatted clock (e.g., "12:34"). Remaining-vs-elapsed semantics are sport-specific; surfaces verbatim.
+   */
+  clock?: string | null;
+  ended: boolean;
+  game_id: GameId;
+  live: boolean;
+  /**
+   * Provider-formatted period label (e.g., "Q2", "Halftime", "9th Inning"). Kept as a string because semantics differ per sport.
+   */
+  period?: string | null;
+  /**
+   * Verbatim status string from the provider; useful when `status` is `Unknown`.
+   */
+  raw_status?: string | null;
+  /**
+   * Current score. `None` until the game starts.
+   */
+  score?: Score | null;
+  status: GameStatus;
+  /**
+   * Timestamp this state was observed (provider-supplied if available, else receive-time on the client).
+   */
+  updated_at: string;
+  [k: string]: unknown;
+}
+/**
+ * Score in a head-to-head sport. For exotic formats (esports best-of-N, golf cumulative, etc.) providers populate `raw` and leave home/away `None`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Score".
+ */
+export interface Score {
+  away?: number | null;
+  home?: number | null;
+  /**
+   * Verbatim provider score string when home/away can't be normalized (e.g., "0-0|2-0|Bo3", "+5/-3").
+   */
+  raw?: string | null;
+  [k: string]: unknown;
+}
+/**
  * Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just "what just printed?" — common UI need that doesn't require the full trade history.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -421,6 +551,31 @@ export interface LastTrade {
   side: OrderSide;
   size: number;
   ts_ms: number;
+  [k: string]: unknown;
+}
+/**
+ * A specific competition within a sport (e.g., NFL, NBA, English Premier League).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "League".
+ */
+export interface League {
+  /**
+   * Common abbreviation (e.g., "NFL", "NBA"). Optional — not every league has one.
+   */
+  abbreviation?: string | null;
+  /**
+   * Canonical league id (lowercase, no spaces). Stable across providers.
+   */
+  id: string;
+  /**
+   * Human-readable display name.
+   */
+  name: string;
+  /**
+   * Back-reference to the parent `Sport::id`.
+   */
+  sport_id: string;
   [k: string]: unknown;
 }
 /**
@@ -912,6 +1067,23 @@ export interface SeriesRequest {
    */
   include_volume?: boolean | null;
   limit?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * A top-level sport category (e.g., football, basketball, hockey).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Sport".
+ */
+export interface Sport {
+  /**
+   * Canonical sport id (lowercase, no spaces). Stable across providers.
+   */
+  id: string;
+  /**
+   * Human-readable display name.
+   */
+  name: string;
   [k: string]: unknown;
 }
 /**

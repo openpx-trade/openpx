@@ -182,6 +182,72 @@ A single fill (trade execution) from a user's order.
 | `size` | `number` |  |
 
 
+## `Game`
+
+A scheduled, live, or completed sporting event. The unified shape across every `SportsProvider`. Provider-specific fields stay in the provider's own DTO and are only surfaced via the provider's inherent methods.
+
+| Field | Type | Description |
+|---|---|---|
+| `away_team` | `['string', 'null']` *(optional)* | Away team display name. Same caveat as `home_team`. |
+| `home_team` | `['string', 'null']` *(optional)* | Home team display name. May be `None` on providers that don't model teams as first-class (Kalshi). |
+| `id` | [`GameId`](#gameid) |  |
+| `league` | `string` | Canonical league id (`League::id`). Always set. |
+| `provider` | `string` | Provider id this game was fetched from (e.g., "espn", "kalshi", "polymarket"). |
+| `raw_status` | `['string', 'null']` *(optional)* | Verbatim status string from the provider before normalization. Useful when `status` is `GameStatus::Unknown` (caller can branch on `raw_status`). |
+| `start_time` | `['string', 'null']` *(optional)* | Scheduled start time. May be `None` for providers that publish games only after kickoff. |
+| `status` | [`GameStatus`](#gamestatus) |  |
+
+
+## `GameFilter`
+
+Filter for `SportsProvider::list_games`. All fields optional — providers apply only those they support and ignore the rest.
+
+| Field | Type | Description |
+|---|---|---|
+| `cursor` | `['string', 'null']` *(optional)* | Opaque pagination cursor from a previous response. |
+| `date` | `['string', 'null']` *(optional)* | Restrict to games on a specific calendar day (UTC). |
+| `league` | `['string', 'null']` *(optional)* | Restrict to one league id (e.g., "nfl"). |
+| `limit` | `['integer', 'null']` *(optional)* | Page size hint; providers may clamp. |
+| `status` | [`GameStatus`](#gamestatus) \| `null` *(optional)* | Restrict to a normalized status. |
+| `team` | `['string', 'null']` *(optional)* | Restrict to games involving a team (matches home or away). |
+
+
+## `GameId`
+
+Opaque, provider-scoped game identifier. Only meaningful in the context of the `Game::provider` that produced it.
+
+
+## `GameState`
+
+Live or post-game state for a single `Game`. The unit emitted by `SportsProvider::subscribe_game_state`.
+
+| Field | Type | Description |
+|---|---|---|
+| `clock` | `['string', 'null']` *(optional)* | Provider-formatted clock (e.g., "12:34"). Remaining-vs-elapsed semantics are sport-specific; surfaces verbatim. |
+| `ended` | `boolean` |  |
+| `game_id` | [`GameId`](#gameid) |  |
+| `live` | `boolean` |  |
+| `period` | `['string', 'null']` *(optional)* | Provider-formatted period label (e.g., "Q2", "Halftime", "9th Inning"). Kept as a string because semantics differ per sport. |
+| `raw_status` | `['string', 'null']` *(optional)* | Verbatim status string from the provider; useful when `status` is `Unknown`. |
+| `score` | [`Score`](#score) \| `null` *(optional)* | Current score. `None` until the game starts. |
+| `status` | [`GameStatus`](#gamestatus) |  |
+| `updated_at` | `string` | Timestamp this state was observed (provider-supplied if available, else receive-time on the client). |
+
+
+## `GameStatus`
+
+Normalized lifecycle status. Unit enum so manifest `status_map`s can be declared as `&'static [(&'static str, GameStatus)]`. Providers ship a wide vocabulary of status strings; anything we can't map normalizes to `Unknown` and the original value is preserved in `Game::raw_status`.
+
+**Variants:**
+
+- `'scheduled'`
+- `'live'`
+- `'final'`
+- `'postponed'`
+- `'cancelled'`
+- `'unknown'`
+
+
 ## `InvalidationReason`
 
 Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
@@ -204,6 +270,18 @@ Last public trade price + side + size for a market outcome. Distinct from the fu
 | `side` | [`OrderSide`](#orderside) |  |
 | `size` | `number` |  |
 | `ts_ms` | `integer` |  |
+
+
+## `League`
+
+A specific competition within a sport (e.g., NFL, NBA, English Premier League).
+
+| Field | Type | Description |
+|---|---|---|
+| `abbreviation` | `['string', 'null']` *(optional)* | Common abbreviation (e.g., "NFL", "NBA"). Optional — not every league has one. |
+| `id` | `string` | Canonical league id (lowercase, no spaces). Stable across providers. |
+| `name` | `string` | Human-readable display name. |
+| `sport_id` | `string` | Back-reference to the parent `Sport::id`. |
 
 
 ## `LiquidityRole`
@@ -545,6 +623,17 @@ Bid or ask side. Serializes as "bid"/"ask" on the wire.
 - `'ask'`
 
 
+## `Score`
+
+Score in a head-to-head sport. For exotic formats (esports best-of-N, golf cumulative, etc.) providers populate `raw` and leave home/away `None`.
+
+| Field | Type | Description |
+|---|---|---|
+| `away` | `['integer', 'null']` *(optional)* |  |
+| `home` | `['integer', 'null']` *(optional)* |  |
+| `raw` | `['string', 'null']` *(optional)* | Verbatim provider score string when home/away can't be normalized (e.g., "0-0|2-0|Bo3", "+5/-3"). |
+
+
 ## `Series`
 
 A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
@@ -600,6 +689,16 @@ Connection-level events, emitted on a channel separate from `WsUpdate` so a reco
 |---|---|---|
 | `name` | `['string', 'null']` *(optional)* |  |
 | `url` | `['string', 'null']` *(optional)* |  |
+
+
+## `Sport`
+
+A top-level sport category (e.g., football, basketball, hockey).
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Canonical sport id (lowercase, no spaces). Stable across providers. |
+| `name` | `string` | Human-readable display name. |
 
 
 ## `Spread`

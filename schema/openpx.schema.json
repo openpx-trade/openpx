@@ -632,6 +632,197 @@
       "title": "Fill",
       "type": "object"
     },
+    "Game": {
+      "description": "A scheduled, live, or completed sporting event. The unified shape across every `SportsProvider`. Provider-specific fields stay in the provider's own DTO and are only surfaced via the provider's inherent methods.",
+      "properties": {
+        "away_team": {
+          "description": "Away team display name. Same caveat as `home_team`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "home_team": {
+          "description": "Home team display name. May be `None` on providers that don't model teams as first-class (Kalshi).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/GameId"
+        },
+        "league": {
+          "description": "Canonical league id (`League::id`). Always set.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "Provider id this game was fetched from (e.g., \"espn\", \"kalshi\", \"polymarket\").",
+          "type": "string"
+        },
+        "raw_status": {
+          "description": "Verbatim status string from the provider before normalization. Useful when `status` is `GameStatus::Unknown` (caller can branch on `raw_status`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_time": {
+          "description": "Scheduled start time. May be `None` for providers that publish games only after kickoff.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        }
+      },
+      "required": [
+        "id",
+        "league",
+        "provider",
+        "status"
+      ],
+      "title": "Game",
+      "type": "object"
+    },
+    "GameFilter": {
+      "description": "Filter for `SportsProvider::list_games`. All fields optional — providers apply only those they support and ignore the rest.",
+      "properties": {
+        "cursor": {
+          "description": "Opaque pagination cursor from a previous response.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "date": {
+          "description": "Restrict to games on a specific calendar day (UTC).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "league": {
+          "description": "Restrict to one league id (e.g., \"nfl\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Page size hint; providers may clamp.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GameStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict to a normalized status."
+        },
+        "team": {
+          "description": "Restrict to games involving a team (matches home or away).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "GameFilter",
+      "type": "object"
+    },
+    "GameId": {
+      "description": "Opaque, provider-scoped game identifier. Only meaningful in the context of the `Game::provider` that produced it.",
+      "type": "string"
+    },
+    "GameState": {
+      "description": "Live or post-game state for a single `Game`. The unit emitted by `SportsProvider::subscribe_game_state`.",
+      "properties": {
+        "clock": {
+          "description": "Provider-formatted clock (e.g., \"12:34\"). Remaining-vs-elapsed semantics are sport-specific; surfaces verbatim.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended": {
+          "type": "boolean"
+        },
+        "game_id": {
+          "$ref": "#/definitions/GameId"
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "period": {
+          "description": "Provider-formatted period label (e.g., \"Q2\", \"Halftime\", \"9th Inning\"). Kept as a string because semantics differ per sport.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_status": {
+          "description": "Verbatim status string from the provider; useful when `status` is `Unknown`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Score"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Current score. `None` until the game starts."
+        },
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        },
+        "updated_at": {
+          "description": "Timestamp this state was observed (provider-supplied if available, else receive-time on the client).",
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ended",
+        "game_id",
+        "live",
+        "status",
+        "updated_at"
+      ],
+      "title": "GameState",
+      "type": "object"
+    },
+    "GameStatus": {
+      "description": "Normalized lifecycle status. Unit enum so manifest `status_map`s can be declared as `&'static [(&'static str, GameStatus)]`. Providers ship a wide vocabulary of status strings; anything we can't map normalizes to `Unknown` and the original value is preserved in `Game::raw_status`.",
+      "enum": [
+        "scheduled",
+        "live",
+        "final",
+        "postponed",
+        "cancelled",
+        "unknown"
+      ],
+      "type": "string"
+    },
     "InvalidationReason": {
       "description": "Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
       "oneOf": [
@@ -699,6 +890,37 @@
         "ts_ms"
       ],
       "title": "LastTrade",
+      "type": "object"
+    },
+    "League": {
+      "description": "A specific competition within a sport (e.g., NFL, NBA, English Premier League).",
+      "properties": {
+        "abbreviation": {
+          "description": "Common abbreviation (e.g., \"NFL\", \"NBA\"). Optional — not every league has one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Canonical league id (lowercase, no spaces). Stable across providers.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable display name.",
+          "type": "string"
+        },
+        "sport_id": {
+          "description": "Back-reference to the parent `Sport::id`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "sport_id"
+      ],
+      "title": "League",
       "type": "object"
     },
     "LiquidityRole": {
@@ -1719,6 +1941,36 @@
       ],
       "type": "string"
     },
+    "Score": {
+      "description": "Score in a head-to-head sport. For exotic formats (esports best-of-N, golf cumulative, etc.) providers populate `raw` and leave home/away `None`.",
+      "properties": {
+        "away": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "home": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "raw": {
+          "description": "Verbatim provider score string when home/away can't be normalized (e.g., \"0-0|2-0|Bo3\", \"+5/-3\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "Score",
+      "type": "object"
+    },
     "Series": {
       "description": "A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.",
       "properties": {
@@ -1950,6 +2202,25 @@
         }
       },
       "title": "SettlementSource",
+      "type": "object"
+    },
+    "Sport": {
+      "description": "A top-level sport category (e.g., football, basketball, hockey).",
+      "properties": {
+        "id": {
+          "description": "Canonical sport id (lowercase, no spaces). Stable across providers.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable display name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Sport",
       "type": "object"
     },
     "Spread": {

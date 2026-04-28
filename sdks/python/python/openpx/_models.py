@@ -136,6 +136,22 @@ class FetchUserActivityParams(BaseModel):
     limit: conint(ge=0) | None = None
 
 
+class GameId(RootModel[str]):
+    root: str = Field(
+        ...,
+        description="Opaque, provider-scoped game identifier. Only meaningful in the context of the `Game::provider` that produced it.",
+    )
+
+
+class GameStatus(Enum):
+    scheduled = "scheduled"
+    live = "live"
+    final = "final"
+    postponed = "postponed"
+    cancelled = "cancelled"
+    unknown = "unknown"
+
+
 class InvalidationReason1(Enum):
     Reconnect = "Reconnect"
     Lag = "Lag"
@@ -159,6 +175,19 @@ class InvalidationReason(RootModel[InvalidationReason1 | InvalidationReason2]):
         ...,
         description="Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
     )
+
+
+class League(BaseModel):
+    abbreviation: str | None = Field(
+        None,
+        description='Common abbreviation (e.g., "NFL", "NBA"). Optional — not every league has one.',
+    )
+    id: str = Field(
+        ...,
+        description="Canonical league id (lowercase, no spaces). Stable across providers.",
+    )
+    name: str = Field(..., description="Human-readable display name.")
+    sport_id: str = Field(..., description="Back-reference to the parent `Sport::id`.")
 
 
 class LiquidityRole(Enum):
@@ -280,6 +309,15 @@ class PriceLevelSide(Enum):
     ask = "ask"
 
 
+class Score(BaseModel):
+    away: conint(ge=0) | None = None
+    home: conint(ge=0) | None = None
+    raw: str | None = Field(
+        None,
+        description='Verbatim provider score string when home/away can\'t be normalized (e.g., "0-0|2-0|Bo3", "+5/-3").',
+    )
+
+
 class SeriesRequest(BaseModel):
     category: str | None = Field(
         None, description="Filter by category (e.g. `Politics`, `Sports`)."
@@ -356,6 +394,14 @@ class SessionEvent(
 class SettlementSource(BaseModel):
     name: str | None = None
     url: str | None = None
+
+
+class Sport(BaseModel):
+    id: str = Field(
+        ...,
+        description="Canonical sport id (lowercase, no spaces). Stable across providers.",
+    )
+    name: str = Field(..., description="Human-readable display name.")
 
 
 class Spread(BaseModel):
@@ -514,6 +560,80 @@ class Fill(BaseModel):
     price: float
     side: OrderSide
     size: float
+
+
+class Game(BaseModel):
+    away_team: str | None = Field(
+        None, description="Away team display name. Same caveat as `home_team`."
+    )
+    home_team: str | None = Field(
+        None,
+        description="Home team display name. May be `None` on providers that don't model teams as first-class (Kalshi).",
+    )
+    id: GameId
+    league: str = Field(
+        ..., description="Canonical league id (`League::id`). Always set."
+    )
+    provider: str = Field(
+        ...,
+        description='Provider id this game was fetched from (e.g., "espn", "kalshi", "polymarket").',
+    )
+    raw_status: str | None = Field(
+        None,
+        description="Verbatim status string from the provider before normalization. Useful when `status` is `GameStatus::Unknown` (caller can branch on `raw_status`).",
+    )
+    start_time: AwareDatetime | None = Field(
+        None,
+        description="Scheduled start time. May be `None` for providers that publish games only after kickoff.",
+    )
+    status: GameStatus
+
+
+class GameFilter(BaseModel):
+    cursor: str | None = Field(
+        None, description="Opaque pagination cursor from a previous response."
+    )
+    date: AwareDatetime | None = Field(
+        None, description="Restrict to games on a specific calendar day (UTC)."
+    )
+    league: str | None = Field(
+        None, description='Restrict to one league id (e.g., "nfl").'
+    )
+    limit: conint(ge=0) | None = Field(
+        None, description="Page size hint; providers may clamp."
+    )
+    status: GameStatus | None = Field(
+        None, description="Restrict to a normalized status."
+    )
+    team: str | None = Field(
+        None, description="Restrict to games involving a team (matches home or away)."
+    )
+
+
+class GameState(BaseModel):
+    clock: str | None = Field(
+        None,
+        description='Provider-formatted clock (e.g., "12:34"). Remaining-vs-elapsed semantics are sport-specific; surfaces verbatim.',
+    )
+    ended: bool
+    game_id: GameId
+    live: bool
+    period: str | None = Field(
+        None,
+        description='Provider-formatted period label (e.g., "Q2", "Halftime", "9th Inning"). Kept as a string because semantics differ per sport.',
+    )
+    raw_status: str | None = Field(
+        None,
+        description="Verbatim status string from the provider; useful when `status` is `Unknown`.",
+    )
+    score: Score | None = Field(
+        None, description="Current score. `None` until the game starts."
+    )
+    status: GameStatus
+    updated_at: AwareDatetime = Field(
+        ...,
+        description="Timestamp this state was observed (provider-supplied if available, else receive-time on the client).",
+    )
 
 
 class LastTrade(BaseModel):

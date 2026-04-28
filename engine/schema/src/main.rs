@@ -66,6 +66,15 @@ fn main() {
         schema_for!(px_core::SessionEvent),
         schema_for!(px_core::ActivityTrade),
         schema_for!(px_core::ActivityFill),
+        // Models — sports (unified SportsProvider surface)
+        schema_for!(px_core::Sport),
+        schema_for!(px_core::League),
+        schema_for!(px_core::Game),
+        schema_for!(px_core::GameId),
+        schema_for!(px_core::GameStatus),
+        schema_for!(px_core::GameFilter),
+        schema_for!(px_core::GameState),
+        schema_for!(px_core::Score),
     ];
 
     for root in schemas {

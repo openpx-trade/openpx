@@ -153,7 +153,7 @@ fn parse_composite_cursor(cursor: Option<&str>) -> (usize, usize) {
 
 pub struct Polymarket {
     config: PolymarketConfig,
-    client: HttpClient,
+    pub(crate) client: HttpClient,
     rate_limiter: Arc<Mutex<RateLimiter>>,
     /// SDK state - lazily initialized on first authenticated call.
     /// Derives CLOB credentials automatically from the private key.
