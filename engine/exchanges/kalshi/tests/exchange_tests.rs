@@ -1,6 +1,6 @@
 use px_core::{
-    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest,
-    PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
+    Exchange, FetchMarketsParams, FetchUserActivityParams, MarketStatus, MarketStatusFilter,
+    OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
 };
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
@@ -1059,8 +1059,9 @@ fn test_describe_unauthenticated() {
         !info.has_websocket,
         "should not have websocket without auth"
     );
+    // Implemented read-only features (require auth at runtime but advertised unconditionally)
+    assert!(info.has_fetch_user_activity);
     // Unsupported features
-    assert!(!info.has_fetch_user_activity);
     assert!(!info.has_approvals);
     assert!(!info.has_refresh_balance);
     assert!(!info.has_fetch_orderbook_history);
@@ -1611,4 +1612,141 @@ async fn test_fetch_markets_with_event_id_status_all() {
     // #then
     assert_eq!(markets.len(), 2);
     assert!(cursor.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// fetch_user_activity
+// ---------------------------------------------------------------------------
+
+// PKCS#8 RSA private key used only for unit-test signing (not a real credential).
+const TEST_RSA_PEM: &str = "-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCZBj6wKNkKi5bN
+a9/XpN82sv67aSaqMz5aIlF2MwO8q7P/rss7FaBm2RsZDIAUNqtlMiQDAtYiWZ/m
+6jkk73xgTkMjx6Av+hoTkCPfQxMfnwt/TTkX7h+xUUStttNdJ7wbWagXT7gYm2TP
+1ODRJVOLroddtSzJZqeigFKKKL5tNv0WJjnJ0Isxj6lf2m1jvMtkeP3dKyKBFsco
+fpi9f3fz7wyXrkn/By6uwSGo4MkHaFl0603/1xSWroHZQpcO1rG4/7drawD+8c52
+wSES+6neJbMKVmf3X8QT6jT6oiS82YX5bMIDvItk3xj77MYBG//a+7pX6MkhQ1GQ
+FU6eTRQdAgMBAAECggEAEpPJwgCfgtJ5+xPUz7z2FVGrL6zfEwwYDoC6k4czdbEB
+r/F0PkbMm5fRXJviI7IUYjtxWEU8olxvl2zJhbSmTJnLuFkIlzJ9fnECDd16gZ0B
+HBIPs5pG0jPLyuwWYmmLwmVCzRuyPZiF515QccuehidoyyVO29+Ay+9Ytemm3qK9
+cPzk7tw9f0DvquZolXV0usaeWuG9kk9rM3tIJFLUcYS43j6XO15CVUnSuEjuRJqz
+yz4sIOOXJoaRgEFPSbohcPXGos4Wtmc26P9L8+Qtx9n3r5jW650t2tsa4azJgiwJ
+eSjo4h3CYEQ7SBeMeAadlPNKqKAO1i0tyuITcyd1oQKBgQDT8b2/9DqszBG/Mg5j
+rI6M0K5jPYiSFVqGb0OE2opU7EWXHlFvyINenolvYGIMk6hQlz2FMFvGyzGd8ung
+utje77leZlB5A97PsGyNZSNx3gJ4F2hdV1X8XU4dX0j6I9xICV6KRrDIlY+wBj7U
+t6IzgFeRwAWbKnmP4NY2mf9rPQKBgQC41S4abKVfxKV4N4ceGGIInFrostMs7E+R
+8mqCVc+BqhCWJEx/7bNzaUBgKJqVLiV9HIUDeSuu5e//tqr3+2GrA4nZjWCwtz3X
+8IfRlm6vIY1q9BI/N9+VFVQ6RHWxSZoDv8ucsp/X0eOL7K8GyUSXgs8YCI142JUa
+A3zDsTpaYQKBgHc7pzkG579waod6XJf8apGTkJep9VvhgXThwUVLQMk3xoqWdtAB
+KM6hN8YdnetfYjA8dVKpeugiRb6K+sH/u6PnjwwpWRpLcBy9LsR44nDbqd3vpTnl
+uSzpPNnPUhnO9Mzd4H6/+BJP+W7YhJ5c1HZOvHT1ZvH8+jhUD47WIdgtAoGAJzL2
++x2tmPjwiuVj34sWR3M5iH5ccPuRCIfb9NZUEtDJgb4jB0KXO1PIFlymJBtMUhNZ
+Vlo9XHNhid7otXz3wrgWZTApoHDMSd62P0njIXtBLbyjngqwfUKvwUfBmh7c7gyg
+FxR+99uIoaVJnWvUAzn3x8YQkt+EB6dTr4EHuiECgYBs9db0w5bvN1VtpH3eRRV4
+t7eeL11XeduhBRIj59WElO5WHh1cfPsUnrvJ9v69bP1iE58o2vQEAZQEEp3ivSq1
+r06+Afk3tiSZXypdpTaNSVVxHVSJI8KrZHexJMooZNzFPve6UEOiHK2soo/Kvisn
+h8YChf7GH1utL9ZASDhoUQ==
+-----END PRIVATE KEY-----";
+
+#[tokio::test]
+async fn test_fetch_user_activity_returns_fills_json() {
+    // #given
+    let mock_server = MockServer::start().await;
+    let fills_body = serde_json::json!({
+        "fills": [
+            {
+                "fill_id": "f1",
+                "order_id": "o1",
+                "ticker": "INXD-24DEC31-B5000",
+                "side": "yes",
+                "action": "buy",
+                "yes_price": 65,
+                "count": 10.0,
+                "is_taker": true,
+                "fee_cost": "0.05",
+                "created_time": "2024-12-01T10:00:00Z"
+            }
+        ],
+        "cursor": null
+    });
+    Mock::given(method("GET"))
+        .and(path("/portfolio/fills"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fills_body.clone()))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_api_key_id("test-key-id")
+        .with_private_key_pem(TEST_RSA_PEM)
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchUserActivityParams {
+        address: "ignored-for-kalshi".to_string(),
+        limit: Some(50),
+    };
+    let result = exchange.fetch_user_activity(params).await.unwrap();
+
+    // #then — raw fills JSON returned verbatim
+    assert!(result.get("fills").is_some());
+    let fills = result["fills"].as_array().unwrap();
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0]["fill_id"], "f1");
+}
+
+#[tokio::test]
+async fn test_fetch_user_activity_requires_auth() {
+    // #given — unauthenticated exchange
+    let config = KalshiConfig::new().with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchUserActivityParams {
+        address: "".to_string(),
+        limit: None,
+    };
+    let result = exchange.fetch_user_activity(params).await;
+
+    // #then
+    assert!(result.is_err());
+    let err_str = result.unwrap_err().to_string();
+    assert!(
+        err_str.to_lowercase().contains("auth"),
+        "expected auth required error, got: {err_str}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_user_activity_401_returns_auth_error() {
+    // #given — authenticated exchange, but server rejects with 401
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/portfolio/fills"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_api_key_id("test-key-id")
+        .with_private_key_pem(TEST_RSA_PEM)
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    // #when
+    let params = FetchUserActivityParams {
+        address: "".to_string(),
+        limit: None,
+    };
+    let result = exchange.fetch_user_activity(params).await;
+
+    // #then
+    assert!(result.is_err());
+    let err_str = result.unwrap_err().to_string();
+    assert!(
+        err_str.to_lowercase().contains("auth"),
+        "expected auth error on 401, got: {err_str}"
+    );
 }
