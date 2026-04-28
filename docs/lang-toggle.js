@@ -1,11 +1,9 @@
 // Global language toggle. Injects a Rust / Python / TypeScript segmented
-// control into Mintlify's navbar (right of the logo), persists the choice
-// in localStorage, and broadcasts it to every CodeGroup on the page by
-// clicking the matching tab — Mintlify already syncs its own state across
-// matching CodeGroup labels, so one click per render is enough.
-//
-// Reapplies the saved choice whenever the DOM changes (SPA navigation,
-// React re-renders) so newly-mounted CodeGroups inherit the user's pick.
+// control immediately to the right of the OpenPX logo, persists the
+// choice in localStorage, and switches every CodeGroup on the page to
+// the chosen language by programmatically clicking the matching tab —
+// Mintlify's CodeGroup state syncs across matching labels, so one click
+// per render is enough.
 
 (function () {
   var LANGS = [
@@ -26,33 +24,43 @@
   function setLang(lang) {
     try { localStorage.setItem(STORAGE_KEY, lang); } catch (_) {}
     syncToggleState(lang);
-    applyLangToCodeGroups(lang);
+    applyLang(lang);
   }
 
-  // Find the visible language-tab button in every CodeGroup on the page
-  // whose label matches the requested language, and click it. Mintlify's
-  // CodeGroup is React-controlled, so we rely on the real click handler
-  // (which updates Mintlify's own synced state) rather than mutating DOM.
-  function applyLangToCodeGroups(lang) {
+  function applyLang(lang) {
     var target = LANGS.find(function (l) { return l.id === lang; });
     if (!target) return;
     var label = target.label;
-    var seen = new WeakSet();
-    var tabs = document.querySelectorAll('button, [role="tab"]');
-    for (var i = 0; i < tabs.length; i++) {
-      var t = tabs[i];
-      if (t.closest && t.closest("#openpx-lang-toggle")) continue;
-      var text = (t.textContent || "").trim();
+
+    // Cast a wide net — Mintlify renders CodeGroup tabs as buttons or
+    // role=tab elements, sometimes with the language label nested inside
+    // a span. We match by trimmed text and skip our own toggle.
+    var candidates = document.querySelectorAll(
+      'button, [role="tab"], [role="button"]'
+    );
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (el.closest && el.closest("#openpx-lang-toggle")) continue;
+      var text = (el.textContent || "").trim();
       if (text !== label) continue;
-      // Only click tabs that aren't already the active one — prevents
-      // an infinite click loop with the MutationObserver.
-      var pressed = t.getAttribute("aria-selected") === "true" ||
-                    t.getAttribute("data-state") === "active" ||
-                    t.classList.contains("active");
+
+      // Fire both a synthesized MouseEvent (so React's synthetic-event
+      // system picks it up) and a plain click() (for any non-React
+      // listeners). Skip if already active to avoid redundant work, but
+      // be permissive about how "active" is encoded.
+      var pressed =
+        el.getAttribute("aria-selected") === "true" ||
+        el.getAttribute("data-state") === "active" ||
+        el.dataset.active === "true" ||
+        el.classList.contains("active") ||
+        el.classList.contains("selected");
       if (pressed) continue;
-      if (seen.has(t)) continue;
-      seen.add(t);
-      try { t.click(); } catch (_) {}
+
+      try {
+        el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      } catch (_) {
+        try { el.click(); } catch (__) {}
+      }
     }
   }
 
@@ -76,41 +84,61 @@
       b.type = "button";
       b.dataset.lang = l.id;
       b.textContent = l.label;
-      b.addEventListener("click", function () { setLang(l.id); });
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLang(l.id);
+      });
       wrap.appendChild(b);
     });
     return wrap;
   }
 
-  // Find a stable insertion point near the logo. Mintlify's logo lives
-  // inside an <a> tag at the start of the header; insert the toggle as
-  // its next sibling.
-  function insertionPoint() {
-    var header = document.querySelector("header") || document.querySelector('[role="banner"]');
-    if (!header) return null;
-    // Prefer a logo anchor; fall back to the header itself.
-    var logoAnchor = header.querySelector('a[href="/"], a[aria-label*="home" i], a[aria-label*="logo" i]');
-    return logoAnchor || header.firstElementChild || header;
+  // Anchor: the logo image. docs.json declares /images/logo-light.png and
+  // /images/logo-dark.png. Match either, walk up to the wrapping anchor,
+  // and insert the toggle as the anchor's next sibling so it sits to the
+  // logo's right inside the same flex row.
+  function findLogoAnchor() {
+    var img =
+      document.querySelector('img[src*="/images/logo-"]') ||
+      document.querySelector('img[alt*="OpenPX" i]');
+    if (!img) return null;
+    return img.closest("a") || img.parentElement;
   }
 
   function injectToggle() {
-    if (document.getElementById("openpx-lang-toggle")) return;
-    var anchor = insertionPoint();
+    var existing = document.getElementById("openpx-lang-toggle");
+    var anchor = findLogoAnchor();
     if (!anchor) return;
+    // If already in DOM but not adjacent to the logo (e.g. landed in
+    // the wrong slot), move it.
+    if (existing && existing.previousElementSibling !== anchor) {
+      existing.remove();
+      existing = null;
+    }
+    if (existing) return;
     var toggle = buildToggle();
-    if (anchor.parentNode && anchor.nextSibling) {
+    if (anchor.parentNode) {
       anchor.parentNode.insertBefore(toggle, anchor.nextSibling);
-    } else if (anchor.parentNode) {
-      anchor.parentNode.appendChild(toggle);
-    } else {
-      anchor.appendChild(toggle);
     }
     syncToggleState(getLang());
   }
 
+  // Apply the saved choice once on initial load. Retry briefly because
+  // Mintlify's CodeGroup tabs may render after our first tick.
+  var initialApplied = false;
+  function applyOnce() {
+    if (initialApplied) return;
+    var tabsExist = !!document.querySelector('button, [role="tab"]');
+    if (!tabsExist) return;
+    applyLang(getLang());
+    initialApplied = true;
+  }
+
   function tick() {
     injectToggle();
-    applyLangToCodeGroups(getLang());
+    syncToggleState(getLang());
+    applyOnce();
   }
 
   if (document.readyState === "loading") {
@@ -119,8 +147,10 @@
     tick();
   }
 
-  // Debounced observer — Mintlify is a SPA, so re-run on navigation /
-  // re-render. requestAnimationFrame keeps us off the critical path.
+  // Re-run on every DOM mutation, but coalesce per frame. We deliberately
+  // do NOT re-apply the language on every tick — that would fight any
+  // user who clicks a CodeGroup tab directly. The user's choice is only
+  // re-broadcast when they click our toggle (or on initial page load).
   var pending = false;
   var obs = new MutationObserver(function () {
     if (pending) return;
@@ -131,4 +161,13 @@
     });
   });
   obs.observe(document.body, { childList: true, subtree: true });
+
+  // Reset the "applied once" flag on SPA navigations so the saved
+  // preference re-applies on the new page's CodeGroups.
+  window.addEventListener("popstate", function () { initialApplied = false; });
+  var origPush = history.pushState;
+  history.pushState = function () {
+    initialApplied = false;
+    return origPush.apply(this, arguments);
+  };
 })();
