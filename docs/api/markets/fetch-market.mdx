@@ -18,7 +18,26 @@ async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
 
 ## Returns
 
-[`Market`](/api/unified-schema#market) — the unified market struct.
+<ResponseField name="market" type="Market">
+  <Expandable title="Market">
+    <ResponseField name="id" type="string">Native ID — Kalshi ticker or Polymarket condition ID.</ResponseField>
+    <ResponseField name="native_numeric_id" type="string?">Polymarket numeric DB id, for UI deep-links.</ResponseField>
+    <ResponseField name="event_id" type="string?">Canonical OpenPX event ID grouping related markets.</ResponseField>
+    <ResponseField name="title" type="string" />
+    <ResponseField name="description" type="string" />
+    <ResponseField name="slug" type="string?" />
+    <ResponseField name="status" type="MarketStatus">`Active`, `Closed`, or `Resolved`.</ResponseField>
+    <ResponseField name="outcomes" type="string[]" />
+    <ResponseField name="token_id_yes" type="string?" />
+    <ResponseField name="token_id_no" type="string?" />
+    <ResponseField name="condition_id" type="string?" />
+    <ResponseField name="volume" type="f64" />
+    <ResponseField name="liquidity" type="f64?" />
+    <ResponseField name="open_interest" type="f64?">Kalshi only.</ResponseField>
+    <ResponseField name="open_time" type="DateTime?" />
+    <ResponseField name="close_time" type="DateTime?" />
+  </Expandable>
+</ResponseField>
 
 ## Example
 

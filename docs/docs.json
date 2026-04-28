@@ -19,27 +19,6 @@
         "tab": "API",
         "groups": [
           {
-            "group": "Getting Started",
-            "pages": [
-              "api/introduction",
-              "api/installation",
-              "api/quickstart",
-              "api/unified-schema"
-            ]
-          },
-          {
-            "group": "Polymarket",
-            "pages": [
-              "api/exchanges/polymarket"
-            ]
-          },
-          {
-            "group": "Kalshi",
-            "pages": [
-              "api/exchanges/kalshi"
-            ]
-          },
-          {
             "group": "Markets",
             "pages": [
               "api/markets/fetch-markets",

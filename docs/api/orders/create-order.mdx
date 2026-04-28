@@ -46,7 +46,22 @@ async fn create_order(
 
 ## Returns
 
-[`Order`](/api/unified-schema#order) — the created order.
+<ResponseField name="order" type="Order">
+  <Expandable title="Order">
+    <ResponseField name="id" type="string">Native order ID.</ResponseField>
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="outcome" type="string" />
+    <ResponseField name="side" type="OrderSide">`buy` or `sell`.</ResponseField>
+    <ResponseField name="price" type="f64">Decimal in `[0, 1]`.</ResponseField>
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="filled" type="f64">Cumulative fills.</ResponseField>
+    <ResponseField name="status" type="OrderStatus">
+      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
+    </ResponseField>
+    <ResponseField name="created_at" type="DateTime<Utc>" />
+    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+  </Expandable>
+</ResponseField>
 
 ## Example
 

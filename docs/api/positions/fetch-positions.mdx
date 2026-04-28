@@ -17,13 +17,15 @@ async fn fetch_positions(
 
 ## Returns
 
-[`Position[]`](/api/unified-schema#position).
-
-<ResponseField name="market_id" type="string" />
-<ResponseField name="outcome" type="string" />
-<ResponseField name="size" type="f64" />
-<ResponseField name="average_price" type="f64" />
-<ResponseField name="current_price" type="f64" />
+<ResponseField name="positions" type="Position[]">
+  <Expandable title="Position">
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="outcome" type="string" />
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="average_price" type="f64" />
+    <ResponseField name="current_price" type="f64" />
+  </Expandable>
+</ResponseField>
 
 ## Example
 
