@@ -8,10 +8,11 @@ use tokio::sync::Mutex;
 use px_core::{
     canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
     EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    Fill, LastTrade, Market, MarketStatus, MarketStatusFilter, MarketTrade, MarketType,
-    MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus, Orderbook, OutcomeToken, Position,
-    PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter, Series, SeriesRequest,
-    SettlementSource, Spread, Tag, TradesRequest,
+    Fill, LastTrade, LiquidityRole, Market, MarketStatus, MarketStatusFilter, MarketTrade,
+    MarketType, MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
+    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, RateLimiter,
+    Series, SeriesRequest, SettlementSource, Spread, Tag, TradesRequest, UserTrade,
+    UserTradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -215,6 +216,75 @@ fn kalshi_midpoint_from_market(
     let bid = parse_dollars(market, bid_key)?;
     let ask = parse_dollars(market, ask_key)?;
     Some((bid + ask) / 2.0)
+}
+
+fn parse_kalshi_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
+    let obj = value.as_object()?;
+    let id = obj
+        .get("trade_id")
+        .or_else(|| obj.get("fill_id"))
+        .and_then(|v| v.as_str())?
+        .to_string();
+    let market_id = obj
+        .get("ticker")
+        .or_else(|| obj.get("market_ticker"))
+        .and_then(|v| v.as_str())?
+        .to_string();
+
+    // Kalshi `side` is yes|no; `action` is buy|sell. The unified `OrderSide`
+    // is the actor's intent — `action` maps directly.
+    let side = match obj.get("action").and_then(|v| v.as_str()) {
+        Some("sell") => OrderSide::Sell,
+        _ => OrderSide::Buy,
+    };
+
+    let outcome_no = obj
+        .get("side")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("no"));
+    let price = if outcome_no {
+        parse_dollars(obj, "no_price_dollars")
+    } else {
+        parse_dollars(obj, "yes_price_dollars")
+    }?;
+
+    let size = parse_fp(obj, "count_fp").or_else(|| {
+        obj.get("count")
+            .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)))
+    })?;
+
+    let role = obj.get("is_taker").and_then(|v| v.as_bool()).map(|t| {
+        if t {
+            LiquidityRole::Taker
+        } else {
+            LiquidityRole::Maker
+        }
+    });
+
+    let fee = parse_dollars(obj, "fee_cost");
+
+    let ts_ms = obj
+        .get("created_time")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+
+    Some(UserTrade {
+        id,
+        market_id,
+        condition_id: None,
+        asset_id: None,
+        side,
+        size,
+        price,
+        role,
+        fee,
+        realized_pnl: None,
+        tx_hash: None,
+        owner: None,
+        ts_ms,
+    })
 }
 
 pub struct Kalshi {
@@ -1972,6 +2042,57 @@ impl Exchange for Kalshi {
         })
     }
 
+    async fn fetch_user_trades(
+        &self,
+        req: UserTradesRequest,
+    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
+        // Kalshi only exposes the caller's own fills; public lookup of another
+        // user is unsupported.
+        if req.user_address.is_some() {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::NotSupported(
+                "kalshi fetch_user_trades(user_address): public lookup not exposed".into(),
+            )));
+        }
+        self.ensure_auth().map_err(to_openpx)?;
+
+        #[derive(serde::Deserialize)]
+        struct FillsResp {
+            cursor: Option<String>,
+            #[serde(default)]
+            fills: Vec<serde_json::Value>,
+        }
+
+        let limit = req.limit.unwrap_or(100).clamp(1, 1000);
+        let mut path = format!("/portfolio/fills?limit={limit}");
+        if let Some(market) = req.market_id.as_deref() {
+            path.push_str(&format!("&ticker={market}"));
+        }
+        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
+            path.push_str(&format!("&cursor={c}"));
+        }
+        if let Some(ts) = req.start_ts {
+            path.push_str(&format!("&min_ts={ts}"));
+        }
+        if let Some(ts) = req.end_ts {
+            path.push_str(&format!("&max_ts={ts}"));
+        }
+
+        let resp: FillsResp = self.get(&path).await.map_err(to_openpx)?;
+        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
+
+        // Kalshi `side` filter is post-fetch — the API only filters by ticker /
+        // order_id. Keep this defensive client-side filter so callers see only
+        // the side they asked for.
+        let want_side = req.side;
+        let trades = resp
+            .fills
+            .iter()
+            .filter_map(parse_kalshi_user_trade)
+            .filter(|t| want_side.map(|s| t.side == s).unwrap_or(true))
+            .collect();
+        Ok((trades, next_cursor))
+    }
+
     async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
         let market = self.fetch_kalshi_market_raw(market_id).await?;
         parse_fp(&market, "open_interest_fp")
@@ -2251,7 +2372,7 @@ impl Exchange for Kalshi {
             has_fetch_spread: true,
             has_fetch_last_trade_price: true,
             has_fetch_open_interest: true,
-            has_fetch_user_trades: false,
+            has_fetch_user_trades: self.config.is_authenticated(),
             has_fetch_market_tags: true,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,

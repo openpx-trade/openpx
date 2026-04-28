@@ -104,6 +104,7 @@
             "group": "Fills",
             "pages": [
               "api/fills/fetch-fills",
+              "api/fills/fetch-user-trades",
               "api/fills/fetch-user-activity"
             ]
           },

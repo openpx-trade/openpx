@@ -64,5 +64,7 @@ recurrence              # Series.frequency alias on Gamma (some payloads use `re
 frequency               # Series.frequency
 label                   # Tag.name on per-market tag objects (Gamma)
 
-# --- Pricing/books parsing (Batch 3 — Orderbook from /books, etc.) ---
-asset_id                # Polymarket /books response field — token_id of the orderbook entry
+# --- Pricing/books + user trades parsing (Batches 3+4) ---
+asset_id                # Polymarket /books + Data API /trades response field — token_id of the entry
+transaction_hash        # Snake-case alias for transactionHash on some Data API rows
+user                    # Snake-case alias for proxyWallet on some Data API rows
