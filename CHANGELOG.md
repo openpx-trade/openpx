@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7](https://github.com/openpx-trade/openpx/compare/v0.2.6...v0.2.7) (2026-04-28)
+
+
+### Features
+
+* bootstrap autonomous-maintenance system ([#12](https://github.com/openpx-trade/openpx/issues/12)) ([a55cbb9](https://github.com/openpx-trade/openpx/commit/a55cbb9e29b78db4ef5aea3a480cc44f3f720e91))
+* **core:** add fetch_server_time to Exchange trait (closes [#17](https://github.com/openpx-trade/openpx/issues/17)) ([ff3db65](https://github.com/openpx-trade/openpx/commit/ff3db65bd1884a5097e55bc6f5a69923179fc317))
+
+
+### Bug Fixes
+
+* **agents:** bot watches its own PRs through CI green, not just open ([bad177c](https://github.com/openpx-trade/openpx/commit/bad177c39197d6dcdc44b3cdde77389a532a6018))
+* **agents:** stop issue duplication, require PR provenance, self-assign bot issues ([fa62f4e](https://github.com/openpx-trade/openpx/commit/fa62f4e83bbcb293c87d18b1f72df82bbdb9997a))
+* **ci+agent:** correct python smoke check + give agent-tick the preflight tooling ([d45161a](https://github.com/openpx-trade/openpx/commit/d45161a95b637b820b270ba6ae60b2a5bade1118))
+* **ci:** bypass per-tool permission prompts for orchestrator ([#15](https://github.com/openpx-trade/openpx/issues/15)) ([222acb3](https://github.com/openpx-trade/openpx/commit/222acb3a48c97917677442aae08ec9f39dbc0d03))
+* **ci:** create real venv for Python SDK Build; skipLibCheck on TS smoke ([ea40f86](https://github.com/openpx-trade/openpx/commit/ea40f8692d062d9498b95785f385fd615b425586))
+* **ci:** drop ci-success aggregator (was forever-pending) ([0a5775b](https://github.com/openpx-trade/openpx/commit/0a5775bb5e0764e6b9c2d9768185c69fe7f66147))
+* **ci:** give claude-code-action a prompt instead of a fake `agent` input ([#14](https://github.com/openpx-trade/openpx/issues/14)) ([e5f27b2](https://github.com/openpx-trade/openpx/commit/e5f27b282a91bd49d68538a6626edcc4ff385e2c))
+* **ci:** pin extractions/setup-just to 1.50.0 ([f44b45f](https://github.com/openpx-trade/openpx/commit/f44b45fe6e433455bdebdb3623bd2633195e18fa))
+* **ci:** switch from extractions/setup-just to taiki-e/install-action ([a3a3674](https://github.com/openpx-trade/openpx/commit/a3a36743d581764ba4aa8ecd08a4e18e2ceff084))
+* **ci:** typescript devDep + venv-path bug in justfile python-build ([3583ad2](https://github.com/openpx-trade/openpx/commit/3583ad2a98f6c806532a2d13bdac8218b9b216b4))
+* **policy:** branch-protection contexts use bare check_run.name (no prefix, no suffix) ([cc12659](https://github.com/openpx-trade/openpx/commit/cc12659b4977395c5845ac0e53adeb2d5a3ca3a2))
+* **sdk-sync:** emit all schema $defs in TypeScript models.d.ts ([3f3b3b5](https://github.com/openpx-trade/openpx/commit/3f3b3b53c4370575657b295930dd13747c53dc02))
+
 ## [0.2.6](https://github.com/openpx-trade/openpx/compare/v0.2.5...v0.2.6) (2026-04-24)
 
 
