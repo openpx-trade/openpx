@@ -58,15 +58,8 @@ description: "Place an order on the book."
 <RequestExample>
 
 ```rust Rust
-use openpx::ExchangeInner;
-use serde_json::json;
 use openpx::OrderSide;
 use std::collections::HashMap;
-
-let ex = ExchangeInner::new("kalshi", json!({
-    "api_key_id": std::env::var("KALSHI_API_KEY_ID")?,
-    "private_key_pem": std::env::var("KALSHI_PRIVATE_KEY_PEM")?,
-}))?;
 
 let mut params = HashMap::new();
 params.insert("order_type".into(), "gtc".into());
@@ -82,14 +75,6 @@ let order = ex.create_order(
 ```
 
 ```python Python
-import os
-from openpx import Exchange
-
-ex = Exchange("kalshi", {
-    "api_key_id": os.environ["KALSHI_API_KEY_ID"],
-    "private_key_pem": os.environ["KALSHI_PRIVATE_KEY_PEM"],
-})
-
 order = ex.create_order(
     "KXBTC-25MAR14-T20000",
     "Yes",
@@ -101,13 +86,6 @@ order = ex.create_order(
 ```
 
 ```typescript TypeScript
-import { Exchange } from "openpx";
-
-const ex = new Exchange("kalshi", {
-  api_key_id: process.env.KALSHI_API_KEY_ID!,
-  private_key_pem: process.env.KALSHI_PRIVATE_KEY_PEM!,
-});
-
 const order = await ex.createOrder(
   "KXBTC-25MAR14-T20000",
   "Yes",
