@@ -74,3 +74,7 @@ fee_type                # Series.fee_type (e.g. "quadratic")
 category                # Series.category — used to filter SeriesRequest, not Market.category
 tags_by_categories      # Tags-by-category response wrapper (/search/tags_by_categories)
 /search/tags_by_categories  # URL path passed to self.get() — not a JSON key, test is over-broad
+
+# --- Pricing/books parsing (Batch 3 — LastTrade, Spread, Orderbooks helpers) ---
+trades                  # /markets/trades response wrapper read for fetch_last_trade_price
+taker_side              # Trade.taker_side (yes|no) used to derive LastTrade.side
