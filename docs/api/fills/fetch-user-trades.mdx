@@ -1,0 +1,123 @@
+---
+title: "fetch_user_trades"
+sidebarTitle: "Fetch user trades"
+openapi: GET /v1/fills/fetch_user_trades
+playground: simple
+description: "Page through a user's trade history."
+---
+
+Distinct from [`fetch_fills`](/api/fills/fetch-fills) — this surface returns
+the user-facing aggregated trade row with on-chain fields (`tx_hash`, `owner`)
+and `realized_pnl` where the venue exposes them.
+
+## Parameters
+
+<ParamField path="user_address" type="string?">
+  When `None`, returns the authenticated caller's own trades (auth required
+  on both venues). When `Some(addr)`, performs a public lookup for that
+  wallet — Polymarket only; Kalshi returns `Err(NotSupported)`.
+</ParamField>
+
+<ParamField path="market_id" type="string?">
+  Restrict to one market. Polymarket: condition ID. Kalshi: ticker.
+</ParamField>
+
+<ParamField path="side" type="OrderSide?">
+  Filter by side. Kalshi applies this client-side (the API doesn't filter).
+</ParamField>
+
+<ParamField path="start_ts" type="i64?">
+  Unix seconds. Kalshi-only — Polymarket Data `/trades` doesn't support
+  time bounds.
+</ParamField>
+
+<ParamField path="end_ts" type="i64?" />
+
+<ParamField path="limit" type="usize?">
+  Per-page cap: 1000 (Kalshi) / 500 (Polymarket).
+</ParamField>
+
+<ParamField path="cursor" type="string?">
+  Opaque cursor. **Polymarket** uses offset pagination — the cursor is the
+  numeric offset as a string and OpenPX synthesizes the next cursor only
+  when the page filled.
+</ParamField>
+
+## Returns
+
+<ResponseField name="trades" type="UserTrade[]">
+  <Expandable title="UserTrade">
+    <ResponseField name="id" type="string">Trade ID — Kalshi `trade_id` or Polymarket transaction hash.</ResponseField>
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="condition_id" type="string?">Polymarket only.</ResponseField>
+    <ResponseField name="asset_id" type="string?">Polymarket token id.</ResponseField>
+    <ResponseField name="side" type="OrderSide" />
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="price" type="f64" />
+    <ResponseField name="role" type="LiquidityRole?">Kalshi: `maker` or `taker`. Polymarket: `None`.</ResponseField>
+    <ResponseField name="fee" type="f64?">Kalshi `fee_cost`. Polymarket: not on the trade row.</ResponseField>
+    <ResponseField name="realized_pnl" type="f64?">Polymarket only when present.</ResponseField>
+    <ResponseField name="tx_hash" type="string?">Polymarket only — Polygon transaction hash.</ResponseField>
+    <ResponseField name="owner" type="string?">Polymarket proxy wallet.</ResponseField>
+    <ResponseField name="ts_ms" type="i64" />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cursor" type="string?">
+  `null` on the last page.
+</ResponseField>
+
+<RequestExample>
+
+```rust Rust
+use openpx::UserTradesRequest;
+
+// Caller's own trades (both venues, auth required).
+let (trades, _) = ex.fetch_user_trades(UserTradesRequest::default()).await?;
+
+// Public lookup of another wallet (Polymarket only).
+let (others, _) = ex.fetch_user_trades(UserTradesRequest {
+    user_address: Some("0xabc…".into()),
+    limit: Some(50),
+    ..Default::default()
+}).await?;
+```
+
+```python Python
+trades, cursor = ex.fetch_user_trades()
+others, _ = ex.fetch_user_trades(user_address="0xabc...", limit=50)
+```
+
+```typescript TypeScript
+const { trades } = await ex.fetchUserTrades({});
+const others = await ex.fetchUserTrades({ userAddress: "0xabc..." });
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "trades": [
+    {
+      "id": "0xdeadbeef…",
+      "market_id": "0xCONDITION",
+      "condition_id": "0xCONDITION",
+      "asset_id": "1029300…",
+      "side": "buy",
+      "size": 100.0,
+      "price": 0.45,
+      "role": null,
+      "fee": null,
+      "realized_pnl": 12.5,
+      "tx_hash": "0xdeadbeef…",
+      "owner": "0xabc…",
+      "ts_ms": 1714000000000
+    }
+  ],
+  "cursor": "100"
+}
+```
+
+</ResponseExample>

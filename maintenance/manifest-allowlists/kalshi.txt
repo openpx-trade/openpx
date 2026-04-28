@@ -78,3 +78,8 @@ tags_by_categories      # Tags-by-category response wrapper (/search/tags_by_cat
 # --- Pricing/books parsing (Batch 3 — LastTrade, Spread, Orderbooks helpers) ---
 trades                  # /markets/trades response wrapper read for fetch_last_trade_price
 taker_side              # Trade.taker_side (yes|no) used to derive LastTrade.side
+
+# --- User trades parsing (Batch 4 — UserTrade model, distinct from Fill) ---
+trade_id                # UserTrade.id source on /portfolio/fills (Kalshi treats trade_id == fill_id)
+yes_price_dollars       # UserTrade.price (yes side, fixed-point dollar string)
+no_price_dollars        # UserTrade.price (no side, fixed-point dollar string)

@@ -24,7 +24,7 @@ use px_core::{
     MarketTrade, MarketType, MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus,
     Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position,
     PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series,
-    SeriesRequest, SettlementSource, Spread, Tag, TradesRequest,
+    SeriesRequest, SettlementSource, Spread, Tag, TradesRequest, UserTrade, UserTradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -3363,6 +3363,67 @@ impl Exchange for Polymarket {
             })
     }
 
+    async fn fetch_user_trades(
+        &self,
+        req: UserTradesRequest,
+    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
+        // Default to the configured wallet (Funder) when no user_address is given.
+        let user = if let Some(addr) = req.user_address.as_deref().filter(|s| !s.is_empty()) {
+            addr.to_string()
+        } else {
+            self.owner_address()
+                .map_err(|e| OpenPxError::Exchange(e.into()))?
+        };
+
+        // Polymarket Data /trades is offset-paginated: `limit` + `offset`.
+        // Translate cursor → offset (numeric string).
+        let limit = req.limit.unwrap_or(100).clamp(1, 500);
+        let offset: usize = req
+            .cursor
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let mut endpoint = format!("/trades?user={user}&limit={limit}&offset={offset}");
+        if let Some(market) = req.market_id.as_deref() {
+            endpoint.push_str(&format!("&market={market}"));
+        }
+        if let Some(side) = req.side {
+            let s = match side {
+                OrderSide::Buy => "BUY",
+                OrderSide::Sell => "SELL",
+            };
+            endpoint.push_str(&format!("&side={s}"));
+        }
+
+        // Data API uses a separate base URL; doesn't go through `client.get_clob`.
+        let url = format!("{}{}", self.config.data_api_url, endpoint);
+        let resp = reqwest::get(&url)
+            .await
+            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+        if !resp.status().is_success() {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "polymarket /trades HTTP {}",
+                resp.status()
+            ))));
+        }
+        let raw: Vec<serde_json::Value> = resp
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+
+        let trades: Vec<UserTrade> = raw.iter().filter_map(parse_polymarket_user_trade).collect();
+
+        // Synthesize a next-cursor from the offset only when the page filled —
+        // a partial page implies we've reached the tail.
+        let next_cursor = if trades.len() == limit {
+            Some((offset + limit).to_string())
+        } else {
+            None
+        };
+        Ok((trades, next_cursor))
+    }
+
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -3397,7 +3458,7 @@ impl Exchange for Polymarket {
             has_fetch_spread: true,
             has_fetch_last_trade_price: true,
             has_fetch_open_interest: true,
-            has_fetch_user_trades: false,
+            has_fetch_user_trades: true,
             has_fetch_market_tags: true,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
@@ -3549,6 +3610,85 @@ fn parse_polymarket_series(value: &serde_json::Value) -> Option<Series> {
         fee_type: None,
         volume,
         last_updated_ts,
+    })
+}
+
+fn parse_polymarket_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
+    let obj = value.as_object()?;
+
+    let id = obj
+        .get("id")
+        .or_else(|| obj.get("transactionHash"))
+        .and_then(|v| v.as_str())?
+        .to_string();
+
+    // Data API returns `market` as the conditionId; `asset` is the token id.
+    let condition_id = obj
+        .get("market")
+        .or_else(|| obj.get("conditionId"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let asset_id = obj
+        .get("asset")
+        .or_else(|| obj.get("asset_id"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let market_id = condition_id.clone().unwrap_or_default();
+
+    let side = match obj.get("side").and_then(|v| v.as_str()) {
+        Some(s) if s.eq_ignore_ascii_case("sell") => OrderSide::Sell,
+        _ => OrderSide::Buy,
+    };
+
+    let parse_f64 = |key: &str| {
+        obj.get(key).and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
+    };
+    let size = parse_f64("size")?;
+    let price = parse_f64("price")?;
+
+    let tx_hash = obj
+        .get("transactionHash")
+        .or_else(|| obj.get("transaction_hash"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let owner = obj
+        .get("proxyWallet")
+        .or_else(|| obj.get("user"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let ts_ms = obj
+        .get("timestamp")
+        .or_else(|| obj.get("matchTime"))
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                .or_else(|| {
+                    v.as_str()
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.timestamp_millis())
+                })
+        })
+        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+
+    Some(UserTrade {
+        id,
+        market_id,
+        condition_id,
+        asset_id,
+        side,
+        size,
+        price,
+        role: None,
+        fee: None,
+        realized_pnl: parse_f64("realizedPnl").or_else(|| parse_f64("realized_pnl")),
+        tx_hash,
+        owner,
+        ts_ms,
     })
 }
 
