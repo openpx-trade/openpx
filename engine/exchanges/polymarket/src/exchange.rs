@@ -571,7 +571,9 @@ impl Polymarket {
         let status = match &resp.status {
             polymarket_client_sdk_v2::clob::types::OrderStatusType::Live => OrderStatus::Open,
             polymarket_client_sdk_v2::clob::types::OrderStatusType::Matched => OrderStatus::Filled,
-            polymarket_client_sdk_v2::clob::types::OrderStatusType::Canceled => OrderStatus::Cancelled,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Canceled => {
+                OrderStatus::Cancelled
+            }
             polymarket_client_sdk_v2::clob::types::OrderStatusType::Delayed => OrderStatus::Open,
             polymarket_client_sdk_v2::clob::types::OrderStatusType::Unmatched => {
                 OrderStatus::Cancelled
