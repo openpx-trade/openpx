@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
-use openpx::{Game, GameFilter, GameId, Sports};
+use openpx::{GameFilter, GameId, Sports};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use pythonize::{depythonize, pythonize};
@@ -70,19 +70,6 @@ impl NativeSports {
         let rt = get_runtime();
         let result =
             py.detach(|| rt.block_on(async { sports.get_game(&league, &GameId::new(id)).await }));
-        let v = result.map_err(|e| to_py_err(e.to_string()))?;
-        Ok(pythonize(py, &v)
-            .map_err(|e| to_py_err(e.to_string()))?
-            .into())
-    }
-
-    /// `game` is a dict matching the `Game` schema. Returns a dict with
-    /// `kalshi` and `polymarket` keys, each a list of matching events.
-    fn markets_for_game(&self, py: Python<'_>, game: Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-        let g: Game = depythonize(&game).map_err(|e| to_py_err(e.to_string()))?;
-        let sports = self.inner.clone();
-        let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(async { sports.markets_for_game(&g).await }));
         let v = result.map_err(|e| to_py_err(e.to_string()))?;
         Ok(pythonize(py, &v)
             .map_err(|e| to_py_err(e.to_string()))?

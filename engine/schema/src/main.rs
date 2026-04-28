@@ -75,7 +75,6 @@ fn main() {
         schema_for!(px_sports::GameFilter),
         schema_for!(px_sports::GameState),
         schema_for!(px_sports::Score),
-        schema_for!(px_sports::MarketsByVenue),
     ];
 
     for root in schemas {

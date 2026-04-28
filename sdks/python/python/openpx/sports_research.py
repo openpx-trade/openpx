@@ -1,8 +1,4 @@
-"""Sports research — ESPN data + venue-bridge primitive.
-
-Use this to look up ESPN games, athletes, standings, and other research data,
-then call ``markets_for_game`` to find the Kalshi / Polymarket events that
-resolve on a specific game.
+"""Sports research — ESPN catalog and live game state.
 
 Example::
 
@@ -10,13 +6,9 @@ Example::
 
     sports = Sports()
 
-    # Research
+    # Catalog
     games = sports.list_games(league="nfl")
-    game = games[0]
-
-    # Bridge to venues
-    venues = sports.markets_for_game(game)
-    print(f"{len(venues['kalshi'])} Kalshi events, {len(venues['polymarket'])} Polymarket events")
+    standings = sports.list_leagues("football")
 
     # Live state stream
     for state in sports.subscribe_game_state("nfl"):
@@ -73,15 +65,6 @@ class Sports:
     def get_game(self, league: str, game_id: str) -> dict[str, Any]:
         """Fetch a single game by league + ESPN event id."""
         return self._native.get_game(league, game_id)
-
-    def markets_for_game(self, game: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-        """Find the Kalshi and Polymarket events that resolve on this game.
-
-        Returns a dict with ``kalshi`` and ``polymarket`` keys, each a list of
-        matching ``Event`` records. Each event carries ``market_ids`` you can
-        pass to the venue's ``fetch_market`` call to drill into trade-able markets.
-        """
-        return self._native.markets_for_game(game)
 
     def subscribe_game_state(self, league: str) -> Iterator[dict[str, Any]]:
         """Iterator over live ``GameState`` updates. Yields per state change.

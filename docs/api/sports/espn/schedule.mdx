@@ -1,0 +1,27 @@
+---
+title: "schedule"
+sidebarTitle: "Schedule"
+description: "Games scheduled for a league on a specific date."
+---
+
+Convenience over [list_games](/api/sports/catalog/list-games) with the date
+filter pinned. Returns typed `Game` records.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+<ParamField path="date" type="DateTime<Utc>">Calendar day (UTC).</ParamField>
+
+## Returns
+
+[`Game[]`](/api/sports/catalog/list-games#returns).
+
+## Example
+
+```rust Rust
+use chrono::{TimeZone, Utc};
+
+let date = Utc.with_ymd_and_hms(2025, 1, 26, 0, 0, 0).unwrap();
+let games = sports.espn().schedule("nfl", date).await?;
+```

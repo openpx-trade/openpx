@@ -1,0 +1,23 @@
+---
+title: "athletes"
+sidebarTitle: "Athletes"
+description: "List athletes in a league."
+---
+
+Returns ESPN's athlete index for a league.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`, `"nba"`).</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/athletes` payload. Schema varies by sport.
+</ResponseField>
+
+## Example
+
+```rust Rust
+let athletes = sports.espn().athletes("nfl").await?;
+```

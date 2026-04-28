@@ -7,10 +7,9 @@ pub use ws::WebSocketInner;
 
 pub use px_crypto::CryptoPriceWebSocket;
 
-// Sports research surface (ESPN-only data, plus a venue-bridge primitive).
+// Sports research surface (ESPN data).
 pub use px_sports::{
-    Espn, EspnConfig, Game, GameFilter, GameId, GameState, GameStatus, League, MarketsByVenue,
-    Score, Sport, Sports,
+    Espn, EspnConfig, Game, GameFilter, GameId, GameState, GameStatus, League, Score, Sport, Sports,
 };
 
 // Exchange implementations (re-export for direct construction).

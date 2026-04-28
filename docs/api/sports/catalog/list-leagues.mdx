@@ -1,0 +1,45 @@
+---
+title: "list_leagues"
+sidebarTitle: "List leagues"
+description: "List leagues, optionally filtered to one sport."
+---
+
+Returns the leagues OpenPX maps directly to ESPN URL paths (NFL, NBA, MLB,
+NHL, MLS, EPL, La Liga, etc.). Hand-maintained taxonomy.
+
+## Parameters
+
+<ParamField path="sport_id" type="string?">
+  Restrict to one sport (`"football"`, `"basketball"`, `"soccer"`, ...).
+  Omit to return all leagues.
+</ParamField>
+
+## Returns
+
+<ResponseField name="leagues" type="League[]">
+  <Expandable title="League">
+    <ResponseField name="id" type="string">Canonical id used in ESPN URLs (e.g. `"nfl"`, `"eng.1"`).</ResponseField>
+    <ResponseField name="name" type="string">Human-readable display name.</ResponseField>
+    <ResponseField name="sport_id" type="string">Parent sport id.</ResponseField>
+    <ResponseField name="abbreviation" type="string?">Common abbreviation (e.g. `"NFL"`, `"EPL"`).</ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let leagues = sports.list_leagues(Some("football")).await?;
+// → [League{ id: "nfl", ... }, League{ id: "college-football", ... }]
+```
+
+```python Python
+leagues = sports.list_leagues("football")
+```
+
+```typescript TypeScript
+const leagues = await sports.listLeagues("football");
+```
+
+</CodeGroup>

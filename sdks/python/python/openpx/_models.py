@@ -226,11 +226,6 @@ class MarketType(Enum):
     scalar = "scalar"
 
 
-class MarketsByVenue(BaseModel):
-    kalshi: list[Event]
-    polymarket: list[Event]
-
-
 class MidpointRequest(BaseModel):
     market_id: str
     outcome: str | None = None

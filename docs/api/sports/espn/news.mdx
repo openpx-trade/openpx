@@ -1,0 +1,24 @@
+---
+title: "news"
+sidebarTitle: "News"
+description: "Headlines for a league."
+---
+
+Returns ESPN's news feed for a league.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/news` payload — typically `articles[]` with
+  headlines, summaries, byline, and publish timestamps.
+</ResponseField>
+
+## Example
+
+```rust Rust
+let news = sports.espn().news("nfl").await?;
+```

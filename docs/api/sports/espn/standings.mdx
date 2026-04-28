@@ -1,0 +1,24 @@
+---
+title: "standings"
+sidebarTitle: "Standings"
+description: "Conference / division standings for a league."
+---
+
+Returns ESPN's standings payload. Schema varies meaningfully across sports
+(conference vs. league table vs. group stage), so this surfaces as raw JSON.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/standings` payload.
+</ResponseField>
+
+## Example
+
+```rust Rust
+let standings = sports.espn().standings("nfl").await?;
+```

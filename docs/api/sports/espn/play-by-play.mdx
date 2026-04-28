@@ -1,0 +1,29 @@
+---
+title: "play_by_play"
+sidebarTitle: "Play-by-play"
+description: "Drive-by-drive / play-by-play data for a single game."
+---
+
+Wraps ESPN's `summary` endpoint. Returns drives, plays, box-score data,
+roster lineups — everything ESPN's per-game summary view shows. Field
+shape is sport-dependent.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+<ParamField path="id" type="GameId">ESPN event id.</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/summary?event={id}` payload.
+</ResponseField>
+
+## Example
+
+```rust Rust
+use openpx::GameId;
+
+let pbp = sports.espn().play_by_play("nfl", &GameId::new("401671793")).await?;
+```

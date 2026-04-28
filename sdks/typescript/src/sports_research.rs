@@ -8,7 +8,7 @@ use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 
-use openpx::{Game, GameFilter, GameId, Sports};
+use openpx::{GameFilter, GameId, Sports};
 
 use crate::error::to_napi_err;
 
@@ -71,19 +71,6 @@ impl JsSports {
         let sports = self.inner.clone();
         let v = rt()
             .spawn(async move { sports.get_game(&league, &GameId::new(id)).await })
-            .await
-            .map_err(to_napi_err)?
-            .map_err(to_napi_err)?;
-        Ok(serde_json::to_value(&v).unwrap_or_default())
-    }
-
-    /// Returns `{ kalshi: Event[], polymarket: Event[] }`.
-    #[napi(ts_args_type = "game: Game")]
-    pub async fn markets_for_game(&self, game: serde_json::Value) -> Result<serde_json::Value> {
-        let g: Game = serde_json::from_value(game).map_err(to_napi_err)?;
-        let sports = self.inner.clone();
-        let v = rt()
-            .spawn(async move { sports.markets_for_game(&g).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

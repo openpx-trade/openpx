@@ -1,0 +1,85 @@
+---
+title: "SportsWebSocket"
+sidebarTitle: "Polymarket Sports WS"
+tag: "WSS"
+description: "Lower-latency live scores via Polymarket's public Sports WebSocket."
+---
+
+A venue-specific convenience: connects to `wss://sports-api.polymarket.com/ws`
+and emits raw `SportResult` events. No auth, no subscriptions — connect and
+receive all active events. Use this when you specifically need lower latency
+than ESPN's polling can give; otherwise prefer
+[`subscribe_game_state`](/api/sports/live/subscribe-game-state) for the
+broader ESPN-backed stream.
+
+## Constructor
+
+```rust Rust
+let mut ws = SportsWebSocket::new();
+ws.connect().await?;
+```
+
+## Methods
+
+<ParamField path="connect()" type="async">Establish the WebSocket connection. Auto-reconnects on drop.</ParamField>
+
+<ParamField path="disconnect()" type="async">Gracefully close the connection.</ParamField>
+
+<ParamField path="state()" type="WebSocketState">Current connection state.</ParamField>
+
+<ParamField path="stream()" type="Stream<SportResult>">Take ownership of the event stream.</ParamField>
+
+## SportResult payload
+
+<ResponseField name="game_id" type="u64" />
+<ResponseField name="league_abbreviation" type="string">e.g. `"nfl"`, `"nba"`.</ResponseField>
+<ResponseField name="slug" type="string" />
+<ResponseField name="home_team" type="string" />
+<ResponseField name="away_team" type="string" />
+<ResponseField name="status" type="string">Provider-shaped string (e.g. `"In Progress"`, `"Final"`).</ResponseField>
+<ResponseField name="score" type="string?">e.g. `"3-16"` for head-to-head, `"0-0|2-0|Bo3"` for esports.</ResponseField>
+<ResponseField name="period" type="string?" />
+<ResponseField name="elapsed" type="string?" />
+<ResponseField name="live" type="bool" />
+<ResponseField name="ended" type="bool" />
+<ResponseField name="finished_timestamp" type="DateTime?" />
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::SportsWebSocket;
+use futures::StreamExt;
+
+let mut ws = SportsWebSocket::new();
+ws.connect().await?;
+let mut stream = ws.stream();
+while let Some(item) = stream.next().await {
+    let result = item?;
+    println!("{} @ {}: {:?}", result.away_team, result.home_team, result.score);
+}
+```
+
+```python Python
+from openpx import SportsWebSocket
+
+ws = SportsWebSocket()
+ws.connect()
+for score in ws.stream():
+    print(f"{score['away_team']} @ {score['home_team']}: {score.get('score')}")
+ws.disconnect()
+```
+
+```typescript TypeScript
+import { SportsWebSocket } from "openpx";
+
+const ws = new SportsWebSocket();
+await ws.connect();
+await ws.onScoreUpdate((err, score) => {
+    if (err) return console.error(err);
+    console.log(`${score.away_team} @ ${score.home_team}: ${score.score}`);
+});
+```
+
+</CodeGroup>

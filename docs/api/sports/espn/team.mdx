@@ -1,0 +1,26 @@
+---
+title: "team"
+sidebarTitle: "Team"
+description: "Fetch a single team by id."
+---
+
+Returns ESPN's per-team payload (depth chart, injuries, schedule, recent
+results — fields vary by sport).
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+<ParamField path="team_id" type="string">ESPN team id.</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/teams/{id}` payload.
+</ResponseField>
+
+## Example
+
+```rust Rust
+let team = sports.espn().team("nfl", "12").await?; // Kansas City Chiefs
+```

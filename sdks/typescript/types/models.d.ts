@@ -821,17 +821,6 @@ export interface MarketTrade {
   [k: string]: unknown;
 }
 /**
- * Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "MarketsByVenue".
- */
-export interface MarketsByVenue {
-  kalshi: Event[];
-  polymarket: Event[];
-  [k: string]: unknown;
-}
-/**
  * Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema

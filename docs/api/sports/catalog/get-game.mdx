@@ -1,0 +1,44 @@
+---
+title: "get_game"
+sidebarTitle: "Get game"
+description: "Fetch a single game by ESPN event id."
+---
+
+Hits ESPN's scoreboard with `?event={id}` for a direct lookup.
+
+## Parameters
+
+<ParamField path="league" type="string">
+  League id (e.g. `"nfl"`). Required because ESPN scoreboard is league-scoped.
+</ParamField>
+
+<ParamField path="id" type="GameId">
+  ESPN event id (the `id` field on a previously-fetched [`Game`](/api/sports/catalog/list-games)).
+</ParamField>
+
+## Returns
+
+A single [`Game`](/api/sports/catalog/list-games#returns).
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::{Sports, GameId};
+
+let sports = Sports::new()?;
+let game = sports.get_game("nfl", &GameId::new("401671793")).await?;
+```
+
+```python Python
+sports = Sports()
+game = sports.get_game("nfl", "401671793")
+```
+
+```typescript TypeScript
+const sports = new Sports();
+const game = await sports.getGame("nfl", "401671793");
+```
+
+</CodeGroup>

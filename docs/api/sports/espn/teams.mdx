@@ -1,0 +1,36 @@
+---
+title: "teams"
+sidebarTitle: "Teams"
+description: "List teams in a league."
+---
+
+Returns ESPN's raw teams payload — schema varies by sport, so it's surfaced
+as JSON rather than typed.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+## Returns
+
+<ResponseField name="json" type="any">
+  ESPN's `/{sport}/{league}/teams` payload. Typically includes a `sports[].leagues[].teams` array with team metadata, abbreviations, logos, and conference / division grouping.
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+let teams = sports.espn().teams("nfl").await?;
+```
+
+```python Python
+teams = sports._native.list_sports()  # placeholder — call via sports.espn equivalent
+```
+
+```typescript TypeScript
+// ESPN-extension methods exposed via the Rust API; bindings forthcoming.
+```
+
+</CodeGroup>

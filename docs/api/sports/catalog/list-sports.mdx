@@ -1,0 +1,56 @@
+---
+title: "list_sports"
+sidebarTitle: "List sports"
+description: "List the top-level sports ESPN exposes."
+---
+
+Returns ESPN's canonical sport taxonomy (football, basketball, hockey,
+soccer, ...). Hand-maintained list — ESPN does not publish a discoverable
+sports index.
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="sports" type="Sport[]">
+  <Expandable title="Sport">
+    <ResponseField name="id" type="string">Canonical id used in ESPN URLs (e.g. `"football"`).</ResponseField>
+    <ResponseField name="name" type="string">Human-readable display name.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::Sports;
+
+let sports = Sports::new()?;
+let all = sports.list_sports().await?;
+for s in all {
+    println!("{} ({})", s.name, s.id);
+}
+```
+
+```python Python
+from openpx import Sports
+
+sports = Sports()
+for s in sports.list_sports():
+    print(f"{s['name']} ({s['id']})")
+```
+
+```typescript TypeScript
+import { Sports } from "openpx";
+
+const sports = new Sports();
+const all = await sports.listSports();
+for (const s of all) {
+  console.log(`${s.name} (${s.id})`);
+}
+```
+
+</CodeGroup>

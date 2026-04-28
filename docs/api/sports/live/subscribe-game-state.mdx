@@ -1,0 +1,77 @@
+---
+title: "subscribe_game_state"
+sidebarTitle: "Subscribe game state"
+tag: "Stream"
+description: "Live GameState updates for a league via HTTP polling."
+---
+
+ESPN has no public WebSocket. This is a polling adapter that hits the
+scoreboard endpoint at the configured cadence (default 15s) and yields one
+`GameState` per game per state change. Duplicates are suppressed
+internally — you only see deltas.
+
+## Parameters
+
+<ParamField path="league" type="string">League id (e.g. `"nfl"`).</ParamField>
+
+## Yields
+
+<ResponseField name="game_state" type="GameState">
+  <Expandable title="GameState">
+    <ResponseField name="game_id" type="GameId" />
+    <ResponseField name="status" type="GameStatus" />
+    <ResponseField name="raw_status" type="string?" />
+    <ResponseField name="score" type="Score?">
+      <Expandable title="Score">
+        <ResponseField name="home" type="u32?" />
+        <ResponseField name="away" type="u32?" />
+        <ResponseField name="raw" type="string?">Verbatim provider score string for exotic formats.</ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="period" type="string?">Provider-formatted period label (e.g. `"Q2"`, `"Halftime"`).</ResponseField>
+    <ResponseField name="clock" type="string?">Provider-formatted clock string (e.g. `"12:34"`).</ResponseField>
+    <ResponseField name="live" type="bool" />
+    <ResponseField name="ended" type="bool" />
+    <ResponseField name="updated_at" type="DateTime" />
+  </Expandable>
+</ResponseField>
+
+## Configuring poll interval
+
+Override via `EspnConfig::poll_interval` and pass through `Sports::with_espn_config`.
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::Sports;
+use futures::StreamExt;
+
+let sports = Sports::new()?;
+let mut stream = sports.subscribe_game_state("nfl");
+while let Some(item) = stream.next().await {
+    let state = item?;
+    println!("{} {:?} {:?}", state.game_id, state.status, state.score);
+}
+```
+
+```python Python
+from openpx import Sports
+
+sports = Sports()
+for state in sports.subscribe_game_state("nfl"):
+    print(state["game_id"], state["status"], state.get("score"))
+```
+
+```typescript TypeScript
+import { Sports } from "openpx";
+
+const sports = new Sports();
+await sports.onGameState("nfl", (err, state) => {
+    if (err) return console.error(err);
+    console.log(state.game_id, state.status, state.score);
+});
+```
+
+</CodeGroup>

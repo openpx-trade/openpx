@@ -419,16 +419,6 @@ Market type classification.
 - `'scalar'`
 
 
-## `MarketsByVenue`
-
-Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.
-
-| Field | Type | Description |
-|---|---|---|
-| `kalshi` | [`Event`](#event)[] |  |
-| `polymarket` | [`Event`](#event)[] |  |
-
-
 ## `MidpointRequest`
 
 Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.

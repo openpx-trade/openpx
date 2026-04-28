@@ -1,154 +1,56 @@
 ---
 title: "Sports"
-description: "ESPN sports research data with a built-in bridge to Kalshi and Polymarket sports markets."
+description: "ESPN sports research data — catalog, schedule, live game state."
 ---
 
-OpenPX exposes a `Sports` handle for sports research. It does two things:
-
-1. **Talks to ESPN** for the catalog (sports, leagues, games, teams, athletes,
-   standings, news, schedule, play-by-play) and live game state.
-2. **Bridges to the venues** — given a `Game` from ESPN, returns the
-   matching events on Kalshi and Polymarket that resolve on it. Each event
-   carries `market_ids` you can pass to the venue's `fetch_market` to drill
-   into trade-able outcomes.
-
-ESPN is the only sports data source — its catalog is broader and lower-friction
-than what the prediction-market venues expose, and forcing venue-side sports
-data behind a unified trait would duplicate poorer-quality information.
+OpenPX exposes a `Sports` handle backed by ESPN's public endpoints. The API
+covers the catalog (sports, leagues, games), live game state, and ESPN-only
+research data (teams, athletes, standings, news, schedule, play-by-play).
 
 ## Quickstart
 
 <CodeGroup>
+
 ```rust Rust
 use openpx::{Sports, GameFilter};
 
 let sports = Sports::new()?;
-
-// 1. Research
-let games = sports
-    .list_games(GameFilter {
-        league: Some("nfl".into()),
-        ..Default::default()
-    })
-    .await?;
-let game = &games[0];
-
-// 2. Bridge to venues
-let venues = sports.markets_for_game(game).await?;
-println!(
-    "{} kalshi events, {} polymarket events",
-    venues.kalshi.len(),
-    venues.polymarket.len()
-);
+let games = sports.list_games(GameFilter {
+    league: Some("nfl".into()),
+    ..Default::default()
+}).await?;
 ```
 
 ```python Python
 from openpx import Sports
 
 sports = Sports()
-
-# 1. Research
 games = sports.list_games(league="nfl")
-game = games[0]
-
-# 2. Bridge to venues
-venues = sports.markets_for_game(game)
-print(f"{len(venues['kalshi'])} kalshi events, "
-      f"{len(venues['polymarket'])} polymarket events")
 ```
 
 ```typescript TypeScript
 import { Sports } from "openpx";
 
 const sports = new Sports();
-
-// 1. Research
 const games = await sports.listGames({ league: "nfl" });
-const game = games[0];
-
-// 2. Bridge to venues
-const venues = await sports.marketsForGame(game);
-console.log(
-  `${venues.kalshi.length} kalshi events, ` +
-  `${venues.polymarket.length} polymarket events`,
-);
 ```
+
 </CodeGroup>
 
-## Methods
+## Surface
 
-### Catalog (ESPN-backed)
-
-| Method | Returns | Notes |
-|---|---|---|
-| `list_sports()` | `Vec<Sport>` | Top-level sports (football, basketball, hockey, ...). |
-| `list_leagues(sport_id?)` | `Vec<League>` | Leagues, optionally filtered by sport. |
-| `list_games(filter)` | `Vec<Game>` | Games matching league / date / status / team. |
-| `get_game(league, id)` | `Game` | Single game by ESPN event id. |
-
-### ESPN-specific extensions (on `Sports::espn()`)
-
-These return raw ESPN JSON — the schemas vary too widely across sports to
-typify cleanly, and the value is in the depth of data, not a uniform shape.
-
-| Method | Endpoint family |
+| Group | Purpose |
 |---|---|
-| `teams(league)` / `team(league, id)` | `/{sport}/{league}/teams[/{id}]` — rosters, depth chart, injuries |
-| `athletes(league)` | `/{sport}/{league}/athletes` — profiles |
-| `standings(league)` | `/{sport}/{league}/standings` — conference / division |
-| `schedule(league, date)` | `/{sport}/{league}/scoreboard?dates=YYYYMMDD` |
-| `news(league)` | `/{sport}/{league}/news` |
-| `play_by_play(league, id)` | `/{sport}/{league}/summary?event={id}` |
-
-### Live state stream
-
-| Method | Returns | Notes |
-|---|---|---|
-| `subscribe_game_state(league)` | `GameStateStream` | HTTP-poller (default 15s) that yields one item per league game per state change. ESPN has no public WebSocket. |
-
-### Bridge
-
-| Method | Returns | Notes |
-|---|---|---|
-| `markets_for_game(game)` | `MarketsByVenue { kalshi, polymarket }` | Each side is a `Vec<Event>`. Events carry `market_ids`; resolve full markets via the venue's `fetch_market(id)`. Match is on team mascot tokens + ±36h start-time window. |
-
-## Polymarket Sports WebSocket (lower-latency live scores)
-
-If you specifically need lower-latency live scores than ESPN's polling can
-give, Polymarket exposes a no-auth public Sports WebSocket. It's a venue
-convenience, not part of the unified `Sports` API:
-
-<CodeGroup>
-```rust Rust
-use openpx::SportsWebSocket;
-use futures::StreamExt;
-
-let mut ws = SportsWebSocket::new();
-ws.connect().await?;
-let mut stream = ws.stream();
-while let Some(item) = stream.next().await {
-    let result = item?;
-    println!("{} @ {}: {:?}", result.away_team, result.home_team, result.score);
-}
-```
-
-```python Python
-from openpx import SportsWebSocket
-
-ws = SportsWebSocket()
-ws.connect()
-for score in ws.stream():
-    print(f"{score['away_team']} @ {score['home_team']}: {score.get('score')}")
-```
-</CodeGroup>
+| [Catalog](/api/sports/catalog/list-games) | Sports, leagues, games — the primitives. |
+| [ESPN Extensions](/api/sports/espn/teams) | Teams, athletes, standings, schedule, news, play-by-play — research data ESPN exposes that doesn't fit the catalog primitives. |
+| [Live Data](/api/sports/live/subscribe-game-state) | Live game-state stream (ESPN HTTP poller) and the lower-latency Polymarket Sports WebSocket. |
 
 ## Unified types
 
-See the [reference types](/reference/types) page for full field listings:
+See [reference types](/reference/types) for the auto-generated field listings:
 
 - [`Sport`](/reference/types#sport), [`League`](/reference/types#league)
 - [`Game`](/reference/types#game), [`GameId`](/reference/types#gameid),
   [`GameStatus`](/reference/types#gamestatus),
   [`GameFilter`](/reference/types#gamefilter)
 - [`GameState`](/reference/types#gamestate), [`Score`](/reference/types#score)
-- [`MarketsByVenue`](/reference/types#marketsbyvenue)

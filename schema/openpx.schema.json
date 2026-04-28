@@ -303,6 +303,7 @@
         "id",
         "title"
       ],
+      "title": "Event",
       "type": "object"
     },
     "EventsRequest": {
@@ -1428,29 +1429,6 @@
       ],
       "title": "MarketType",
       "type": "string"
-    },
-    "MarketsByVenue": {
-      "description": "Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.",
-      "properties": {
-        "kalshi": {
-          "items": {
-            "$ref": "#/definitions/Event"
-          },
-          "type": "array"
-        },
-        "polymarket": {
-          "items": {
-            "$ref": "#/definitions/Event"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "kalshi",
-        "polymarket"
-      ],
-      "title": "MarketsByVenue",
-      "type": "object"
     },
     "MidpointRequest": {
       "description": "Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.",

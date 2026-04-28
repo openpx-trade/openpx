@@ -139,7 +139,35 @@
           {
             "group": "Sports",
             "pages": [
-              "api/sports/overview"
+              "api/sports/overview",
+              {
+                "group": "Catalog",
+                "pages": [
+                  "api/sports/catalog/list-sports",
+                  "api/sports/catalog/list-leagues",
+                  "api/sports/catalog/list-games",
+                  "api/sports/catalog/get-game"
+                ]
+              },
+              {
+                "group": "ESPN Extensions",
+                "pages": [
+                  "api/sports/espn/teams",
+                  "api/sports/espn/team",
+                  "api/sports/espn/athletes",
+                  "api/sports/espn/standings",
+                  "api/sports/espn/schedule",
+                  "api/sports/espn/news",
+                  "api/sports/espn/play-by-play"
+                ]
+              },
+              {
+                "group": "Live Data",
+                "pages": [
+                  "api/sports/live/subscribe-game-state",
+                  "api/sports/live/sports-websocket"
+                ]
+              }
             ]
           },
           {

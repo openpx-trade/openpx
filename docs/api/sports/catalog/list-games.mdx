@@ -1,0 +1,69 @@
+---
+title: "list_games"
+sidebarTitle: "List games"
+description: "List games matching league / date / status / team."
+---
+
+Wraps ESPN's `scoreboard` endpoint for a league. League is required (the
+ESPN scoreboard surface is league-scoped); when omitted, defaults to NFL.
+
+## Parameters
+
+<ParamField path="filter.league" type="string?">
+  League id (e.g. `"nfl"`, `"nba"`). Defaults to `"nfl"`.
+</ParamField>
+
+<ParamField path="filter.date" type="DateTime<Utc>?">
+  Restrict to games scheduled on this calendar day (UTC). Pulls
+  `?dates=YYYYMMDD` from ESPN's scoreboard.
+</ParamField>
+
+<ParamField path="filter.status" type="GameStatus?">
+  One of `scheduled`, `live`, `final`, `postponed`, `cancelled`, `unknown`.
+</ParamField>
+
+<ParamField path="filter.team" type="string?">
+  Substring match (case-insensitive) against home/away team names.
+</ParamField>
+
+## Returns
+
+<ResponseField name="games" type="Game[]">
+  <Expandable title="Game">
+    <ResponseField name="id" type="GameId">ESPN event id.</ResponseField>
+    <ResponseField name="league" type="string" />
+    <ResponseField name="home_team" type="string?" />
+    <ResponseField name="away_team" type="string?" />
+    <ResponseField name="start_time" type="DateTime?" />
+    <ResponseField name="status" type="GameStatus" />
+    <ResponseField name="raw_status" type="string?">Verbatim ESPN status before normalization.</ResponseField>
+    <ResponseField name="venue" type="string?">Stadium / arena name.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```rust Rust
+use openpx::{Sports, GameFilter};
+
+let sports = Sports::new()?;
+let games = sports.list_games(GameFilter {
+    league: Some("nfl".into()),
+    team: Some("Chiefs".into()),
+    ..Default::default()
+}).await?;
+```
+
+```python Python
+sports = Sports()
+games = sports.list_games(league="nfl", team="Chiefs")
+```
+
+```typescript TypeScript
+const sports = new Sports();
+const games = await sports.listGames({ league: "nfl", team: "Chiefs" });
+```
+
+</CodeGroup>
