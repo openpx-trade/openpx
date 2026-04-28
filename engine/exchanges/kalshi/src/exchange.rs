@@ -1667,7 +1667,9 @@ impl Exchange for Kalshi {
             Some(n) if n > 0 => format!("/portfolio/balance?subaccount={n}"),
             _ => "/portfolio/balance".to_string(),
         };
-        self.get::<serde_json::Value>(&path).await.map_err(to_openpx)
+        self.get::<serde_json::Value>(&path)
+            .await
+            .map_err(to_openpx)
     }
 
     fn describe(&self) -> ExchangeInfo {

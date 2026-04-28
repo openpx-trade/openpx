@@ -69,7 +69,11 @@ impl KalshiConfig {
     }
 
     pub fn with_subaccount(mut self, subaccount: u32) -> Self {
-        self.subaccount = if subaccount == 0 { None } else { Some(subaccount) };
+        self.subaccount = if subaccount == 0 {
+            None
+        } else {
+            Some(subaccount)
+        };
         self
     }
 
