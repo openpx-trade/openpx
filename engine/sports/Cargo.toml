@@ -1,20 +1,28 @@
 [package]
 name = "px-sports"
-description = "Real-time sports score streaming via Polymarket Sports WebSocket"
+description = "ESPN sports research data + venue-bridge primitive for OpenPX"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
-keywords = ["sports", "websocket", "live-scores", "prediction-market"]
+keywords = ["sports", "espn", "research", "prediction-market"]
 categories = ["api-bindings"]
 
+[features]
+default = []
+schema = ["dep:schemars", "px-core/schema"]
+
 [dependencies]
-px-core = { workspace = true }
+px-core = { workspace = true, features = ["http"] }
+px-exchange-kalshi = { workspace = true }
+px-exchange-polymarket = { workspace = true }
 tokio = { workspace = true }
-tokio-tungstenite = { workspace = true }
 tokio-stream = { workspace = true }
 futures = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 tracing = { workspace = true }
+schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true }

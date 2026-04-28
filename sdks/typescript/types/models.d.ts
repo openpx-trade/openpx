@@ -25,6 +25,20 @@ export type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
  */
 export type OrderSide = "buy" | "sell";
 /**
+ * Opaque game identifier scoped to ESPN's event ids.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameId".
+ */
+export type GameId = string;
+/**
+ * Normalized lifecycle status. Anything outside this list is `Unknown`, with the original string preserved on `Game::raw_status`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameStatus".
+ */
+export type GameStatus = "scheduled" | "live" | "final" | "postponed" | "cancelled" | "unknown";
+/**
  * Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -411,6 +425,93 @@ export interface Fill {
   [k: string]: unknown;
 }
 /**
+ * A scheduled, live, or completed sporting event.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Game".
+ */
+export interface Game {
+  away_team?: string | null;
+  home_team?: string | null;
+  id: GameId;
+  /**
+   * Canonical league id (`League::id`).
+   */
+  league: string;
+  /**
+   * Verbatim ESPN status before normalization. Useful when `status` is `Unknown`.
+   */
+  raw_status?: string | null;
+  /**
+   * Scheduled start time (UTC).
+   */
+  start_time?: string | null;
+  status: GameStatus;
+  /**
+   * Optional venue name (stadium / arena).
+   */
+  venue?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Filter for `Espn::list_games` / `Sports::list_games`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameFilter".
+ */
+export interface GameFilter {
+  /**
+   * Calendar day (UTC). When set, returns games scheduled on that day.
+   */
+  date?: string | null;
+  /**
+   * League id (e.g., "nfl"). Required for ESPN — scoreboard endpoints are league-scoped.
+   */
+  league?: string | null;
+  status?: GameStatus | null;
+  /**
+   * Substring match against home/away team names.
+   */
+  team?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Live or post-game state for a single game.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "GameState".
+ */
+export interface GameState {
+  /**
+   * Provider-formatted clock string (e.g., "12:34").
+   */
+  clock?: string | null;
+  ended: boolean;
+  game_id: GameId;
+  live: boolean;
+  /**
+   * Provider-formatted period label (e.g., "Q2", "Halftime").
+   */
+  period?: string | null;
+  raw_status?: string | null;
+  score?: Score | null;
+  status: GameStatus;
+  updated_at: string;
+  [k: string]: unknown;
+}
+/**
+ * Score in a head-to-head sport. Exotic formats (esports, golf cumulative) fall through to `raw`-only.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Score".
+ */
+export interface Score {
+  away?: number | null;
+  home?: number | null;
+  raw?: string | null;
+  [k: string]: unknown;
+}
+/**
  * Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just "what just printed?" — common UI need that doesn't require the full trade history.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -421,6 +522,31 @@ export interface LastTrade {
   side: OrderSide;
   size: number;
   ts_ms: number;
+  [k: string]: unknown;
+}
+/**
+ * A specific competition within a sport (e.g., NFL, NBA, EPL).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "League".
+ */
+export interface League {
+  /**
+   * Common abbreviation when present (e.g., "NFL").
+   */
+  abbreviation?: string | null;
+  /**
+   * Canonical id used in ESPN URLs (e.g., "nfl", "nba", "usa.1").
+   */
+  id: string;
+  /**
+   * Human-readable display name.
+   */
+  name: string;
+  /**
+   * Parent `Sport::id`.
+   */
+  sport_id: string;
   [k: string]: unknown;
 }
 /**
@@ -695,6 +821,17 @@ export interface MarketTrade {
   [k: string]: unknown;
 }
 /**
+ * Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketsByVenue".
+ */
+export interface MarketsByVenue {
+  kalshi: Event[];
+  polymarket: Event[];
+  [k: string]: unknown;
+}
+/**
  * Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -912,6 +1049,23 @@ export interface SeriesRequest {
    */
   include_volume?: boolean | null;
   limit?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * A top-level sport (e.g., football, basketball, hockey).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Sport".
+ */
+export interface Sport {
+  /**
+   * Canonical id used in ESPN URLs (e.g., "football", "basketball").
+   */
+  id: string;
+  /**
+   * Human-readable display name.
+   */
+  name: string;
   [k: string]: unknown;
 }
 /**

@@ -3,6 +3,7 @@ mod error;
 mod events;
 mod exchange;
 mod sports;
+mod sports_research;
 mod stream;
 mod websocket;
 
@@ -31,6 +32,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stream::NativeSessionStream>()?;
     m.add_class::<sports::NativeSportsWebSocket>()?;
     m.add_class::<sports::NativeSportsStream>()?;
+    m.add_class::<sports_research::NativeSports>()?;
+    m.add_class::<sports_research::NativeGameStateStream>()?;
     m.add_class::<crypto::NativeCryptoPriceWebSocket>()?;
     m.add_class::<crypto::NativeCryptoPriceStream>()?;
 

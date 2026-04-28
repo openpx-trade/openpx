@@ -303,7 +303,6 @@
         "id",
         "title"
       ],
-      "title": "Event",
       "type": "object"
     },
     "EventsRequest": {
@@ -632,6 +631,177 @@
       "title": "Fill",
       "type": "object"
     },
+    "Game": {
+      "description": "A scheduled, live, or completed sporting event.",
+      "properties": {
+        "away_team": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "home_team": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/GameId"
+        },
+        "league": {
+          "description": "Canonical league id (`League::id`).",
+          "type": "string"
+        },
+        "raw_status": {
+          "description": "Verbatim ESPN status before normalization. Useful when `status` is `Unknown`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_time": {
+          "description": "Scheduled start time (UTC).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        },
+        "venue": {
+          "description": "Optional venue name (stadium / arena).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "league",
+        "status"
+      ],
+      "title": "Game",
+      "type": "object"
+    },
+    "GameFilter": {
+      "description": "Filter for `Espn::list_games` / `Sports::list_games`.",
+      "properties": {
+        "date": {
+          "description": "Calendar day (UTC). When set, returns games scheduled on that day.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "league": {
+          "description": "League id (e.g., \"nfl\"). Required for ESPN — scoreboard endpoints are league-scoped.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GameStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "team": {
+          "description": "Substring match against home/away team names.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "GameFilter",
+      "type": "object"
+    },
+    "GameId": {
+      "description": "Opaque game identifier scoped to ESPN's event ids.",
+      "type": "string"
+    },
+    "GameState": {
+      "description": "Live or post-game state for a single game.",
+      "properties": {
+        "clock": {
+          "description": "Provider-formatted clock string (e.g., \"12:34\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended": {
+          "type": "boolean"
+        },
+        "game_id": {
+          "$ref": "#/definitions/GameId"
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "period": {
+          "description": "Provider-formatted period label (e.g., \"Q2\", \"Halftime\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Score"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ended",
+        "game_id",
+        "live",
+        "status",
+        "updated_at"
+      ],
+      "title": "GameState",
+      "type": "object"
+    },
+    "GameStatus": {
+      "description": "Normalized lifecycle status. Anything outside this list is `Unknown`, with the original string preserved on `Game::raw_status`.",
+      "enum": [
+        "scheduled",
+        "live",
+        "final",
+        "postponed",
+        "cancelled",
+        "unknown"
+      ],
+      "type": "string"
+    },
     "InvalidationReason": {
       "description": "Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
       "oneOf": [
@@ -699,6 +869,37 @@
         "ts_ms"
       ],
       "title": "LastTrade",
+      "type": "object"
+    },
+    "League": {
+      "description": "A specific competition within a sport (e.g., NFL, NBA, EPL).",
+      "properties": {
+        "abbreviation": {
+          "description": "Common abbreviation when present (e.g., \"NFL\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Canonical id used in ESPN URLs (e.g., \"nfl\", \"nba\", \"usa.1\").",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable display name.",
+          "type": "string"
+        },
+        "sport_id": {
+          "description": "Parent `Sport::id`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "sport_id"
+      ],
+      "title": "League",
       "type": "object"
     },
     "LiquidityRole": {
@@ -1228,6 +1429,29 @@
       "title": "MarketType",
       "type": "string"
     },
+    "MarketsByVenue": {
+      "description": "Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.",
+      "properties": {
+        "kalshi": {
+          "items": {
+            "$ref": "#/definitions/Event"
+          },
+          "type": "array"
+        },
+        "polymarket": {
+          "items": {
+            "$ref": "#/definitions/Event"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kalshi",
+        "polymarket"
+      ],
+      "title": "MarketsByVenue",
+      "type": "object"
+    },
     "MidpointRequest": {
       "description": "Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.",
       "properties": {
@@ -1719,6 +1943,35 @@
       ],
       "type": "string"
     },
+    "Score": {
+      "description": "Score in a head-to-head sport. Exotic formats (esports, golf cumulative) fall through to `raw`-only.",
+      "properties": {
+        "away": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "home": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "raw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "Score",
+      "type": "object"
+    },
     "Series": {
       "description": "A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.",
       "properties": {
@@ -1950,6 +2203,25 @@
         }
       },
       "title": "SettlementSource",
+      "type": "object"
+    },
+    "Sport": {
+      "description": "A top-level sport (e.g., football, basketball, hockey).",
+      "properties": {
+        "id": {
+          "description": "Canonical id used in ESPN URLs (e.g., \"football\", \"basketball\").",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable display name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Sport",
       "type": "object"
     },
     "Spread": {

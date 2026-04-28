@@ -6,11 +6,18 @@ mod ws;
 pub use ws::WebSocketInner;
 
 pub use px_crypto::CryptoPriceWebSocket;
-pub use px_sports::SportsWebSocket;
 
-// Exchange implementations (re-export for direct construction)
+// Sports research surface (ESPN-only data, plus a venue-bridge primitive).
+pub use px_sports::{
+    Espn, EspnConfig, Game, GameFilter, GameId, GameState, GameStatus, League, MarketsByVenue,
+    Score, Sport, Sports,
+};
+
+// Exchange implementations (re-export for direct construction).
 pub use px_exchange_kalshi::{Kalshi, KalshiConfig};
-pub use px_exchange_polymarket::{Polymarket, PolymarketConfig, PolymarketSignatureType};
+pub use px_exchange_polymarket::{
+    Polymarket, PolymarketConfig, PolymarketSignatureType, SportsWebSocket,
+};
 
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;

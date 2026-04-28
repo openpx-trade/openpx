@@ -136,6 +136,21 @@ class FetchUserActivityParams(BaseModel):
     limit: conint(ge=0) | None = None
 
 
+class GameId(RootModel[str]):
+    root: str = Field(
+        ..., description="Opaque game identifier scoped to ESPN's event ids."
+    )
+
+
+class GameStatus(Enum):
+    scheduled = "scheduled"
+    live = "live"
+    final = "final"
+    postponed = "postponed"
+    cancelled = "cancelled"
+    unknown = "unknown"
+
+
 class InvalidationReason1(Enum):
     Reconnect = "Reconnect"
     Lag = "Lag"
@@ -159,6 +174,17 @@ class InvalidationReason(RootModel[InvalidationReason1 | InvalidationReason2]):
         ...,
         description="Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
     )
+
+
+class League(BaseModel):
+    abbreviation: str | None = Field(
+        None, description='Common abbreviation when present (e.g., "NFL").'
+    )
+    id: str = Field(
+        ..., description='Canonical id used in ESPN URLs (e.g., "nfl", "nba", "usa.1").'
+    )
+    name: str = Field(..., description="Human-readable display name.")
+    sport_id: str = Field(..., description="Parent `Sport::id`.")
 
 
 class LiquidityRole(Enum):
@@ -198,6 +224,11 @@ class MarketType(Enum):
     binary = "binary"
     categorical = "categorical"
     scalar = "scalar"
+
+
+class MarketsByVenue(BaseModel):
+    kalshi: list[Event]
+    polymarket: list[Event]
 
 
 class MidpointRequest(BaseModel):
@@ -280,6 +311,12 @@ class PriceLevelSide(Enum):
     ask = "ask"
 
 
+class Score(BaseModel):
+    away: conint(ge=0) | None = None
+    home: conint(ge=0) | None = None
+    raw: str | None = None
+
+
 class SeriesRequest(BaseModel):
     category: str | None = Field(
         None, description="Filter by category (e.g. `Politics`, `Sports`)."
@@ -356,6 +393,14 @@ class SessionEvent(
 class SettlementSource(BaseModel):
     name: str | None = None
     url: str | None = None
+
+
+class Sport(BaseModel):
+    id: str = Field(
+        ...,
+        description='Canonical id used in ESPN URLs (e.g., "football", "basketball").',
+    )
+    name: str = Field(..., description="Human-readable display name.")
 
 
 class Spread(BaseModel):
@@ -514,6 +559,55 @@ class Fill(BaseModel):
     price: float
     side: OrderSide
     size: float
+
+
+class Game(BaseModel):
+    away_team: str | None = None
+    home_team: str | None = None
+    id: GameId
+    league: str = Field(..., description="Canonical league id (`League::id`).")
+    raw_status: str | None = Field(
+        None,
+        description="Verbatim ESPN status before normalization. Useful when `status` is `Unknown`.",
+    )
+    start_time: AwareDatetime | None = Field(
+        None, description="Scheduled start time (UTC)."
+    )
+    status: GameStatus
+    venue: str | None = Field(
+        None, description="Optional venue name (stadium / arena)."
+    )
+
+
+class GameFilter(BaseModel):
+    date: AwareDatetime | None = Field(
+        None,
+        description="Calendar day (UTC). When set, returns games scheduled on that day.",
+    )
+    league: str | None = Field(
+        None,
+        description='League id (e.g., "nfl"). Required for ESPN — scoreboard endpoints are league-scoped.',
+    )
+    status: GameStatus | None = None
+    team: str | None = Field(
+        None, description="Substring match against home/away team names."
+    )
+
+
+class GameState(BaseModel):
+    clock: str | None = Field(
+        None, description='Provider-formatted clock string (e.g., "12:34").'
+    )
+    ended: bool
+    game_id: GameId
+    live: bool
+    period: str | None = Field(
+        None, description='Provider-formatted period label (e.g., "Q2", "Halftime").'
+    )
+    raw_status: str | None = None
+    score: Score | None = None
+    status: GameStatus
+    updated_at: AwareDatetime
 
 
 class LastTrade(BaseModel):

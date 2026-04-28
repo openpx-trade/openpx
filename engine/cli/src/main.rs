@@ -2,6 +2,7 @@ use std::env;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
+use openpx::SportsWebSocket;
 use openpx::{ExchangeInner, WebSocketInner};
 use px_core::models::{CryptoPriceSource, PriceHistoryInterval};
 use px_core::websocket::OrderBookWebSocket;
@@ -11,7 +12,6 @@ use px_core::{
     PriceHistoryRequest, TradesRequest,
 };
 use px_crypto::CryptoPriceWebSocket;
-use px_sports::SportsWebSocket;
 
 #[derive(Parser)]
 #[command(

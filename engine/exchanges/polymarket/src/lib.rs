@@ -10,6 +10,7 @@ mod exchange;
 mod fetcher;
 pub mod relayer;
 pub mod signer;
+mod sports_ws;
 mod swap;
 mod websocket;
 
@@ -23,5 +24,6 @@ pub use error::*;
 pub use exchange::*;
 pub use fetcher::*;
 pub use signer::ExternalSigner;
+pub use sports_ws::SportsWebSocket;
 pub use swap::*;
 pub use websocket::*;

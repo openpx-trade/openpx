@@ -182,6 +182,70 @@ A single fill (trade execution) from a user's order.
 | `size` | `number` |  |
 
 
+## `Game`
+
+A scheduled, live, or completed sporting event.
+
+| Field | Type | Description |
+|---|---|---|
+| `away_team` | `['string', 'null']` *(optional)* |  |
+| `home_team` | `['string', 'null']` *(optional)* |  |
+| `id` | [`GameId`](#gameid) |  |
+| `league` | `string` | Canonical league id (`League::id`). |
+| `raw_status` | `['string', 'null']` *(optional)* | Verbatim ESPN status before normalization. Useful when `status` is `Unknown`. |
+| `start_time` | `['string', 'null']` *(optional)* | Scheduled start time (UTC). |
+| `status` | [`GameStatus`](#gamestatus) |  |
+| `venue` | `['string', 'null']` *(optional)* | Optional venue name (stadium / arena). |
+
+
+## `GameFilter`
+
+Filter for `Espn::list_games` / `Sports::list_games`.
+
+| Field | Type | Description |
+|---|---|---|
+| `date` | `['string', 'null']` *(optional)* | Calendar day (UTC). When set, returns games scheduled on that day. |
+| `league` | `['string', 'null']` *(optional)* | League id (e.g., "nfl"). Required for ESPN — scoreboard endpoints are league-scoped. |
+| `status` | [`GameStatus`](#gamestatus) \| `null` *(optional)* |  |
+| `team` | `['string', 'null']` *(optional)* | Substring match against home/away team names. |
+
+
+## `GameId`
+
+Opaque game identifier scoped to ESPN's event ids.
+
+
+## `GameState`
+
+Live or post-game state for a single game.
+
+| Field | Type | Description |
+|---|---|---|
+| `clock` | `['string', 'null']` *(optional)* | Provider-formatted clock string (e.g., "12:34"). |
+| `ended` | `boolean` |  |
+| `game_id` | [`GameId`](#gameid) |  |
+| `live` | `boolean` |  |
+| `period` | `['string', 'null']` *(optional)* | Provider-formatted period label (e.g., "Q2", "Halftime"). |
+| `raw_status` | `['string', 'null']` *(optional)* |  |
+| `score` | [`Score`](#score) \| `null` *(optional)* |  |
+| `status` | [`GameStatus`](#gamestatus) |  |
+| `updated_at` | `string` |  |
+
+
+## `GameStatus`
+
+Normalized lifecycle status. Anything outside this list is `Unknown`, with the original string preserved on `Game::raw_status`.
+
+**Variants:**
+
+- `'scheduled'`
+- `'live'`
+- `'final'`
+- `'postponed'`
+- `'cancelled'`
+- `'unknown'`
+
+
 ## `InvalidationReason`
 
 Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
@@ -204,6 +268,18 @@ Last public trade price + side + size for a market outcome. Distinct from the fu
 | `side` | [`OrderSide`](#orderside) |  |
 | `size` | `number` |  |
 | `ts_ms` | `integer` |  |
+
+
+## `League`
+
+A specific competition within a sport (e.g., NFL, NBA, EPL).
+
+| Field | Type | Description |
+|---|---|---|
+| `abbreviation` | `['string', 'null']` *(optional)* | Common abbreviation when present (e.g., "NFL"). |
+| `id` | `string` | Canonical id used in ESPN URLs (e.g., "nfl", "nba", "usa.1"). |
+| `name` | `string` | Human-readable display name. |
+| `sport_id` | `string` | Parent `Sport::id`. |
 
 
 ## `LiquidityRole`
@@ -341,6 +417,16 @@ Market type classification.
 - `'binary'`
 - `'categorical'`
 - `'scalar'`
+
+
+## `MarketsByVenue`
+
+Venue events matching an ESPN game. Each `Event` carries `market_ids`; callers fetch full market details via `Exchange::fetch_market(id)`.
+
+| Field | Type | Description |
+|---|---|---|
+| `kalshi` | [`Event`](#event)[] |  |
+| `polymarket` | [`Event`](#event)[] |  |
 
 
 ## `MidpointRequest`
@@ -545,6 +631,17 @@ Bid or ask side. Serializes as "bid"/"ask" on the wire.
 - `'ask'`
 
 
+## `Score`
+
+Score in a head-to-head sport. Exotic formats (esports, golf cumulative) fall through to `raw`-only.
+
+| Field | Type | Description |
+|---|---|---|
+| `away` | `['integer', 'null']` *(optional)* |  |
+| `home` | `['integer', 'null']` *(optional)* |  |
+| `raw` | `['string', 'null']` *(optional)* |  |
+
+
 ## `Series`
 
 A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
@@ -600,6 +697,16 @@ Connection-level events, emitted on a channel separate from `WsUpdate` so a reco
 |---|---|---|
 | `name` | `['string', 'null']` *(optional)* |  |
 | `url` | `['string', 'null']` *(optional)* |  |
+
+
+## `Sport`
+
+A top-level sport (e.g., football, basketball, hockey).
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Canonical id used in ESPN URLs (e.g., "football", "basketball"). |
+| `name` | `string` | Human-readable display name. |
 
 
 ## `Spread`

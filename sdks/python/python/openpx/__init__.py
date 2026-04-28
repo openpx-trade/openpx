@@ -3,6 +3,7 @@
 from openpx.exchange import Exchange
 from openpx.websocket import WebSocket
 from openpx.sports import SportsWebSocket
+from openpx.sports_research import Sports
 from openpx.crypto import CryptoPriceWebSocket
 from openpx._native import (
     OpenPxError,
@@ -26,6 +27,7 @@ __all__ = [
     "Exchange",
     "WebSocket",
     "SportsWebSocket",
+    "Sports",
     "CryptoPriceWebSocket",
     "OpenPxError",
     "NetworkError",

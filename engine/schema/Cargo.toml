@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 px-core = { workspace = true, features = ["schema"] }
+px-sports = { workspace = true, features = ["schema"] }
 schemars = { version = "0.8", features = ["chrono", "smallvec"] }
 serde_json = { workspace = true }
 tikv-jemallocator = { workspace = true }

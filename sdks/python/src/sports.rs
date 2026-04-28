@@ -5,9 +5,9 @@ use pyo3::prelude::*;
 use pythonize::pythonize;
 use tokio::sync::{mpsc, Mutex};
 
+use openpx::SportsWebSocket;
 use px_core::error::WebSocketError;
 use px_core::models::SportResult;
-use px_sports::SportsWebSocket;
 
 use crate::error::to_py_err;
 use crate::get_runtime;
