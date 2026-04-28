@@ -156,9 +156,10 @@ jobs:
     strategy:
       fail-fast: false
       # Cap parallelism to keep within Anthropic API rate limits and to
-      # avoid 5+ simultaneous CI runs hammering the runner pool. Backfills
-      # of 50+ entries simply queue.
-      max-parallel: 4
+      # avoid too many simultaneous CI runs hammering the runner pool.
+      # 8 halves the wave count for full 15-entry backfill chunks (was 4)
+      # while staying inside subscription rate limits in practice.
+      max-parallel: 8
       matrix:
         item: ${{ fromJson(needs.classify.outputs.dispatches) }}
 
