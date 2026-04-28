@@ -9,12 +9,6 @@ description: "Polymarket activity feed (positions, trades, portfolio)."
 Polymarket only — Kalshi returns `NotSupported`. Returns unparsed JSON
 from Polymarket's activity API.
 
-```rust
-async fn fetch_user_activity(
-    params: FetchUserActivityParams,
-) -> Result<serde_json::Value, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="address" type="string" required>
@@ -29,9 +23,7 @@ async fn fetch_user_activity(
 
 Raw JSON from Polymarket's activity API.
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::FetchUserActivityParams;
@@ -50,4 +42,4 @@ activity = ex.fetch_user_activity(address="0xabc…", limit=100)
 const activity = await ex.fetchUserActivity("0xabc…", 100);
 ```
 
-</CodeGroup>
+</RequestExample>

@@ -6,12 +6,6 @@ playground: simple
 description: "List open positions, optionally scoped to one market."
 ---
 
-```rust
-async fn fetch_positions(
-    market_id: Option<&str>,
-) -> Result<Vec<Position>, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string?">
@@ -30,9 +24,7 @@ async fn fetch_positions(
   </Expandable>
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 let positions = ex.fetch_positions(None).await?;
@@ -46,4 +38,4 @@ positions = ex.fetch_positions()
 const positions = await ex.fetchPositions();
 ```
 
-</CodeGroup>
+</RequestExample>

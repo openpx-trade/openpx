@@ -6,12 +6,6 @@ playground: simple
 description: "OHLCV candles."
 ---
 
-```rust
-async fn fetch_price_history(
-    req: PriceHistoryRequest,
-) -> Result<Vec<Candlestick>, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string" required>
@@ -56,9 +50,7 @@ async fn fetch_price_history(
   Kalshi only.
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::{PriceHistoryRequest, PriceHistoryInterval};
@@ -85,4 +77,4 @@ const candles = await ex.fetchPriceHistory(
 );
 ```
 
-</CodeGroup>
+</RequestExample>

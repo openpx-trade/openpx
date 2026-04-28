@@ -8,12 +8,6 @@ description: "One-shot L2 orderbook snapshot."
 
 For real-time books, use [WebSockets](/websockets/overview).
 
-```rust
-async fn fetch_orderbook(
-    req: OrderbookRequest,
-) -> Result<Orderbook, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string" required>
@@ -44,9 +38,7 @@ async fn fetch_orderbook(
   </Expandable>
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 use openpx::OrderbookRequest;
@@ -66,4 +58,4 @@ book = ex.fetch_orderbook("KXBTC-25MAR14-T20000", outcome="Yes")
 const book = await ex.fetchOrderbook("KXBTC-25MAR14-T20000", "Yes");
 ```
 
-</CodeGroup>
+</RequestExample>

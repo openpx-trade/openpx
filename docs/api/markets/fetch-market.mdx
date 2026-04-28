@@ -6,10 +6,6 @@ playground: simple
 description: "Fetch a single market by its native ID."
 ---
 
-```rust
-async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
-```
-
 ## Parameters
 
 <ParamField path="market_id" type="string" required>
@@ -42,9 +38,7 @@ async fn fetch_market(market_id: &str) -> Result<Market, OpenPxError>
   </Expandable>
 </ResponseField>
 
-## Example
-
-<CodeGroup>
+<RequestExample>
 
 ```rust Rust
 let market = ex.fetch_market("KXBTC-25MAR14-T20000").await?;
@@ -58,4 +52,4 @@ market = ex.fetch_market("KXBTC-25MAR14-T20000")
 const market = await ex.fetchMarket("KXBTC-25MAR14-T20000");
 ```
 
-</CodeGroup>
+</RequestExample>
