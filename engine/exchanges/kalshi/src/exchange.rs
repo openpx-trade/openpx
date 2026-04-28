@@ -1681,6 +1681,7 @@ impl Exchange for Kalshi {
             has_fetch_fills: true,
             has_fetch_server_time: false,
             has_approvals: false,
+            // intentionally unsupported: Kalshi is a centralized exchange with no on-chain allowance model; balance is always live from the server
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
             has_fetch_orderbook_history: false,
