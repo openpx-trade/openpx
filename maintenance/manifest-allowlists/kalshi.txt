@@ -5,10 +5,10 @@
 
 # --- Order parsing (Order model, not Market) ---
 order_id                # Order.id
-order_type              # Order type (limit/market) read for normalization
+order_type              # Order type; only "limit" since Feb 2026 (market orders removed)
 action                  # buy/sell
 side                    # yes/no
-type                    # alias for order_type in some payloads
+type                    # alias for order_type in some response payloads (removed from POST /portfolio/orders request, Feb 2026)
 price                   # Order.price (not Market price)
 yes_price               # Order yes-side price
 no_price                # Order no-side price

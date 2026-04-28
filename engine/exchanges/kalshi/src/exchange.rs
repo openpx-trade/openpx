@@ -1470,8 +1470,6 @@ impl Exchange for Kalshi {
             ticker: String,
             action: String,
             side: String,
-            #[serde(rename = "type")]
-            order_type: String,
             #[serde(skip_serializing_if = "Option::is_none")]
             time_in_force: Option<String>,
             count_fp: String,
@@ -1493,7 +1491,6 @@ impl Exchange for Kalshi {
             ticker: market_id.to_string(),
             action: action.to_string(),
             side: kalshi_side.clone(),
-            order_type: "limit".to_string(),
             time_in_force,
             count_fp,
             yes_price_dollars,
