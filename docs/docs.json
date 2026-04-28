@@ -69,7 +69,9 @@
             "group": "Orders",
             "pages": [
               "api/orders/create-order",
+              "api/orders/create-orders-batch",
               "api/orders/cancel-order",
+              "api/orders/cancel-all-orders",
               "api/orders/fetch-order",
               "api/orders/fetch-open-orders"
             ]

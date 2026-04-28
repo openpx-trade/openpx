@@ -1,0 +1,78 @@
+---
+title: "cancel_all_orders"
+sidebarTitle: "Cancel all orders"
+openapi: DELETE /v1/orders/cancel_all_orders
+playground: simple
+description: "Cancel all of the caller's open orders."
+---
+
+Cancel every open order in one call. Pass a `market_id` to scope the cancel to
+a single market.
+
+## Parameters
+
+<ParamField path="market_id" type="string?">
+  When `Some`, cancel only orders on this market. When `None`, cancel all open
+  orders across every market.
+</ParamField>
+
+## Returns
+
+<ResponseField name="orders" type="Order[]">
+  The set of orders that were successfully cancelled. Failed cancels are
+  logged at `WARN` and omitted from the result on Polymarket; Kalshi includes
+  per-order error entries from `/portfolio/orders/batched` and they are
+  filtered out of the unified return.
+</ResponseField>
+
+<Note>
+  **Kalshi** is a two-step flow: list resting orders (paginated) then
+  `DELETE /portfolio/orders/batched` with the collected IDs. There is no
+  single "cancel all" verb.
+
+  **Polymarket** currently iterates `cancel_order` per open order. The
+  CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
+  endpoints; switching to those is a planned follow-up once the V2 SDK
+  exposes them.
+</Note>
+
+<RequestExample>
+
+```rust Rust
+let cancelled = ex.cancel_all_orders(None).await?;
+println!("cancelled {} orders", cancelled.len());
+
+let scoped = ex.cancel_all_orders(Some("KXBTC-25MAR14-T20000")).await?;
+```
+
+```python Python
+ex.cancel_all_orders()
+ex.cancel_all_orders(market_id="KXBTC-25MAR14-T20000")
+```
+
+```typescript TypeScript
+await ex.cancelAllOrders();
+await ex.cancelAllOrders("KXBTC-25MAR14-T20000");
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+[
+  {
+    "id": "abc123",
+    "market_id": "KXBTC-25MAR14-T20000",
+    "outcome": "Yes",
+    "side": "buy",
+    "price": 0.42,
+    "size": 100.0,
+    "filled": 0.0,
+    "status": "Cancelled",
+    "created_at": "2026-04-28T10:00:00Z"
+  }
+]
+```
+
+</ResponseExample>

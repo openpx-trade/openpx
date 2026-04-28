@@ -21,10 +21,11 @@ use px_core::{
     canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
     EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
     FetchUserActivityParams, Fill, LastTrade, Market, MarketStatus, MarketStatusFilter,
-    MarketTrade, MarketType, MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus,
-    Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position,
-    PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series,
-    SeriesRequest, SettlementSource, Spread, Tag, TradesRequest, UserTrade, UserTradesRequest,
+    MarketTrade, MarketType, MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
+    OrderType as UnifiedOrderType, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot,
+    OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade,
+    RateLimiter, Series, SeriesRequest, SettlementSource, Spread, Tag, TradesRequest, UserTrade,
+    UserTradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -3424,6 +3425,67 @@ impl Exchange for Polymarket {
         Ok((trades, next_cursor))
     }
 
+    async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
+        // Sequential loop over the caller's open orders. The Polymarket
+        // CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
+        // endpoints that are O(1). TODO(batch5-v2): swap to those once the
+        // V2 SDK lands and exposes them. For now this works against both V1
+        // and V2 SDKs and matches the trait contract.
+        let params = FetchOrdersParams {
+            market_id: market_id.map(String::from),
+        };
+        let open = self.fetch_open_orders(Some(params)).await?;
+
+        let mut cancelled = Vec::with_capacity(open.len());
+        for order in open {
+            match self.cancel_order(&order.id, market_id).await {
+                Ok(o) => cancelled.push(o),
+                Err(e) => tracing::warn!(
+                    order_id = %order.id,
+                    error = %e,
+                    "polymarket cancel_all_orders: skipping failed cancel"
+                ),
+            }
+        }
+        Ok(cancelled)
+    }
+
+    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
+        // Polymarket caps batches at 15 orders per the V2 migration guide.
+        if orders.len() > 15 {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
+                "create_orders_batch: Polymarket cap is 15 orders per request".into(),
+            )));
+        }
+
+        // Sequential per-order submission via the existing create_order path.
+        // TODO(batch5-v2): when V2 lands, swap to the native `POST /orders`
+        // batch endpoint with array body — single round-trip, deferred
+        // execution support. For now this works on V1 and matches the
+        // unified contract.
+        let mut out = Vec::with_capacity(orders.len());
+        for o in orders {
+            let mut params: HashMap<String, String> = HashMap::new();
+            if let Some(tif) = polymarket_unified_tif(o.order_type) {
+                params.insert("order_type".to_string(), tif.to_string());
+            }
+            if let Some(p) = o.post_only {
+                params.insert("post_only".to_string(), p.to_string());
+            }
+            if let Some(c) = &o.client_order_id {
+                params.insert("client_order_id".to_string(), c.clone());
+            }
+            if let Some(ts) = o.expiration_ts {
+                params.insert("expiration".to_string(), ts.to_string());
+            }
+            let order = self
+                .create_order(&o.market_id, &o.outcome, o.side, o.price, o.size, params)
+                .await?;
+            out.push(order);
+        }
+        Ok(out)
+    }
+
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -3460,8 +3522,8 @@ impl Exchange for Polymarket {
             has_fetch_open_interest: true,
             has_fetch_user_trades: true,
             has_fetch_market_tags: true,
-            has_cancel_all_orders: false,
-            has_create_orders_batch: false,
+            has_cancel_all_orders: authed,
+            has_create_orders_batch: authed,
         }
     }
 }
@@ -3761,6 +3823,18 @@ fn parse_polymarket_price_field(v: &serde_json::Value, key: &str) -> Option<f64>
         p.as_f64()
             .or_else(|| p.as_str().and_then(|s| s.parse().ok()))
     })
+}
+
+/// Map the unified `OrderType` to a Polymarket-recognized time-in-force string
+/// (consumed by `create_order` via the params map).
+fn polymarket_unified_tif(t: UnifiedOrderType) -> Option<&'static str> {
+    match t {
+        UnifiedOrderType::Gtc => Some("GTC"),
+        UnifiedOrderType::Fok => Some("FOK"),
+        // Polymarket calls IOC "FAK" (fill-and-kill); the existing
+        // `polymarket_order_type` parser maps both spellings.
+        UnifiedOrderType::Ioc => Some("FAK"),
+    }
 }
 
 #[cfg(test)]
