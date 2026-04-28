@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["sports", "websocket", "live-scores", "prediction-market"]
 categories = ["api-bindings"]
 
+[features]
+default = []
+schema = ["dep:schemars", "px-core/schema"]
+
 [dependencies]
 px-core = { workspace = true }
 tokio = { workspace = true }
@@ -18,3 +22,4 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true }
