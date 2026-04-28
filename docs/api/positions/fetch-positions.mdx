@@ -1,5 +1,8 @@
 ---
 title: "fetch_positions"
+sidebarTitle: "Fetch positions"
+openapi: GET /v1/positions/fetch_positions
+playground: simple
 description: "List open positions, optionally scoped to one market."
 ---
 
@@ -17,13 +20,15 @@ async fn fetch_positions(
 
 ## Returns
 
-[`Position[]`](/api/unified-schema#position).
-
-<ResponseField name="market_id" type="string" />
-<ResponseField name="outcome" type="string" />
-<ResponseField name="size" type="f64" />
-<ResponseField name="average_price" type="f64" />
-<ResponseField name="current_price" type="f64" />
+<ResponseField name="positions" type="Position[]">
+  <Expandable title="Position">
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="outcome" type="string" />
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="average_price" type="f64" />
+    <ResponseField name="current_price" type="f64" />
+  </Expandable>
+</ResponseField>
 
 ## Example
 

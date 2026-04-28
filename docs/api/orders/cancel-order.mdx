@@ -1,5 +1,8 @@
 ---
 title: "cancel_order"
+sidebarTitle: "Cancel order"
+openapi: DELETE /v1/orders/cancel_order
+playground: simple
 description: "Cancel an open order."
 ---
 
@@ -22,7 +25,22 @@ async fn cancel_order(
 
 ## Returns
 
-[`Order`](/api/unified-schema#order) — the cancelled order.
+<ResponseField name="order" type="Order">
+  <Expandable title="Order">
+    <ResponseField name="id" type="string" />
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="outcome" type="string" />
+    <ResponseField name="side" type="OrderSide" />
+    <ResponseField name="price" type="f64" />
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="filled" type="f64" />
+    <ResponseField name="status" type="OrderStatus">
+      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
+    </ResponseField>
+    <ResponseField name="created_at" type="DateTime<Utc>" />
+    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+  </Expandable>
+</ResponseField>
 
 ## Example
 

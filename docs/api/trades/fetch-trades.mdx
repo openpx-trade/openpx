@@ -1,5 +1,8 @@
 ---
 title: "fetch_trades"
+sidebarTitle: "Fetch trades"
+openapi: GET /v1/trades/fetch_trades
+playground: simple
 description: "Public market trade tape."
 ---
 
@@ -46,7 +49,16 @@ async fn fetch_trades(
 ## Returns
 
 <ResponseField name="trades" type="MarketTrade[]">
-  See [`MarketTrade`](/api/unified-schema#markettrade--fill--candlestick).
+  <Expandable title="MarketTrade">
+    <ResponseField name="trade_id" type="string?" />
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="asset_id" type="string">Per-outcome (Kalshi: ticker, Polymarket: token).</ResponseField>
+    <ResponseField name="outcome" type="string?">`"Yes"` / `"No"`.</ResponseField>
+    <ResponseField name="price" type="f64">Decimal in `[0, 1]`.</ResponseField>
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="side" type="string?" />
+    <ResponseField name="timestamp" type="DateTime<Utc>" />
+  </Expandable>
 </ResponseField>
 
 <ResponseField name="cursor" type="string?">
