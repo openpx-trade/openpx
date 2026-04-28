@@ -6,11 +6,12 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Exchange,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderSide,
-    OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval, PriceHistoryRequest,
-    PriceLevel, RateLimiter, TradesRequest,
+    canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
+    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
+    Fill, Market, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
+    OrderSide, OrderStatus, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, RateLimiter, Series, SeriesRequest, SettlementSource, Tag,
+    TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -58,6 +59,147 @@ fn parse_numeric_value(val: &Option<serde_json::Value>) -> Option<f64> {
 
 pub(crate) fn to_openpx(e: KalshiError) -> OpenPxError {
     OpenPxError::Exchange(e.into())
+}
+
+fn parse_iso_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+}
+
+fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
+    let obj = value.as_object()?;
+    let id = obj.get("event_ticker").and_then(|v| v.as_str())?.to_string();
+
+    let title = obj
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let description = obj
+        .get("sub_title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    let series_id = obj
+        .get("series_ticker")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let mutually_exclusive = obj.get("mutually_exclusive").and_then(|v| v.as_bool());
+
+    // Strike date doubles as the resolution / end timestamp.
+    let end_ts = obj
+        .get("strike_date")
+        .and_then(|v| v.as_str())
+        .and_then(parse_iso_datetime);
+
+    let last_updated_ts = obj
+        .get("last_updated_ts")
+        .and_then(|v| v.as_str())
+        .and_then(parse_iso_datetime);
+
+    let market_ids = obj
+        .get("markets")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    m.get("ticker")
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(Event {
+        id,
+        slug: None,
+        title,
+        description,
+        category: None,
+        series_id,
+        status: None,
+        market_ids,
+        start_ts: None,
+        end_ts,
+        volume: None,
+        open_interest: None,
+        mutually_exclusive,
+        last_updated_ts,
+    })
+}
+
+fn parse_kalshi_series(value: &serde_json::Value) -> Option<Series> {
+    let obj = value.as_object()?;
+    let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
+
+    let title = obj
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let category = obj
+        .get("category")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let frequency = obj
+        .get("frequency")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let tags = obj
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|t| t.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let settlement_sources = obj
+        .get("settlement_sources")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|s| SettlementSource {
+                    name: s.get("name").and_then(|v| v.as_str()).map(String::from),
+                    url: s.get("url").and_then(|v| v.as_str()).map(String::from),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let fee_type = obj
+        .get("fee_type")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // `volume_fp` arrives as a fixed-point string when include_volume=true.
+    let volume = parse_fp(obj, "volume_fp");
+
+    let last_updated_ts = obj
+        .get("last_updated_ts")
+        .and_then(|v| v.as_str())
+        .and_then(parse_iso_datetime);
+
+    Some(Series {
+        id,
+        title,
+        category,
+        frequency,
+        tags,
+        settlement_sources,
+        fee_type,
+        volume,
+        last_updated_ts,
+    })
 }
 
 pub struct Kalshi {
@@ -1430,6 +1572,156 @@ impl Exchange for Kalshi {
         Ok((trades, next_cursor))
     }
 
+    async fn fetch_events(
+        &self,
+        req: EventsRequest,
+    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct EventsResp {
+            #[serde(default)]
+            events: Vec<serde_json::Value>,
+            cursor: Option<String>,
+        }
+
+        let limit = req.limit.unwrap_or(200).clamp(1, 200);
+        let mut path = format!("/events?limit={limit}");
+        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
+            path.push_str(&format!("&cursor={c}"));
+        }
+        if let Some(s) = req.status.as_deref() {
+            path.push_str(&format!("&status={s}"));
+        }
+        if let Some(s) = req.series_id.as_deref() {
+            path.push_str(&format!("&series_ticker={s}"));
+        }
+        if req.with_nested_markets.unwrap_or(false) {
+            path.push_str("&with_nested_markets=true");
+        }
+        if let Some(ts) = req.min_close_ts {
+            path.push_str(&format!("&min_close_ts={ts}"));
+        }
+        if let Some(ts) = req.min_updated_ts {
+            path.push_str(&format!("&min_updated_ts={ts}"));
+        }
+
+        let resp: EventsResp = self.get(&path).await.map_err(to_openpx)?;
+        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
+        let events = resp
+            .events
+            .iter()
+            .filter_map(parse_kalshi_event)
+            .collect();
+        Ok((events, next_cursor))
+    }
+
+    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct EventResp {
+            event: serde_json::Value,
+            #[serde(default)]
+            markets: Option<Vec<serde_json::Value>>,
+        }
+
+        let path = format!("/events/{id}?with_nested_markets=true");
+        let resp: EventResp = self.get(&path).await.map_err(to_openpx)?;
+
+        let mut event = parse_kalshi_event(&resp.event).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse event: {id}"
+            )))
+        })?;
+
+        // Top-level `markets` is sibling of `event` when `with_nested_markets=false`
+        // — fold it in if present and the event itself didn't carry it.
+        if event.market_ids.is_empty() {
+            if let Some(markets) = resp.markets {
+                event.market_ids = markets
+                    .iter()
+                    .filter_map(|m| {
+                        m.get("ticker")
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    })
+                    .collect();
+            }
+        }
+
+        Ok(event)
+    }
+
+    async fn fetch_series(
+        &self,
+        req: SeriesRequest,
+    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct SeriesResp {
+            #[serde(default)]
+            series: Vec<serde_json::Value>,
+            cursor: Option<String>,
+        }
+
+        let limit = req.limit.unwrap_or(100).clamp(1, 200);
+        let mut path = format!("/series?limit={limit}");
+        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
+            path.push_str(&format!("&cursor={c}"));
+        }
+        if let Some(c) = req.category.as_deref() {
+            path.push_str(&format!("&category={c}"));
+        }
+        if req.include_volume.unwrap_or(false) {
+            path.push_str("&include_volume=true");
+        }
+
+        let resp: SeriesResp = self.get(&path).await.map_err(to_openpx)?;
+        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
+        let series = resp.series.iter().filter_map(parse_kalshi_series).collect();
+        Ok((series, next_cursor))
+    }
+
+    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct SeriesResp {
+            series: serde_json::Value,
+        }
+
+        let path = format!("/series/{id}?include_volume=true");
+        let resp: SeriesResp = self.get(&path).await.map_err(to_openpx)?;
+        parse_kalshi_series(&resp.series).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse series: {id}"
+            )))
+        })
+    }
+
+    async fn fetch_market_tags(&self, _market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
+        // Kalshi doesn't expose per-market tags; it groups tags by category at
+        // the global level. Return the flattened union — same content for any
+        // market_id input.
+        #[derive(Debug, serde::Deserialize)]
+        struct TagsResp {
+            #[serde(default)]
+            tags_by_categories: HashMap<String, Vec<String>>,
+        }
+
+        let resp: TagsResp = self
+            .get("/search/tags_by_categories")
+            .await
+            .map_err(to_openpx)?;
+
+        let tags = resp
+            .tags_by_categories
+            .into_iter()
+            .flat_map(|(_category, names)| {
+                names.into_iter().map(|name| Tag {
+                    id: name.clone(),
+                    slug: Some(name.to_ascii_lowercase().replace(' ', "-")),
+                    name,
+                })
+            })
+            .collect();
+        Ok(tags)
+    }
+
     async fn create_order(
         &self,
         market_id: &str,
@@ -1684,21 +1976,100 @@ impl Exchange for Kalshi {
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
             has_fetch_orderbook_history: false,
-            has_fetch_events: false,
-            has_fetch_event: false,
+            has_fetch_events: true,
+            has_fetch_event: true,
             has_fetch_orderbooks_batch: false,
-            has_fetch_series: false,
-            has_fetch_series_one: false,
+            has_fetch_series: true,
+            has_fetch_series_one: true,
             has_fetch_midpoint: false,
             has_fetch_midpoints_batch: false,
             has_fetch_spread: false,
             has_fetch_last_trade_price: false,
             has_fetch_open_interest: false,
             has_fetch_user_trades: false,
-            has_fetch_market_tags: false,
+            has_fetch_market_tags: true,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod parse_event_series_tests {
+    use super::{parse_kalshi_event, parse_kalshi_series};
+
+    #[test]
+    fn parse_kalshi_event_minimal_payload() {
+        let v = serde_json::json!({
+            "event_ticker": "KXPRES-2028",
+            "series_ticker": "KXPRES",
+            "title": "2028 US Presidential Election",
+            "sub_title": "Winning candidate",
+            "mutually_exclusive": true,
+            "strike_date": "2028-11-07T00:00:00Z",
+            "last_updated_ts": "2026-04-26T12:34:56Z",
+        });
+        let e = parse_kalshi_event(&v).expect("should parse");
+        assert_eq!(e.id, "KXPRES-2028");
+        assert_eq!(e.series_id.as_deref(), Some("KXPRES"));
+        assert_eq!(e.title, "2028 US Presidential Election");
+        assert_eq!(e.description.as_deref(), Some("Winning candidate"));
+        assert_eq!(e.mutually_exclusive, Some(true));
+        assert!(e.end_ts.is_some());
+        assert!(e.last_updated_ts.is_some());
+        assert!(e.market_ids.is_empty());
+    }
+
+    #[test]
+    fn parse_kalshi_event_with_nested_markets() {
+        let v = serde_json::json!({
+            "event_ticker": "EVT",
+            "title": "T",
+            "markets": [
+                { "ticker": "M-A" },
+                { "ticker": "M-B" },
+                { "no_ticker_here": "skip" },
+            ],
+        });
+        let e = parse_kalshi_event(&v).expect("parse");
+        assert_eq!(e.market_ids, vec!["M-A".to_string(), "M-B".to_string()]);
+    }
+
+    #[test]
+    fn parse_kalshi_event_missing_required_returns_none() {
+        let v = serde_json::json!({ "title": "no ticker" });
+        assert!(parse_kalshi_event(&v).is_none());
+    }
+
+    #[test]
+    fn parse_kalshi_series_with_volume() {
+        let v = serde_json::json!({
+            "ticker": "KXSPX",
+            "title": "S&P 500 Daily",
+            "category": "Economics",
+            "frequency": "daily",
+            "tags": ["finance", "indices"],
+            "settlement_sources": [
+                { "name": "S&P Dow Jones", "url": "https://example.com" },
+            ],
+            "fee_type": "quadratic",
+            "volume_fp": "1234567.89",
+            "last_updated_ts": "2026-04-27T00:00:00Z",
+        });
+        let s = parse_kalshi_series(&v).expect("parse");
+        assert_eq!(s.id, "KXSPX");
+        assert_eq!(s.frequency.as_deref(), Some("daily"));
+        assert_eq!(s.tags, vec!["finance".to_string(), "indices".to_string()]);
+        assert_eq!(s.settlement_sources.len(), 1);
+        assert_eq!(s.fee_type.as_deref(), Some("quadratic"));
+        assert_eq!(s.volume, Some(1_234_567.89));
+    }
+
+    #[test]
+    fn parse_kalshi_series_without_volume_omits_field() {
+        let v = serde_json::json!({ "ticker": "KX", "title": "x" });
+        let s = parse_kalshi_series(&v).expect("parse");
+        assert!(s.volume.is_none());
     }
 }
 

@@ -54,3 +54,12 @@ active                  # Boolean active flag
 
 # --- Internal data envelope wrappers ---
 data                    # Generic data envelope used by some Polymarket endpoints
+
+# --- Event / Series / Tags parsing (new in Batch 2; Gamma API; Event, Series, Tag models) ---
+category                # Event.category / Series.category (free-form string)
+series                  # Gamma event payload's nested series array; pick first as Event.series_id
+mutuallyExclusive       # Camel-case alias for negRisk (Event.mutually_exclusive)
+updatedAt               # Event/Series last_updated_ts (ISO 8601)
+recurrence              # Series.frequency alias on Gamma (some payloads use `recurrence`)
+frequency               # Series.frequency
+label                   # Tag.name on per-market tag objects (Gamma)
