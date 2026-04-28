@@ -26,14 +26,7 @@ Raw JSON from Polymarket's activity API.
 <RequestExample>
 
 ```rust Rust
-use openpx::ExchangeInner;
-use serde_json::json;
 use openpx::FetchUserActivityParams;
-
-let ex = ExchangeInner::new("polymarket", json!({
-    "private_key": std::env::var("POLYMARKET_PRIVATE_KEY")?,
-    "funder": std::env::var("POLYMARKET_FUNDER")?,
-}))?;
 
 let activity = ex.fetch_user_activity(FetchUserActivityParams {
     address: "0xabc…".into(),
@@ -42,25 +35,10 @@ let activity = ex.fetch_user_activity(FetchUserActivityParams {
 ```
 
 ```python Python
-import os
-from openpx import Exchange
-
-ex = Exchange("polymarket", {
-    "private_key": os.environ["POLYMARKET_PRIVATE_KEY"],
-    "funder": os.environ["POLYMARKET_FUNDER"],
-})
-
 activity = ex.fetch_user_activity(address="0xabc…", limit=100)
 ```
 
 ```typescript TypeScript
-import { Exchange } from "openpx";
-
-const ex = new Exchange("polymarket", {
-  private_key: process.env.POLYMARKET_PRIVATE_KEY!,
-  funder: process.env.POLYMARKET_FUNDER!,
-});
-
 const activity = await ex.fetchUserActivity("0xabc…", 100);
 ```
 
