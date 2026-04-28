@@ -19,12 +19,12 @@ use tracing::info;
 
 use px_core::{
     canonical_event_id, manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
-    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams,
-    FetchOrdersParams, FetchUserActivityParams, Fill, Market, MarketStatus, MarketStatusFilter,
-    MarketTrade, MarketType, OpenPxError, Order, OrderSide, OrderStatus, Orderbook,
-    OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position, PriceHistoryInterval,
-    PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series, SeriesRequest,
-    SettlementSource, Tag, TradesRequest,
+    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
+    FetchUserActivityParams, Fill, LastTrade, Market, MarketStatus, MarketStatusFilter,
+    MarketTrade, MarketType, MidpointRequest, OpenPxError, Order, OrderSide, OrderStatus,
+    Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, OutcomeToken, Position,
+    PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter, Series,
+    SeriesRequest, SettlementSource, Spread, Tag, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -957,6 +957,38 @@ impl Polymarket {
 
     /// Fetch current open interest from Polymarket data-api.
     /// Returns the OI value (USDC-denominated outstanding token pairs).
+    /// Resolve a CLOB token ID from a `MidpointRequest`. Prefers the explicit
+    /// `req.token_id`; falls back to fetching the market and picking the YES
+    /// token (or the outcome-matched one) when only `market_id` is provided.
+    async fn resolve_token_id_for_pricing(
+        &self,
+        req: &MidpointRequest,
+    ) -> Result<String, OpenPxError> {
+        if let Some(t) = req.token_id.as_deref().filter(|s| !s.is_empty()) {
+            return Ok(t.to_string());
+        }
+        let market = self.fetch_market(&req.market_id).await?;
+        if let Some(outcome) = req.outcome.as_deref() {
+            if let Some(t) = market
+                .outcome_tokens
+                .iter()
+                .find(|t| t.outcome.eq_ignore_ascii_case(outcome))
+            {
+                return Ok(t.token_id.clone());
+            }
+        }
+        market
+            .token_id_yes
+            .clone()
+            .or_else(|| market.outcome_tokens.first().map(|t| t.token_id.clone()))
+            .ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "could not resolve token_id for market {}",
+                    req.market_id
+                )))
+            })
+    }
+
     pub async fn fetch_open_interest(
         &self,
         condition_id: &str,
@@ -3032,9 +3064,10 @@ impl Exchange for Polymarket {
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
         let (raw, next_cursor) = match resp {
-            EventsResp::Wrapped { events, next_cursor } => {
-                (events, next_cursor.filter(|c| !c.is_empty()))
-            }
+            EventsResp::Wrapped {
+                events,
+                next_cursor,
+            } => (events, next_cursor.filter(|c| !c.is_empty())),
             EventsResp::Bare(events) => (events, None),
         };
         let events = raw.iter().filter_map(parse_polymarket_event).collect();
@@ -3044,9 +3077,7 @@ impl Exchange for Polymarket {
     async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
         // Polymarket accepts both UUID-shaped IDs and slugs. UUID-like input
         // hits `/events/{id}`; everything else falls back to `/events/slug/{slug}`.
-        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-            && id.len() >= 32
-        {
+        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') && id.len() >= 32 {
             format!("/events/{id}")
         } else {
             format!("/events/slug/{id}")
@@ -3096,9 +3127,10 @@ impl Exchange for Polymarket {
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
         let (raw, next_cursor) = match resp {
-            SeriesResp::Wrapped { series, next_cursor } => {
-                (series, next_cursor.filter(|c| !c.is_empty()))
-            }
+            SeriesResp::Wrapped {
+                series,
+                next_cursor,
+            } => (series, next_cursor.filter(|c| !c.is_empty())),
             SeriesResp::Bare(series) => (series, None),
         };
         let series = raw.iter().filter_map(parse_polymarket_series).collect();
@@ -3146,10 +3178,14 @@ impl Exchange for Polymarket {
             .iter()
             .filter_map(|t| {
                 let obj = t.as_object()?;
-                let id = obj
-                    .get("id")
-                    .and_then(|v| v.as_str().map(String::from).or_else(|| v.as_i64().map(|i| i.to_string())))?;
-                let name = obj.get("label").or_else(|| obj.get("name"))
+                let id = obj.get("id").and_then(|v| {
+                    v.as_str()
+                        .map(String::from)
+                        .or_else(|| v.as_i64().map(|i| i.to_string()))
+                })?;
+                let name = obj
+                    .get("label")
+                    .or_else(|| obj.get("name"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -3158,6 +3194,173 @@ impl Exchange for Polymarket {
             })
             .collect();
         Ok(tags)
+    }
+
+    async fn fetch_orderbooks_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<Vec<Orderbook>, OpenPxError> {
+        if market_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let body: Vec<serde_json::Value> = market_ids
+            .iter()
+            .map(|t| serde_json::json!({ "token_id": t }))
+            .collect();
+        let url = format!("{}/books", self.config.clob_url);
+        let resp = reqwest::Client::new()
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        if !resp.status().is_success() {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "polymarket /books HTTP {}",
+                resp.status()
+            ))));
+        }
+        let raw: Vec<serde_json::Value> = resp
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        Ok(raw.iter().filter_map(parse_polymarket_book).collect())
+    }
+
+    async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
+        let token_id = self.resolve_token_id_for_pricing(&req).await?;
+        let endpoint = format!("/midpoint?token_id={token_id}");
+        let v: serde_json::Value = self
+            .client
+            .get_clob(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        parse_polymarket_price_field(&v, "mid").ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(
+                "polymarket /midpoint missing `mid` field".into(),
+            ))
+        })
+    }
+
+    async fn fetch_midpoints_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<HashMap<String, f64>, OpenPxError> {
+        if market_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let body: Vec<serde_json::Value> = market_ids
+            .iter()
+            .map(|t| serde_json::json!({ "token_id": t }))
+            .collect();
+        let url = format!("{}/midpoints", self.config.clob_url);
+        let resp = reqwest::Client::new()
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        if !resp.status().is_success() {
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "polymarket /midpoints HTTP {}",
+                resp.status()
+            ))));
+        }
+        let raw: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        let mut out = HashMap::with_capacity(market_ids.len());
+        if let Some(map) = raw.as_object() {
+            for (k, v) in map {
+                if let Some(price) = v
+                    .as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                {
+                    out.insert(k.clone(), price);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
+        let token_id = self.resolve_token_id_for_pricing(&req).await?;
+        let endpoint = format!("/spread?token_id={token_id}");
+        let v: serde_json::Value = self
+            .client
+            .get_clob(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let spread = parse_polymarket_price_field(&v, "spread").ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(
+                "polymarket /spread missing `spread` field".into(),
+            ))
+        })?;
+        // /spread doesn't return bid/ask directly; complement with the midpoint
+        // when present so callers get a full Spread shape.
+        let mid = parse_polymarket_price_field(&v, "mid")
+            .or_else(|| parse_polymarket_price_field(&v, "midpoint"));
+        let (bid, ask) = if let Some(mid) = mid {
+            (mid - spread / 2.0, mid + spread / 2.0)
+        } else {
+            (0.0, spread)
+        };
+        Ok(Spread {
+            bid,
+            ask,
+            spread,
+            ts_ms: None,
+        })
+    }
+
+    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
+        let token_id = self.resolve_token_id_for_pricing(&req).await?;
+        let endpoint = format!("/last-trade-price?token_id={token_id}");
+        let v: serde_json::Value = self
+            .client
+            .get_clob(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let price = parse_polymarket_price_field(&v, "price").ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(
+                "polymarket /last-trade-price missing `price`".into(),
+            ))
+        })?;
+        let size = parse_polymarket_price_field(&v, "size").unwrap_or(0.0);
+        let side_str = v.get("side").and_then(|s| s.as_str()).unwrap_or("BUY");
+        let side = if side_str.eq_ignore_ascii_case("sell") {
+            OrderSide::Sell
+        } else {
+            OrderSide::Buy
+        };
+        let ts_ms = v
+            .get("timestamp")
+            .and_then(|t| {
+                t.as_i64()
+                    .or_else(|| t.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+        Ok(LastTrade {
+            price,
+            side,
+            size,
+            ts_ms,
+        })
+    }
+
+    async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
+        // Trait method takes a market_id; on Polymarket that's the conditionId.
+        // The inherent fetch_open_interest method returns Option<f64> on
+        // Data-API miss; lift to Result so missing OI is an explicit error.
+        Polymarket::fetch_open_interest(self, market_id)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?
+            .ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "polymarket /oi returned no value for {market_id}"
+                )))
+            })
     }
 
     fn describe(&self) -> ExchangeInfo {
@@ -3186,14 +3389,14 @@ impl Exchange for Polymarket {
             has_fetch_orderbook_history: false,
             has_fetch_events: true,
             has_fetch_event: true,
-            has_fetch_orderbooks_batch: false,
+            has_fetch_orderbooks_batch: true,
             has_fetch_series: true,
             has_fetch_series_one: true,
-            has_fetch_midpoint: false,
-            has_fetch_midpoints_batch: false,
-            has_fetch_spread: false,
-            has_fetch_last_trade_price: false,
-            has_fetch_open_interest: false,
+            has_fetch_midpoint: true,
+            has_fetch_midpoints_batch: true,
+            has_fetch_spread: true,
+            has_fetch_last_trade_price: true,
+            has_fetch_open_interest: true,
             has_fetch_user_trades: false,
             has_fetch_market_tags: true,
             has_cancel_all_orders: false,
@@ -3205,14 +3408,12 @@ impl Exchange for Polymarket {
 fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
     let obj = value.as_object()?;
 
-    let id = obj
-        .get("id")
-        .and_then(|v| {
-            v.as_str()
-                .map(String::from)
-                .or_else(|| v.as_i64().map(|i| i.to_string()))
-                .or_else(|| v.as_u64().map(|u| u.to_string()))
-        })?;
+    let id = obj.get("id").and_then(|v| {
+        v.as_str()
+            .map(String::from)
+            .or_else(|| v.as_i64().map(|i| i.to_string()))
+            .or_else(|| v.as_u64().map(|u| u.to_string()))
+    })?;
 
     let slug = obj.get("slug").and_then(|v| v.as_str()).map(String::from);
     let title = obj
@@ -3351,6 +3552,77 @@ fn parse_polymarket_series(value: &serde_json::Value) -> Option<Series> {
     })
 }
 
+/// Parse a Polymarket CLOB /books or /book response object into an Orderbook.
+fn parse_polymarket_book(v: &serde_json::Value) -> Option<Orderbook> {
+    let obj = v.as_object()?;
+    let asset_id = obj
+        .get("asset_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let market_id = obj
+        .get("market")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| asset_id.clone());
+    let hash = obj.get("hash").and_then(|v| v.as_str()).map(String::from);
+    let timestamp = obj
+        .get("timestamp")
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
+        .and_then(chrono::DateTime::from_timestamp_millis);
+
+    let parse_levels = |key: &str| -> Vec<PriceLevel> {
+        obj.get(key)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|level| {
+                        let lvl = level.as_object()?;
+                        let price = lvl.get("price").and_then(|p| {
+                            p.as_f64()
+                                .or_else(|| p.as_str().and_then(|s| s.parse().ok()))
+                        })?;
+                        let size = lvl.get("size").and_then(|s| {
+                            s.as_f64()
+                                .or_else(|| s.as_str().and_then(|s| s.parse().ok()))
+                        })?;
+                        if price > 0.0 && size > 0.0 {
+                            Some(PriceLevel::new(price, size))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let mut bids = parse_levels("bids");
+    let mut asks = parse_levels("asks");
+    sort_bids(&mut bids);
+    sort_asks(&mut asks);
+
+    Some(Orderbook {
+        market_id,
+        asset_id,
+        bids,
+        asks,
+        last_update_id: None,
+        timestamp,
+        hash,
+    })
+}
+
+fn parse_polymarket_price_field(v: &serde_json::Value, key: &str) -> Option<f64> {
+    v.get(key).and_then(|p| {
+        p.as_f64()
+            .or_else(|| p.as_str().and_then(|s| s.parse().ok()))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::polymarket_order_type;
@@ -3437,7 +3709,10 @@ mod tests {
         assert_eq!(e.volume, Some(1_234_567.5));
         assert_eq!(e.open_interest, Some(50_000.0));
         assert_eq!(e.mutually_exclusive, Some(true));
-        assert_eq!(e.market_ids, vec!["0xMARKET1".to_string(), "0xCID2".to_string()]);
+        assert_eq!(
+            e.market_ids,
+            vec!["0xMARKET1".to_string(), "0xCID2".to_string()]
+        );
         assert!(e.start_ts.is_some());
         assert!(e.end_ts.is_some());
     }
@@ -3473,6 +3748,55 @@ mod tests {
         assert_eq!(s.frequency.as_deref(), Some("weekly"));
         assert_eq!(s.volume, Some(98_765.43));
         assert!(s.last_updated_ts.is_some());
+    }
+
+    // --- Batch 3 parser tests ---
+
+    use super::{parse_polymarket_book, parse_polymarket_price_field};
+
+    #[test]
+    fn parse_polymarket_book_orders_levels_and_carries_metadata() {
+        let v = serde_json::json!({
+            "asset_id": "0xTOKEN",
+            "market": "0xCONDITION",
+            "hash": "abc",
+            "timestamp": 1714000000000_i64,
+            "bids": [
+                { "price": "0.5", "size": "100" },
+                { "price": "0.6", "size": "50" },
+                { "price": "0.0", "size": "9" }
+            ],
+            "asks": [
+                { "price": "0.7", "size": "80" },
+                { "price": "0.65", "size": "40" }
+            ]
+        });
+        let b = parse_polymarket_book(&v).expect("parse");
+        assert_eq!(b.asset_id, "0xTOKEN");
+        assert_eq!(b.market_id, "0xCONDITION");
+        assert_eq!(b.hash.as_deref(), Some("abc"));
+        // bids sorted descending — best bid first.
+        assert!(b.best_bid().unwrap() >= 0.59);
+        // asks sorted ascending — best ask first.
+        assert!(b.best_ask().unwrap() <= 0.66);
+        // Zero-priced level filtered out.
+        assert_eq!(b.bids.len(), 2);
+    }
+
+    #[test]
+    fn parse_polymarket_price_field_handles_string_and_number() {
+        assert_eq!(
+            parse_polymarket_price_field(&serde_json::json!({"x": "0.42"}), "x"),
+            Some(0.42)
+        );
+        assert_eq!(
+            parse_polymarket_price_field(&serde_json::json!({"x": 0.42}), "x"),
+            Some(0.42)
+        );
+        assert_eq!(
+            parse_polymarket_price_field(&serde_json::json!({"y": "skip"}), "x"),
+            None
+        );
     }
 
     // --- Reconstructed OHLCV tests ---

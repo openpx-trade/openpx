@@ -51,7 +51,18 @@
           {
             "group": "Orderbook",
             "pages": [
-              "api/orderbook/fetch-orderbook"
+              "api/orderbook/fetch-orderbook",
+              "api/orderbook/fetch-orderbooks-batch"
+            ]
+          },
+          {
+            "group": "Pricing",
+            "pages": [
+              "api/pricing/fetch-midpoint",
+              "api/pricing/fetch-midpoints-batch",
+              "api/pricing/fetch-spread",
+              "api/pricing/fetch-last-trade-price",
+              "api/pricing/fetch-open-interest"
             ]
           },
           {

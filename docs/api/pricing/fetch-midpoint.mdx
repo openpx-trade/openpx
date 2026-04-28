@@ -1,0 +1,70 @@
+---
+title: "fetch_midpoint"
+sidebarTitle: "Fetch midpoint"
+openapi: GET /v1/pricing/fetch_midpoint
+playground: simple
+description: "Get the midpoint price for a market outcome."
+---
+
+Cheaper than [`fetch_orderbook`](/api/orderbook/fetch-orderbook) when only the
+mark price is needed.
+
+## Parameters
+
+<ParamField path="market_id" type="string" required>
+  Native market identifier — Kalshi ticker or Polymarket condition ID / token.
+</ParamField>
+
+<ParamField path="outcome" type="string?">
+  Outcome label (e.g. `"yes"`, `"no"`). Defaults to YES on Kalshi.
+</ParamField>
+
+<ParamField path="token_id" type="string?">
+  Polymarket CLOB token ID. When set, takes precedence over `market_id` +
+  `outcome`. On Kalshi this field is treated as an alternate ticker.
+</ParamField>
+
+## Returns
+
+<ResponseField name="midpoint" type="f64">
+  `(best_bid + best_ask) / 2` for the requested side.
+</ResponseField>
+
+<Note>
+  **Kalshi** derives this from the market summary endpoint — no native
+  `/midpoint` exists. **Polymarket** uses CLOB `GET /midpoint?token_id=…`.
+</Note>
+
+<RequestExample>
+
+```rust Rust
+use openpx::MidpointRequest;
+
+let req = MidpointRequest {
+    market_id: "KXBTC-25MAR14-T20000".into(),
+    outcome: Some("yes".into()),
+    ..Default::default()
+};
+let mid = ex.fetch_midpoint(req).await?;
+```
+
+```python Python
+mid = ex.fetch_midpoint(market_id="KXBTC-25MAR14-T20000", outcome="yes")
+```
+
+```typescript TypeScript
+const mid = await ex.fetchMidpoint({
+  marketId: "KXBTC-25MAR14-T20000",
+  outcome: "yes",
+});
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+0.44
+```
+
+</ResponseExample>

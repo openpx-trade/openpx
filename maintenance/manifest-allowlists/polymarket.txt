@@ -63,3 +63,6 @@ updatedAt               # Event/Series last_updated_ts (ISO 8601)
 recurrence              # Series.frequency alias on Gamma (some payloads use `recurrence`)
 frequency               # Series.frequency
 label                   # Tag.name on per-market tag objects (Gamma)
+
+# --- Pricing/books parsing (Batch 3 — Orderbook from /books, etc.) ---
+asset_id                # Polymarket /books response field — token_id of the orderbook entry
