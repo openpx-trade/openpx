@@ -1,21 +1,3 @@
-//! `px-sports`: unified sports research surface.
-//!
-//! This crate owns the `SportsProvider` trait + manifest scaffolding that
-//! every provider (ESPN, plus Kalshi/Polymarket sports impls in their
-//! respective exchange crates) implements.
-//!
-//! The legacy `SportsWebSocket` below is the original Polymarket-Sports
-//! WebSocket client. It will move to `engine/exchanges/polymarket/` in the
-//! next PR and become the internal driver behind Polymarket's
-//! `impl SportsProvider`. It is kept here in this PR to keep the change
-//! surface single-purpose (scaffolding only).
-
-pub mod manifest;
-pub mod provider;
-
-pub use manifest::{FieldMapping, SportsManifest, Transform};
-pub use provider::{GameStateStream, SportsCapabilities, SportsProvider};
-
 use std::sync::Arc;
 
 use futures::StreamExt;
