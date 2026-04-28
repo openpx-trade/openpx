@@ -240,10 +240,7 @@ pub trait Exchange: Send + Sync {
     }
 
     /// Fetch the most recent public trade for a market outcome.
-    async fn fetch_last_trade_price(
-        &self,
-        req: MidpointRequest,
-    ) -> Result<LastTrade, OpenPxError> {
+    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
         let _ = req;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_last_trade_price".into()),
@@ -284,10 +281,7 @@ pub trait Exchange: Send + Sync {
 
     /// Cancel all of the caller's open orders. When `market_id.is_some()`,
     /// cancel only orders on that market.
-    async fn cancel_all_orders(
-        &self,
-        market_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let _ = market_id;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),
@@ -298,10 +292,7 @@ pub trait Exchange: Send + Sync {
     /// batch size — Polymarket at 15, Kalshi at a token-budget-dependent
     /// number. Implementations should reject batches that exceed their cap
     /// up-front rather than splitting silently.
-    async fn create_orders_batch(
-        &self,
-        orders: Vec<NewOrder>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
         let _ = orders;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("create_orders_batch".into()),
