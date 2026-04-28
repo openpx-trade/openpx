@@ -1,15 +1,21 @@
 mod crypto;
+mod event;
 mod market;
 mod order;
 mod orderbook;
 mod position;
+mod series;
 mod sport;
+mod tag;
 mod trade;
 
 pub use crypto::*;
+pub use event::*;
 pub use market::*;
 pub use order::*;
 pub use orderbook::*;
 pub use position::*;
+pub use series::*;
 pub use sport::*;
+pub use tag::*;
 pub use trade::*;

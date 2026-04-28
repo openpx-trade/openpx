@@ -190,4 +190,84 @@ impl ExchangeInner {
     pub async fn refresh_balance(&self) -> Result<(), OpenPxError> {
         dispatch!(self, refresh_balance)
     }
+
+    pub async fn fetch_events(
+        &self,
+        req: EventsRequest,
+    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
+        dispatch!(self, fetch_events, req)
+    }
+
+    pub async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
+        dispatch!(self, fetch_event, id)
+    }
+
+    pub async fn fetch_orderbooks_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<Vec<Orderbook>, OpenPxError> {
+        dispatch!(self, fetch_orderbooks_batch, market_ids)
+    }
+
+    pub async fn fetch_series(
+        &self,
+        req: SeriesRequest,
+    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
+        dispatch!(self, fetch_series, req)
+    }
+
+    pub async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
+        dispatch!(self, fetch_series_one, id)
+    }
+
+    pub async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
+        dispatch!(self, fetch_midpoint, req)
+    }
+
+    pub async fn fetch_midpoints_batch(
+        &self,
+        market_ids: Vec<String>,
+    ) -> Result<HashMap<String, f64>, OpenPxError> {
+        dispatch!(self, fetch_midpoints_batch, market_ids)
+    }
+
+    pub async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
+        dispatch!(self, fetch_spread, req)
+    }
+
+    pub async fn fetch_last_trade_price(
+        &self,
+        req: MidpointRequest,
+    ) -> Result<LastTrade, OpenPxError> {
+        dispatch!(self, fetch_last_trade_price, req)
+    }
+
+    pub async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
+        dispatch!(self, fetch_open_interest, market_id)
+    }
+
+    pub async fn fetch_user_trades(
+        &self,
+        req: UserTradesRequest,
+    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
+        dispatch!(self, fetch_user_trades, req)
+    }
+
+    pub async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
+        dispatch!(self, fetch_market_tags, market_id)
+    }
+
+    pub async fn cancel_all_orders(
+        &self,
+        market_id: Option<&str>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        dispatch!(self, cancel_all_orders, market_id)
+    }
+
+    pub async fn create_orders_batch(
+        &self,
+        orders: Vec<NewOrder>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        dispatch!(self, create_orders_batch, orders)
+    }
 }

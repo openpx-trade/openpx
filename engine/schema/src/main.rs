@@ -25,18 +25,26 @@ fn main() {
         schema_for!(px_core::OrderStatus),
         schema_for!(px_core::LiquidityRole),
         schema_for!(px_core::Fill),
+        schema_for!(px_core::UserTrade),
         // Models — position
         schema_for!(px_core::Position),
         // Models — orderbook
         schema_for!(px_core::Orderbook),
         schema_for!(px_core::OrderbookSnapshot),
+        schema_for!(px_core::Spread),
         schema_for!(px_core::PriceLevel),
         schema_for!(px_core::PriceLevelChange),
         schema_for!(px_core::PriceLevelSide),
         // Models — trade
         schema_for!(px_core::MarketTrade),
+        schema_for!(px_core::LastTrade),
         schema_for!(px_core::Candlestick),
         schema_for!(px_core::PriceHistoryInterval),
+        // Models — events / series / tags
+        schema_for!(px_core::Event),
+        schema_for!(px_core::Series),
+        schema_for!(px_core::SettlementSource),
+        schema_for!(px_core::Tag),
         // Exchange config params
         schema_for!(px_core::MarketStatusFilter),
         schema_for!(px_core::FetchMarketsParams),
@@ -47,6 +55,11 @@ fn main() {
         schema_for!(px_core::PriceHistoryRequest),
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::OrderbookHistoryRequest),
+        schema_for!(px_core::EventsRequest),
+        schema_for!(px_core::SeriesRequest),
+        schema_for!(px_core::MidpointRequest),
+        schema_for!(px_core::UserTradesRequest),
+        schema_for!(px_core::NewOrder),
         schema_for!(px_core::ExchangeInfo),
         // WebSocket types
         schema_for!(px_core::WsUpdate),
