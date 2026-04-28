@@ -1683,6 +1683,7 @@ impl Exchange for Kalshi {
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
+            // intentionally unsupported: Kalshi has no historical orderbook snapshot endpoint; use fetch_price_history for OHLCV or fetch_trades for trade tape
             has_fetch_orderbook_history: false,
         }
     }
