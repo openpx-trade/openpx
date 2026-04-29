@@ -3427,10 +3427,9 @@ impl Exchange for Polymarket {
 
     async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         // Sequential loop over the caller's open orders. The Polymarket
-        // CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
-        // endpoints that are O(1). TODO(batch5-v2): swap to those once the
-        // V2 SDK lands and exposes them. For now this works against both V1
-        // and V2 SDKs and matches the trait contract.
+        // CLOB V2 has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
+        // endpoints that are O(1), but the V2 Rust SDK binding does not yet expose
+        // them. Sequential path retained until SDK surface is available.
         let params = FetchOrdersParams {
             market_id: market_id.map(String::from),
         };
@@ -3459,10 +3458,9 @@ impl Exchange for Polymarket {
         }
 
         // Sequential per-order submission via the existing create_order path.
-        // TODO(batch5-v2): when V2 lands, swap to the native `POST /orders`
-        // batch endpoint with array body — single round-trip, deferred
-        // execution support. For now this works on V1 and matches the
-        // unified contract.
+        // The V2 CLOB exposes a native `POST /orders` batch endpoint for a single
+        // round-trip; the V2 Rust SDK binding does not yet surface it, so this
+        // path remains sequential until SDK surface is available.
         let mut out = Vec::with_capacity(orders.len());
         for o in orders {
             let mut params: HashMap<String, String> = HashMap::new();

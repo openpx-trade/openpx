@@ -2,7 +2,7 @@
   "_comment": "Vendored Polymarket contract addresses — refreshed for the CLOB V2 + pUSD cutover (2026-04-28 ~11:00 UTC). Source of truth: https://docs.polymarket.com/resources/contracts. Asserts engine/exchanges/polymarket/src/{swap,approvals}.rs match. NEVER bypass the contracts_test that reads this file. A wrong address can move user funds to a contract under someone else's control. CTF Exchange V2 audits: Quantstamp + Cantina (March 2026).",
   "_chain_id": 137,
   "_chain_name": "polygon",
-  "_last_verified": "2026-04-27",
+  "_last_verified": "2026-04-28",
   "_source_files": [
     "engine/exchanges/polymarket/src/swap.rs",
     "engine/exchanges/polymarket/src/approvals.rs"
@@ -21,7 +21,7 @@
     "PUSD_ADDRESS": {
       "address": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
       "file": "engine/exchanges/polymarket/src/approvals.rs",
-      "purpose": "pUSD CollateralToken (proxy) — V2 trading collateral, ERC-20 backed by USDC, backing enforced onchain. Approval target for V2 exchange contracts."
+      "purpose": "pUSD CollateralToken (proxy) — V2 trading collateral, ERC-20 backed by USDC, backing enforced onchain. Approval target for V2 exchange contracts. V2 live 2026-04-28; Polygonscan: https://polygonscan.com/address/0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
     },
     "PUSD_IMPL_ADDRESS": {
       "address": "0x6bBCef9f7ef3B6C592c99e0f206a0DE94Ad0925f",
@@ -31,7 +31,7 @@
     "COLLATERAL_ONRAMP": {
       "address": "0x93070a847efEf7F70739046A929D47a521F5B8ee",
       "file": "engine/exchanges/polymarket/src/swap.rs",
-      "purpose": "Permissionless CollateralOnramp — wraps USDC.e into pUSD via wrap(amount). API-only flow target after V2."
+      "purpose": "Permissionless CollateralOnramp — wraps USDC.e into pUSD via wrap(amount). API-only flow target after V2. V2 live 2026-04-28; Polygonscan: https://polygonscan.com/address/0x93070a847efEf7F70739046A929D47a521F5B8ee"
     },
     "CTF_ADDRESS": {
       "address": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
@@ -41,12 +41,12 @@
     "CTF_EXCHANGE": {
       "address": "0xE111180000d2663C0091e4f400237545B87B996B",
       "file": "engine/exchanges/polymarket/src/approvals.rs",
-      "purpose": "CTF Exchange V2 — V2 binary CLOB exchange. verifyingContract for V2 EIP-712 order domain (version '2'). Audited March 2026 by Quantstamp + Cantina."
+      "purpose": "CTF Exchange V2 — V2 binary CLOB exchange. verifyingContract for V2 EIP-712 order domain (version '2'). Audited March 2026 by Quantstamp + Cantina. V2 live 2026-04-28; Polygonscan: https://polygonscan.com/address/0xE111180000d2663C0091e4f400237545B87B996B"
     },
     "NEG_RISK_CTF_EXCHANGE": {
       "address": "0xe2222d279d744050d28e00520010520000310F59",
       "file": "engine/exchanges/polymarket/src/approvals.rs",
-      "purpose": "Neg Risk CTF Exchange V2 — multi-outcome CLOB exchange. verifyingContract for V2 EIP-712 on neg-risk markets."
+      "purpose": "Neg Risk CTF Exchange V2 — multi-outcome CLOB exchange. verifyingContract for V2 EIP-712 on neg-risk markets. V2 live 2026-04-28; Polygonscan: https://polygonscan.com/address/0xe2222d279d744050d28e00520010520000310F59"
     },
     "NEG_RISK_ADAPTER": {
       "address": "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
