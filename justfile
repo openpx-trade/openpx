@@ -44,11 +44,16 @@ node-build: node-models
 
 node: node-build
 
+# Regenerate docs/llms.txt from canonical sources (Cargo.toml, docs.json,
+# engine/exchanges/, manifests). CI fails if the committed file drifts.
+llms-txt:
+    python3 tools/gen_llms_txt.py
+
 docs-serve:
     cd docs && mintlify dev
 
-check-sync: schema python-models node-models
-    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
+check-sync: schema python-models node-models llms-txt
+    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt
 
 # ---------------------------------------------------------------------------
 # Versioning
