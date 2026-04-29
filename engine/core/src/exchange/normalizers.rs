@@ -1,19 +1,15 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
-use crate::exchange::manifest::Transform;
-
 /// Safe type coercion to i64 with null fallback (never panic).
 pub fn coerce_to_int(value: &Value) -> Option<i64> {
     match value {
         Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
-        Value::String(s) => {
-            // Try parsing as integer first, then as float
-            s.trim()
-                .parse::<i64>()
-                .ok()
-                .or_else(|| s.trim().parse::<f64>().ok().map(|f| f as i64))
-        }
+        Value::String(s) => s
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .or_else(|| s.trim().parse::<f64>().ok().map(|f| f as i64)),
         Value::Bool(b) => Some(if *b { 1 } else { 0 }),
         _ => None,
     }
@@ -39,37 +35,35 @@ pub fn coerce_to_string(value: &Value) -> Option<String> {
     }
 }
 
-/// Convert a value to DateTime based on the transform type.
-pub fn coerce_to_datetime(value: &Value, transform: Transform) -> Option<DateTime<Utc>> {
-    match transform {
-        Transform::Iso8601ToDateTime => {
-            let s = value.as_str()?;
-            // Try RFC3339 first
-            DateTime::parse_from_rfc3339(s)
+/// Parse an ISO8601 / RFC3339 string into `DateTime<Utc>`.
+/// Falls back through a few common variants seen in the wild.
+pub fn coerce_iso8601_datetime(value: &Value) -> Option<DateTime<Utc>> {
+    let s = value.as_str()?;
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
                 .ok()
-                .map(|dt| dt.with_timezone(&Utc))
-                .or_else(|| {
-                    // Try other common formats
-                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
-                        .ok()
-                        .map(|ndt| ndt.and_utc())
-                })
-                .or_else(|| {
-                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                        .ok()
-                        .map(|ndt| ndt.and_utc())
-                })
-        }
-        Transform::UnixSecsToDateTime => {
-            let ts = coerce_to_int(value)?;
-            DateTime::from_timestamp(ts, 0)
-        }
-        Transform::UnixMillisToDateTime => {
-            let ts = coerce_to_int(value)?;
-            DateTime::from_timestamp_millis(ts)
-        }
-        _ => None,
-    }
+                .map(|ndt| ndt.and_utc())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|ndt| ndt.and_utc())
+        })
+}
+
+/// Parse a Unix-seconds integer into `DateTime<Utc>`.
+pub fn coerce_unix_secs_datetime(value: &Value) -> Option<DateTime<Utc>> {
+    let ts = coerce_to_int(value)?;
+    DateTime::from_timestamp(ts, 0)
+}
+
+/// Parse a Unix-milliseconds integer into `DateTime<Utc>`.
+pub fn coerce_unix_millis_datetime(value: &Value) -> Option<DateTime<Utc>> {
+    let ts = coerce_to_int(value)?;
+    DateTime::from_timestamp_millis(ts)
 }
 
 /// Extract value from JSON using a dot-notation path.
@@ -82,10 +76,8 @@ pub fn get_nested<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     let mut current = value;
     for part in path.split('.') {
         current = if let Ok(index) = part.parse::<usize>() {
-            // Array index
             current.get(index)?
         } else {
-            // Object key
             current.get(part)?
         };
     }
@@ -141,24 +133,24 @@ mod tests {
     }
 
     #[test]
-    fn test_coerce_to_datetime_iso8601() {
+    fn test_coerce_iso8601_datetime() {
         let value = json!("2024-12-31T23:59:59Z");
-        let dt = coerce_to_datetime(&value, Transform::Iso8601ToDateTime);
+        let dt = coerce_iso8601_datetime(&value);
         assert!(dt.is_some());
         assert_eq!(dt.unwrap().year(), 2024);
     }
 
     #[test]
-    fn test_coerce_to_datetime_unix_secs() {
-        let value = json!(1704067199); // 2023-12-31T23:59:59Z
-        let dt = coerce_to_datetime(&value, Transform::UnixSecsToDateTime);
+    fn test_coerce_unix_secs_datetime() {
+        let value = json!(1704067199);
+        let dt = coerce_unix_secs_datetime(&value);
         assert!(dt.is_some());
     }
 
     #[test]
-    fn test_coerce_to_datetime_unix_millis() {
+    fn test_coerce_unix_millis_datetime() {
         let value = json!(1704067199000_i64);
-        let dt = coerce_to_datetime(&value, Transform::UnixMillisToDateTime);
+        let dt = coerce_unix_millis_datetime(&value);
         assert!(dt.is_some());
     }
 }
