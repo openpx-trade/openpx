@@ -1,0 +1,35 @@
+# OpenPX
+
+> Open-source, CCXT-style unified SDK for prediction markets.
+
+OpenPX hides per-exchange quirks behind one Rust `Exchange` trait. Python (PyO3) and TypeScript (NAPI-RS) SDKs are auto-generated bindings around the same engine — all domain logic, parsing, and WebSocket state lives in Rust. Bring your own credentials; trade through one unified surface.
+
+## Documentation
+
+- [API reference](https://github.com/openpx-trade/openpx/tree/main/docs/api): unified market, order, position, orderbook, trade, and account endpoints across every supported exchange
+- [WebSocket streams](https://github.com/openpx-trade/openpx/tree/main/docs/websockets): real-time orderbook snapshots, deltas, trades, fills, and session events
+- [Changelog](https://github.com/openpx-trade/openpx/blob/main/docs/changelog.mdx): release history with breaking-change notes
+
+## Packages
+
+- [openpx (crates.io)](https://crates.io/crates/openpx): Rust engine — direct enum dispatch, zero vtable, in-process latency
+- [openpx (PyPI)](https://pypi.org/project/openpx/): Python bindings via PyO3 with native wheels for linux/macos/windows on x86_64 and arm64
+- [@openpx/sdk (npm)](https://www.npmjs.com/package/@openpx/sdk): Node.js bindings via NAPI-RS, native addons for the same five platforms
+
+## Exchanges
+
+- [Kalshi](https://github.com/openpx-trade/openpx/tree/main/engine/exchanges/kalshi): instantiate via `Exchange("kalshi", config)` (`https://api.elections.kalshi.com/trade-api/v2`)
+- [Polymarket](https://github.com/openpx-trade/openpx/tree/main/engine/exchanges/polymarket): instantiate via `Exchange("polymarket", config)` (`https://gamma-api.polymarket.com`)
+
+## Source
+
+- [Repository](https://github.com/openpx-trade/openpx): source, issues, pull requests
+- [JSON Schema](https://github.com/openpx-trade/openpx/blob/main/schema/openpx.schema.json): canonical types — both SDKs are generated from this single file
+- [Exchange trait](https://github.com/openpx-trade/openpx/blob/main/engine/core/src/exchange/traits.rs): the contract every exchange implementation conforms to
+- [Exchange manifests](https://github.com/openpx-trade/openpx/tree/main/engine/core/src/exchange/manifests): per-exchange constants — base URLs, rate limits, pagination styles
+
+## Optional
+
+- [Sports data](https://github.com/openpx-trade/openpx/tree/main/engine/sports): unified sports schedule + live state stream for sports prediction markets
+- [Crypto prices](https://github.com/openpx-trade/openpx/tree/main/engine/crypto): low-latency crypto price feed for crypto-settled markets
+

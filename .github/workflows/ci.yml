@@ -96,10 +96,10 @@ jobs:
           tool: just
       - run: pip install datamodel-code-generator
       - run: cd sdks/typescript && npm install
-      - name: Generate schema and SDK models
-        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models
+      - name: Generate schema, SDK models, and llms.txt
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models llms-txt
       - name: Check generated files are in sync
-        run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts
+        run: git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt
       # Smoke checks: a regen can produce a syntactically degenerate file
       # (e.g. an empty stub) that drifts undetectably under git diff alone.
       # PR #26 hid for an indeterminate amount of time because models.d.ts
