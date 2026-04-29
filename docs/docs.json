@@ -135,18 +135,6 @@
                 ]
               }
             ]
-          },
-          {
-            "group": "Sports",
-            "pages": [
-              "api/sports/overview"
-            ]
-          },
-          {
-            "group": "Crypto",
-            "pages": [
-              "api/crypto/overview"
-            ]
           }
         ]
       },
