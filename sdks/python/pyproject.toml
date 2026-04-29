@@ -28,8 +28,8 @@ classifiers = [
 dependencies = ["pydantic>=2.0"]
 
 [project.urls]
-Homepage = "https://github.com/openpx/openpx"
-Repository = "https://github.com/openpx/openpx"
+Homepage = "https://github.com/openpx-trade/openpx"
+Repository = "https://github.com/openpx-trade/openpx"
 
 [project.optional-dependencies]
 dev = ["datamodel-code-generator>=0.25", "maturin>=1.5,<2.0"]

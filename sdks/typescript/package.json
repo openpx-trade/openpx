@@ -8,9 +8,9 @@
   "author": "Milind Pathiyal",
   "repository": {
     "type": "git",
-    "url": "https://github.com/openpx/openpx"
+    "url": "https://github.com/openpx-trade/openpx"
   },
-  "homepage": "https://github.com/openpx/openpx",
+  "homepage": "https://github.com/openpx-trade/openpx",
   "keywords": [
     "prediction-market",
     "trading",

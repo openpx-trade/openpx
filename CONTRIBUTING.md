@@ -15,7 +15,7 @@ Thank you for your interest in contributing to OpenPX. This guide will help you 
 ### Getting Started
 
 ```bash
-git clone https://github.com/openpx/openpx.git
+git clone https://github.com/openpx-trade/openpx.git
 cd openpx
 cargo check --workspace
 ```

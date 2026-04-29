@@ -30,7 +30,7 @@ version = "0.2.6"
 edition = "2021"
 rust-version = "1.91"
 license = "MIT"
-repository = "https://github.com/openpx/openpx"
+repository = "https://github.com/openpx-trade/openpx"
 authors = ["Milind Pathiyal"]
 
 [workspace.dependencies]
