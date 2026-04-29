@@ -3486,6 +3486,25 @@ impl Exchange for Polymarket {
         Ok(out)
     }
 
+    async fn fetch_server_time(&self) -> Result<chrono::DateTime<chrono::Utc>, OpenPxError> {
+        #[derive(serde::Deserialize)]
+        struct TimeResponse {
+            time: f64,
+        }
+        let resp: TimeResponse = self
+            .client
+            .get_clob("/time")
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let secs = resp.time as i64;
+        let nanos = ((resp.time - secs as f64) * 1_000_000_000.0) as u32;
+        chrono::DateTime::from_timestamp(secs, nanos).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(
+                "polymarket /time returned out-of-range timestamp".into(),
+            ))
+        })
+    }
+
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -3501,7 +3520,7 @@ impl Exchange for Polymarket {
             has_fetch_trades: true,
             has_fetch_user_activity: true,
             has_fetch_fills: true,
-            has_fetch_server_time: false,
+            has_fetch_server_time: true,
             has_approvals: true,
             has_refresh_balance: true,
             has_websocket: true,

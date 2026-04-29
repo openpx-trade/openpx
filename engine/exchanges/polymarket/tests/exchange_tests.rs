@@ -811,3 +811,42 @@ async fn test_fetch_markets_with_event_slug() {
     assert_eq!(markets[0].id, "mkt-yes");
     assert_eq!(markets[0].group_id, Some("555".to_string()));
 }
+
+#[tokio::test]
+async fn test_fetch_server_time_happy_path() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/time"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"time": 1700000000.5})),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_clob_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    let dt = exchange.fetch_server_time().await.unwrap();
+    assert_eq!(dt.timestamp(), 1700000000);
+    assert!(dt.timestamp_subsec_nanos() > 0);
+}
+
+#[tokio::test]
+async fn test_fetch_server_time_api_error() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/time"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
+        .mount(&mock_server)
+        .await;
+
+    let config = PolymarketConfig::new()
+        .with_clob_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Polymarket::new(config).unwrap();
+
+    let result = exchange.fetch_server_time().await;
+    assert!(result.is_err());
+}
