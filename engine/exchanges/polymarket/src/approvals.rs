@@ -22,7 +22,6 @@ use crate::error::PolymarketError;
 
 // Contract addresses on Polygon Mainnet — refreshed for CLOB V2 + pUSD cutover (2026-04-28).
 // Source of truth: https://docs.polymarket.com/resources/contracts.
-// Mirrored in maintenance/snapshots/polymarket-contracts.snapshot.json (contracts_test gates drift).
 pub const PUSD_ADDRESS: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 pub const PUSD_IMPL_ADDRESS: &str = "0x6bBCef9f7ef3B6C592c99e0f206a0DE94Ad0925f";
 pub const CTF_ADDRESS: &str = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
