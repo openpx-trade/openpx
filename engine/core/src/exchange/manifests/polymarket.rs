@@ -7,12 +7,12 @@ pub const POLYMARKET_MANIFEST: ExchangeManifest = ExchangeManifest {
     id: "polymarket",
     name: "Polymarket",
     base_url: "https://gamma-api.polymarket.com",
-    markets_endpoint: "/markets",
+    markets_endpoint: "/markets/keyset",
     pagination: PaginationConfig {
-        style: PaginationStyle::Offset,
-        max_page_size: 500,
+        style: PaginationStyle::Cursor,
+        max_page_size: 1000,
         limit_param: "limit",
-        cursor_param: "offset",
+        cursor_param: "after_cursor",
     },
     rate_limit: RateLimitConfig {
         default_rps: 150,

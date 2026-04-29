@@ -3,43 +3,81 @@ use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn sample_events_response() -> serde_json::Value {
-    serde_json::json!([
-        {
-            "id": "event-1",
-            "title": "Weather Event",
-            "markets": [
-                {
-                    "id": "123",
-                    "conditionId": "123",
-                    "question": "Will it rain tomorrow?",
-                    "outcomes": "[\"Yes\", \"No\"]",
-                    "outcomePrices": "[\"0.65\", \"0.35\"]",
-                    "volumeNum": 50000.0,
-                    "liquidityNum": 10000.0,
-                    "minimum_tick_size": 0.01,
-                    "description": "Weather prediction market"
-                }
-            ]
-        },
-        {
-            "id": "event-2",
-            "title": "Crypto Event",
-            "markets": [
-                {
-                    "id": "456",
-                    "conditionId": "456",
-                    "question": "Bitcoin > $100k by EOY?",
-                    "outcomes": "[\"Yes\", \"No\"]",
-                    "outcomePrices": "[\"0.42\", \"0.58\"]",
-                    "volumeNum": 1000000.0,
-                    "liquidityNum": 250000.0,
-                    "minimum_tick_size": 0.001,
-                    "description": "Crypto price prediction"
-                }
-            ]
-        }
-    ])
+/// /markets/keyset returns `{markets: [...], next_cursor: ...}` (wrapped),
+/// not bare events. Use this whenever the test exercises the general
+/// `fetch_markets` path.
+fn sample_markets_keyset() -> serde_json::Value {
+    serde_json::json!({
+        "markets": [
+            {
+                "id": "123",
+                "conditionId": "123",
+                "question": "Will it rain tomorrow?",
+                "outcomes": "[\"Yes\", \"No\"]",
+                "outcomePrices": "[\"0.65\", \"0.35\"]",
+                "volumeNum": 50000.0,
+                "liquidityNum": 10000.0,
+                "minimum_tick_size": 0.01,
+                "description": "Weather prediction market"
+            },
+            {
+                "id": "456",
+                "conditionId": "456",
+                "question": "Bitcoin > $100k by EOY?",
+                "outcomes": "[\"Yes\", \"No\"]",
+                "outcomePrices": "[\"0.42\", \"0.58\"]",
+                "volumeNum": 1000000.0,
+                "liquidityNum": 250000.0,
+                "minimum_tick_size": 0.001,
+                "description": "Crypto price prediction"
+            }
+        ],
+        "next_cursor": null
+    })
+}
+
+/// /events/keyset returns `{events: [{id, markets:[...]}, ...], next_cursor}`.
+/// Used for the series_id-filtered path only.
+fn sample_events_keyset() -> serde_json::Value {
+    serde_json::json!({
+        "events": [
+            {
+                "id": "event-1",
+                "title": "Weather Event",
+                "markets": [
+                    {
+                        "id": "123",
+                        "conditionId": "123",
+                        "question": "Will it rain tomorrow?",
+                        "outcomes": "[\"Yes\", \"No\"]",
+                        "outcomePrices": "[\"0.65\", \"0.35\"]",
+                        "volumeNum": 50000.0,
+                        "liquidityNum": 10000.0,
+                        "minimum_tick_size": 0.01,
+                        "description": "Weather prediction market"
+                    }
+                ]
+            },
+            {
+                "id": "event-2",
+                "title": "Crypto Event",
+                "markets": [
+                    {
+                        "id": "456",
+                        "conditionId": "456",
+                        "question": "Bitcoin > $100k by EOY?",
+                        "outcomes": "[\"Yes\", \"No\"]",
+                        "outcomePrices": "[\"0.42\", \"0.58\"]",
+                        "volumeNum": 1000000.0,
+                        "liquidityNum": 250000.0,
+                        "minimum_tick_size": 0.001,
+                        "description": "Crypto price prediction"
+                    }
+                ]
+            }
+        ],
+        "next_cursor": null
+    })
 }
 
 fn sample_single_market_response() -> serde_json::Value {
@@ -61,8 +99,8 @@ async fn test_fetch_markets_parses_response() {
     // given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .and(path("/markets/keyset"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_markets_keyset()))
         .mount(&mock_server)
         .await;
 
@@ -150,15 +188,14 @@ async fn test_exchange_id_and_name() {
 
 #[tokio::test]
 async fn test_fetch_markets_with_limit() {
-    // given
+    // given — the limit is sent to the server as a query param. The mock
+    // returns whatever it is configured to return regardless of limit; we
+    // don't truncate client-side. Verifying that the param is passed through
+    // and that all returned markets are emitted.
     let mock_server = MockServer::start().await;
-
-    // Return 3 events, each with 1 market
-    let events = serde_json::json!([
-        {
-            "id": "event-1",
-            "title": "Event 1",
-            "markets": [{
+    let payload = serde_json::json!({
+        "markets": [
+            {
                 "id": "m1",
                 "conditionId": "m1",
                 "question": "Market 1?",
@@ -168,12 +205,8 @@ async fn test_fetch_markets_with_limit() {
                 "liquidityNum": 500.0,
                 "minimum_tick_size": 0.01,
                 "description": "First market"
-            }]
-        },
-        {
-            "id": "event-2",
-            "title": "Event 2",
-            "markets": [{
+            },
+            {
                 "id": "m2",
                 "conditionId": "m2",
                 "question": "Market 2?",
@@ -183,12 +216,8 @@ async fn test_fetch_markets_with_limit() {
                 "liquidityNum": 1000.0,
                 "minimum_tick_size": 0.01,
                 "description": "Second market"
-            }]
-        },
-        {
-            "id": "event-3",
-            "title": "Event 3",
-            "markets": [{
+            },
+            {
                 "id": "m3",
                 "conditionId": "m3",
                 "question": "Market 3?",
@@ -198,13 +227,15 @@ async fn test_fetch_markets_with_limit() {
                 "liquidityNum": 1500.0,
                 "minimum_tick_size": 0.01,
                 "description": "Third market"
-            }]
-        }
-    ]);
+            }
+        ],
+        "next_cursor": null
+    });
 
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(events))
+        .and(path("/markets/keyset"))
+        .and(query_param("limit", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(payload))
         .mount(&mock_server)
         .await;
 
@@ -213,16 +244,15 @@ async fn test_fetch_markets_with_limit() {
         .with_verbose(false);
     let exchange = Polymarket::new(config).unwrap();
 
-    // when — pass limit=2 in params
+    // when
     let params = FetchMarketsParams {
         limit: Some(2),
         ..Default::default()
     };
     let (markets, _cursor) = exchange.fetch_markets(&params).await.unwrap();
 
-    // then — Polymarket fetch_markets does not truncate by limit client-side;
-    // it always fetches a full page of 200 events. The mock returns 3 events
-    // with 1 market each, so all 3 markets are returned.
+    // then — mock matched on limit=2 (proves param was sent), returns 3 markets,
+    // we surface all 3 (no client-side truncation).
     assert_eq!(markets.len(), 3);
     assert_eq!(markets[0].id, "m1");
     assert_eq!(markets[1].id, "m2");
@@ -313,8 +343,11 @@ async fn test_fetch_markets_empty_response() {
     // given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+        .and(path("/markets/keyset"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "markets": [],
+            "next_cursor": null
+        })))
         .mount(&mock_server)
         .await;
 
@@ -338,27 +371,24 @@ async fn test_fetch_markets_empty_response() {
 async fn test_fetch_markets_multiple_outcomes() {
     // given — market with 3 outcomes (categorical)
     let mock_server = MockServer::start().await;
-    let events = serde_json::json!([
-        {
-            "id": "event-multi",
-            "title": "Multi-outcome Event",
-            "markets": [{
-                "id": "multi-1",
-                "conditionId": "multi-1",
-                "question": "Who will win the election?",
-                "outcomes": "[\"Alice\", \"Bob\", \"Charlie\"]",
-                "outcomePrices": "[\"0.45\", \"0.35\", \"0.20\"]",
-                "volumeNum": 200000.0,
-                "liquidityNum": 50000.0,
-                "minimum_tick_size": 0.01,
-                "description": "Election market with 3 candidates"
-            }]
-        }
-    ]);
+    let payload = serde_json::json!({
+        "markets": [{
+            "id": "multi-1",
+            "conditionId": "multi-1",
+            "question": "Who will win the election?",
+            "outcomes": "[\"Alice\", \"Bob\", \"Charlie\"]",
+            "outcomePrices": "[\"0.45\", \"0.35\", \"0.20\"]",
+            "volumeNum": 200000.0,
+            "liquidityNum": 50000.0,
+            "minimum_tick_size": 0.01,
+            "description": "Election market with 3 candidates"
+        }],
+        "next_cursor": null
+    });
 
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(events))
+        .and(path("/markets/keyset"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(payload))
         .mount(&mock_server)
         .await;
 
@@ -388,29 +418,26 @@ async fn test_fetch_markets_multiple_outcomes() {
 async fn test_fetch_markets_with_additional_fields() {
     // given — market with clobTokenIds, conditionId, and slug
     let mock_server = MockServer::start().await;
-    let events = serde_json::json!([
-        {
-            "id": "event-full",
-            "title": "Full Fields Event",
-            "markets": [{
-                "id": "market-1",
-                "conditionId": "cond-123",
-                "question": "Test market with tokens",
-                "outcomes": "[\"Yes\", \"No\"]",
-                "outcomePrices": "[\"0.75\", \"0.25\"]",
-                "volumeNum": 100000.0,
-                "liquidityNum": 25000.0,
-                "minimum_tick_size": 0.01,
-                "description": "Market with full fields",
-                "clobTokenIds": "[\"token1\", \"token2\"]",
-                "slug": "test-market-slug"
-            }]
-        }
-    ]);
+    let payload = serde_json::json!({
+        "markets": [{
+            "id": "market-1",
+            "conditionId": "cond-123",
+            "question": "Test market with tokens",
+            "outcomes": "[\"Yes\", \"No\"]",
+            "outcomePrices": "[\"0.75\", \"0.25\"]",
+            "volumeNum": 100000.0,
+            "liquidityNum": 25000.0,
+            "minimum_tick_size": 0.01,
+            "description": "Market with full fields",
+            "clobTokenIds": "[\"token1\", \"token2\"]",
+            "slug": "test-market-slug"
+        }],
+        "next_cursor": null
+    });
 
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(events))
+        .and(path("/markets/keyset"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(payload))
         .mount(&mock_server)
         .await;
 
@@ -451,27 +478,24 @@ async fn test_fetch_markets_with_additional_fields() {
 async fn test_market_volume_and_liquidity() {
     // given
     let mock_server = MockServer::start().await;
-    let events = serde_json::json!([
-        {
-            "id": "event-vol",
-            "title": "Volume Event",
-            "markets": [{
-                "id": "vol-market",
-                "conditionId": "vol-market",
-                "question": "Volume test market?",
-                "outcomes": "[\"Yes\", \"No\"]",
-                "outcomePrices": "[\"0.55\", \"0.45\"]",
-                "volumeNum": 987654.32,
-                "liquidityNum": 123456.78,
-                "minimum_tick_size": 0.001,
-                "description": "Market for volume/liquidity testing"
-            }]
-        }
-    ]);
+    let payload = serde_json::json!({
+        "markets": [{
+            "id": "vol-market",
+            "conditionId": "vol-market",
+            "question": "Volume test market?",
+            "outcomes": "[\"Yes\", \"No\"]",
+            "outcomePrices": "[\"0.55\", \"0.45\"]",
+            "volumeNum": 987654.32,
+            "liquidityNum": 123456.78,
+            "minimum_tick_size": 0.001,
+            "description": "Market for volume/liquidity testing"
+        }],
+        "next_cursor": null
+    });
 
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(events))
+        .and(path("/markets/keyset"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(payload))
         .mount(&mock_server)
         .await;
 
@@ -542,53 +566,62 @@ async fn test_fetch_market_single_returns_correct_exchange_field() {
 }
 
 // ---------------------------------------------------------------------------
-// fetch_markets: MarketStatusFilter::All returns all statuses
+// fetch_markets: status filter (closed=false / closed=true / two-phase All)
 // ---------------------------------------------------------------------------
 
-fn sample_mixed_status_events() -> serde_json::Value {
-    serde_json::json!([
-        {
-            "id": "event-mixed",
-            "title": "Mixed Status Event",
-            "markets": [
-                {
-                    "id": "pm-active",
-                    "conditionId": "pm-active",
-                    "question": "Active market?",
-                    "outcomes": "[\"Yes\", \"No\"]",
-                    "outcomePrices": "[\"0.60\", \"0.40\"]",
-                    "volumeNum": 1000.0,
-                    "liquidityNum": 500.0,
-                    "minimum_tick_size": 0.01,
-                    "description": "Currently active",
-                    "active": true,
-                    "closed": false
-                },
-                {
-                    "id": "pm-closed",
-                    "conditionId": "pm-closed",
-                    "question": "Closed market?",
-                    "outcomes": "[\"Yes\", \"No\"]",
-                    "outcomePrices": "[\"0.90\", \"0.10\"]",
-                    "volumeNum": 5000.0,
-                    "liquidityNum": 0.0,
-                    "minimum_tick_size": 0.01,
-                    "description": "Already settled",
-                    "active": false,
-                    "closed": true
-                }
-            ]
-        }
-    ])
+fn active_market_payload() -> serde_json::Value {
+    serde_json::json!({
+        "markets": [{
+            "id": "pm-active",
+            "conditionId": "pm-active",
+            "question": "Active market?",
+            "outcomes": "[\"Yes\", \"No\"]",
+            "outcomePrices": "[\"0.60\", \"0.40\"]",
+            "volumeNum": 1000.0,
+            "liquidityNum": 500.0,
+            "minimum_tick_size": 0.01,
+            "description": "Currently active",
+            "active": true,
+            "closed": false
+        }],
+        "next_cursor": null
+    })
+}
+
+fn closed_market_payload() -> serde_json::Value {
+    serde_json::json!({
+        "markets": [{
+            "id": "pm-closed",
+            "conditionId": "pm-closed",
+            "question": "Closed market?",
+            "outcomes": "[\"Yes\", \"No\"]",
+            "outcomePrices": "[\"0.90\", \"0.10\"]",
+            "volumeNum": 5000.0,
+            "liquidityNum": 0.0,
+            "minimum_tick_size": 0.01,
+            "description": "Already settled",
+            "active": false,
+            "closed": true
+        }],
+        "next_cursor": null
+    })
 }
 
 #[tokio::test]
 async fn test_fetch_markets_status_all_returns_all_statuses() {
-    // given
+    // given — All filter is implemented as a sequential two-phase drain:
+    // closed=false page first, then closed=true. Caller paginates twice.
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets/keyset"))
+        .and(query_param("closed", "false"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(active_market_payload()))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/markets/keyset"))
+        .and(query_param("closed", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(closed_market_payload()))
         .mount(&mock_server)
         .await;
 
@@ -597,19 +630,30 @@ async fn test_fetch_markets_status_all_returns_all_statuses() {
         .with_verbose(false);
     let exchange = Polymarket::new(config).unwrap();
 
-    // when
+    // when — first page: drains closed=false, returns transition cursor
     let params = FetchMarketsParams {
         status: Some(MarketStatusFilter::All),
         ..Default::default()
     };
-    let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
+    let (page1, cursor1) = exchange.fetch_markets(&params).await.unwrap();
 
-    // then — both active and closed markets returned
-    assert_eq!(markets.len(), 2);
+    // then — only the active market on page 1, but cursor is set (transition).
+    assert_eq!(page1.len(), 1);
+    assert_eq!(page1[0].id, "pm-active");
+    assert!(cursor1.is_some(), "All filter must emit transition cursor");
 
-    let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
-    assert!(ids.contains(&"pm-active"));
-    assert!(ids.contains(&"pm-closed"));
+    // when — second page: drains closed=true with the transition cursor.
+    let params2 = FetchMarketsParams {
+        status: Some(MarketStatusFilter::All),
+        cursor: cursor1,
+        ..Default::default()
+    };
+    let (page2, cursor2) = exchange.fetch_markets(&params2).await.unwrap();
+
+    // then — only the closed market on page 2; cursor is None (drained).
+    assert_eq!(page2.len(), 1);
+    assert_eq!(page2[0].id, "pm-closed");
+    assert!(cursor2.is_none());
 }
 
 #[tokio::test]
@@ -617,8 +661,9 @@ async fn test_fetch_markets_status_active_filters_correctly() {
     // given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets/keyset"))
+        .and(query_param("closed", "false"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(active_market_payload()))
         .mount(&mock_server)
         .await;
 
@@ -645,8 +690,9 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
     // given
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_mixed_status_events()))
+        .and(path("/markets/keyset"))
+        .and(query_param("closed", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(closed_market_payload()))
         .mount(&mock_server)
         .await;
 
@@ -669,17 +715,18 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
 }
 
 // ---------------------------------------------------------------------------
-// fetch_markets: series_id filtering
+// fetch_markets: series_id routes through /events/keyset (events-nested)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn test_fetch_markets_with_series_id() {
-    // given
+    // given — series_id queries route through /events/keyset because
+    // /markets/keyset has no series filter.
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/events"))
+        .and(path("/events/keyset"))
         .and(query_param("series_id", "10345"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_response()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_events_keyset()))
         .mount(&mock_server)
         .await;
 
@@ -695,7 +742,7 @@ async fn test_fetch_markets_with_series_id() {
     };
     let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
 
-    // then — mocks only match when series_id=10345 is in the query string
+    // then — mock matched on series_id=10345
     assert_eq!(markets.len(), 2);
 }
 
