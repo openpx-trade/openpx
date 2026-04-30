@@ -16,7 +16,7 @@
   "contextual": {
     "options": ["copy", "view", "chatgpt", "claude"]
   },
-  "openapi": "openpx.openapi.yaml",
+  "openapi": "/openpx.openapi.yaml",
   "navigation": {
     "tabs": [
       {

@@ -229,10 +229,78 @@ def extract_variant_schema(union_name: str, kind: str, schema_defs: dict[str, An
     return normalize_jsonschema(cleaned)
 
 
-def build_message(kind: str, union_name: str, schema_defs: dict[str, Any]) -> dict[str, Any]:
+def sample_for_property(prop: dict[str, Any], schema_defs: dict[str, Any], depth: int = 0) -> Any:
+    """Return a placeholder JSON value for a JSON Schema property node. Bounded
+    recursion so cyclic types don't blow up."""
+    if depth > 4:
+        return None
+    if "$ref" in prop:
+        ref = prop["$ref"].split("/")[-1]
+        node = schema_defs.get(ref, {})
+        return sample_for_node(node, schema_defs, depth + 1)
+    for c in ("allOf", "anyOf", "oneOf"):
+        if c in prop:
+            for sub in prop[c]:
+                if isinstance(sub, dict) and "$ref" in sub:
+                    return sample_for_property(sub, schema_defs, depth + 1)
+            return None
+    t = prop.get("type")
+    if isinstance(t, list):
+        non_null = [x for x in t if x != "null"]
+        t = non_null[0] if non_null else None
+    if t == "string":
+        if prop.get("format") == "date-time":
+            return "2026-01-01T00:00:00Z"
+        if "enum" in prop:
+            return prop["enum"][0]
+        if "const" in prop:
+            return prop["const"]
+        return "example"
+    if t == "integer":
+        return 0
+    if t == "number":
+        return 0.5
+    if t == "boolean":
+        return True
+    if t == "array":
+        items = prop.get("items", {})
+        return [sample_for_property(items, schema_defs, depth + 1)]
+    if t == "object":
+        return {}
+    if "const" in prop:
+        return prop["const"]
+    if "enum" in prop:
+        return prop["enum"][0]
+    return None
+
+
+def sample_for_node(node: dict[str, Any], schema_defs: dict[str, Any], depth: int = 0) -> Any:
+    """Return a placeholder JSON value for an entire schema node."""
+    if depth > 4:
+        return None
+    if "enum" in node:
+        return node["enum"][0]
+    if "const" in node:
+        return node["const"]
+    props = node.get("properties") or {}
+    if props:
+        return {
+            name: sample_for_property(p, schema_defs, depth + 1)
+            for name, p in props.items()
+        }
+    return sample_for_property(node, schema_defs, depth + 1)
+
+
+def build_message(
+    kind: str, union_name: str, schema_defs: dict[str, Any]
+) -> dict[str, Any]:
     variant = find_variant(schema_defs[union_name], kind)
     description = (variant or {}).get("description", "").strip()
-    return {
+    # Build the example here so Mintlify doesn't have to generate it from the
+    # recursive schema (which crashes its renderer with `Cannot read properties
+    # of undefined (reading 'filter')`).
+    example = sample_for_node(variant or {}, schema_defs) if variant else None
+    msg = {
         "name": kind,
         "title": kind,
         "summary": description.splitlines()[0] if description else kind,
@@ -240,6 +308,9 @@ def build_message(kind: str, union_name: str, schema_defs: dict[str, Any]) -> di
         "contentType": "application/json",
         "payload": {"$ref": f"#/components/schemas/{kind}"},
     }
+    if example is not None:
+        msg["examples"] = [{"name": f"{kind}Example", "payload": example}]
+    return msg
 
 
 def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
@@ -256,9 +327,15 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
         components_schemas[kind] = extract_variant_schema("SessionEvent", kind, schema_defs)
         components_messages[kind] = build_message(kind, "SessionEvent", schema_defs)
 
-    # Crypto + sports payload messages (one each — not tagged unions).
+    # Crypto + sports payload messages (one each — not tagged unions). Inject
+    # examples for the same reason as above.
     for spec in CHANNELS.values():
         for name, msg in spec.get("extra_messages", []):
+            payload_ref = msg.get("payload", {}).get("$ref", "").split("/")[-1]
+            if payload_ref and payload_ref in schema_defs:
+                example = sample_for_node(schema_defs[payload_ref], schema_defs)
+                msg = dict(msg)
+                msg["examples"] = [{"name": f"{name}Example", "payload": example}]
             components_messages[name] = msg
 
     channels: dict[str, Any] = {}
@@ -277,6 +354,7 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
         # Build subscribe + unsubscribe message + ops first.
         sub_msg_id = f"{channel_id}_subscribe"
         unsub_msg_id = f"{channel_id}_unsubscribe"
+        sub_example = sample_for_node(spec["subscribe_payload"], schema_defs)
         components_messages[sub_msg_id] = {
             "name": sub_msg_id,
             "title": "Subscribe",
@@ -287,6 +365,7 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
             ),
             "contentType": "application/json",
             "payload": spec["subscribe_payload"],
+            "examples": [{"name": "SubscribeExample", "payload": sub_example}],
         }
         components_messages[unsub_msg_id] = {
             "name": unsub_msg_id,
@@ -295,6 +374,7 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
             "description": "Stop receiving updates without closing the stream.",
             "contentType": "application/json",
             "payload": spec["subscribe_payload"],
+            "examples": [{"name": "UnsubscribeExample", "payload": sub_example}],
         }
 
         # Channel messages = receive variants + session events + sub/unsub.

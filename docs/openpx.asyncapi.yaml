@@ -2561,6 +2561,25 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Snapshot'
+      examples:
+      - name: SnapshotExample
+        payload:
+          asset_id: example
+          book:
+            asks:
+            - null
+            asset_id: example
+            bids:
+            - null
+            hash: example
+            last_update_id: 0
+            market_id: example
+            timestamp: '2026-01-01T00:00:00Z'
+          exchange_ts: 0
+          kind: Snapshot
+          local_ts_ms: 0
+          market_id: example
+          seq: 0
     Delta:
       name: Delta
       title: Delta
@@ -2571,6 +2590,19 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Delta'
+      examples:
+      - name: DeltaExample
+        payload:
+          asset_id: example
+          changes:
+          - price: null
+            side: null
+            size: 0.5
+          exchange_ts: 0
+          kind: Delta
+          local_ts_ms: 0
+          market_id: example
+          seq: 0
     Clear:
       name: Clear
       title: Clear
@@ -2583,6 +2615,15 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Clear'
+      examples:
+      - name: ClearExample
+        payload:
+          asset_id: example
+          kind: Clear
+          local_ts_ms: 0
+          market_id: example
+          reason: null
+          seq: 0
     Trade:
       name: Trade
       title: Trade
@@ -2591,6 +2632,23 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Trade'
+      examples:
+      - name: TradeExample
+        payload:
+          kind: Trade
+          local_ts_ms: 0
+          trade:
+            aggressor_side: example
+            asset_id: example
+            exchange_ts_ms: 0
+            fee_rate_bps: 0
+            market_id: example
+            outcome: example
+            price: 0.5
+            side: example
+            size: 0.5
+            source_channel: example
+            trade_id: example
     Fill:
       name: Fill
       title: Fill
@@ -2599,6 +2657,25 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Fill'
+      examples:
+      - name: FillExample
+        payload:
+          fill:
+            asset_id: example
+            exchange_ts_ms: 0
+            fee: 0.5
+            fill_id: example
+            liquidity_role: null
+            market_id: example
+            order_id: example
+            outcome: example
+            price: 0.5
+            side: example
+            size: 0.5
+            source_channel: example
+            tx_hash: example
+          kind: Fill
+          local_ts_ms: 0
     Connected:
       name: Connected
       title: Connected
@@ -2607,6 +2684,10 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Connected'
+      examples:
+      - name: ConnectedExample
+        payload:
+          kind: Connected
     Reconnected:
       name: Reconnected
       title: Reconnected
@@ -2619,6 +2700,11 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Reconnected'
+      examples:
+      - name: ReconnectedExample
+        payload:
+          gap_ms: 0
+          kind: Reconnected
     Lagged:
       name: Lagged
       title: Lagged
@@ -2631,6 +2717,13 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Lagged'
+      examples:
+      - name: LaggedExample
+        payload:
+          dropped: 0
+          first_seq: 0
+          kind: Lagged
+          last_seq: 0
     BookInvalidated:
       name: BookInvalidated
       title: BookInvalidated
@@ -2641,6 +2734,12 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/BookInvalidated'
+      examples:
+      - name: BookInvalidatedExample
+        payload:
+          kind: BookInvalidated
+          market_id: example
+          reason: null
     Error:
       name: Error
       title: Error
@@ -2651,6 +2750,11 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Error'
+      examples:
+      - name: ErrorExample
+        payload:
+          kind: Error
+          message: example
     CryptoPrice:
       name: CryptoPrice
       title: CryptoPrice
@@ -2659,6 +2763,13 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/CryptoPrice'
+      examples:
+      - name: CryptoPriceExample
+        payload:
+          source: binance
+          symbol: example
+          timestamp: 0
+          value: 0.5
     SportResult:
       name: SportResult
       title: SportResult
@@ -2667,6 +2778,22 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/SportResult'
+      examples:
+      - name: SportResultExample
+        payload:
+          away_team: example
+          elapsed: example
+          ended: true
+          finished_timestamp: '2026-01-01T00:00:00Z'
+          game_id: 0
+          home_team: example
+          league_abbreviation: example
+          live: true
+          period: example
+          score: example
+          slug: example
+          status: example
+          turn: example
     orderbook_subscribe:
       name: orderbook_subscribe
       title: Subscribe
@@ -2686,6 +2813,11 @@ components:
             - string
             - 'null'
             description: Optional outcome filter for binary markets.
+      examples:
+      - name: SubscribeExample
+        payload: &id002
+          market_id: example
+          outcome: example
     orderbook_unsubscribe:
       name: orderbook_unsubscribe
       title: Unsubscribe
@@ -2693,6 +2825,9 @@ components:
       description: Stop receiving updates without closing the stream.
       contentType: application/json
       payload: *id001
+      examples:
+      - name: UnsubscribeExample
+        payload: *id002
     trades_subscribe:
       name: trades_subscribe
       title: Subscribe
@@ -2700,6 +2835,11 @@ components:
       description: Call subscribe on the WebSocket after the stream is connected to start receiving trades updates.
       contentType: application/json
       payload: *id001
+      examples:
+      - name: SubscribeExample
+        payload: &id003
+          market_id: example
+          outcome: example
     trades_unsubscribe:
       name: trades_unsubscribe
       title: Unsubscribe
@@ -2707,6 +2847,9 @@ components:
       description: Stop receiving updates without closing the stream.
       contentType: application/json
       payload: *id001
+      examples:
+      - name: UnsubscribeExample
+        payload: *id003
     fills_subscribe:
       name: fills_subscribe
       title: Subscribe
@@ -2714,6 +2857,11 @@ components:
       description: Call subscribe on the WebSocket after the stream is connected to start receiving fills updates.
       contentType: application/json
       payload: *id001
+      examples:
+      - name: SubscribeExample
+        payload: &id004
+          market_id: example
+          outcome: example
     fills_unsubscribe:
       name: fills_unsubscribe
       title: Unsubscribe
@@ -2721,13 +2869,16 @@ components:
       description: Stop receiving updates without closing the stream.
       contentType: application/json
       payload: *id001
+      examples:
+      - name: UnsubscribeExample
+        payload: *id004
     crypto_subscribe:
       name: crypto_subscribe
       title: Subscribe
       summary: Add to the active crypto subscription set
       description: Call subscribe on the WebSocket after the stream is connected to start receiving crypto updates.
       contentType: application/json
-      payload: &id002
+      payload: &id005
         type: object
         required:
         - source
@@ -2741,20 +2892,29 @@ components:
             items:
               type: string
             description: Symbols to subscribe to (e.g. `["btcusdt", "ethusdt"]`). Empty = all.
+      examples:
+      - name: SubscribeExample
+        payload: &id006
+          source: binance
+          symbols:
+          - example
     crypto_unsubscribe:
       name: crypto_unsubscribe
       title: Unsubscribe
       summary: Remove from the active crypto subscription set
       description: Stop receiving updates without closing the stream.
       contentType: application/json
-      payload: *id002
+      payload: *id005
+      examples:
+      - name: UnsubscribeExample
+        payload: *id006
     sports_subscribe:
       name: sports_subscribe
       title: Subscribe
       summary: Add to the active sports subscription set
       description: Call subscribe on the WebSocket after the stream is connected to start receiving sports updates.
       contentType: application/json
-      payload: &id003
+      payload: &id007
         type: object
         required:
         - league
@@ -2762,10 +2922,17 @@ components:
           league:
             type: string
             description: League slug (e.g. `nba`, `nfl`, `mlb`).
+      examples:
+      - name: SubscribeExample
+        payload: &id008
+          league: example
     sports_unsubscribe:
       name: sports_unsubscribe
       title: Unsubscribe
       summary: Remove from the active sports subscription set
       description: Stop receiving updates without closing the stream.
       contentType: application/json
-      payload: *id003
+      payload: *id007
+      examples:
+      - name: UnsubscribeExample
+        payload: *id008
