@@ -258,6 +258,7 @@ MDX_TEMPLATE = """\
 title: "WebSocket Stream"
 sidebarTitle: "Stream"
 description: "Unified WebSocket stream over Kalshi and Polymarket."
+asyncapi: "/openpx.asyncapi.yaml stream"
 ---
 
 OpenPX exposes one stream per exchange that interleaves market-data
@@ -267,19 +268,17 @@ protocol (Kalshi multiplex, Polymarket Socket.IO) and delivers every
 message as a typed `WsUpdate` or `SessionEvent` variant.
 
 > **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
-> below models the message shapes for docs rendering only — there is no
+> models the message shapes for docs rendering only — there is no
 > hosted WebSocket endpoint to connect to.
-
-## AsyncAPI
-
-````yaml openpx.asyncapi.json stream
-{asyncapi_body}
-````
 """
 
 
 def render_mdx(asyncapi_yaml: str) -> str:
-    return MDX_TEMPLATE.format(asyncapi_body=asyncapi_yaml.rstrip("\n"))
+    # asyncapi_yaml is unused now — Mintlify reads the spec via the
+    # `asyncapi:` frontmatter reference and renders Send/Receive panels
+    # automatically. Kept the parameter for symmetry with prior callers.
+    _ = asyncapi_yaml
+    return MDX_TEMPLATE
 
 
 def main() -> int:
