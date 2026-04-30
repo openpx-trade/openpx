@@ -1,56 +1,7 @@
 ---
 title: "fetch_spread"
 sidebarTitle: "Fetch spread"
-openapi: GET /v1/pricing/fetch_spread
-playground: simple
-description: "Fetch the top-of-book spread (best bid, best ask, ask - bid)."
+openapi: /openpx.openapi.yaml GET /v1/pricing/fetch_spread
 ---
 
-## Parameters
-
-<ParamField path="market_id" type="string" required />
-
-<ParamField path="outcome" type="string?" />
-
-<ParamField path="token_id" type="string?" />
-
-## Returns
-
-<ResponseField name="result" type="Spread">
-  `Spread` payload.
-
-  <Expandable title="Spread">
-    <ResponseField name="ask" type="f64" />
-    <ResponseField name="bid" type="f64" />
-    <ResponseField name="spread" type="f64" />
-    <ResponseField name="ts_ms" type="i64?" />
-  </Expandable>
-</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_spread(req).await?;
-```
-
-```python Python
-result = ex.fetch_spread(req)
-```
-
-```typescript TypeScript
-const result = await ex.fetchSpread(req);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{
-  "ask": 0.5,
-  "bid": 0.5,
-  "spread": 0.5,
-  "ts_ms": 0
-}
-```
-
-</ResponseExample>
+Fetch the top-of-book spread (best bid, best ask, ask − bid) for a market outcome.

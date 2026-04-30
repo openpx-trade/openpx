@@ -32,11 +32,7 @@ use crate::websocket::traits::{ActivityFill, ActivityTrade};
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind")]
 pub enum WsUpdate {
-    /// Full orderbook snapshot. Caller should replace any cached book keyed by
-    /// `(market_id, asset_id)`. `market_id` is the parent market on every
-    /// exchange; `asset_id` is the per-outcome identifier (Polymarket token,
-    /// Kalshi ticker). Emitted on initial subscribe and after any
-    /// `BookInvalidated` / `Clear` recovery path.
+    /// Full orderbook snapshot — replace any cached book for `(market_id, asset_id)`.
     Snapshot {
         market_id: String,
         asset_id: String,
@@ -48,9 +44,7 @@ pub enum WsUpdate {
         local_ts_ms: u64,
         seq: u64,
     },
-    /// Incremental change to an existing book. Apply in-place, or discard if
-    /// the caller has seen a matching `Clear` / `BookInvalidated` without a
-    /// follow-up `Snapshot` yet.
+    /// Incremental change to an existing book — apply in-place.
     Delta {
         market_id: String,
         asset_id: String,
@@ -62,11 +56,7 @@ pub enum WsUpdate {
         local_ts_ms: u64,
         seq: u64,
     },
-    /// Book invalidation on the same stream as `Snapshot` / `Delta`, so a
-    /// consumer can say "seq N was Clear, drop anything with seq ≤ N, wait
-    /// for the next Snapshot" without merging with the session stream. Mirrors
-    /// `SessionEvent::BookInvalidated`, which stays as the connection-level
-    /// signal for global observability.
+    /// Book invalidation — drop the cached book and wait for the next `Snapshot`.
     Clear {
         market_id: String,
         asset_id: String,
@@ -77,7 +67,7 @@ pub enum WsUpdate {
         local_ts_ms: u64,
         seq: u64,
     },
-    /// A public trade (any counterparty). Not tied to a local order.
+    /// A public trade (any counterparty), not tied to a local order.
     Trade {
         trade: ActivityTrade,
         #[serde(skip)]
@@ -103,30 +93,20 @@ pub enum WsUpdate {
 pub enum SessionEvent {
     /// Initial socket establishment.
     Connected,
-    /// Socket re-established after an observed outage. `gap_ms` is the
-    /// wall-clock interval between the last received message and this event.
-    /// Callers who maintain per-market books should discard them and wait for
-    /// the next `WsUpdate::Snapshot` for each subscribed market.
+    /// Socket re-established after an outage — `gap_ms` is the wall-clock interval since the last received message.
     Reconnected { gap_ms: u64 },
-    /// Outbound dispatch channel overflowed — a slow consumer missed deltas.
-    /// Unlike `tokio::sync::broadcast` which silently skips ahead, openpx
-    /// raises this explicitly and invalidates every affected book, because
-    /// a missed delta corrupts book state in a way the caller cannot detect
-    /// from the stream alone.
+    /// Slow consumer dropped messages — every affected book is invalidated and must be rebuilt from the next `Snapshot`.
     Lagged {
         dropped: u64,
         first_seq: u64,
         last_seq: u64,
     },
-    /// A specific market's book is no longer trustworthy. Caller should
-    /// discard its cache for that `market_id` and wait for the next
-    /// `WsUpdate::Snapshot`.
+    /// A specific market's book is no longer trustworthy — drop cache and wait for next `Snapshot` (reasons: `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`).
     BookInvalidated {
         market_id: String,
         reason: InvalidationReason,
     },
-    /// A non-fatal error observed on the connection. The session continues;
-    /// the caller is informed in case they want to log or alert.
+    /// A non-fatal error observed on the connection (session continues).
     Error { message: String },
 }
 

@@ -1,23 +1,7 @@
 ---
 title: "refresh_balance"
 sidebarTitle: "Refresh balance"
-openapi: POST /v1/balance/refresh_balance
-playground: simple
-description: "Refresh cached balance/allowance state if supported by the exchange."
+openapi: /openpx.openapi.yaml POST /v1/balance/refresh_balance
 ---
 
-<RequestExample>
-
-```rust Rust
-let result = ex.refresh_balance().await?;
-```
-
-```python Python
-result = ex.refresh_balance()
-```
-
-```typescript TypeScript
-const result = await ex.refreshBalance();
-```
-
-</RequestExample>
+Refresh cached balance and allowance state from the exchange.

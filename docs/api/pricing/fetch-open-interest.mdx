@@ -1,38 +1,7 @@
 ---
 title: "fetch_open_interest"
 sidebarTitle: "Fetch open interest"
-openapi: GET /v1/pricing/fetch_open_interest
-playground: simple
-description: "Fetch the open interest (total outstanding contracts) for a market."
+openapi: /openpx.openapi.yaml GET /v1/pricing/fetch_open_interest
 ---
 
-## Parameters
-
-<ParamField path="market_id" type="string" required />
-
-## Returns
-
-<ResponseField name="result" type="f64" />
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_open_interest("market_id-example").await?;
-```
-
-```python Python
-result = ex.fetch_open_interest(market_id)
-```
-
-```typescript TypeScript
-const result = await ex.fetchOpenInterest(market_id);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-0.5
-```
-
-</ResponseExample>
+Fetch the open interest (total outstanding contracts) for a market.

@@ -30,10 +30,65 @@ tags:
 paths:
   /v1/markets/fetch_markets:
     get:
-      operationId: fetch_markets
-      summary: Fetch markets
       tags:
       - Markets
+      summary: Fetch markets
+      description: "Fetch a paginated list of markets \u2014 `status` filter accepts `active`, `closed`, `resolved`, or `all`\
+        \ (defaults to `active`)."
+      operationId: fetch_markets
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          default: null
+          type:
+          - string
+          - 'null'
+        description: Exchange-specific cursor (offset, page number, or cursor string)
+      - name: event_id
+        in: query
+        required: false
+        schema:
+          default: null
+          type:
+          - string
+          - 'null'
+        description: Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a
+          Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`,
+          `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
+        description: 'Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at
+          ~500. Values above the cap are silently clamped to the cap.'
+      - name: series_id
+        in: query
+        required: false
+        schema:
+          default: null
+          type:
+          - string
+          - 'null'
+        description: "Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series \u2192 Events \u2192\
+          \ Markets. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) or a Polymarket series ID (e.g., `\"10345\"`) to fetch\
+          \ only markets in that series."
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/MarketStatusFilter'
+          - type: 'null'
+          default: null
+        description: Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All`
+          to fetch markets of any status.
       responses:
         '200':
           description: Success.
@@ -47,22 +102,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch one page of markets from this exchange.
-
-
-        Returns `(markets, next_cursor)` where `next_cursor` is `None` when no more pages.
-
-        Callers paginate externally by passing `next_cursor` back in `params.cursor`.
-
-        When `params.status` is `None`, exchanges default to `Active`.
-
-        When `params.status` is `Some(All)`, exchanges return all markets regardless of status.'
   /v1/markets/fetch_market:
     get:
-      operationId: fetch_market
-      summary: Fetch market
       tags:
       - Markets
+      summary: Fetch market
+      description: Fetch a single market by ID (Kalshi ticker or Polymarket condition_id).
+      operationId: fetch_market
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -78,23 +130,12 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/orders/create_order:
     post:
-      operationId: create_order
-      summary: Create order
       tags:
       - Orders
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
+      summary: Create order
+      description: "Submit a new order \u2014 `side` is `buy` or `sell`; `params[\"order_type\"]` accepts `gtc`, `ioc`, or\
+        \ `fok`."
+      operationId: create_order
       requestBody:
         required: true
         content:
@@ -125,12 +166,6 @@ paths:
               - price
               - size
               - params
-  /v1/orders/cancel_order:
-    post:
-      operationId: cancel_order
-      summary: Cancel order
-      tags:
-      - Orders
       responses:
         '200':
           description: Success.
@@ -144,6 +179,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
+  /v1/orders/cancel_order:
+    post:
+      tags:
+      - Orders
+      summary: Cancel order
+      description: Cancel an existing order by ID, optionally scoped to a market.
+      operationId: cancel_order
       requestBody:
         required: true
         content:
@@ -159,12 +201,37 @@ paths:
                   - 'null'
               required:
               - order_id
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        default:
+          description: Unified error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenPxError'
   /v1/orders/fetch_order:
     get:
-      operationId: fetch_order
-      summary: Fetch order
       tags:
       - Orders
+      summary: Fetch order
+      description: Fetch a single order by ID, optionally scoped to a market.
+      operationId: fetch_order
+      parameters:
+      - name: order_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: market_id
+        in: query
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -180,10 +247,19 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/orders/fetch_open_orders:
     get:
-      operationId: fetch_open_orders
-      summary: Fetch open orders
       tags:
       - Orders
+      summary: Fetch open orders
+      description: Fetch the caller's currently open orders, optionally filtered by market.
+      operationId: fetch_open_orders
+      parameters:
+      - name: market_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -201,10 +277,17 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/positions/fetch_positions:
     get:
-      operationId: fetch_positions
-      summary: Fetch positions
       tags:
       - Positions
+      summary: Fetch positions
+      description: Fetch the caller's open positions, optionally filtered by market.
+      operationId: fetch_positions
+      parameters:
+      - name: market_id
+        in: query
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -222,10 +305,11 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/balance/fetch_balance:
     get:
-      operationId: fetch_balance
-      summary: Fetch balance
       tags:
       - Balance
+      summary: Fetch balance
+      description: Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).
+      operationId: fetch_balance
       responses:
         '200':
           description: Success.
@@ -244,10 +328,11 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/balance/refresh_balance:
     post:
-      operationId: refresh_balance
-      summary: Refresh balance
       tags:
       - Balance
+      summary: Refresh balance
+      description: Refresh cached balance and allowance state from the exchange.
+      operationId: refresh_balance
       responses:
         '200':
           description: Success.
@@ -262,13 +347,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Refresh cached balance/allowance state if supported by the exchange.
   /v1/orderbook/fetch_orderbook:
     get:
-      operationId: fetch_orderbook
-      summary: Fetch orderbook
       tags:
       - Orderbook
+      summary: Fetch orderbook
+      description: Fetch the L2 orderbook (bids + asks) for a single market outcome.
+      operationId: fetch_orderbook
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -282,15 +387,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch L2 orderbook for a market outcome.
-
-        Uses owned types for async compatibility.'
   /v1/price-history/fetch_price_history:
     get:
-      operationId: fetch_price_history
-      summary: Fetch price history
       tags:
       - Price History
+      summary: Fetch price history
+      description: "Fetch OHLCV candlestick history \u2014 `interval` is `1m`, `1h`, `6h`, `1d`, `1w`, or `max`."
+      operationId: fetch_price_history
+      parameters:
+      - name: condition_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: Condition ID for OI enrichment (Polymarket).
+      - name: end_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds
+      - name: interval
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/PriceHistoryInterval'
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: start_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -306,13 +460,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch historical OHLCV price history / candlestick data for a market outcome.
   /v1/trades/fetch_trades:
     get:
-      operationId: fetch_trades
-      summary: Fetch trades
       tags:
       - Trades
+      summary: Fetch trades
+      description: Fetch a paginated tape of recent public trades for a market outcome.
+      operationId: fetch_trades
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: Opaque pagination cursor from a previous response.
+      - name: end_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds (inclusive)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
+        description: Max number of trades to return (exchange-specific caps may apply).
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Exchange-native market identifier.
+      - name: market_ref
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided,
+          exchanges should prefer this over `market_id`.
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: start_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds (inclusive)
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -326,15 +546,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch recent public trades ("tape") for a market outcome.
-
-        Returns `(trades, next_cursor)` where `next_cursor` supports pagination.'
   /v1/orderbook-history/fetch_orderbook_history:
     get:
-      operationId: fetch_orderbook_history
-      summary: Fetch orderbook history
       tags:
       - Orderbook History
+      summary: Fetch orderbook history
+      description: Fetch a paginated list of historical L2 orderbook snapshots for a market.
+      operationId: fetch_orderbook_history
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: end_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: start_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -348,15 +611,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch historical L2 orderbook snapshots for a market.
-
-        Returns `(snapshots, next_cursor)` for pagination.'
   /v1/balance/fetch_balance_raw:
     get:
-      operationId: fetch_balance_raw
-      summary: Fetch balance raw
       tags:
       - Balance
+      summary: Fetch balance raw
+      description: Fetch the raw upstream balance response (unprocessed JSON) from the exchange.
+      operationId: fetch_balance_raw
       responses:
         '200':
           description: Success.
@@ -370,13 +631,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch raw balance response from exchange API
   /v1/fills/fetch_user_activity:
     get:
-      operationId: fetch_user_activity
-      summary: Fetch user activity
       tags:
       - Fills
+      summary: Fetch user activity
+      operationId: fetch_user_activity
+      parameters:
+      - name: address
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -392,10 +667,23 @@ paths:
                 $ref: '#/components/schemas/OpenPxError'
   /v1/fills/fetch_fills:
     get:
-      operationId: fetch_fills
-      summary: Fetch fills
       tags:
       - Fills
+      summary: Fetch fills
+      description: Fetch the caller's fill (trade execution) history, optionally filtered by market.
+      operationId: fetch_fills
+      parameters:
+      - name: market_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
       responses:
         '200':
           description: Success.
@@ -411,13 +699,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch user's fill (trade execution) history for a market.
   /v1/server/fetch_server_time:
     get:
-      operationId: fetch_server_time
-      summary: Fetch server time
       tags:
       - Server
+      summary: Fetch server time
+      description: Fetch the exchange's current wall-clock time (UTC).
+      operationId: fetch_server_time
       responses:
         '200':
           description: Success.
@@ -432,17 +720,73 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch the exchange''s current wall-clock time. Useful for clock-skew
-
-        correction in signing-sensitive paths and HFT replay where local
-
-        `chrono::Utc::now()` would silently drift from the venue''s clock.'
   /v1/events/fetch_events:
     get:
-      operationId: fetch_events
-      summary: Fetch events
       tags:
       - Events
+      summary: Fetch events
+      description: Fetch a paginated list of events (groups of related markets).
+      operationId: fetch_events
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
+      - name: min_close_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: "Unix seconds \u2014 only events closing at or after this timestamp."
+      - name: min_updated_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: "Unix seconds \u2014 only events updated at or after this timestamp."
+      - name: series_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: Filter by series ID / ticker.
+      - name: status
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: "Filter by lifecycle status \u2014 venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi;\
+          \ `closed=true/false` on Polymarket)."
+      - name: with_nested_markets
+        in: query
+        required: false
+        schema:
+          type:
+          - boolean
+          - 'null'
+        description: Include the events' nested `Market` objects when supported.
       responses:
         '200':
           description: Success.
@@ -456,17 +800,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch a page of events. An event groups one or more markets that share
-
-        a resolution (Kalshi) or theme (Polymarket).
-
-        Returns `(events, next_cursor)`.'
   /v1/events/fetch_event:
     get:
-      operationId: fetch_event
-      summary: Fetch event
       tags:
       - Events
+      summary: Fetch event
+      description: Fetch a single event by ID or slug.
+      operationId: fetch_event
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -480,13 +826,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch a single event by ID or slug (whichever the venue accepts).
   /v1/orderbook/fetch_orderbooks_batch:
     get:
-      operationId: fetch_orderbooks_batch
-      summary: Fetch orderbooks batch
       tags:
       - Orderbook
+      summary: Fetch orderbooks batch
+      description: Fetch L2 orderbooks for multiple markets in one round-trip.
+      operationId: fetch_orderbooks_batch
+      parameters:
+      - name: market_ids
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
       responses:
         '200':
           description: Success.
@@ -502,17 +856,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch L2 orderbooks for multiple markets in one round-trip. Both
-
-        venues expose a batch book endpoint (Kalshi `/markets/orderbooks`,
-
-        Polymarket `/books`); this method exposes that as a unified primitive.'
   /v1/series/fetch_series:
     get:
-      operationId: fetch_series
-      summary: Fetch series
       tags:
       - Series
+      summary: Fetch series
+      description: Fetch a paginated list of series (recurring families of events).
+      operationId: fetch_series
+      parameters:
+      - name: category
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: Filter by category (e.g. `Politics`, `Sports`).
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: include_volume
+        in: query
+        required: false
+        schema:
+          type:
+          - boolean
+          - 'null'
+        description: Include traded volume in the response when the venue supports it.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -526,17 +909,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch a page of series. A series is a recurring family of events
-
-        (weekly inflation prints, monthly NFP, sports seasons, etc.).
-
-        Returns `(series, next_cursor)`.'
   /v1/series/fetch_series_one:
     get:
-      operationId: fetch_series_one
-      summary: Fetch series one
       tags:
       - Series
+      summary: Fetch series one
+      description: Fetch a single series by ID or ticker.
+      operationId: fetch_series_one
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -550,13 +935,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch a single series by ID or ticker.
   /v1/pricing/fetch_midpoint:
     get:
-      operationId: fetch_midpoint
-      summary: Fetch midpoint
       tags:
       - Pricing
+      summary: Fetch midpoint
+      description: Fetch the midpoint price for a single market outcome.
+      operationId: fetch_midpoint
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -571,15 +976,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch the midpoint price for a single market outcome. Cheaper than
-
-        pulling a full orderbook when only the mark price is needed.'
   /v1/pricing/fetch_midpoints_batch:
     get:
-      operationId: fetch_midpoints_batch
-      summary: Fetch midpoints batch
       tags:
       - Pricing
+      summary: Fetch midpoints batch
+      description: Fetch midpoint prices for multiple market outcomes in one round-trip.
+      operationId: fetch_midpoints_batch
+      parameters:
+      - name: market_ids
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
       responses:
         '200':
           description: Success.
@@ -596,17 +1007,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: 'Fetch midpoints for multiple market outcomes in one round-trip.
-
-        Returns a map keyed by the input identifier (token_id on Polymarket,
-
-        ticker on Kalshi).'
   /v1/pricing/fetch_spread:
     get:
-      operationId: fetch_spread
-      summary: Fetch spread
       tags:
       - Pricing
+      summary: Fetch spread
+      description: "Fetch the top-of-book spread (best bid, best ask, ask \u2212 bid) for a market outcome."
+      operationId: fetch_spread
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -620,13 +1047,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch the top-of-book spread (best bid, best ask, ask - bid).
   /v1/pricing/fetch_last_trade_price:
     get:
-      operationId: fetch_last_trade_price
-      summary: Fetch last trade price
       tags:
       - Pricing
+      summary: Fetch last trade price
+      description: Fetch the most recent public trade for a market outcome.
+      operationId: fetch_last_trade_price
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: token_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Success.
@@ -640,13 +1087,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch the most recent public trade for a market outcome.
   /v1/pricing/fetch_open_interest:
     get:
-      operationId: fetch_open_interest
-      summary: Fetch open interest
       tags:
       - Pricing
+      summary: Fetch open interest
+      description: Fetch the open interest (total outstanding contracts) for a market.
+      operationId: fetch_open_interest
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -661,13 +1114,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch the open interest (total outstanding contracts) for a market.
   /v1/trades/fetch_user_trades:
     get:
-      operationId: fetch_user_trades
-      summary: Fetch user trades
       tags:
       - Trades
+      summary: Fetch user trades
+      description: "Fetch a wallet's trade history \u2014 optional `side` filter is `buy` or `sell`."
+      operationId: fetch_user_trades
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: end_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds (inclusive)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          format: uint
+          minimum: 0.0
+          type:
+          - integer
+          - 'null'
+      - name: market_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: side
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/OrderSide'
+          - type: 'null'
+      - name: start_ts
+        in: query
+        required: false
+        schema:
+          format: int64
+          type:
+          - integer
+          - 'null'
+        description: Unix seconds (inclusive)
+      - name: user_address
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+        description: '`None` = caller''s own trades (auth required on both venues). `Some(addr)` = public lookup for `addr`
+          (Polymarket only; Kalshi returns `NotSupported`).'
       responses:
         '200':
           description: Success.
@@ -681,16 +1192,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: "Fetch a user's trade history. Distinct from `fetch_fills` because some\nvenues (Polymarket) carry on-chain\
-        \ fields like `tx_hash` and a\n`realized_pnl` that don't fit the `Fill` model. When\n`req.user_address` is `None`,\
-        \ returns the authenticated caller's own\ntrades. When `Some(addr)`, returns a public lookup for that wallet\n(Polymarket\
-        \ only \u2014 Kalshi returns `NotSupported` in that case)."
   /v1/tags/fetch_market_tags:
     get:
-      operationId: fetch_market_tags
-      summary: Fetch market tags
       tags:
       - Tags
+      summary: Fetch market tags
+      description: Fetch the tag set associated with a market (or its parent event).
+      operationId: fetch_market_tags
+      parameters:
+      - name: market_id
+        in: query
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Success.
@@ -706,31 +1220,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: Fetch the tag set associated with a market (or its parent event).
   /v1/orders/cancel_all_orders:
     post:
-      operationId: cancel_all_orders
-      summary: Cancel all orders
       tags:
       - Orders
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Order'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-      description: 'Cancel all of the caller''s open orders. When `market_id.is_some()`,
-
-        cancel only orders on that market.'
+      summary: Cancel all orders
+      description: Cancel all of the caller's open orders, optionally scoped to a market.
+      operationId: cancel_all_orders
       requestBody:
         required: true
         content:
@@ -742,12 +1238,6 @@ paths:
                   type:
                   - string
                   - 'null'
-  /v1/orders/create_orders_batch:
-    post:
-      operationId: create_orders_batch
-      summary: Create orders batch
-      tags:
-      - Orders
       responses:
         '200':
           description: Success.
@@ -763,9 +1253,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-      description: "Submit multiple orders in a single round-trip. Both venues cap the\nbatch size \u2014 Polymarket at 15,\
-        \ Kalshi at a token-budget-dependent\nnumber. Implementations should reject batches that exceed their cap\nup-front\
-        \ rather than splitting silently."
+  /v1/orders/create_orders_batch:
+    post:
+      tags:
+      - Orders
+      summary: Create orders batch
+      description: "Submit multiple orders in one round-trip \u2014 each order's `side` is `buy`/`sell` and `order_type` is\
+        \ `gtc`, `ioc`, or `fok` (cap: 15 on Polymarket; token-budget on Kalshi)."
+      operationId: create_orders_batch
       requestBody:
         required: true
         content:
@@ -779,6 +1274,21 @@ paths:
                     $ref: '#/components/schemas/NewOrder'
               required:
               - orders
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        default:
+          description: Unified error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenPxError'
 components:
   schemas:
     ActivityFill:
@@ -938,6 +1448,32 @@ components:
       - volume
       title: Candlestick
       type: object
+    CryptoPrice:
+      properties:
+        source:
+          $ref: '#/components/schemas/CryptoPriceSource'
+        symbol:
+          type: string
+        timestamp:
+          format: uint64
+          minimum: 0.0
+          type: integer
+        value:
+          format: double
+          type: number
+      required:
+      - source
+      - symbol
+      - timestamp
+      - value
+      title: CryptoPrice
+      type: object
+    CryptoPriceSource:
+      enum:
+      - binance
+      - chainlink
+      title: CryptoPriceSource
+      type: string
     Event:
       description: A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State
         Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme
@@ -2142,9 +2678,8 @@ components:
         required:
         - kind
         type: object
-      - description: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last
-          received message and this event. Callers who maintain per-market books should discard them and wait for the next
-          `WsUpdate::Snapshot` for each subscribed market.
+      - description: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received\
+          \ message."
         properties:
           gap_ms:
             format: uint64
@@ -2158,9 +2693,8 @@ components:
         - gap_ms
         - kind
         type: object
-      - description: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast`\
-          \ which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed\
-          \ delta corrupts book state in a way the caller cannot detect from the stream alone."
+      - description: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the\
+          \ next `Snapshot`."
         properties:
           dropped:
             format: uint64
@@ -2184,8 +2718,8 @@ components:
         - kind
         - last_seq
         type: object
-      - description: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id`
-          and wait for the next `WsUpdate::Snapshot`.
+      - description: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons:\
+          \ `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`)."
         properties:
           kind:
             enum:
@@ -2200,8 +2734,7 @@ components:
         - market_id
         - reason
         type: object
-      - description: A non-fatal error observed on the connection. The session continues; the caller is informed in case they
-          want to log or alert.
+      - description: A non-fatal error observed on the connection (session continues).
         properties:
           kind:
             enum:
@@ -2225,6 +2758,60 @@ components:
           - string
           - 'null'
       title: SettlementSource
+      type: object
+    SportResult:
+      description: Real-time sports score/state from the Polymarket Sports WebSocket. Serializes as snake_case for end-users;
+        aliases accept the upstream camelCase.
+      properties:
+        away_team:
+          type: string
+        elapsed:
+          type:
+          - string
+          - 'null'
+        ended:
+          type: boolean
+        finished_timestamp:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        game_id:
+          format: uint64
+          minimum: 0.0
+          type: integer
+        home_team:
+          type: string
+        league_abbreviation:
+          type: string
+        live:
+          type: boolean
+        period:
+          type:
+          - string
+          - 'null'
+        score:
+          type:
+          - string
+          - 'null'
+        slug:
+          type: string
+        status:
+          type: string
+        turn:
+          type:
+          - string
+          - 'null'
+      required:
+      - away_team
+      - ended
+      - game_id
+      - home_team
+      - league_abbreviation
+      - live
+      - slug
+      - status
+      title: SportResult
       type: object
     Spread:
       description: "Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` \u2014 useful for liquidity\
@@ -2420,9 +3007,7 @@ components:
         \ stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream\
         \ rather than another `WsUpdate` variant \u2014 keeps consumer `match` exhaustiveness honest."
       oneOf:
-      - description: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-          is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-          Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
+      - description: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
         properties:
           asset_id:
             type: string
@@ -2456,8 +3041,7 @@ components:
         - market_id
         - seq
         type: object
-      - description: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching
-          `Clear` / `BookInvalidated` without a follow-up `Snapshot` yet.
+      - description: "Incremental change to an existing book \u2014 apply in-place."
         properties:
           asset_id:
             type: string
@@ -2493,9 +3077,7 @@ components:
         - market_id
         - seq
         type: object
-      - description: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear,\
-          \ drop anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors\
-          \ `SessionEvent::BookInvalidated`, which stays as the connection-level signal for global observability."
+      - description: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
         properties:
           asset_id:
             type: string
@@ -2523,7 +3105,7 @@ components:
         - reason
         - seq
         type: object
-      - description: A public trade (any counterparty). Not tied to a local order.
+      - description: A public trade (any counterparty), not tied to a local order.
         properties:
           kind:
             enum:

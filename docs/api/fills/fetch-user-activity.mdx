@@ -1,40 +1,7 @@
 ---
 title: "fetch_user_activity"
 sidebarTitle: "Fetch user activity"
-openapi: GET /v1/fills/fetch_user_activity
-playground: simple
-description: "Fetch user activity"
+openapi: /openpx.openapi.yaml GET /v1/fills/fetch_user_activity
 ---
 
-## Parameters
-
-<ParamField path="address" type="string" required />
-
-<ParamField path="limit" type="integer?" />
-
-## Returns
-
-<ResponseField name="result" type="object" />
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_user_activity(params).await?;
-```
-
-```python Python
-result = ex.fetch_user_activity(params)
-```
-
-```typescript TypeScript
-const result = await ex.fetchUserActivity(params);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{}
-```
-
-</ResponseExample>
+Fetch user activity.

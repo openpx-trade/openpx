@@ -1871,7 +1871,7 @@
           "type": "object"
         },
         {
-          "description": "Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot` for each subscribed market.",
+          "description": "Socket re-established after an outage — `gap_ms` is the wall-clock interval since the last received message.",
           "properties": {
             "gap_ms": {
               "format": "uint64",
@@ -1892,7 +1892,7 @@
           "type": "object"
         },
         {
-          "description": "Outbound dispatch channel overflowed — a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts book state in a way the caller cannot detect from the stream alone.",
+          "description": "Slow consumer dropped messages — every affected book is invalidated and must be rebuilt from the next `Snapshot`.",
           "properties": {
             "dropped": {
               "format": "uint64",
@@ -1925,7 +1925,7 @@
           "type": "object"
         },
         {
-          "description": "A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait for the next `WsUpdate::Snapshot`.",
+          "description": "A specific market's book is no longer trustworthy — drop cache and wait for next `Snapshot` (reasons: `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`).",
           "properties": {
             "kind": {
               "enum": [
@@ -1948,7 +1948,7 @@
           "type": "object"
         },
         {
-          "description": "A non-fatal error observed on the connection. The session continues; the caller is informed in case they want to log or alert.",
+          "description": "A non-fatal error observed on the connection (session continues).",
           "properties": {
             "kind": {
               "enum": [
@@ -2328,7 +2328,7 @@
       "description": "Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream rather than another `WsUpdate` variant — keeps consumer `match` exhaustiveness honest.",
       "oneOf": [
         {
-          "description": "Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id` is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker). Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.",
+          "description": "Full orderbook snapshot — replace any cached book for `(market_id, asset_id)`.",
           "properties": {
             "asset_id": {
               "type": "string"
@@ -2375,7 +2375,7 @@
           "type": "object"
         },
         {
-          "description": "Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear` / `BookInvalidated` without a follow-up `Snapshot` yet.",
+          "description": "Incremental change to an existing book — apply in-place.",
           "properties": {
             "asset_id": {
               "type": "string"
@@ -2425,7 +2425,7 @@
           "type": "object"
         },
         {
-          "description": "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear, drop anything with seq ≤ N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`, which stays as the connection-level signal for global observability.",
+          "description": "Book invalidation — drop the cached book and wait for the next `Snapshot`.",
           "properties": {
             "asset_id": {
               "type": "string"
@@ -2464,7 +2464,7 @@
           "type": "object"
         },
         {
-          "description": "A public trade (any counterparty). Not tied to a local order.",
+          "description": "A public trade (any counterparty), not tied to a local order.",
           "properties": {
             "kind": {
               "enum": [

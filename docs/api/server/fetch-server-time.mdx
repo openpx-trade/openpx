@@ -1,37 +1,7 @@
 ---
 title: "fetch_server_time"
 sidebarTitle: "Fetch server time"
-openapi: GET /v1/server/fetch_server_time
-playground: simple
-description: "Fetch the exchange's current wall-clock time. Useful for clock-skew"
+openapi: /openpx.openapi.yaml GET /v1/server/fetch_server_time
 ---
 
-correction in signing-sensitive paths and HFT replay where local
-`chrono::Utc::now()` would silently drift from the venue's clock.
-
-## Returns
-
-<ResponseField name="result" type="DateTime" />
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_server_time().await?;
-```
-
-```python Python
-result = ex.fetch_server_time()
-```
-
-```typescript TypeScript
-const result = await ex.fetchServerTime();
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-"2026-01-01T00:00:00Z"
-```
-
-</ResponseExample>
+Fetch the exchange's current wall-clock time (UTC).

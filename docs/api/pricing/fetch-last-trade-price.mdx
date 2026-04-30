@@ -1,56 +1,7 @@
 ---
 title: "fetch_last_trade_price"
 sidebarTitle: "Fetch last trade price"
-openapi: GET /v1/pricing/fetch_last_trade_price
-playground: simple
-description: "Fetch the most recent public trade for a market outcome."
+openapi: /openpx.openapi.yaml GET /v1/pricing/fetch_last_trade_price
 ---
 
-## Parameters
-
-<ParamField path="market_id" type="string" required />
-
-<ParamField path="outcome" type="string?" />
-
-<ParamField path="token_id" type="string?" />
-
-## Returns
-
-<ResponseField name="result" type="LastTrade">
-  `LastTrade` payload.
-
-  <Expandable title="LastTrade">
-    <ResponseField name="price" type="f64" />
-    <ResponseField name="side" type="OrderSide" />
-    <ResponseField name="size" type="f64" />
-    <ResponseField name="ts_ms" type="i64" />
-  </Expandable>
-</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_last_trade_price(req).await?;
-```
-
-```python Python
-result = ex.fetch_last_trade_price(req)
-```
-
-```typescript TypeScript
-const result = await ex.fetchLastTradePrice(req);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{
-  "price": 0.5,
-  "side": "buy",
-  "size": 0.5,
-  "ts_ms": 0
-}
-```
-
-</ResponseExample>
+Fetch the most recent public trade for a market outcome.

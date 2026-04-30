@@ -1,52 +1,7 @@
 ---
 title: "fetch_market_tags"
 sidebarTitle: "Fetch market tags"
-openapi: GET /v1/tags/fetch_market_tags
-playground: simple
-description: "Fetch the tag set associated with a market (or its parent event)."
+openapi: /openpx.openapi.yaml GET /v1/tags/fetch_market_tags
 ---
 
-## Parameters
-
-<ParamField path="market_id" type="string" required />
-
-## Returns
-
-<ResponseField name="result" type="Tag[]">
-  List of `Tag` results.
-
-  <Expandable title="Tag">
-    <ResponseField name="id" type="string" />
-    <ResponseField name="name" type="string" />
-    <ResponseField name="slug" type="string?" />
-  </Expandable>
-</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_market_tags("market_id-example").await?;
-```
-
-```python Python
-result = ex.fetch_market_tags(market_id)
-```
-
-```typescript TypeScript
-const result = await ex.fetchMarketTags(market_id);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-[
-  {
-    "id": "example",
-    "name": "example",
-    "slug": "example"
-  }
-]
-```
-
-</ResponseExample>
+Fetch the tag set associated with a market (or its parent event).

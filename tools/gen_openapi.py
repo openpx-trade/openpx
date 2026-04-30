@@ -418,6 +418,66 @@ def build_request_body(
     }
 
 
+def build_query_parameters(
+    method: dict[str, Any],
+    schema_defs: set[str],
+    raw_defs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build OpenAPI `parameters` (in: query) for GET methods.
+
+    A single struct arg (e.g. `params: &FetchMarketsParams`) is expanded so
+    each struct field becomes its own query parameter — the natural REST
+    representation of "fetch markets matching these filters". Primitive args
+    map 1:1 to a query parameter."""
+    args = method["args"]
+    if not args:
+        return []
+
+    if len(args) == 1:
+        _, ty = args[0]
+        ty_stripped = strip_ref(ty)
+        head, inner = split_generic(ty_stripped)
+        if head == "Option" and inner:
+            ty_stripped = inner[0]
+        bare = ty_stripped.replace(" ", "")
+        if bare in schema_defs:
+            node = raw_defs.get(bare, {})
+            props = node.get("properties") or {}
+            required = set(node.get("required") or [])
+            if props:
+                params_list: list[dict[str, Any]] = []
+                for prop_name, prop in props.items():
+                    prop_copy = dict(prop)
+                    desc = prop_copy.pop("description", None)
+                    schema = normalize_jsonschema_for_openapi(prop_copy)
+                    param: dict[str, Any] = {
+                        "name": prop_name,
+                        "in": "query",
+                        "required": prop_name in required,
+                        "schema": schema,
+                    }
+                    if desc:
+                        param["description"] = desc
+                    params_list.append(param)
+                return params_list
+
+    params_list = []
+    for arg_name, ty in args:
+        ty_stripped = strip_ref(ty)
+        head, inner = split_generic(ty_stripped)
+        is_optional = head == "Option"
+        if is_optional and inner:
+            ty_stripped = inner[0]
+        schema = rust_to_schema(ty_stripped, schema_defs)
+        params_list.append({
+            "name": arg_name,
+            "in": "query",
+            "required": not is_optional,
+            "schema": schema,
+        })
+    return params_list
+
+
 def build_response_schema(
     method: dict[str, Any], schema_defs: set[str], wrappers: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
@@ -440,40 +500,54 @@ def build_response_schema(
 
 
 def build_operation(
-    method: dict[str, Any], schema_defs: set[str], wrappers: dict[str, dict[str, Any]]
+    method: dict[str, Any],
+    schema_defs: set[str],
+    wrappers: dict[str, dict[str, Any]],
+    raw_defs: dict[str, Any],
 ) -> dict[str, Any]:
+    """Compose an OpenAPI operation. Key ordering follows the canonical layout
+    (tags → summary → description → operationId → parameters → requestBody →
+    responses) — Mintlify's renderer skips the parameters panel when keys are
+    out of canonical order."""
     name = method["name"]
     doc = method["doc"]
     summary = name.replace("_", " ").capitalize()
     description = doc or ""
     op: dict[str, Any] = {
-        "operationId": name,
-        "summary": summary,
         "tags": [method["tag"]],
-        "responses": {
-            "200": {
-                "description": "Success.",
-                "content": {
-                    "application/json": {
-                        "schema": build_response_schema(method, schema_defs, wrappers)
-                    }
-                },
-            },
-            "default": {
-                "description": "Unified error response.",
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/OpenPxError"}
-                    }
-                },
-            },
-        },
+        "summary": summary,
     }
     if description:
         op["description"] = description
-    body = build_request_body(method, schema_defs)
-    if body and method["verb"] == "POST":
-        op["requestBody"] = body
+    op["operationId"] = name
+
+    if method["verb"] == "GET":
+        params = build_query_parameters(method, schema_defs, raw_defs)
+        if params:
+            op["parameters"] = params
+    else:
+        body = build_request_body(method, schema_defs)
+        if body:
+            op["requestBody"] = body
+
+    op["responses"] = {
+        "200": {
+            "description": "Success.",
+            "content": {
+                "application/json": {
+                    "schema": build_response_schema(method, schema_defs, wrappers)
+                }
+            },
+        },
+        "default": {
+            "description": "Unified error response.",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/OpenPxError"}
+                }
+            },
+        },
+    }
     return op
 
 
@@ -546,7 +620,7 @@ def main() -> int:
     wrappers: dict[str, dict[str, Any]] = {}
     paths: dict[str, dict[str, Any]] = {}
     for m in methods:
-        op = build_operation(m, schema_def_names, wrappers)
+        op = build_operation(m, schema_def_names, wrappers, raw_defs)
         path = f"/v1/{tag_slug(m['tag'])}/{m['name']}"
         verb = m["verb"].lower()
         paths.setdefault(path, {})[verb] = op

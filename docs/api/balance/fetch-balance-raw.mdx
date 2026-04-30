@@ -1,34 +1,7 @@
 ---
 title: "fetch_balance_raw"
 sidebarTitle: "Fetch balance raw"
-openapi: GET /v1/balance/fetch_balance_raw
-playground: simple
-description: "Fetch raw balance response from exchange API"
+openapi: /openpx.openapi.yaml GET /v1/balance/fetch_balance_raw
 ---
 
-## Returns
-
-<ResponseField name="result" type="object" />
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_balance_raw().await?;
-```
-
-```python Python
-result = ex.fetch_balance_raw()
-```
-
-```typescript TypeScript
-const result = await ex.fetchBalanceRaw();
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{}
-```
-
-</ResponseExample>
+Fetch the raw upstream balance response (unprocessed JSON) from the exchange.

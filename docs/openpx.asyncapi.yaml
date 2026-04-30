@@ -16,8 +16,7 @@ channels:
   orderbook:
     address: /v1/orderbook
     title: Orderbook Stream
-    description: "Subscribe per market \u2014 OpenPX delivers a `Snapshot` on first subscribe and `Delta` updates thereafter.\
-      \ `Clear` and `BookInvalidated` indicate the cached book should be discarded and rebuilt from the next `Snapshot`."
+    description: "Per-market L2 orderbook stream \u2014 `Snapshot` on subscribe, then `Delta` updates."
     messages:
       Snapshot:
         $ref: '#/components/messages/Snapshot'
@@ -42,8 +41,7 @@ channels:
   trades:
     address: /v1/trades
     title: Trades Stream
-    description: Receive every public trade as it prints. The `Trade` payload carries the matched price, size, and aggressor
-      side; not scoped to your orders (use the Fills stream for those).
+    description: "Public trade-tape stream \u2014 receive every print as it lands."
     messages:
       Trade:
         $ref: '#/components/messages/Trade'
@@ -64,8 +62,7 @@ channels:
   fills:
     address: /v1/fills
     title: Fills Stream
-    description: Receive a `Fill` event each time one of the authenticated user's orders is matched. Includes maker/taker
-      role, fee rate, and the parent order ID. Auth required (the WebSocket uses the same exchange config as the REST surface).
+    description: Authenticated stream of the caller's own order fills (auth required).
     messages:
       Fill:
         $ref: '#/components/messages/Fill'
@@ -86,8 +83,8 @@ channels:
   crypto:
     address: /v1/crypto
     title: Crypto Price Stream
-    description: Polymarket re-publishes spot crypto prices over a public WebSocket; OpenPX exposes the same stream as a typed
-      `CryptoPrice` event. No authentication needed.
+    description: "Public spot-price stream (Polymarket-hosted) \u2014 `source` is `binance` (e.g. `btcusdt`, `solusdt`, `ethusdt`)\
+      \ or `chainlink` (e.g. `btc/usd`, `eth/usd`, `sol/usd`)."
     messages:
       CryptoPrice:
         $ref: '#/components/messages/CryptoPrice'
@@ -108,8 +105,7 @@ channels:
   sports:
     address: /v1/sports
     title: Sports Stream
-    description: Polymarket's public sports WebSocket emits live game updates for sports markets. OpenPX exposes the same
-      stream as a typed `SportResult` event.
+    description: "Public live game-state stream (Polymarket-hosted) \u2014 `league` is `nba`, `nfl`, or `mlb`."
     messages:
       SportResult:
         $ref: '#/components/messages/SportResult'
@@ -149,9 +145,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Snapshot
-    summary: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-      is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-      Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
+    summary: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
     messages:
     - $ref: '#/channels/orderbook/messages/Snapshot'
   orderbook_receive_Delta:
@@ -159,8 +153,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Delta
-    summary: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear`
-      / `BookInvalidated` without a follow-up `Snapshot` yet.
+    summary: "Incremental change to an existing book \u2014 apply in-place."
     messages:
     - $ref: '#/channels/orderbook/messages/Delta'
   orderbook_receive_Clear:
@@ -168,9 +161,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Clear
-    summary: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear, drop\
-      \ anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`,\
-      \ which stays as the connection-level signal for global observability."
+    summary: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
     messages:
     - $ref: '#/channels/orderbook/messages/Clear'
   orderbook_receive_Connected:
@@ -186,9 +177,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Reconnected
-    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-      for each subscribed market.
+    summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
     messages:
     - $ref: '#/channels/orderbook/messages/Reconnected'
   orderbook_receive_Lagged:
@@ -196,9 +185,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Lagged
-    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
-      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
-      \ book state in a way the caller cannot detect from the stream alone."
+    summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next `Snapshot`."
     messages:
     - $ref: '#/channels/orderbook/messages/Lagged'
   orderbook_receive_BookInvalidated:
@@ -206,8 +193,8 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: BookInvalidated
-    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
-      for the next `WsUpdate::Snapshot`.
+    summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons: `Reconnect`,\
+      \ `Lag`, `SequenceGap`, `ExchangeReset`)."
     messages:
     - $ref: '#/channels/orderbook/messages/BookInvalidated'
   orderbook_receive_Error:
@@ -215,8 +202,7 @@ operations:
     channel:
       $ref: '#/channels/orderbook'
     title: Error
-    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-      to log or alert.
+    summary: A non-fatal error observed on the connection (session continues).
     messages:
     - $ref: '#/channels/orderbook/messages/Error'
   trades_subscribe:
@@ -240,7 +226,7 @@ operations:
     channel:
       $ref: '#/channels/trades'
     title: Trade
-    summary: A public trade (any counterparty). Not tied to a local order.
+    summary: A public trade (any counterparty), not tied to a local order.
     messages:
     - $ref: '#/channels/trades/messages/Trade'
   trades_receive_Connected:
@@ -256,9 +242,7 @@ operations:
     channel:
       $ref: '#/channels/trades'
     title: Reconnected
-    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-      for each subscribed market.
+    summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
     messages:
     - $ref: '#/channels/trades/messages/Reconnected'
   trades_receive_Lagged:
@@ -266,9 +250,7 @@ operations:
     channel:
       $ref: '#/channels/trades'
     title: Lagged
-    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
-      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
-      \ book state in a way the caller cannot detect from the stream alone."
+    summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next `Snapshot`."
     messages:
     - $ref: '#/channels/trades/messages/Lagged'
   trades_receive_BookInvalidated:
@@ -276,8 +258,8 @@ operations:
     channel:
       $ref: '#/channels/trades'
     title: BookInvalidated
-    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
-      for the next `WsUpdate::Snapshot`.
+    summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons: `Reconnect`,\
+      \ `Lag`, `SequenceGap`, `ExchangeReset`)."
     messages:
     - $ref: '#/channels/trades/messages/BookInvalidated'
   trades_receive_Error:
@@ -285,8 +267,7 @@ operations:
     channel:
       $ref: '#/channels/trades'
     title: Error
-    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-      to log or alert.
+    summary: A non-fatal error observed on the connection (session continues).
     messages:
     - $ref: '#/channels/trades/messages/Error'
   fills_subscribe:
@@ -326,9 +307,7 @@ operations:
     channel:
       $ref: '#/channels/fills'
     title: Reconnected
-    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-      for each subscribed market.
+    summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
     messages:
     - $ref: '#/channels/fills/messages/Reconnected'
   fills_receive_Lagged:
@@ -336,9 +315,7 @@ operations:
     channel:
       $ref: '#/channels/fills'
     title: Lagged
-    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
-      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
-      \ book state in a way the caller cannot detect from the stream alone."
+    summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next `Snapshot`."
     messages:
     - $ref: '#/channels/fills/messages/Lagged'
   fills_receive_BookInvalidated:
@@ -346,8 +323,8 @@ operations:
     channel:
       $ref: '#/channels/fills'
     title: BookInvalidated
-    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
-      for the next `WsUpdate::Snapshot`.
+    summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons: `Reconnect`,\
+      \ `Lag`, `SequenceGap`, `ExchangeReset`)."
     messages:
     - $ref: '#/channels/fills/messages/BookInvalidated'
   fills_receive_Error:
@@ -355,8 +332,7 @@ operations:
     channel:
       $ref: '#/channels/fills'
     title: Error
-    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-      to log or alert.
+    summary: A non-fatal error observed on the connection (session continues).
     messages:
     - $ref: '#/channels/fills/messages/Error'
   crypto_subscribe:
@@ -380,7 +356,7 @@ operations:
     channel:
       $ref: '#/channels/crypto'
     title: CryptoPrice
-    summary: Spot price update for a single symbol
+    summary: Spot price update for a single symbol from `binance` or `chainlink`.
     messages:
     - $ref: '#/channels/crypto/messages/CryptoPrice'
   crypto_receive_Connected:
@@ -396,9 +372,7 @@ operations:
     channel:
       $ref: '#/channels/crypto'
     title: Reconnected
-    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-      for each subscribed market.
+    summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
     messages:
     - $ref: '#/channels/crypto/messages/Reconnected'
   crypto_receive_Lagged:
@@ -406,9 +380,7 @@ operations:
     channel:
       $ref: '#/channels/crypto'
     title: Lagged
-    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
-      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
-      \ book state in a way the caller cannot detect from the stream alone."
+    summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next `Snapshot`."
     messages:
     - $ref: '#/channels/crypto/messages/Lagged'
   crypto_receive_BookInvalidated:
@@ -416,8 +388,8 @@ operations:
     channel:
       $ref: '#/channels/crypto'
     title: BookInvalidated
-    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
-      for the next `WsUpdate::Snapshot`.
+    summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons: `Reconnect`,\
+      \ `Lag`, `SequenceGap`, `ExchangeReset`)."
     messages:
     - $ref: '#/channels/crypto/messages/BookInvalidated'
   crypto_receive_Error:
@@ -425,8 +397,7 @@ operations:
     channel:
       $ref: '#/channels/crypto'
     title: Error
-    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-      to log or alert.
+    summary: A non-fatal error observed on the connection (session continues).
     messages:
     - $ref: '#/channels/crypto/messages/Error'
   sports_subscribe:
@@ -450,7 +421,7 @@ operations:
     channel:
       $ref: '#/channels/sports'
     title: SportResult
-    summary: Live game state update
+    summary: Live score, period, and clock for a tracked game.
     messages:
     - $ref: '#/channels/sports/messages/SportResult'
   sports_receive_Connected:
@@ -466,9 +437,7 @@ operations:
     channel:
       $ref: '#/channels/sports'
     title: Reconnected
-    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-      for each subscribed market.
+    summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
     messages:
     - $ref: '#/channels/sports/messages/Reconnected'
   sports_receive_Lagged:
@@ -476,9 +445,7 @@ operations:
     channel:
       $ref: '#/channels/sports'
     title: Lagged
-    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
-      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
-      \ book state in a way the caller cannot detect from the stream alone."
+    summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next `Snapshot`."
     messages:
     - $ref: '#/channels/sports/messages/Lagged'
   sports_receive_BookInvalidated:
@@ -486,8 +453,8 @@ operations:
     channel:
       $ref: '#/channels/sports'
     title: BookInvalidated
-    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
-      for the next `WsUpdate::Snapshot`.
+    summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons: `Reconnect`,\
+      \ `Lag`, `SequenceGap`, `ExchangeReset`)."
     messages:
     - $ref: '#/channels/sports/messages/BookInvalidated'
   sports_receive_Error:
@@ -495,8 +462,7 @@ operations:
     channel:
       $ref: '#/channels/sports'
     title: Error
-    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-      to log or alert.
+    summary: A non-fatal error observed on the connection (session continues).
     messages:
     - $ref: '#/channels/sports/messages/Error'
 components:
@@ -1866,9 +1832,8 @@ components:
         required:
         - kind
         type: object
-      - description: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last
-          received message and this event. Callers who maintain per-market books should discard them and wait for the next
-          `WsUpdate::Snapshot` for each subscribed market.
+      - description: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received\
+          \ message."
         properties:
           gap_ms:
             format: uint64
@@ -1882,9 +1847,8 @@ components:
         - gap_ms
         - kind
         type: object
-      - description: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast`\
-          \ which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed\
-          \ delta corrupts book state in a way the caller cannot detect from the stream alone."
+      - description: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the\
+          \ next `Snapshot`."
         properties:
           dropped:
             format: uint64
@@ -1908,8 +1872,8 @@ components:
         - kind
         - last_seq
         type: object
-      - description: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id`
-          and wait for the next `WsUpdate::Snapshot`.
+      - description: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons:\
+          \ `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`)."
         properties:
           kind:
             enum:
@@ -1924,8 +1888,7 @@ components:
         - market_id
         - reason
         type: object
-      - description: A non-fatal error observed on the connection. The session continues; the caller is informed in case they
-          want to log or alert.
+      - description: A non-fatal error observed on the connection (session continues).
         properties:
           kind:
             enum:
@@ -2198,9 +2161,7 @@ components:
         \ stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream\
         \ rather than another `WsUpdate` variant \u2014 keeps consumer `match` exhaustiveness honest."
       oneOf:
-      - description: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-          is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-          Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
+      - description: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
         properties:
           asset_id:
             type: string
@@ -2234,8 +2195,7 @@ components:
         - market_id
         - seq
         type: object
-      - description: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching
-          `Clear` / `BookInvalidated` without a follow-up `Snapshot` yet.
+      - description: "Incremental change to an existing book \u2014 apply in-place."
         properties:
           asset_id:
             type: string
@@ -2271,9 +2231,7 @@ components:
         - market_id
         - seq
         type: object
-      - description: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear,\
-          \ drop anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors\
-          \ `SessionEvent::BookInvalidated`, which stays as the connection-level signal for global observability."
+      - description: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
         properties:
           asset_id:
             type: string
@@ -2301,7 +2259,7 @@ components:
         - reason
         - seq
         type: object
-      - description: A public trade (any counterparty). Not tied to a local order.
+      - description: A public trade (any counterparty), not tied to a local order.
         properties:
           kind:
             enum:
@@ -2340,9 +2298,7 @@ components:
       format: double
       type: number
     Snapshot:
-      description: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-        is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-        Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
+      description: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
       properties:
         asset_id:
           type: string
@@ -2377,8 +2333,7 @@ components:
       - seq
       type: object
     Delta:
-      description: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear`
-        / `BookInvalidated` without a follow-up `Snapshot` yet.
+      description: "Incremental change to an existing book \u2014 apply in-place."
       properties:
         asset_id:
           type: string
@@ -2415,9 +2370,7 @@ components:
       - seq
       type: object
     Clear:
-      description: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear,\
-        \ drop anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`,\
-        \ which stays as the connection-level signal for global observability."
+      description: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
       properties:
         asset_id:
           type: string
@@ -2446,7 +2399,7 @@ components:
       - seq
       type: object
     Trade:
-      description: A public trade (any counterparty). Not tied to a local order.
+      description: A public trade (any counterparty), not tied to a local order.
       properties:
         kind:
           enum:
@@ -2474,9 +2427,8 @@ components:
       - kind
       type: object
     Reconnected:
-      description: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-        message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-        for each subscribed market.
+      description: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received\
+        \ message."
       properties:
         gap_ms:
           format: uint64
@@ -2491,9 +2443,8 @@ components:
       - kind
       type: object
     Lagged:
-      description: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast`\
-        \ which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed\
-        \ delta corrupts book state in a way the caller cannot detect from the stream alone."
+      description: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the\
+        \ next `Snapshot`."
       properties:
         dropped:
           format: uint64
@@ -2518,8 +2469,8 @@ components:
       - last_seq
       type: object
     BookInvalidated:
-      description: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id`
-        and wait for the next `WsUpdate::Snapshot`.
+      description: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons:\
+        \ `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`)."
       properties:
         kind:
           enum:
@@ -2535,8 +2486,7 @@ components:
       - reason
       type: object
     Error:
-      description: A non-fatal error observed on the connection. The session continues; the caller is informed in case they
-        want to log or alert.
+      description: A non-fatal error observed on the connection (session continues).
       properties:
         kind:
           enum:
@@ -2552,12 +2502,8 @@ components:
     Snapshot:
       name: Snapshot
       title: Snapshot
-      summary: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-        is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-        Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
-      description: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
-        is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
-        Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
+      summary: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
+      description: "Full orderbook snapshot \u2014 replace any cached book for `(market_id, asset_id)`."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Snapshot'
@@ -2583,10 +2529,8 @@ components:
     Delta:
       name: Delta
       title: Delta
-      summary: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear`
-        / `BookInvalidated` without a follow-up `Snapshot` yet.
-      description: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear`
-        / `BookInvalidated` without a follow-up `Snapshot` yet.
+      summary: "Incremental change to an existing book \u2014 apply in-place."
+      description: "Incremental change to an existing book \u2014 apply in-place."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Delta'
@@ -2606,12 +2550,8 @@ components:
     Clear:
       name: Clear
       title: Clear
-      summary: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear, drop\
-        \ anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`,\
-        \ which stays as the connection-level signal for global observability."
-      description: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear,\
-        \ drop anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`,\
-        \ which stays as the connection-level signal for global observability."
+      summary: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
+      description: "Book invalidation \u2014 drop the cached book and wait for the next `Snapshot`."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Clear'
@@ -2627,8 +2567,8 @@ components:
     Trade:
       name: Trade
       title: Trade
-      summary: A public trade (any counterparty). Not tied to a local order.
-      description: A public trade (any counterparty). Not tied to a local order.
+      summary: A public trade (any counterparty), not tied to a local order.
+      description: A public trade (any counterparty), not tied to a local order.
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Trade'
@@ -2691,12 +2631,9 @@ components:
     Reconnected:
       name: Reconnected
       title: Reconnected
-      summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-        message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-        for each subscribed market.
-      description: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
-        message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
-        for each subscribed market.
+      summary: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received message."
+      description: "Socket re-established after an outage \u2014 `gap_ms` is the wall-clock interval since the last received\
+        \ message."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Reconnected'
@@ -2708,12 +2645,10 @@ components:
     Lagged:
       name: Lagged
       title: Lagged
-      summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast`\
-        \ which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed\
-        \ delta corrupts book state in a way the caller cannot detect from the stream alone."
-      description: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast`\
-        \ which silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed\
-        \ delta corrupts book state in a way the caller cannot detect from the stream alone."
+      summary: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the next\
+        \ `Snapshot`."
+      description: "Slow consumer dropped messages \u2014 every affected book is invalidated and must be rebuilt from the\
+        \ next `Snapshot`."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Lagged'
@@ -2727,10 +2662,10 @@ components:
     BookInvalidated:
       name: BookInvalidated
       title: BookInvalidated
-      summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and
-        wait for the next `WsUpdate::Snapshot`.
-      description: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id`
-        and wait for the next `WsUpdate::Snapshot`.
+      summary: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons:\
+        \ `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`)."
+      description: "A specific market's book is no longer trustworthy \u2014 drop cache and wait for next `Snapshot` (reasons:\
+        \ `Reconnect`, `Lag`, `SequenceGap`, `ExchangeReset`)."
       contentType: application/json
       payload:
         $ref: '#/components/schemas/BookInvalidated'
@@ -2743,10 +2678,8 @@ components:
     Error:
       name: Error
       title: Error
-      summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
-        to log or alert.
-      description: A non-fatal error observed on the connection. The session continues; the caller is informed in case they
-        want to log or alert.
+      summary: A non-fatal error observed on the connection (session continues).
+      description: A non-fatal error observed on the connection (session continues).
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Error'
@@ -2758,8 +2691,8 @@ components:
     CryptoPrice:
       name: CryptoPrice
       title: CryptoPrice
-      summary: Spot price update for a single symbol
-      description: Spot price update from the upstream source.
+      summary: Spot price update for a single symbol from `binance` or `chainlink`.
+      description: Spot price update for a single symbol from `binance` or `chainlink`.
       contentType: application/json
       payload:
         $ref: '#/components/schemas/CryptoPrice'
@@ -2773,7 +2706,7 @@ components:
     SportResult:
       name: SportResult
       title: SportResult
-      summary: Live game state update
+      summary: Live score, period, and clock for a tracked game.
       description: Live score, period, and clock for a tracked game.
       contentType: application/json
       payload:
@@ -2886,12 +2819,13 @@ components:
         properties:
           source:
             $ref: '#/components/schemas/CryptoPriceSource'
-            description: "Upstream price source \u2014 Binance or Chainlink."
+            description: "Upstream price source \u2014 `binance` or `chainlink`."
           symbols:
             type: array
             items:
               type: string
-            description: Symbols to subscribe to (e.g. `["btcusdt", "ethusdt"]`). Empty = all.
+            description: 'Trading pair symbols. Binance: lowercase concatenated (e.g. `btcusdt`, `solusdt`, `ethusdt`). Chainlink:
+              slash-separated (e.g. `btc/usd`, `eth/usd`, `sol/usd`). Empty array = all symbols.'
       examples:
       - name: SubscribeExample
         payload: &id006
@@ -2921,7 +2855,7 @@ components:
         properties:
           league:
             type: string
-            description: League slug (e.g. `nba`, `nfl`, `mlb`).
+            description: "League slug \u2014 `nba`, `nfl`, or `mlb`."
       examples:
       - name: SubscribeExample
         payload: &id008

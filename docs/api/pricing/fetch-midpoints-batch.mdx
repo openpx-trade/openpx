@@ -1,43 +1,7 @@
 ---
 title: "fetch_midpoints_batch"
 sidebarTitle: "Fetch midpoints batch"
-openapi: GET /v1/pricing/fetch_midpoints_batch
-playground: simple
-description: "Fetch midpoints for multiple market outcomes in one round-trip."
+openapi: /openpx.openapi.yaml GET /v1/pricing/fetch_midpoints_batch
 ---
 
-Returns a map keyed by the input identifier (token_id on Polymarket,
-ticker on Kalshi).
-
-## Parameters
-
-<ParamField path="market_ids" type="string[]" required />
-
-## Returns
-
-<ResponseField name="result" type="{string: f64}">Map keyed by the input identifier.</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_midpoints_batch(vec![]).await?;
-```
-
-```python Python
-result = ex.fetch_midpoints_batch(market_ids)
-```
-
-```typescript TypeScript
-const result = await ex.fetchMidpointsBatch(market_ids);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{
-  "<key>": 0.5
-}
-```
-
-</ResponseExample>
+Fetch midpoint prices for multiple market outcomes in one round-trip.

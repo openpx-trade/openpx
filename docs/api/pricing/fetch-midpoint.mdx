@@ -1,44 +1,7 @@
 ---
 title: "fetch_midpoint"
 sidebarTitle: "Fetch midpoint"
-openapi: GET /v1/pricing/fetch_midpoint
-playground: simple
-description: "Fetch the midpoint price for a single market outcome. Cheaper than"
+openapi: /openpx.openapi.yaml GET /v1/pricing/fetch_midpoint
 ---
 
-pulling a full orderbook when only the mark price is needed.
-
-## Parameters
-
-<ParamField path="market_id" type="string" required />
-
-<ParamField path="outcome" type="string?" />
-
-<ParamField path="token_id" type="string?" />
-
-## Returns
-
-<ResponseField name="result" type="f64" />
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_midpoint(req).await?;
-```
-
-```python Python
-result = ex.fetch_midpoint(req)
-```
-
-```typescript TypeScript
-const result = await ex.fetchMidpoint(req);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-0.5
-```
-
-</ResponseExample>
+Fetch the midpoint price for a single market outcome.

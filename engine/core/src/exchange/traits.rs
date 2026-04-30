@@ -17,19 +17,16 @@ pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
 
-    /// Fetch one page of markets from this exchange.
-    ///
-    /// Returns `(markets, next_cursor)` where `next_cursor` is `None` when no more pages.
-    /// Callers paginate externally by passing `next_cursor` back in `params.cursor`.
-    /// When `params.status` is `None`, exchanges default to `Active`.
-    /// When `params.status` is `Some(All)`, exchanges return all markets regardless of status.
+    /// Fetch a paginated list of markets — `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).
     async fn fetch_markets(
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
+    /// Fetch a single market by ID (Kalshi ticker or Polymarket condition_id).
     async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError>;
 
+    /// Submit a new order — `side` is `buy` or `sell`; `params["order_type"]` accepts `gtc`, `ioc`, or `fok`.
     async fn create_order(
         &self,
         market_id: &str,
@@ -40,34 +37,38 @@ pub trait Exchange: Send + Sync {
         params: HashMap<String, String>,
     ) -> Result<Order, OpenPxError>;
 
+    /// Cancel an existing order by ID, optionally scoped to a market.
     async fn cancel_order(
         &self,
         order_id: &str,
         market_id: Option<&str>,
     ) -> Result<Order, OpenPxError>;
 
+    /// Fetch a single order by ID, optionally scoped to a market.
     async fn fetch_order(
         &self,
         order_id: &str,
         market_id: Option<&str>,
     ) -> Result<Order, OpenPxError>;
 
+    /// Fetch the caller's currently open orders, optionally filtered by market.
     async fn fetch_open_orders(
         &self,
         params: Option<FetchOrdersParams>,
     ) -> Result<Vec<Order>, OpenPxError>;
 
+    /// Fetch the caller's open positions, optionally filtered by market.
     async fn fetch_positions(&self, market_id: Option<&str>) -> Result<Vec<Position>, OpenPxError>;
 
+    /// Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).
     async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError>;
 
-    /// Refresh cached balance/allowance state if supported by the exchange.
+    /// Refresh cached balance and allowance state from the exchange.
     async fn refresh_balance(&self) -> Result<(), OpenPxError> {
         Ok(())
     }
 
-    /// Fetch L2 orderbook for a market outcome.
-    /// Uses owned types for async compatibility.
+    /// Fetch the L2 orderbook (bids + asks) for a single market outcome.
     async fn fetch_orderbook(&self, req: OrderbookRequest) -> Result<Orderbook, OpenPxError> {
         let _ = req;
         Err(OpenPxError::Exchange(
@@ -75,7 +76,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch historical OHLCV price history / candlestick data for a market outcome.
+    /// Fetch OHLCV candlestick history — `interval` is `1m`, `1h`, `6h`, `1d`, `1w`, or `max`.
     async fn fetch_price_history(
         &self,
         req: PriceHistoryRequest,
@@ -86,8 +87,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch recent public trades ("tape") for a market outcome.
-    /// Returns `(trades, next_cursor)` where `next_cursor` supports pagination.
+    /// Fetch a paginated tape of recent public trades for a market outcome.
     async fn fetch_trades(
         &self,
         req: TradesRequest,
@@ -98,8 +98,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch historical L2 orderbook snapshots for a market.
-    /// Returns `(snapshots, next_cursor)` for pagination.
+    /// Fetch a paginated list of historical L2 orderbook snapshots for a market.
     async fn fetch_orderbook_history(
         &self,
         req: OrderbookHistoryRequest,
@@ -110,14 +109,14 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch raw balance response from exchange API
+    /// Fetch the raw upstream balance response (unprocessed JSON) from the exchange.
     async fn fetch_balance_raw(&self) -> Result<Value, OpenPxError> {
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_balance_raw".into()),
         ))
     }
 
-    /// Fetch user activity (positions, trades, portfolio data) for a given address.
+    /// Fetch user activity (positions, trades, portfolio data) for a wallet address.
     // TODO(trade-history): Implement per-exchange. No exchange currently implements this.
     // Kalshi: GET /portfolio/fills returns user's fill history with fees, timestamps, maker/taker.
     // Polymarket: activity API provides user trade history.
@@ -133,7 +132,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch user's fill (trade execution) history for a market.
+    /// Fetch the caller's fill (trade execution) history, optionally filtered by market.
     async fn fetch_fills(
         &self,
         market_id: Option<&str>,
@@ -145,18 +144,14 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the exchange's current wall-clock time. Useful for clock-skew
-    /// correction in signing-sensitive paths and HFT replay where local
-    /// `chrono::Utc::now()` would silently drift from the venue's clock.
+    /// Fetch the exchange's current wall-clock time (UTC).
     async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_server_time".into()),
         ))
     }
 
-    /// Fetch a page of events. An event groups one or more markets that share
-    /// a resolution (Kalshi) or theme (Polymarket).
-    /// Returns `(events, next_cursor)`.
+    /// Fetch a paginated list of events (groups of related markets).
     async fn fetch_events(
         &self,
         req: EventsRequest,
@@ -167,7 +162,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a single event by ID or slug (whichever the venue accepts).
+    /// Fetch a single event by ID or slug.
     async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
         let _ = id;
         Err(OpenPxError::Exchange(
@@ -175,9 +170,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch L2 orderbooks for multiple markets in one round-trip. Both
-    /// venues expose a batch book endpoint (Kalshi `/markets/orderbooks`,
-    /// Polymarket `/books`); this method exposes that as a unified primitive.
+    /// Fetch L2 orderbooks for multiple markets in one round-trip.
     async fn fetch_orderbooks_batch(
         &self,
         market_ids: Vec<String>,
@@ -188,9 +181,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a page of series. A series is a recurring family of events
-    /// (weekly inflation prints, monthly NFP, sports seasons, etc.).
-    /// Returns `(series, next_cursor)`.
+    /// Fetch a paginated list of series (recurring families of events).
     async fn fetch_series(
         &self,
         req: SeriesRequest,
@@ -209,8 +200,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the midpoint price for a single market outcome. Cheaper than
-    /// pulling a full orderbook when only the mark price is needed.
+    /// Fetch the midpoint price for a single market outcome.
     async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
         let _ = req;
         Err(OpenPxError::Exchange(
@@ -218,9 +208,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch midpoints for multiple market outcomes in one round-trip.
-    /// Returns a map keyed by the input identifier (token_id on Polymarket,
-    /// ticker on Kalshi).
+    /// Fetch midpoint prices for multiple market outcomes in one round-trip.
     async fn fetch_midpoints_batch(
         &self,
         market_ids: Vec<String>,
@@ -231,7 +219,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the top-of-book spread (best bid, best ask, ask - bid).
+    /// Fetch the top-of-book spread (best bid, best ask, ask − bid) for a market outcome.
     async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
         let _ = req;
         Err(OpenPxError::Exchange(
@@ -255,12 +243,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a user's trade history. Distinct from `fetch_fills` because some
-    /// venues (Polymarket) carry on-chain fields like `tx_hash` and a
-    /// `realized_pnl` that don't fit the `Fill` model. When
-    /// `req.user_address` is `None`, returns the authenticated caller's own
-    /// trades. When `Some(addr)`, returns a public lookup for that wallet
-    /// (Polymarket only — Kalshi returns `NotSupported` in that case).
+    /// Fetch a wallet's trade history — optional `side` filter is `buy` or `sell`.
     async fn fetch_user_trades(
         &self,
         req: UserTradesRequest,
@@ -279,8 +262,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Cancel all of the caller's open orders. When `market_id.is_some()`,
-    /// cancel only orders on that market.
+    /// Cancel all of the caller's open orders, optionally scoped to a market.
     async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let _ = market_id;
         Err(OpenPxError::Exchange(
@@ -288,10 +270,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Submit multiple orders in a single round-trip. Both venues cap the
-    /// batch size — Polymarket at 15, Kalshi at a token-budget-dependent
-    /// number. Implementations should reject batches that exceed their cap
-    /// up-front rather than splitting silently.
+    /// Submit multiple orders in one round-trip — each order's `side` is `buy`/`sell` and `order_type` is `gtc`, `ioc`, or `fok` (cap: 15 on Polymarket; token-budget on Kalshi).
     async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
         let _ = orders;
         Err(OpenPxError::Exchange(

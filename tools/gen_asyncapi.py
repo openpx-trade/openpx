@@ -63,12 +63,12 @@ SUBSCRIBE_CRYPTO_PAYLOAD = {
     "properties": {
         "source": {
             "$ref": "#/components/schemas/CryptoPriceSource",
-            "description": "Upstream price source — Binance or Chainlink.",
+            "description": "Upstream price source — `binance` or `chainlink`.",
         },
         "symbols": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Symbols to subscribe to (e.g. `[\"btcusdt\", \"ethusdt\"]`). Empty = all.",
+            "description": "Trading pair symbols. Binance: lowercase concatenated (e.g. `btcusdt`, `solusdt`, `ethusdt`). Chainlink: slash-separated (e.g. `btc/usd`, `eth/usd`, `sol/usd`). Empty array = all symbols.",
         },
     },
 }
@@ -78,7 +78,7 @@ SUBSCRIBE_SPORTS_PAYLOAD = {
     "properties": {
         "league": {
             "type": "string",
-            "description": "League slug (e.g. `nba`, `nfl`, `mlb`).",
+            "description": "League slug — `nba`, `nfl`, or `mlb`.",
         },
     },
 }
@@ -90,13 +90,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
     "orderbook": {
         "sidebar": "Orderbook",
         "title": "Orderbook Stream",
-        "description": "Real-time L2 orderbook snapshots and incremental deltas.",
-        "intro": (
-            "Subscribe per market — OpenPX delivers a `Snapshot` on first "
-            "subscribe and `Delta` updates thereafter. `Clear` and "
-            "`BookInvalidated` indicate the cached book should be discarded "
-            "and rebuilt from the next `Snapshot`."
-        ),
+        "description": "Per-market L2 orderbook stream — `Snapshot` on subscribe, then `Delta` updates.",
+        "intro": "Per-market L2 orderbook stream — `Snapshot` on subscribe, then `Delta` updates.",
         "address": "/v1/orderbook",
         "receives": [
             ("Snapshot", "WsUpdate"),
@@ -108,12 +103,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
     "trades": {
         "sidebar": "Trades",
         "title": "Trades Stream",
-        "description": "Public trade-tape stream for any market.",
-        "intro": (
-            "Receive every public trade as it prints. The `Trade` payload "
-            "carries the matched price, size, and aggressor side; not "
-            "scoped to your orders (use the Fills stream for those)."
-        ),
+        "description": "Public trade-tape stream — receive every print as it lands.",
+        "intro": "Public trade-tape stream — receive every print as it lands.",
         "address": "/v1/trades",
         "receives": [("Trade", "WsUpdate")],
         "subscribe_payload": SUBSCRIBE_MARKET_PAYLOAD,
@@ -121,13 +112,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
     "fills": {
         "sidebar": "Fills",
         "title": "Fills Stream",
-        "description": "Authenticated stream of your own order fills.",
-        "intro": (
-            "Receive a `Fill` event each time one of the authenticated "
-            "user's orders is matched. Includes maker/taker role, fee "
-            "rate, and the parent order ID. Auth required (the WebSocket "
-            "uses the same exchange config as the REST surface)."
-        ),
+        "description": "Authenticated stream of the caller's own order fills (auth required).",
+        "intro": "Authenticated stream of the caller's own order fills (auth required).",
         "address": "/v1/fills",
         "receives": [("Fill", "WsUpdate")],
         "subscribe_payload": SUBSCRIBE_MARKET_PAYLOAD,
@@ -135,12 +121,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
     "crypto": {
         "sidebar": "Crypto",
         "title": "Crypto Price Stream",
-        "description": "Real-time spot prices from Binance and Chainlink (Polymarket-hosted, public).",
-        "intro": (
-            "Polymarket re-publishes spot crypto prices over a public "
-            "WebSocket; OpenPX exposes the same stream as a typed "
-            "`CryptoPrice` event. No authentication needed."
-        ),
+        "description": "Public spot-price stream (Polymarket-hosted) — `source` is `binance` (e.g. `btcusdt`, `solusdt`, `ethusdt`) or `chainlink` (e.g. `btc/usd`, `eth/usd`, `sol/usd`).",
+        "intro": "Public spot-price stream (Polymarket-hosted) — `source` is `binance` (e.g. `btcusdt`, `solusdt`, `ethusdt`) or `chainlink` (e.g. `btc/usd`, `eth/usd`, `sol/usd`).",
         "address": "/v1/crypto",
         "receives": [],
         "extra_messages": [
@@ -149,8 +131,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
                 {
                     "name": "CryptoPrice",
                     "title": "CryptoPrice",
-                    "summary": "Spot price update for a single symbol",
-                    "description": "Spot price update from the upstream source.",
+                    "summary": "Spot price update for a single symbol from `binance` or `chainlink`.",
+                    "description": "Spot price update for a single symbol from `binance` or `chainlink`.",
                     "contentType": "application/json",
                     "payload": {"$ref": "#/components/schemas/CryptoPrice"},
                 },
@@ -161,12 +143,8 @@ CHANNELS: dict[str, dict[str, Any]] = {
     "sports": {
         "sidebar": "Sports",
         "title": "Sports Stream",
-        "description": "Live sports scores and game state (Polymarket-hosted, public).",
-        "intro": (
-            "Polymarket's public sports WebSocket emits live game updates "
-            "for sports markets. OpenPX exposes the same stream as a typed "
-            "`SportResult` event."
-        ),
+        "description": "Public live game-state stream (Polymarket-hosted) — `league` is `nba`, `nfl`, or `mlb`.",
+        "intro": "Public live game-state stream (Polymarket-hosted) — `league` is `nba`, `nfl`, or `mlb`.",
         "address": "/v1/sports",
         "receives": [],
         "extra_messages": [
@@ -175,7 +153,7 @@ CHANNELS: dict[str, dict[str, Any]] = {
                 {
                     "name": "SportResult",
                     "title": "SportResult",
-                    "summary": "Live game state update",
+                    "summary": "Live score, period, and clock for a tracked game.",
                     "description": "Live score, period, and clock for a tracked game.",
                     "contentType": "application/json",
                     "payload": {"$ref": "#/components/schemas/SportResult"},

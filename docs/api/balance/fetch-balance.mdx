@@ -1,36 +1,7 @@
 ---
 title: "fetch_balance"
 sidebarTitle: "Fetch balance"
-openapi: GET /v1/balance/fetch_balance
-playground: simple
-description: "Fetch balance"
+openapi: /openpx.openapi.yaml GET /v1/balance/fetch_balance
 ---
 
-## Returns
-
-<ResponseField name="result" type="{string: f64}">Map keyed by the input identifier.</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_balance().await?;
-```
-
-```python Python
-result = ex.fetch_balance()
-```
-
-```typescript TypeScript
-const result = await ex.fetchBalance();
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-{
-  "<key>": 0.5
-}
-```
-
-</ResponseExample>
+Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).

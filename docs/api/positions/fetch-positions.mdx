@@ -1,56 +1,7 @@
 ---
 title: "fetch_positions"
 sidebarTitle: "Fetch positions"
-openapi: GET /v1/positions/fetch_positions
-playground: simple
-description: "Fetch positions"
+openapi: /openpx.openapi.yaml GET /v1/positions/fetch_positions
 ---
 
-## Parameters
-
-<ParamField path="market_id" type="string?" />
-
-## Returns
-
-<ResponseField name="result" type="Position[]">
-  List of `Position` results.
-
-  <Expandable title="Position">
-    <ResponseField name="average_price" type="f64" />
-    <ResponseField name="current_price" type="f64" />
-    <ResponseField name="market_id" type="string" />
-    <ResponseField name="outcome" type="string" />
-    <ResponseField name="size" type="f64" />
-  </Expandable>
-</ResponseField>
-
-<RequestExample>
-
-```rust Rust
-let result = ex.fetch_positions("market_id-example").await?;
-```
-
-```python Python
-result = ex.fetch_positions(market_id)
-```
-
-```typescript TypeScript
-const result = await ex.fetchPositions(market_id);
-```
-
-</RequestExample>
-<ResponseExample>
-
-```json 200
-[
-  {
-    "average_price": 0.5,
-    "current_price": 0.5,
-    "market_id": "example",
-    "outcome": "example",
-    "size": 0.5
-  }
-]
-```
-
-</ResponseExample>
+Fetch the caller's open positions, optionally filtered by market.
