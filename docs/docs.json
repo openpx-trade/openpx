@@ -153,18 +153,10 @@
       },
       {
         "tab": "WebSockets",
-        "groups": [
-          {
-            "group": "Streams",
-            "pages": [
-              "websockets/orderbook",
-              "websockets/trades",
-              "websockets/fills",
-              "websockets/crypto",
-              "websockets/sports"
-            ]
-          }
-        ]
+        "asyncapi": {
+          "source": "/openpx.asyncapi.json",
+          "directory": "websockets"
+        }
       },
       {
         "tab": "Changelog",

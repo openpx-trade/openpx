@@ -370,30 +370,10 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
 # MDX wrappers
 # ---------------------------------------------------------------------------
 
-MDX_TEMPLATE = """\
----
-title: {title!r}
-sidebarTitle: {sidebar!r}
-description: {description!r}
-asyncapi: "/openpx.asyncapi.json {channel_id}"
----
-
-{intro}
-
-> **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
-> below models the message shapes for docs rendering only — there is no
-> hosted WebSocket endpoint to connect to.
-"""
-
-
-def render_mdx(channel_id: str, spec: dict[str, Any]) -> str:
-    return MDX_TEMPLATE.format(
-        title=spec["title"],
-        sidebar=spec["sidebar"],
-        description=spec["description"],
-        intro=spec["intro"],
-        channel_id=channel_id,
-    )
+# Mintlify's tab-level `asyncapi: { source, directory }` config in docs.json
+# auto-generates one page per channel from the spec. No per-channel MDX
+# wrappers are needed — Mintlify renders Send/Receive panels with expandable
+# properties from the spec itself, like Kalshi's docs do.
 
 
 def main() -> int:
@@ -403,7 +383,6 @@ def main() -> int:
     )
     spec = build_asyncapi(schema_defs)
 
-    WS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON.write_text(json.dumps(spec, indent=2) + "\n")
     print(
         f"wrote {OUTPUT_JSON.relative_to(ROOT)} "
@@ -412,12 +391,7 @@ def main() -> int:
         f"{len(spec['components']['messages'])} messages, "
         f"{len(spec['components']['schemas'])} schemas)"
     )
-
-    for channel_id, channel_spec in CHANNELS.items():
-        out = WS_DIR / f"{channel_id}.mdx"
-        out.write_text(render_mdx(channel_id, channel_spec))
-        print(f"wrote {out.relative_to(ROOT)} ({out.stat().st_size:,} bytes)")
-
+    print("Mintlify will auto-generate one page per channel under /websockets/.")
     return 0
 
 
