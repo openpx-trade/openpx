@@ -39,8 +39,7 @@ fn load_mapping() -> serde_yaml::Value {
 
 fn load_fixture() -> Value {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/market.json");
-    serde_json::from_str(&fs::read_to_string(&p).expect("read fixture"))
-        .expect("parse fixture")
+    serde_json::from_str(&fs::read_to_string(&p).expect("read fixture")).expect("parse fixture")
 }
 
 fn ref_to_field(reference: &str) -> Option<&str> {
@@ -158,7 +157,8 @@ async fn yaml_contract_for_kalshi_market() {
     Mock::given(method("GET"))
         .and(path(format!("/markets/{ticker}")))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"market": fixture.clone()})),
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"market": fixture.clone()})),
         )
         .mount(&mock_server)
         .await;
@@ -191,10 +191,7 @@ async fn yaml_contract_for_kalshi_market() {
         if field.get("synthetic").is_some() && field.get("sources").is_none() {
             continue;
         }
-        let src = match field
-            .get("sources")
-            .and_then(|s| s.get("kalshi"))
-        {
+        let src = match field.get("sources").and_then(|s| s.get("kalshi")) {
             Some(s) => s,
             None => continue,
         };

@@ -36,8 +36,7 @@ fn load_mapping() -> serde_yaml::Value {
 
 fn load_fixture() -> Value {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/market.json");
-    serde_json::from_str(&fs::read_to_string(&p).expect("read fixture"))
-        .expect("parse fixture")
+    serde_json::from_str(&fs::read_to_string(&p).expect("read fixture")).expect("parse fixture")
 }
 
 fn lookup_in_fixture<'a>(fixture: &'a Value, reference: &str) -> Option<&'a Value> {
@@ -114,9 +113,7 @@ fn check_field(
             if parsed_s.timestamp() == parsed_u.timestamp() {
                 Ok(())
             } else {
-                Err(format!(
-                    "parse_datetime mismatch: source={s} unified={u}"
-                ))
+                Err(format!("parse_datetime mismatch: source={s} unified={u}"))
             }
         }
         "enum_remap" | "first_non_null" => {
@@ -179,10 +176,7 @@ async fn yaml_contract_for_polymarket_market() {
         if field.get("synthetic").is_some() && field.get("sources").is_none() {
             continue;
         }
-        let src = match field
-            .get("sources")
-            .and_then(|s| s.get("polymarket"))
-        {
+        let src = match field.get("sources").and_then(|s| s.get("polymarket")) {
             Some(s) => s,
             None => continue,
         };

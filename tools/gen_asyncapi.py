@@ -1,25 +1,16 @@
 #!/usr/bin/env python3
-"""Generate `docs/websockets/openpx.asyncapi.yaml` + per-channel MDX wrappers.
+"""Generate `docs/openpx.asyncapi.yaml` from the JSON Schema.
 
-Mintlify resolves `asyncapi:` frontmatter paths relative to the referencing
-MDX file's directory, so the spec must live in `docs/websockets/` next to the
-MDX pages — not at the docs root.
+Mintlify auto-renders the spec into Send/Receive panels (one channel per
+operation) at `tab=AsyncAPI`, so this generator emits a single top-level
+spec — no per-channel MDX wrappers.
 
-Five channels are documented, one MDX page each:
+Channels covered: orderbook, trades, fills, crypto, sports. Every channel
+includes the global session-lifecycle events (Connected, Reconnected,
+Lagged, Error) and the relevant subscribe/unsubscribe send operations.
 
-  orderbook  — Snapshot / Delta / Clear / BookInvalidated
-  trades     — Trade
-  fills      — Fill (authenticated user only)
-  crypto     — CryptoPrice (Polymarket-hosted, public)
-  sports     — SportResult (Polymarket-hosted, public)
-
-Every channel includes the global session-lifecycle events (Connected,
-Reconnected, Lagged, Error) and the relevant subscribe/unsubscribe send
-operations.
-
-Sources of truth: the JSON Schema at `schema/openpx.schema.json` (which now
-includes CryptoPrice / CryptoPriceSource / SportResult — added to the
-schema-export bin) and the Cargo workspace version.
+Sources of truth: `schema/openpx.schema.json` and the Cargo workspace
+version.
 """
 from __future__ import annotations
 
@@ -35,9 +26,6 @@ ROOT = Path(__file__).resolve().parent.parent
 JSON_SCHEMA = ROOT / "schema" / "openpx.schema.json"
 CARGO_TOML = ROOT / "Cargo.toml"
 DOCS_DIR = ROOT / "docs"
-WS_DIR = DOCS_DIR / "websockets"
-# Per Mintlify's AsyncAPI docs, the spec file must live alongside docs.json
-# (not in a subdirectory).
 OUTPUT_YAML = DOCS_DIR / "openpx.asyncapi.yaml"
 
 # Per-channel content. Each channel name → (sidebarTitle, page title,
