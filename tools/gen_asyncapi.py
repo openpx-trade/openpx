@@ -272,9 +272,9 @@ message as a typed `WsUpdate` or `SessionEvent` variant.
 
 ## AsyncAPI
 
-```yaml openpx.asyncapi.yaml stream
+````yaml openpx.asyncapi.json stream
 {asyncapi_body}
-```
+````
 """
 
 
