@@ -276,18 +276,21 @@ fields:
       kalshi:
         omitted: true
       polymarket:
-        synthetic: read from gamma `/markets` response field `negRisk`
+        ref_unspecced: negRisk
+        transform: direct
         notes: |
-          Spec gap: the gamma OpenAPI defines `negRisk` only on `Event`, but
-          live `/markets` and `/markets/keyset` responses include it on each
-          market object. Re-check on each daily upstream refresh — when
-          Polymarket adds it to `Market` properties, replace `synthetic` with
-          a `ref:` here.
+          Spec gap: the gamma OpenAPI defines `negRisk` on `Event` and
+          `Template`, not on `Market`, but live `/markets` and
+          `/markets/keyset` responses include it on each market object. The
+          parser reads it directly. Re-check on each daily upstream refresh
+          — when Polymarket adds it to `Market` properties, promote to a
+          regular `ref:` here.
 
   - name: neg_risk_market_id
     sources:
       kalshi:
         omitted: true
       polymarket:
-        synthetic: read from gamma `/markets` response field `negRiskMarketID`
+        ref_unspecced: negRiskMarketID
+        transform: direct
         notes: Spec gap (same pattern as `neg_risk`).

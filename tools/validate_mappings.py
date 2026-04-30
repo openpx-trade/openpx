@@ -158,11 +158,21 @@ class Validator:
                 if "synthetic" in src:
                     self.coverage[ex]["synthetic"] += 1
                     continue
+                # `ref_unspecced` = direct read of a field that the live API
+                # exposes but the cached OpenAPI spec doesn't document on this
+                # schema (e.g. Polymarket's `negRisk` on Market — only typed
+                # on Event in gamma's spec, but present on every Market object
+                # in /markets responses). Counts as sourced; ref resolution is
+                # skipped because the path doesn't exist by definition.
+                if "ref_unspecced" in src:
+                    self.coverage[ex]["sourced"] += 1
+                    continue
 
                 ref = src.get("ref")
                 if not ref:
                     self.err(
-                        f"field `{name}` exchange `{ex}` has no `ref`, `synthetic`, or `omitted`"
+                        f"field `{name}` exchange `{ex}` has no `ref`, "
+                        "`ref_unspecced`, `synthetic`, or `omitted`"
                     )
                     continue
 

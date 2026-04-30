@@ -10,7 +10,7 @@ _Unified prediction market model._
 | Exchange | Sourced | Synthetic | Omitted |
 |---|---|---|---|
 | kalshi | 15 | 6 | 4 |
-| polymarket | 17 | 8 | 0 |
+| polymarket | 19 | 6 | 0 |
 
 **Sourced** — value copied or transformed from a documented upstream field.  
 **Synthetic** — computed by OpenPX, not present upstream.  
@@ -43,8 +43,8 @@ _Unified prediction market model._
 | `volume_24h` | number? (double) | `Market.volume_24h_fp` (FixedPointCount) | `Market.volume24hr` (number) | fixed_point_count / direct |  |
 | `outcomes` | array | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | synthetic | Kalshi binary: two entries with labels "Yes" and "No"; price computed from yes_ask_dollars/last_price_dollars (No price = 1 - Yes); token_id always None (no per-outcome token surface). Polymarket: zipped element-wise from the stringified-JSON arrays `outcomes`, `outcomePrices`, and `clobTokenIds`. Replaces the previous trio of outcome_prices map + outcome_tokens vec + binary-only token_id_yes/token_id_no. |
 | `condition_id` | string? | _not exposed_ | `Market.conditionId` (string) | direct |  |
-| `neg_risk` | boolean? | _not exposed_ | _computed_ — read from gamma `/markets` response field `negRisk` | synthetic | **polymarket:** Spec gap: the gamma OpenAPI defines `negRisk` only on `Event`, but live `/markets` and `/markets/keyset` responses include it on each market object. Re-check on each daily upstream refresh — when Polymarket adds it to `Market` properties, replace `synthetic` with a `ref:` here. |
-| `neg_risk_market_id` | string? | _not exposed_ | _computed_ — read from gamma `/markets` response field `negRiskMarketID` | synthetic | **polymarket:** Spec gap (same pattern as `neg_risk`). |
+| `neg_risk` | boolean? | _not exposed_ | `negRisk` — _spec gap_ | direct | **polymarket:** Spec gap: the gamma OpenAPI defines `negRisk` on `Event` and `Template`, not on `Market`, but live `/markets` and `/markets/keyset` responses include it on each market object. The parser reads it directly. Re-check on each daily upstream refresh — when Polymarket adds it to `Market` properties, promote to a regular `ref:` here. |
+| `neg_risk_market_id` | string? | _not exposed_ | `negRiskMarketID` — _spec gap_ | direct | **polymarket:** Spec gap (same pattern as `neg_risk`). |
 
 ## Source specs
 

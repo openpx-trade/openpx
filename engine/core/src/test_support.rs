@@ -212,27 +212,42 @@ pub fn verify_mapping_contract(
         if src.get("synthetic").is_some() {
             continue;
         }
-        let reference = match src.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => {
-                violations.push(format!(
-                    "[{name}] {exchange_key} entry has no `ref:`, `synthetic:`, or `omitted:`"
-                ));
-                continue;
-            }
-        };
+        // `ref_unspecced` = direct read of a live-response field the upstream
+        // OpenAPI doesn't document on this schema. Look up the field at the
+        // top level of the fixture and run the declared transform — same
+        // behavioral check as `ref:`, just without spec resolution.
+        let (lookup_path, source_value) =
+            if let Some(field) = src.get("ref_unspecced").and_then(|v| v.as_str()) {
+                (field.to_string(), fixture.get(field))
+            } else {
+                let reference = match src.get("ref").and_then(|v| v.as_str()) {
+                    Some(r) => r,
+                    None => {
+                        violations.push(format!(
+                            "[{name}] {exchange_key} entry has no `ref:`, \
+                             `ref_unspecced:`, `synthetic:`, or `omitted:`"
+                        ));
+                        continue;
+                    }
+                };
+                (
+                    reference
+                        .strip_prefix(REF_PREFIX)
+                        .unwrap_or(reference)
+                        .to_string(),
+                    lookup_in_fixture(fixture, reference),
+                )
+            };
         let transform = src
             .get("transform")
             .and_then(|v| v.as_str())
             .unwrap_or("direct");
 
-        let source_value = lookup_in_fixture(fixture, reference);
         let unified_value = unified.get(name);
 
         if let Err(reason) = check_field(transform, source_value, unified_value) {
             violations.push(format!(
-                "[{name}] ref={} transform={transform}: {reason}",
-                reference.strip_prefix(REF_PREFIX).unwrap_or(reference)
+                "[{name}] ref={lookup_path} transform={transform}: {reason}"
             ));
         }
         checked += 1;
