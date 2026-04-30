@@ -1,0 +1,12 @@
+---
+title: 'Crypto Price Stream'
+sidebarTitle: 'Crypto'
+description: 'Real-time spot prices from Binance and Chainlink (Polymarket-hosted, public).'
+asyncapi: "openpx.asyncapi.yaml crypto"
+---
+
+Polymarket re-publishes spot crypto prices over a public WebSocket; OpenPX exposes the same stream as a typed `CryptoPrice` event. No authentication needed.
+
+> **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
+> below models the message shapes for docs rendering only — there is no
+> hosted WebSocket endpoint to connect to.

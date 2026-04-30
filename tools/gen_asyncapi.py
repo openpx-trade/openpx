@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Generate `docs/openpx.asyncapi.yaml` from the unified WS types in
-`schema/openpx.schema.json`.
+"""Generate `docs/websockets/openpx.asyncapi.yaml` + per-channel MDX wrappers.
 
-Models OpenPX's WebSocket abstraction as a single AsyncAPI 3.0 channel —
-unified market-data + session-event stream. Each `WsUpdate` and
-`SessionEvent` variant becomes a `receive`-action message; client-side
-`subscribe` / `unsubscribe` calls become `send`-action messages so the
-docs site renders both panels (Polymarket-style) without us hand-writing
-either side.
+Mintlify resolves `asyncapi:` frontmatter paths relative to the referencing
+MDX file's directory, so the spec must live in `docs/websockets/` next to the
+MDX pages — not at the docs root.
 
-OpenPX is an in-process Rust library, not a real WebSocket service. The
-spec models the message shapes for documentation only; the `servers`
-block calls this out explicitly so users aren't misled.
+Five channels are documented, one MDX page each:
+
+  orderbook  — Snapshot / Delta / Clear / BookInvalidated
+  trades     — Trade
+  fills      — Fill (authenticated user only)
+  crypto     — CryptoPrice (Polymarket-hosted, public)
+  sports     — SportResult (Polymarket-hosted, public)
+
+Every channel includes the global session-lifecycle events (Connected,
+Reconnected, Lagged, Error) and the relevant subscribe/unsubscribe send
+operations.
+
+Sources of truth: the JSON Schema at `schema/openpx.schema.json` (which now
+includes CryptoPrice / CryptoPriceSource / SportResult — added to the
+schema-export bin) and the Cargo workspace version.
 """
 from __future__ import annotations
 
@@ -26,13 +34,154 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 JSON_SCHEMA = ROOT / "schema" / "openpx.schema.json"
 CARGO_TOML = ROOT / "Cargo.toml"
-OUTPUT_YAML = ROOT / "docs" / "openpx.asyncapi.yaml"
-OUTPUT_MDX = ROOT / "docs" / "websockets" / "stream.mdx"
+WS_DIR = ROOT / "docs" / "websockets"
+OUTPUT_YAML = WS_DIR / "openpx.asyncapi.yaml"
 
-# Unified-stream variants we surface in the AsyncAPI. Each entry is the
-# discriminator value (kind) on the JSON Schema oneOf variant.
-WS_UPDATE_VARIANTS = ["Snapshot", "Delta", "Clear", "Trade", "Fill"]
+# Per-channel content. Each channel name → (sidebarTitle, page title,
+# description, list of (kind, source-union) tuples for receive messages,
+# subscribe-payload-schema fragment).
+SUBSCRIBE_MARKET_PAYLOAD = {
+    "type": "object",
+    "required": ["market_id"],
+    "properties": {
+        "market_id": {
+            "type": "string",
+            "description": "Native market identifier (Kalshi ticker or Polymarket condition_id).",
+        },
+        "outcome": {
+            "type": ["string", "null"],
+            "description": "Optional outcome filter for binary markets.",
+        },
+    },
+}
+SUBSCRIBE_CRYPTO_PAYLOAD = {
+    "type": "object",
+    "required": ["source", "symbols"],
+    "properties": {
+        "source": {
+            "$ref": "#/components/schemas/CryptoPriceSource",
+            "description": "Upstream price source — Binance or Chainlink.",
+        },
+        "symbols": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Symbols to subscribe to (e.g. `[\"btcusdt\", \"ethusdt\"]`). Empty = all.",
+        },
+    },
+}
+SUBSCRIBE_SPORTS_PAYLOAD = {
+    "type": "object",
+    "required": ["league"],
+    "properties": {
+        "league": {
+            "type": "string",
+            "description": "League slug (e.g. `nba`, `nfl`, `mlb`).",
+        },
+    },
+}
+
+# Session lifecycle events — present on every channel.
 SESSION_VARIANTS = ["Connected", "Reconnected", "Lagged", "BookInvalidated", "Error"]
+
+CHANNELS: dict[str, dict[str, Any]] = {
+    "orderbook": {
+        "sidebar": "Orderbook",
+        "title": "Orderbook Stream",
+        "description": "Real-time L2 orderbook snapshots and incremental deltas.",
+        "intro": (
+            "Subscribe per market — OpenPX delivers a `Snapshot` on first "
+            "subscribe and `Delta` updates thereafter. `Clear` and "
+            "`BookInvalidated` indicate the cached book should be discarded "
+            "and rebuilt from the next `Snapshot`."
+        ),
+        "address": "/v1/orderbook",
+        "receives": [
+            ("Snapshot", "WsUpdate"),
+            ("Delta", "WsUpdate"),
+            ("Clear", "WsUpdate"),
+        ],
+        "subscribe_payload": SUBSCRIBE_MARKET_PAYLOAD,
+    },
+    "trades": {
+        "sidebar": "Trades",
+        "title": "Trades Stream",
+        "description": "Public trade-tape stream for any market.",
+        "intro": (
+            "Receive every public trade as it prints. The `Trade` payload "
+            "carries the matched price, size, and aggressor side; not "
+            "scoped to your orders (use the Fills stream for those)."
+        ),
+        "address": "/v1/trades",
+        "receives": [("Trade", "WsUpdate")],
+        "subscribe_payload": SUBSCRIBE_MARKET_PAYLOAD,
+    },
+    "fills": {
+        "sidebar": "Fills",
+        "title": "Fills Stream",
+        "description": "Authenticated stream of your own order fills.",
+        "intro": (
+            "Receive a `Fill` event each time one of the authenticated "
+            "user's orders is matched. Includes maker/taker role, fee "
+            "rate, and the parent order ID. Auth required (the WebSocket "
+            "uses the same exchange config as the REST surface)."
+        ),
+        "address": "/v1/fills",
+        "receives": [("Fill", "WsUpdate")],
+        "subscribe_payload": SUBSCRIBE_MARKET_PAYLOAD,
+    },
+    "crypto": {
+        "sidebar": "Crypto",
+        "title": "Crypto Price Stream",
+        "description": "Real-time spot prices from Binance and Chainlink (Polymarket-hosted, public).",
+        "intro": (
+            "Polymarket re-publishes spot crypto prices over a public "
+            "WebSocket; OpenPX exposes the same stream as a typed "
+            "`CryptoPrice` event. No authentication needed."
+        ),
+        "address": "/v1/crypto",
+        "receives": [],
+        "extra_messages": [
+            (
+                "CryptoPrice",
+                {
+                    "name": "CryptoPrice",
+                    "title": "CryptoPrice",
+                    "summary": "Spot price update for a single symbol",
+                    "description": "Spot price update from the upstream source.",
+                    "contentType": "application/json",
+                    "payload": {"$ref": "#/components/schemas/CryptoPrice"},
+                },
+            ),
+        ],
+        "subscribe_payload": SUBSCRIBE_CRYPTO_PAYLOAD,
+    },
+    "sports": {
+        "sidebar": "Sports",
+        "title": "Sports Stream",
+        "description": "Live sports scores and game state (Polymarket-hosted, public).",
+        "intro": (
+            "Polymarket's public sports WebSocket emits live game updates "
+            "for sports markets. OpenPX exposes the same stream as a typed "
+            "`SportResult` event."
+        ),
+        "address": "/v1/sports",
+        "receives": [],
+        "extra_messages": [
+            (
+                "SportResult",
+                {
+                    "name": "SportResult",
+                    "title": "SportResult",
+                    "summary": "Live game state update",
+                    "description": "Live score, period, and clock for a tracked game.",
+                    "contentType": "application/json",
+                    "payload": {"$ref": "#/components/schemas/SportResult"},
+                },
+            ),
+        ],
+        "subscribe_payload": SUBSCRIBE_SPORTS_PAYLOAD,
+    },
+}
 
 
 def read_workspace_version() -> str:
@@ -46,7 +195,6 @@ def read_workspace_version() -> str:
 
 
 def normalize_jsonschema(node: Any) -> Any:
-    """JSON Schema $ref `#/definitions/X` → AsyncAPI/OpenAPI `#/components/schemas/X`."""
     if isinstance(node, dict):
         out: dict[str, Any] = {}
         for k, v in node.items():
@@ -61,7 +209,6 @@ def normalize_jsonschema(node: Any) -> Any:
 
 
 def find_variant(union_node: dict[str, Any], kind: str) -> dict[str, Any] | None:
-    """Pull the variant schema out of a tagged-union (oneOf with `kind` const)."""
     for variant in union_node.get("oneOf", []):
         kind_node = variant.get("properties", {}).get("kind", {})
         const = kind_node.get("const")
@@ -72,9 +219,6 @@ def find_variant(union_node: dict[str, Any], kind: str) -> dict[str, Any] | None
 
 
 def extract_variant_schema(union_name: str, kind: str, schema_defs: dict[str, Any]) -> dict[str, Any]:
-    """Return a standalone JSON Schema for a tagged-union variant. Drops the
-    `kind` field from the published schema since it's the dispatch tag — users
-    pattern-match on the variant type, they don't read the string."""
     variant = find_variant(schema_defs[union_name], kind)
     if variant is None:
         sys.exit(f"variant `{kind}` not found in `{union_name}`")
@@ -82,139 +226,107 @@ def extract_variant_schema(union_name: str, kind: str, schema_defs: dict[str, An
     return normalize_jsonschema(cleaned)
 
 
+def build_message(kind: str, union_name: str, schema_defs: dict[str, Any]) -> dict[str, Any]:
+    variant = find_variant(schema_defs[union_name], kind)
+    description = (variant or {}).get("description", "").strip()
+    return {
+        "name": kind,
+        "title": kind,
+        "summary": description.splitlines()[0] if description else kind,
+        "description": description,
+        "contentType": "application/json",
+        "payload": {"$ref": f"#/components/schemas/{kind}"},
+    }
+
+
 def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
-    components_schemas: dict[str, Any] = {}
-    components_messages: dict[str, Any] = {}
+    components_schemas: dict[str, Any] = {
+        name: normalize_jsonschema(body) for name, body in schema_defs.items()
+    }
+    components_messages: dict[str, dict[str, Any]] = {}
 
-    # Pull every variant out as its own schema.
-    variant_schemas: dict[str, Any] = {}
-    for kind in WS_UPDATE_VARIANTS:
-        variant_schemas[kind] = extract_variant_schema("WsUpdate", kind, schema_defs)
+    # Pull union variants out as standalone schemas.
+    for kind in ["Snapshot", "Delta", "Clear", "Trade", "Fill"]:
+        components_schemas[kind] = extract_variant_schema("WsUpdate", kind, schema_defs)
+        components_messages[kind] = build_message(kind, "WsUpdate", schema_defs)
     for kind in SESSION_VARIANTS:
-        variant_schemas[kind] = extract_variant_schema("SessionEvent", kind, schema_defs)
+        components_schemas[kind] = extract_variant_schema("SessionEvent", kind, schema_defs)
+        components_messages[kind] = build_message(kind, "SessionEvent", schema_defs)
 
-    # Re-publish all canonical schemas referenced from the variants. We include
-    # the full definitions block so $refs resolve cleanly inside the AsyncAPI.
-    for name, body in schema_defs.items():
-        components_schemas[name] = normalize_jsonschema(body)
+    # Crypto + sports payload messages (one each — not tagged unions).
+    for spec in CHANNELS.values():
+        for name, msg in spec.get("extra_messages", []):
+            components_messages[name] = msg
 
-    for name, schema in variant_schemas.items():
-        components_schemas[name] = schema
-
-    # Build the messages.
-    def message_for_variant(kind: str, union_name: str) -> dict[str, Any]:
-        variant = find_variant(schema_defs[union_name], kind)
-        description = (variant or {}).get("description", "").strip()
-        return {
-            "name": kind,
-            "title": kind,
-            "summary": description.splitlines()[0] if description else kind,
-            "description": description,
-            "contentType": "application/json",
-            "payload": {"$ref": f"#/components/schemas/{kind}"},
-        }
-
-    for kind in WS_UPDATE_VARIANTS:
-        components_messages[kind] = message_for_variant(kind, "WsUpdate")
-    for kind in SESSION_VARIANTS:
-        components_messages[kind] = message_for_variant(kind, "SessionEvent")
-
-    components_messages["Subscribe"] = {
-        "name": "Subscribe",
-        "title": "Subscribe",
-        "summary": "Add a market to the active subscription set",
-        "description": (
-            "Call `WebSocket.subscribe(market_id)` after the stream is "
-            "connected to receive updates for that market. Subscriptions are "
-            "additive — call multiple times to follow more markets. "
-            "OpenPX translates this into the per-exchange subscription "
-            "protocol under the hood."
-        ),
-        "contentType": "application/json",
-        "payload": {
-            "type": "object",
-            "required": ["market_id"],
-            "properties": {
-                "market_id": {
-                    "type": "string",
-                    "description": "Native market identifier (Kalshi ticker or Polymarket condition_id).",
-                },
-                "outcome": {
-                    "type": ["string", "null"],
-                    "description": "Optional outcome filter for binary markets.",
-                },
-            },
-        },
-    }
-    components_messages["Unsubscribe"] = {
-        "name": "Unsubscribe",
-        "title": "Unsubscribe",
-        "summary": "Remove a market from the active subscription set",
-        "description": (
-            "Call `WebSocket.unsubscribe(market_id)` to stop receiving "
-            "updates for a market. The session continues for any remaining "
-            "subscriptions."
-        ),
-        "contentType": "application/json",
-        "payload": {
-            "type": "object",
-            "required": ["market_id"],
-            "properties": {
-                "market_id": {"type": "string"},
-            },
-        },
-    }
-
-    # Channels.
-    channel_messages: dict[str, dict[str, Any]] = {
-        name: {"$ref": f"#/components/messages/{name}"}
-        for name in components_messages
-    }
-
-    channels = {
-        "stream": {
-            "address": "/v1/stream",
-            "title": "OpenPX Stream",
-            "description": (
-                "Unified market-data + session-event stream for the "
-                "connected exchange. Subscribe to any number of markets; "
-                "OpenPX dispatches every update through one Tokio channel."
-            ),
-            "messages": channel_messages,
-        }
-    }
-
-    # Operations.
+    channels: dict[str, Any] = {}
     operations: dict[str, Any] = {}
 
-    def receive_op(op_id: str, kind: str) -> dict[str, Any]:
+    def receive_op(channel: str, kind: str) -> dict[str, Any]:
         return {
             "action": "receive",
-            "channel": {"$ref": "#/channels/stream"},
+            "channel": {"$ref": f"#/channels/{channel}"},
             "title": kind,
             "summary": components_messages[kind]["summary"],
-            "messages": [{"$ref": f"#/channels/stream/messages/{kind}"}],
+            "messages": [{"$ref": f"#/channels/{channel}/messages/{kind}"}],
         }
 
-    def send_op(op_id: str, kind: str, summary: str) -> dict[str, Any]:
-        return {
+    for channel_id, spec in CHANNELS.items():
+        # Build subscribe + unsubscribe message + ops first.
+        sub_msg_id = f"{channel_id}_subscribe"
+        unsub_msg_id = f"{channel_id}_unsubscribe"
+        components_messages[sub_msg_id] = {
+            "name": sub_msg_id,
+            "title": "Subscribe",
+            "summary": f"Add to the active {channel_id} subscription set",
+            "description": (
+                f"Call subscribe on the WebSocket after the stream is "
+                f"connected to start receiving {channel_id} updates."
+            ),
+            "contentType": "application/json",
+            "payload": spec["subscribe_payload"],
+        }
+        components_messages[unsub_msg_id] = {
+            "name": unsub_msg_id,
+            "title": "Unsubscribe",
+            "summary": f"Remove from the active {channel_id} subscription set",
+            "description": "Stop receiving updates without closing the stream.",
+            "contentType": "application/json",
+            "payload": spec["subscribe_payload"],
+        }
+
+        # Channel messages = receive variants + session events + sub/unsub.
+        receive_kinds = [k for k, _ in spec.get("receives", [])] + [
+            name for name, _ in spec.get("extra_messages", [])
+        ]
+        channel_msg_ids = receive_kinds + SESSION_VARIANTS + [sub_msg_id, unsub_msg_id]
+        channels[channel_id] = {
+            "address": spec["address"],
+            "title": spec["title"],
+            "description": spec["intro"],
+            "messages": {
+                m: {"$ref": f"#/components/messages/{m}"} for m in channel_msg_ids
+            },
+        }
+
+        # Operations: subscribe/unsubscribe (send), each receive (receive).
+        operations[f"{channel_id}_subscribe"] = {
             "action": "send",
-            "channel": {"$ref": "#/channels/stream"},
-            "title": kind,
-            "summary": summary,
-            "messages": [{"$ref": f"#/channels/stream/messages/{kind}"}],
+            "channel": {"$ref": f"#/channels/{channel_id}"},
+            "title": "Subscribe",
+            "summary": components_messages[sub_msg_id]["summary"],
+            "messages": [{"$ref": f"#/channels/{channel_id}/messages/{sub_msg_id}"}],
         }
-
-    operations["subscribe"] = send_op(
-        "subscribe", "Subscribe", "Add a market to the active subscription set"
-    )
-    operations["unsubscribe"] = send_op(
-        "unsubscribe", "Unsubscribe", "Remove a market from the active subscription set"
-    )
-    for kind in WS_UPDATE_VARIANTS:
-        operations[f"receive{kind}"] = receive_op(f"receive{kind}", kind)
-    for kind in SESSION_VARIANTS:
-        operations[f"receive{kind}"] = receive_op(f"receive{kind}", kind)
+        operations[f"{channel_id}_unsubscribe"] = {
+            "action": "send",
+            "channel": {"$ref": f"#/channels/{channel_id}"},
+            "title": "Unsubscribe",
+            "summary": components_messages[unsub_msg_id]["summary"],
+            "messages": [{"$ref": f"#/channels/{channel_id}/messages/{unsub_msg_id}"}],
+        }
+        for kind in receive_kinds:
+            operations[f"{channel_id}_receive_{kind}"] = receive_op(channel_id, kind)
+        for kind in SESSION_VARIANTS:
+            operations[f"{channel_id}_receive_{kind}"] = receive_op(channel_id, kind)
 
     spec: dict[str, Any] = {
         "asyncapi": "3.0.0",
@@ -222,13 +334,11 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
             "title": "OpenPX WebSocket",
             "version": read_workspace_version(),
             "description": (
-                "Unified WebSocket stream over prediction-market exchanges. "
+                "Unified WebSocket streams over prediction-market exchanges. "
                 "OpenPX is an in-process Rust library; this AsyncAPI document "
-                "models the message shapes for documentation rendering only "
-                "— there is no hosted WebSocket endpoint. The Rust engine "
-                "translates these messages into each exchange's underlying "
-                "WS protocol (Kalshi multiplex, Polymarket Socket.IO) "
-                "behind the trait."
+                "models message shapes for documentation only — there is no "
+                "hosted endpoint. The Rust engine translates these messages "
+                "into each exchange's underlying WS protocol behind the trait."
             ),
             "license": {"name": "MIT"},
         },
@@ -238,8 +348,7 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
                 "protocol": "ws",
                 "description": (
                     "In-process Tokio channel — not a real WebSocket. "
-                    "OpenPX dispatches messages directly to your "
-                    "subscribers without going over the network."
+                    "OpenPX dispatches messages directly to your subscribers."
                 ),
             }
         },
@@ -253,32 +362,34 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
+# ---------------------------------------------------------------------------
+# MDX wrappers
+# ---------------------------------------------------------------------------
+
 MDX_TEMPLATE = """\
 ---
-title: "WebSocket Stream"
-sidebarTitle: "Stream"
-description: "Unified WebSocket stream over Kalshi and Polymarket."
-asyncapi: "openpx.asyncapi.yaml stream"
+title: {title!r}
+sidebarTitle: {sidebar!r}
+description: {description!r}
+asyncapi: "openpx.asyncapi.yaml {channel_id}"
 ---
 
-OpenPX exposes one stream per exchange that interleaves market-data
-updates and session events. Subscribe to any number of markets — OpenPX
-translates each call into the underlying exchange's subscription
-protocol (Kalshi multiplex, Polymarket Socket.IO) and delivers every
-message as a typed `WsUpdate` or `SessionEvent` variant.
+{intro}
 
 > **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
-> models the message shapes for docs rendering only — there is no
+> below models the message shapes for docs rendering only — there is no
 > hosted WebSocket endpoint to connect to.
 """
 
 
-def render_mdx(asyncapi_yaml: str) -> str:
-    # asyncapi_yaml is unused now — Mintlify reads the spec via the
-    # `asyncapi:` frontmatter reference and renders Send/Receive panels
-    # automatically. Kept the parameter for symmetry with prior callers.
-    _ = asyncapi_yaml
-    return MDX_TEMPLATE
+def render_mdx(channel_id: str, spec: dict[str, Any]) -> str:
+    return MDX_TEMPLATE.format(
+        title=spec["title"],
+        sidebar=spec["sidebar"],
+        description=spec["description"],
+        intro=spec["intro"],
+        channel_id=channel_id,
+    )
 
 
 def main() -> int:
@@ -287,12 +398,10 @@ def main() -> int:
         schema.get("definitions") or schema.get("$defs") or {}
     )
     spec = build_asyncapi(schema_defs)
+
+    WS_DIR.mkdir(parents=True, exist_ok=True)
     asyncapi_body = yaml.safe_dump(spec, sort_keys=False, width=120)
     OUTPUT_YAML.write_text(asyncapi_body)
-
-    OUTPUT_MDX.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_MDX.write_text(render_mdx(asyncapi_body))
-
     print(
         f"wrote {OUTPUT_YAML.relative_to(ROOT)} "
         f"({OUTPUT_YAML.stat().st_size:,} bytes, "
@@ -300,10 +409,12 @@ def main() -> int:
         f"{len(spec['components']['messages'])} messages, "
         f"{len(spec['components']['schemas'])} schemas)"
     )
-    print(
-        f"wrote {OUTPUT_MDX.relative_to(ROOT)} "
-        f"({OUTPUT_MDX.stat().st_size:,} bytes)"
-    )
+
+    for channel_id, channel_spec in CHANNELS.items():
+        out = WS_DIR / f"{channel_id}.mdx"
+        out.write_text(render_mdx(channel_id, channel_spec))
+        print(f"wrote {out.relative_to(ROOT)} ({out.stat().st_size:,} bytes)")
+
     return 0
 
 

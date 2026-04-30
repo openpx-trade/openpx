@@ -1,0 +1,12 @@
+---
+title: 'Trades Stream'
+sidebarTitle: 'Trades'
+description: 'Public trade-tape stream for any market.'
+asyncapi: "openpx.asyncapi.yaml trades"
+---
+
+Receive every public trade as it prints. The `Trade` payload carries the matched price, size, and aggressor side; not scoped to your orders (use the Fills stream for those).
+
+> **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
+> below models the message shapes for docs rendering only — there is no
+> hosted WebSocket endpoint to connect to.

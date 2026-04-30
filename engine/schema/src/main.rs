@@ -66,6 +66,10 @@ fn main() {
         schema_for!(px_core::SessionEvent),
         schema_for!(px_core::ActivityTrade),
         schema_for!(px_core::ActivityFill),
+        // Crypto + sports streams
+        schema_for!(px_core::CryptoPrice),
+        schema_for!(px_core::CryptoPriceSource),
+        schema_for!(px_core::SportResult),
     ];
 
     for root in schemas {

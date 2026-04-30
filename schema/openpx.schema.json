@@ -211,6 +211,41 @@
       "title": "Candlestick",
       "type": "object"
     },
+    "CryptoPrice": {
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/CryptoPriceSource"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source",
+        "symbol",
+        "timestamp",
+        "value"
+      ],
+      "title": "CryptoPrice",
+      "type": "object"
+    },
+    "CryptoPriceSource": {
+      "enum": [
+        "binance",
+        "chainlink"
+      ],
+      "title": "CryptoPriceSource",
+      "type": "string"
+    },
     "Event": {
       "description": "A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. \"Will Candidate X win State Y?\") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. \"2028 US Presidential Election\" with markets per candidate).",
       "properties": {
@@ -1950,6 +1985,80 @@
         }
       },
       "title": "SettlementSource",
+      "type": "object"
+    },
+    "SportResult": {
+      "description": "Real-time sports score/state from the Polymarket Sports WebSocket. Serializes as snake_case for end-users; aliases accept the upstream camelCase.",
+      "properties": {
+        "away_team": {
+          "type": "string"
+        },
+        "elapsed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended": {
+          "type": "boolean"
+        },
+        "finished_timestamp": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "game_id": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "home_team": {
+          "type": "string"
+        },
+        "league_abbreviation": {
+          "type": "string"
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "period": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "score": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slug": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "turn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "away_team",
+        "ended",
+        "game_id",
+        "home_team",
+        "league_abbreviation",
+        "live",
+        "slug",
+        "status"
+      ],
+      "title": "SportResult",
       "type": "object"
     },
     "Spread": {

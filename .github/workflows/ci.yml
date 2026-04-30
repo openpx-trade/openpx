@@ -101,7 +101,7 @@ jobs:
       - name: Validate exchange→openpx field mappings
         run: just check-mappings
       - name: Check generated files are in sync
-        run: git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml docs/websockets/
+        run: git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/websockets/
       # Smoke checks: a regen can produce a syntactically degenerate file
       # (e.g. an empty stub) that drifts undetectably under git diff alone.
       # PR #26 hid for an indeterminate amount of time because models.d.ts

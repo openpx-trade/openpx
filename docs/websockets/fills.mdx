@@ -1,0 +1,12 @@
+---
+title: 'Fills Stream'
+sidebarTitle: 'Fills'
+description: 'Authenticated stream of your own order fills.'
+asyncapi: "openpx.asyncapi.yaml fills"
+---
+
+Receive a `Fill` event each time one of the authenticated user's orders is matched. Includes maker/taker role, fee rate, and the parent order ID. Auth required (the WebSocket uses the same exchange config as the REST surface).
+
+> **Note:** OpenPX is an in-process Rust library. The AsyncAPI document
+> below models the message shapes for docs rendering only — there is no
+> hosted WebSocket endpoint to connect to.

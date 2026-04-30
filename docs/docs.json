@@ -155,9 +155,13 @@
         "tab": "WebSockets",
         "groups": [
           {
-            "group": "Stream",
+            "group": "Streams",
             "pages": [
-              "websockets/stream"
+              "websockets/orderbook",
+              "websockets/trades",
+              "websockets/fills",
+              "websockets/crypto",
+              "websockets/sports"
             ]
           }
         ]
