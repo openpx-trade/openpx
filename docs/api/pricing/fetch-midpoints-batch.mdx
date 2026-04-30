@@ -1,63 +1,42 @@
 ---
 title: "fetch_midpoints_batch"
-sidebarTitle: "Fetch midpoints (batch)"
+sidebarTitle: "Fetch midpoints batch"
 openapi: GET /v1/pricing/fetch_midpoints_batch
 playground: simple
-description: "Get midpoint prices for multiple markets in one round-trip."
+description: "Fetch midpoints for multiple market outcomes in one round-trip."
 ---
 
-Latency win for portfolio-wide PnL marks — single round-trip instead of N
-calls to [`fetch_midpoint`](/api/pricing/fetch-midpoint).
+Returns a map keyed by the input identifier (token_id on Polymarket,
+ticker on Kalshi).
 
 ## Parameters
 
-<ParamField path="market_ids" type="string[]" required>
-  **Kalshi:** market tickers (max 1000). **Polymarket:** CLOB token IDs.
-</ParamField>
+<ParamField path="market_ids" type="string[]" required />
 
 ## Returns
 
-<ResponseField name="midpoints" type="Map<string, f64>">
-  Map keyed by the input identifier (token_id on Polymarket, ticker on Kalshi).
-  Markets without a two-sided book are omitted from the response.
-</ResponseField>
+<ResponseField name="result" type="{string: f64}">Map keyed by the input identifier.</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let mids = ex
-    .fetch_midpoints_batch(vec![
-        "KXBTC-25MAR14-T20000".into(),
-        "KXBTC-25MAR14-T25000".into(),
-    ])
-    .await?;
-for (id, mid) in &mids {
-    println!("{id}: {mid}");
-}
+let result = ex.fetch_midpoints_batch(vec![]).await?;
 ```
 
 ```python Python
-mids = ex.fetch_midpoints_batch([
-    "KXBTC-25MAR14-T20000",
-    "KXBTC-25MAR14-T25000",
-])
+result = ex.fetch_midpoints_batch(market_ids)
 ```
 
 ```typescript TypeScript
-const mids = await ex.fetchMidpointsBatch([
-  "KXBTC-25MAR14-T20000",
-  "KXBTC-25MAR14-T25000",
-]);
+const result = await ex.fetchMidpointsBatch(market_ids);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "KXBTC-25MAR14-T20000": 0.44,
-  "KXBTC-25MAR14-T25000": 0.21
+  "<key>": 0.5
 }
 ```
 

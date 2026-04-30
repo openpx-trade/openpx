@@ -3,45 +3,32 @@ title: "fetch_balance_raw"
 sidebarTitle: "Fetch balance raw"
 openapi: GET /v1/balance/fetch_balance_raw
 playground: simple
-description: "Unparsed JSON from the underlying balance endpoint."
+description: "Fetch raw balance response from exchange API"
 ---
-
-Polymarket only — Kalshi returns `NotSupported`. Useful when you need fields
-the unified surface doesn't expose.
-
-## Parameters
-
-None.
 
 ## Returns
 
-Raw JSON from the exchange's balance endpoint.
+<ResponseField name="result" type="object" />
 
 <RequestExample>
 
 ```rust Rust
-let raw = ex.fetch_balance_raw().await?;
+let result = ex.fetch_balance_raw().await?;
 ```
 
 ```python Python
-raw = ex.fetch_balance_raw()
+result = ex.fetch_balance_raw()
 ```
 
 ```typescript TypeScript
-const raw = await ex.fetchBalanceRaw();
+const result = await ex.fetchBalanceRaw();
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
-{
-  "balance": "120000000",
-  "allowance": "1000000000",
-  "decimals": 6,
-  "currency": "USDC"
-}
+{}
 ```
 
 </ResponseExample>

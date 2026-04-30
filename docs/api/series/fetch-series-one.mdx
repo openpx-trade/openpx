@@ -1,51 +1,65 @@
 ---
 title: "fetch_series_one"
-sidebarTitle: "Fetch series (one)"
+sidebarTitle: "Fetch series one"
 openapi: GET /v1/series/fetch_series_one
 playground: simple
-description: "Look up a single series by ID or ticker."
+description: "Fetch a single series by ID or ticker."
 ---
 
 ## Parameters
 
-<ParamField path="id" type="string" required>
-  Series identifier. Kalshi: `series_ticker` (e.g. `KXSPX`). Polymarket: UUID.
-</ParamField>
+<ParamField path="id" type="string" required />
 
 ## Returns
 
-The matching `Series`. See [`fetch_series`](/api/series/fetch-series) for the
-full field list. Kalshi includes `volume` automatically.
+<ResponseField name="result" type="Series">
+  `Series` payload.
+
+  <Expandable title="Series">
+    <ResponseField name="category" type="string?" />
+    <ResponseField name="fee_type" type="string?" />
+    <ResponseField name="frequency" type="string?" />
+    <ResponseField name="id" type="string" />
+    <ResponseField name="last_updated_ts" type="DateTime?" />
+    <ResponseField name="settlement_sources" type="SettlementSource[]?" />
+    <ResponseField name="tags" type="string[]?" />
+    <ResponseField name="title" type="string" />
+    <ResponseField name="volume" type="f64?" />
+  </Expandable>
+</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let series = ex.fetch_series_one("KXSPX").await?;
+let result = ex.fetch_series_one("id-example").await?;
 ```
 
 ```python Python
-series = ex.fetch_series_one("KXSPX")
+result = ex.fetch_series_one(id)
 ```
 
 ```typescript TypeScript
-const series = await ex.fetchSeriesOne("KXSPX");
+const result = await ex.fetchSeriesOne(id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "id": "KXSPX",
-  "title": "S&P 500 Daily",
-  "category": "Economics",
-  "frequency": "daily",
-  "tags": ["finance", "indices"],
-  "settlement_sources": [{ "name": "S&P Dow Jones", "url": "https://www.spglobal.com" }],
-  "fee_type": "quadratic",
-  "volume": 1234567.89,
-  "last_updated_ts": "2026-04-27T00:00:00Z"
+  "category": "example",
+  "fee_type": "example",
+  "frequency": "example",
+  "id": "example",
+  "last_updated_ts": "2026-01-01T00:00:00Z",
+  "settlement_sources": [
+    {}
+  ],
+  "tags": [
+    "example"
+  ],
+  "title": "example",
+  "volume": 0.5
 }
 ```
 

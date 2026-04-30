@@ -3,56 +3,38 @@ title: "fetch_user_activity"
 sidebarTitle: "Fetch user activity"
 openapi: GET /v1/fills/fetch_user_activity
 playground: simple
-description: "Polymarket activity feed (positions, trades, portfolio)."
+description: "Fetch user activity"
 ---
-
-Polymarket only — Kalshi returns `NotSupported`. Returns unparsed JSON
-from Polymarket's activity API.
 
 ## Parameters
 
-<ParamField path="address" type="string" required>
-  Wallet address to query.
-</ParamField>
+<ParamField path="address" type="string" required />
 
-<ParamField path="limit" type="usize?">
-  Max entries.
-</ParamField>
+<ParamField path="limit" type="integer?" />
 
 ## Returns
 
-Raw JSON from Polymarket's activity API.
+<ResponseField name="result" type="object" />
 
 <RequestExample>
 
 ```rust Rust
-use openpx::FetchUserActivityParams;
-
-let activity = ex.fetch_user_activity(FetchUserActivityParams {
-    address: "0xabc…".into(),
-    limit: Some(100),
-}).await?;
+let result = ex.fetch_user_activity(params).await?;
 ```
 
 ```python Python
-activity = ex.fetch_user_activity(address="0xabc…", limit=100)
+result = ex.fetch_user_activity(params)
 ```
 
 ```typescript TypeScript
-const activity = await ex.fetchUserActivity("0xabc…", 100);
+const result = await ex.fetchUserActivity(params);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
-{
-  "address": "0xabc1234567890abcdef1234567890abcdef12345",
-  "positions": [],
-  "trades": [],
-  "value": 0.0
-}
+{}
 ```
 
 </ResponseExample>

@@ -3,119 +3,102 @@ title: "fetch_events"
 sidebarTitle: "Fetch events"
 openapi: GET /v1/events/fetch_events
 playground: simple
-description: "Page through events that group related markets."
+description: "Fetch a page of events. An event groups one or more markets that share"
 ---
 
-An event groups one or more markets that share a resolution (Kalshi: a single
-`event_ticker` like `KXPRES-2028`) or theme (Polymarket: an event linking
-multiple `Market` objects).
+a resolution (Kalshi) or theme (Polymarket).
+Returns `(events, next_cursor)`.
 
 ## Parameters
 
-<ParamField path="limit" type="usize?">
-  Per-page limit. Capped at 200 (Kalshi) / 500 (Polymarket).
-</ParamField>
+<ParamField path="cursor" type="string?" />
 
-<ParamField path="cursor" type="string?">
-  Opaque cursor returned from a prior call. Polymarket uses keyset pagination
-  internally; pass through unchanged.
-</ParamField>
-
-<ParamField path="status" type="string?">
-  Lifecycle filter. Kalshi accepts `unopened`, `open`, `closed`, `settled`.
-  Polymarket maps `open` → `closed=false` and `closed` → `closed=true`.
-</ParamField>
-
-<ParamField path="series_id" type="string?">
-  Restrict to events under a given series.
-</ParamField>
-
-<ParamField path="with_nested_markets" type="bool?">
-  When true, the venue returns the events' nested `Market` objects in the
-  same response. Kalshi only.
-</ParamField>
+<ParamField path="limit" type="integer?" />
 
 <ParamField path="min_close_ts" type="i64?">
-  Unix seconds. Only events closing at or after this timestamp.
+  Unix seconds — only events closing at or after this timestamp.
 </ParamField>
 
 <ParamField path="min_updated_ts" type="i64?">
-  Unix seconds. Only events updated at or after this timestamp.
+  Unix seconds — only events updated at or after this timestamp.
+</ParamField>
+
+<ParamField path="series_id" type="string?">
+  Filter by series ID / ticker.
+</ParamField>
+
+<ParamField path="status" type="string?">
+  Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).
+</ParamField>
+
+<ParamField path="with_nested_markets" type="boolean?">
+  Include the events' nested `Market` objects when supported.
 </ParamField>
 
 ## Returns
 
 <ResponseField name="events" type="Event[]">
-  One page of events.
+  One page of `Event` results.
 
   <Expandable title="Event">
-    <ResponseField name="id" type="string">Native ID — Kalshi `event_ticker` or Polymarket UUID.</ResponseField>
-    <ResponseField name="slug" type="string?">URL-safe identifier (Polymarket).</ResponseField>
-    <ResponseField name="title" type="string" />
-    <ResponseField name="description" type="string?" />
     <ResponseField name="category" type="string?" />
-    <ResponseField name="series_id" type="string?" />
-    <ResponseField name="status" type="string?">Venue-specific (`open`, `closed`, `settled`, …).</ResponseField>
-    <ResponseField name="market_ids" type="string[]">Member markets when known.</ResponseField>
-    <ResponseField name="start_ts" type="DateTime?" />
+    <ResponseField name="description" type="string?" />
     <ResponseField name="end_ts" type="DateTime?" />
-    <ResponseField name="volume" type="f64?" />
-    <ResponseField name="open_interest" type="f64?" />
-    <ResponseField name="mutually_exclusive" type="bool?">True when only one member market can resolve Yes (e.g. neg-risk).</ResponseField>
+    <ResponseField name="id" type="string" />
     <ResponseField name="last_updated_ts" type="DateTime?" />
+    <ResponseField name="market_ids" type="string[]?" />
+    <ResponseField name="mutually_exclusive" type="boolean?" />
+    <ResponseField name="open_interest" type="f64?" />
+    <ResponseField name="series_id" type="string?" />
+    <ResponseField name="slug" type="string?" />
+    <ResponseField name="start_ts" type="DateTime?" />
+    <ResponseField name="status" type="string?" />
+    <ResponseField name="title" type="string" />
+    <ResponseField name="volume" type="f64?" />
   </Expandable>
 </ResponseField>
-
-<ResponseField name="cursor" type="string?">
-  Opaque pagination cursor. `null` on the last page.
-</ResponseField>
+<ResponseField name="cursor" type="string?">Opaque pagination cursor. `null` on the last page.</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::EventsRequest;
-
-let req = EventsRequest {
-    limit: Some(50),
-    status: Some("open".into()),
-    ..Default::default()
-};
-let (events, cursor) = ex.fetch_events(req).await?;
+let result = ex.fetch_events(req).await?;
 ```
 
 ```python Python
-events, cursor = ex.fetch_events(limit=50, status="open")
+result = ex.fetch_events(req)
 ```
 
 ```typescript TypeScript
-const { events, cursor } = await ex.fetchEvents({ limit: 50, status: "open" });
+const result = await ex.fetchEvents(req);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
   "events": [
     {
-      "id": "KXPRES-2028",
-      "slug": null,
-      "title": "2028 US Presidential Election",
-      "description": "Winning candidate",
-      "category": null,
-      "series_id": "KXPRES",
-      "status": null,
-      "market_ids": ["KXPRES-2028-DEM", "KXPRES-2028-REP"],
-      "start_ts": null,
-      "end_ts": "2028-11-07T00:00:00Z",
-      "volume": null,
-      "open_interest": null,
+      "category": "example",
+      "description": "example",
+      "end_ts": "2026-01-01T00:00:00Z",
+      "id": "example",
+      "last_updated_ts": "2026-01-01T00:00:00Z",
+      "market_ids": [
+        null
+      ],
       "mutually_exclusive": true,
-      "last_updated_ts": "2026-04-26T12:34:56Z"
+      "open_interest": 0.5,
+      "series_id": "example",
+      "slug": "example",
+      "start_ts": "2026-01-01T00:00:00Z",
+      "status": "example",
+      "title": "example",
+      "volume": 0.5
     }
   ],
-  "cursor": "eyJsYXN0SWQiOiJLWFBSRVMtMjAyOCJ9"
+  "cursor": null
 }
 ```
 

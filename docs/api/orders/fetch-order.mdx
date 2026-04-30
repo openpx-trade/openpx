@@ -3,68 +3,63 @@ title: "fetch_order"
 sidebarTitle: "Fetch order"
 openapi: GET /v1/orders/fetch_order
 playground: simple
-description: "Look up a single order by ID."
+description: "Fetch order"
 ---
 
 ## Parameters
 
-<ParamField path="order_id" type="string" required>
-  Native order ID.
-</ParamField>
+<ParamField path="order_id" type="string" required />
 
-<ParamField path="market_id" type="string?">
-  Optional, but accelerates Polymarket lookups.
-</ParamField>
+<ParamField path="market_id" type="string?" />
 
 ## Returns
 
-<ResponseField name="order" type="Order">
+<ResponseField name="result" type="Order">
+  `Order` payload.
+
   <Expandable title="Order">
+    <ResponseField name="created_at" type="DateTime" />
+    <ResponseField name="filled" type="f64" />
     <ResponseField name="id" type="string" />
     <ResponseField name="market_id" type="string" />
     <ResponseField name="outcome" type="string" />
-    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="price" type="f64" />
+    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="size" type="f64" />
-    <ResponseField name="filled" type="f64" />
-    <ResponseField name="status" type="OrderStatus">
-      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
-    </ResponseField>
-    <ResponseField name="created_at" type="DateTime<Utc>" />
-    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+    <ResponseField name="status" type="OrderStatus" />
+    <ResponseField name="updated_at" type="DateTime?" />
   </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let order = ex.fetch_order("ord_abc123", None).await?;
+let result = ex.fetch_order("order_id-example", "market_id-example").await?;
 ```
 
 ```python Python
-order = ex.fetch_order("ord_abc123")
+result = ex.fetch_order(order_id, market_id)
 ```
 
 ```typescript TypeScript
-const order = await ex.fetchOrder("ord_abc123");
+const result = await ex.fetchOrder(order_id, market_id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
-  "market_id": "KXBTC-25MAR14-T20000",
-  "outcome": "Yes",
+  "created_at": "2026-01-01T00:00:00Z",
+  "filled": 0.5,
+  "id": "example",
+  "market_id": "example",
+  "outcome": "example",
+  "price": 0.5,
   "side": "buy",
-  "price": 0.55,
-  "size": 10.0,
-  "filled": 4.0,
-  "status": "partially_filled",
-  "created_at": "2026-03-14T15:42:18Z",
-  "updated_at": "2026-03-14T15:42:31Z"
+  "size": 0.5,
+  "status": "pending",
+  "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
 

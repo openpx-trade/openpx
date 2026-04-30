@@ -1,84 +1,65 @@
 ---
 title: "fetch_orderbooks_batch"
-sidebarTitle: "Fetch orderbooks (batch)"
+sidebarTitle: "Fetch orderbooks batch"
 openapi: GET /v1/orderbook/fetch_orderbooks_batch
 playground: simple
-description: "Fetch L2 orderbooks for multiple markets in a single round-trip."
+description: "Fetch L2 orderbooks for multiple markets in one round-trip. Both"
 ---
 
-Major HFT/MM latency win — replaces N parallel calls to
-[`fetch_orderbook`](/api/orderbook/fetch-orderbook) with a single batched request.
+venues expose a batch book endpoint (Kalshi `/markets/orderbooks`,
+Polymarket `/books`); this method exposes that as a unified primitive.
 
 ## Parameters
 
-<ParamField path="market_ids" type="string[]" required>
-  Identifiers for the books to fetch. **Kalshi:** market tickers (max 100).
-  **Polymarket:** CLOB token IDs.
-</ParamField>
+<ParamField path="market_ids" type="string[]" required />
 
 ## Returns
 
-<ResponseField name="orderbooks" type="Orderbook[]">
-  One `Orderbook` per input. Order matches the input order on Polymarket;
-  Kalshi may return in arbitrary order — match by `market_id`.
+<ResponseField name="result" type="Orderbook[]">
+  List of `Orderbook` results.
 
   <Expandable title="Orderbook">
+    <ResponseField name="asks" type="PriceLevel[]" />
+    <ResponseField name="asset_id" type="string" />
+    <ResponseField name="bids" type="PriceLevel[]" />
+    <ResponseField name="hash" type="string?">Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.</ResponseField>
+    <ResponseField name="last_update_id" type="integer?" />
     <ResponseField name="market_id" type="string" />
-    <ResponseField name="asset_id" type="string">Polymarket token id; Kalshi ticker.</ResponseField>
-    <ResponseField name="bids" type="PriceLevel[]">Sorted descending.</ResponseField>
-    <ResponseField name="asks" type="PriceLevel[]">Sorted ascending.</ResponseField>
-    <ResponseField name="last_update_id" type="u64?" />
     <ResponseField name="timestamp" type="DateTime?" />
-    <ResponseField name="hash" type="string?">Polymarket book-state integrity hash.</ResponseField>
   </Expandable>
 </ResponseField>
-
-<Note>
-  **Kalshi** binary markets expose a YES half-orderbook plus a NO half. OpenPX
-  unifies these: YES levels become `bids`; NO bids at price X become `asks`
-  at price `1 - X`. The result is a single book centered on the YES outcome.
-</Note>
 
 <RequestExample>
 
 ```rust Rust
-let books = ex
-    .fetch_orderbooks_batch(vec![
-        "KXBTC-25MAR14-T20000".into(),
-        "KXBTC-25MAR14-T25000".into(),
-    ])
-    .await?;
-for b in &books {
-    println!("{}: bid {:?} / ask {:?}", b.market_id, b.best_bid(), b.best_ask());
-}
+let result = ex.fetch_orderbooks_batch(vec![]).await?;
 ```
 
 ```python Python
-books = ex.fetch_orderbooks_batch([
-    "KXBTC-25MAR14-T20000",
-    "KXBTC-25MAR14-T25000",
-])
+result = ex.fetch_orderbooks_batch(market_ids)
 ```
 
 ```typescript TypeScript
-const books = await ex.fetchOrderbooksBatch([
-  "KXBTC-25MAR14-T20000",
-  "KXBTC-25MAR14-T25000",
-]);
+const result = await ex.fetchOrderbooksBatch(market_ids);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 [
   {
-    "market_id": "KXBTC-25MAR14-T20000",
-    "asset_id": "KXBTC-25MAR14-T20000",
-    "bids": [{ "price": 0.42, "size": 100.0 }, { "price": 0.41, "size": 50.0 }],
-    "asks": [{ "price": 0.46, "size": 80.0 }, { "price": 0.47, "size": 200.0 }],
-    "timestamp": "2026-04-28T10:15:30Z"
+    "asks": [
+      {}
+    ],
+    "asset_id": "example",
+    "bids": [
+      {}
+    ],
+    "hash": "example",
+    "last_update_id": 0,
+    "market_id": "example",
+    "timestamp": "2026-01-01T00:00:00Z"
   }
 ]
 ```

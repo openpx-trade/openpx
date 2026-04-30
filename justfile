@@ -66,11 +66,24 @@ check-mappings:
 render-mappings:
     python3 tools/render_mappings.py
 
+# Generate docs/openpx.openapi.yaml from the Exchange trait + JSON Schema.
+# Used as a docs-side metadata source (operation badges, schemas) by the
+# per-method MDX pages; not consumed by Mintlify's tab-level auto-render.
+openapi:
+    python3 tools/gen_openapi.py
+
+# Generate per-method docs/api/<tag>/<method>.mdx from trait + JSON Schema.
+# Each MDX uses Mintlify <ParamField>/<ResponseField>/<RequestExample>/
+# <ResponseExample> components — same visual as the prior hand-written pages,
+# now derived from the single source of truth.
+api-mdx: openapi
+    python3 tools/gen_api_mdx.py
+
 docs-serve:
     cd docs && mintlify dev
 
-check-sync: schema python-models node-models llms-txt check-mappings render-mappings
-    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/mappings/
+check-sync: schema python-models node-models llms-txt check-mappings render-mappings openapi api-mdx
+    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml
 
 # ---------------------------------------------------------------------------
 # Versioning

@@ -3,40 +3,21 @@ title: "refresh_balance"
 sidebarTitle: "Refresh balance"
 openapi: POST /v1/balance/refresh_balance
 playground: simple
-description: "Force a refetch of cached balance / allowance state."
+description: "Refresh cached balance/allowance state if supported by the exchange."
 ---
-
-No-op on exchanges that don't cache. Polymarket uses this to refresh USDC
-and CTF allowances after on-chain approvals.
-
-## Parameters
-
-None.
-
-## Returns
-
-`()` on success.
 
 <RequestExample>
 
 ```rust Rust
-ex.refresh_balance().await?;
+let result = ex.refresh_balance().await?;
 ```
 
 ```python Python
-ex.refresh_balance()
+result = ex.refresh_balance()
 ```
 
 ```typescript TypeScript
-await ex.refreshBalance();
+const result = await ex.refreshBalance();
 ```
 
 </RequestExample>
-
-<ResponseExample>
-
-```json 200
-null
-```
-
-</ResponseExample>

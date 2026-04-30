@@ -3,43 +3,33 @@ title: "fetch_balance"
 sidebarTitle: "Fetch balance"
 openapi: GET /v1/balance/fetch_balance
 playground: simple
-description: "Account balances, keyed by currency / token symbol."
+description: "Fetch balance"
 ---
-
-## Parameters
-
-None.
 
 ## Returns
 
-A map keyed by currency / token symbol.
-
-| Exchange | Example |
-|----------|---------|
-| Kalshi | `{ "USD": 1234.56 }` |
-| Polymarket | `{ "USDC": 120.00 }` |
+<ResponseField name="result" type="{string: f64}">Map keyed by the input identifier.</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let balance = ex.fetch_balance().await?;
+let result = ex.fetch_balance().await?;
 ```
 
 ```python Python
-balance = ex.fetch_balance()
+result = ex.fetch_balance()
 ```
 
 ```typescript TypeScript
-const balance = await ex.fetchBalance();
+const result = await ex.fetchBalance();
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "USD": 1234.56
+  "<key>": 0.5
 }
 ```
 

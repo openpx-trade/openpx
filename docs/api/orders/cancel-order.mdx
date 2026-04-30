@@ -1,70 +1,65 @@
 ---
 title: "cancel_order"
 sidebarTitle: "Cancel order"
-openapi: DELETE /v1/orders/cancel_order
+openapi: POST /v1/orders/cancel_order
 playground: simple
-description: "Cancel an open order."
+description: "Cancel order"
 ---
 
 ## Parameters
 
-<ParamField path="order_id" type="string" required>
-  Native order ID.
-</ParamField>
+<ParamField path="order_id" type="string" required />
 
-<ParamField path="market_id" type="string?">
-  Optional, but accelerates Polymarket cancels.
-</ParamField>
+<ParamField path="market_id" type="string?" />
 
 ## Returns
 
-<ResponseField name="order" type="Order">
+<ResponseField name="result" type="Order">
+  `Order` payload.
+
   <Expandable title="Order">
+    <ResponseField name="created_at" type="DateTime" />
+    <ResponseField name="filled" type="f64" />
     <ResponseField name="id" type="string" />
     <ResponseField name="market_id" type="string" />
     <ResponseField name="outcome" type="string" />
-    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="price" type="f64" />
+    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="size" type="f64" />
-    <ResponseField name="filled" type="f64" />
-    <ResponseField name="status" type="OrderStatus">
-      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
-    </ResponseField>
-    <ResponseField name="created_at" type="DateTime<Utc>" />
-    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+    <ResponseField name="status" type="OrderStatus" />
+    <ResponseField name="updated_at" type="DateTime?" />
   </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let order = ex.cancel_order("ord_abc123", None).await?;
+let result = ex.cancel_order("order_id-example", "market_id-example").await?;
 ```
 
 ```python Python
-order = ex.cancel_order("ord_abc123")
+result = ex.cancel_order(order_id, market_id)
 ```
 
 ```typescript TypeScript
-const order = await ex.cancelOrder("ord_abc123");
+const result = await ex.cancelOrder(order_id, market_id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
-  "market_id": "KXBTC-25MAR14-T20000",
-  "outcome": "Yes",
+  "created_at": "2026-01-01T00:00:00Z",
+  "filled": 0.5,
+  "id": "example",
+  "market_id": "example",
+  "outcome": "example",
+  "price": 0.5,
   "side": "buy",
-  "price": 0.55,
-  "size": 10.0,
-  "filled": 0.0,
-  "status": "cancelled",
-  "created_at": "2026-03-14T15:42:18Z",
-  "updated_at": "2026-03-14T15:43:02Z"
+  "size": 0.5,
+  "status": "pending",
+  "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
 

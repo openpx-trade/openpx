@@ -96,12 +96,12 @@ jobs:
           tool: just
       - run: pip install datamodel-code-generator
       - run: cd sdks/typescript && npm install
-      - name: Generate schema, SDK models, llms.txt, and mapping docs
-        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models llms-txt render-mappings
+      - name: Generate schema, SDK models, llms.txt, mapping docs, OpenAPI, and API MDX
+        run: just venv="$(python3 -c 'import sys; print(sys.prefix)')" schema python-models node-models llms-txt render-mappings openapi api-mdx
       - name: Validate exchange→openpx field mappings
         run: just check-mappings
       - name: Check generated files are in sync
-        run: git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/mappings/
+        run: git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml
       # Smoke checks: a regen can produce a syntactically degenerate file
       # (e.g. an empty stub) that drifts undetectably under git diff alone.
       # PR #26 hid for an indeterminate amount of time because models.d.ts

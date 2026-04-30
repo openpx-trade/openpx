@@ -3,95 +3,79 @@ title: "fetch_series"
 sidebarTitle: "Fetch series"
 openapi: GET /v1/series/fetch_series
 playground: simple
-description: "Page through recurring event families."
+description: "Fetch a page of series. A series is a recurring family of events"
 ---
 
-A series is a recurring family of events — a weekly inflation print, a monthly
-nonfarm payrolls release, a regular sports season, etc. On Kalshi a series is
-identified by `series_ticker` (e.g. `KXPRES`); on Polymarket each series wraps
-multiple events.
+(weekly inflation prints, monthly NFP, sports seasons, etc.).
+Returns `(series, next_cursor)`.
 
 ## Parameters
 
-<ParamField path="limit" type="usize?">
-  Per-page limit. Capped at 200 (Kalshi) / 500 (Polymarket).
-</ParamField>
-
-<ParamField path="cursor" type="string?">
-  Opaque cursor returned from a prior call.
-</ParamField>
-
 <ParamField path="category" type="string?">
-  Filter by category (e.g. `Politics`, `Economics`).
+  Filter by category (e.g. `Politics`, `Sports`).
 </ParamField>
 
-<ParamField path="include_volume" type="bool?">
-  Kalshi only. Adds `volume` to each series.
+<ParamField path="cursor" type="string?" />
+
+<ParamField path="include_volume" type="boolean?">
+  Include traded volume in the response when the venue supports it.
 </ParamField>
+
+<ParamField path="limit" type="integer?" />
 
 ## Returns
 
 <ResponseField name="series" type="Series[]">
-  One page of series.
+  One page of `Series` results.
 
   <Expandable title="Series">
-    <ResponseField name="id" type="string" />
-    <ResponseField name="title" type="string" />
     <ResponseField name="category" type="string?" />
-    <ResponseField name="frequency" type="string?">e.g. `weekly`, `monthly`, `daily`.</ResponseField>
-    <ResponseField name="tags" type="string[]">Free-form Kalshi tags.</ResponseField>
-    <ResponseField name="settlement_sources" type="SettlementSource[]">Kalshi only — links to oracle/source URLs.</ResponseField>
-    <ResponseField name="fee_type" type="string?">Kalshi only — `quadratic`, `flat`, etc.</ResponseField>
-    <ResponseField name="volume" type="f64?" />
+    <ResponseField name="fee_type" type="string?" />
+    <ResponseField name="frequency" type="string?" />
+    <ResponseField name="id" type="string" />
     <ResponseField name="last_updated_ts" type="DateTime?" />
+    <ResponseField name="settlement_sources" type="SettlementSource[]?" />
+    <ResponseField name="tags" type="string[]?" />
+    <ResponseField name="title" type="string" />
+    <ResponseField name="volume" type="f64?" />
   </Expandable>
 </ResponseField>
-
-<ResponseField name="cursor" type="string?">
-  `null` on the last page.
-</ResponseField>
+<ResponseField name="cursor" type="string?">Opaque pagination cursor. `null` on the last page.</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::SeriesRequest;
-
-let req = SeriesRequest {
-    limit: Some(50),
-    category: Some("Economics".into()),
-    include_volume: Some(true),
-    ..Default::default()
-};
-let (series, cursor) = ex.fetch_series(req).await?;
+let result = ex.fetch_series(req).await?;
 ```
 
 ```python Python
-series, cursor = ex.fetch_series(category="Economics", include_volume=True)
+result = ex.fetch_series(req)
 ```
 
 ```typescript TypeScript
-const { series } = await ex.fetchSeries({ category: "Economics" });
+const result = await ex.fetchSeries(req);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
   "series": [
     {
-      "id": "KXSPX",
-      "title": "S&P 500 Daily",
-      "category": "Economics",
-      "frequency": "daily",
-      "tags": ["finance", "indices"],
+      "category": "example",
+      "fee_type": "example",
+      "frequency": "example",
+      "id": "example",
+      "last_updated_ts": "2026-01-01T00:00:00Z",
       "settlement_sources": [
-        { "name": "S&P Dow Jones", "url": "https://www.spglobal.com" }
+        null
       ],
-      "fee_type": "quadratic",
-      "volume": 1234567.89,
-      "last_updated_ts": "2026-04-27T00:00:00Z"
+      "tags": [
+        null
+      ],
+      "title": "example",
+      "volume": 0.5
     }
   ],
   "cursor": null

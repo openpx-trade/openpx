@@ -16,6 +16,7 @@
   "contextual": {
     "options": ["copy", "view", "chatgpt", "claude"]
   },
+  "openapi": "openpx.openapi.yaml",
   "navigation": {
     "tabs": [
       {
@@ -70,6 +71,12 @@
                 ]
               },
               {
+                "group": "Orderbook History",
+                "pages": [
+                  "api/orderbook-history/fetch-orderbook-history"
+                ]
+              },
+              {
                 "group": "Pricing",
                 "pages": [
                   "api/pricing/fetch-midpoint",
@@ -82,19 +89,14 @@
               {
                 "group": "Trades",
                 "pages": [
-                  "api/trades/fetch-trades"
+                  "api/trades/fetch-trades",
+                  "api/trades/fetch-user-trades"
                 ]
               },
               {
                 "group": "Price History",
                 "pages": [
                   "api/price-history/fetch-price-history"
-                ]
-              },
-              {
-                "group": "Orderbook History",
-                "pages": [
-                  "api/orderbook-history/fetch-orderbook-history"
                 ]
               }
             ]
@@ -136,10 +138,15 @@
                 "group": "Fills",
                 "pages": [
                   "api/fills/fetch-fills",
-                  "api/fills/fetch-user-trades",
                   "api/fills/fetch-user-activity"
                 ]
               }
+            ]
+          },
+          {
+            "group": "System",
+            "pages": [
+              "api/server/fetch-server-time"
             ]
           }
         ]

@@ -3,59 +3,54 @@ title: "fetch_spread"
 sidebarTitle: "Fetch spread"
 openapi: GET /v1/pricing/fetch_spread
 playground: simple
-description: "Get top-of-book bid, ask, and spread for a market outcome."
+description: "Fetch the top-of-book spread (best bid, best ask, ask - bid)."
 ---
 
 ## Parameters
 
-Same shape as [`fetch_midpoint`](/api/pricing/fetch-midpoint) — uses the
-unified `MidpointRequest` type.
-
 <ParamField path="market_id" type="string" required />
+
 <ParamField path="outcome" type="string?" />
+
 <ParamField path="token_id" type="string?" />
 
 ## Returns
 
-<ResponseField name="Spread" type="object">
-  <ResponseField name="bid" type="f64">Best bid.</ResponseField>
-  <ResponseField name="ask" type="f64">Best ask.</ResponseField>
-  <ResponseField name="spread" type="f64">`ask − bid`.</ResponseField>
-  <ResponseField name="ts_ms" type="i64?" />
-</ResponseField>
+<ResponseField name="result" type="Spread">
+  `Spread` payload.
 
-<Note>
-  **Polymarket** `/spread` returns just the spread number; OpenPX combines it
-  with `/midpoint` to populate `bid` and `ask` (`mid ± spread/2`). When the
-  midpoint is unavailable, `bid` is reported as `0.0` and `ask` as `spread`.
-</Note>
+  <Expandable title="Spread">
+    <ResponseField name="ask" type="f64" />
+    <ResponseField name="bid" type="f64" />
+    <ResponseField name="spread" type="f64" />
+    <ResponseField name="ts_ms" type="i64?" />
+  </Expandable>
+</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::MidpointRequest;
-
-let s = ex.fetch_spread(MidpointRequest {
-    market_id: "KXBTC-25MAR14-T20000".into(),
-    ..Default::default()
-}).await?;
-println!("{} -> {} ({:.4} wide)", s.bid, s.ask, s.spread);
+let result = ex.fetch_spread(req).await?;
 ```
 
 ```python Python
-s = ex.fetch_spread(market_id="KXBTC-25MAR14-T20000")
+result = ex.fetch_spread(req)
 ```
 
 ```typescript TypeScript
-const s = await ex.fetchSpread({ marketId: "KXBTC-25MAR14-T20000" });
+const result = await ex.fetchSpread(req);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
-{ "bid": 0.42, "ask": 0.46, "spread": 0.04, "ts_ms": null }
+{
+  "ask": 0.5,
+  "bid": 0.5,
+  "spread": 0.5,
+  "ts_ms": 0
+}
 ```
 
 </ResponseExample>

@@ -3,65 +3,62 @@ title: "fetch_open_orders"
 sidebarTitle: "Fetch open orders"
 openapi: GET /v1/orders/fetch_open_orders
 playground: simple
-description: "List open orders, optionally scoped to one market."
+description: "Fetch open orders"
 ---
 
 ## Parameters
 
-<ParamField path="market_id" type="string?">
-  Filter to one market. Pass `None` for every open order.
-</ParamField>
+<ParamField path="market_id" type="string?" />
 
 ## Returns
 
-<ResponseField name="orders" type="Order[]">
+<ResponseField name="result" type="Order[]">
+  List of `Order` results.
+
   <Expandable title="Order">
+    <ResponseField name="created_at" type="DateTime" />
+    <ResponseField name="filled" type="f64" />
     <ResponseField name="id" type="string" />
     <ResponseField name="market_id" type="string" />
     <ResponseField name="outcome" type="string" />
-    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="price" type="f64" />
+    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="size" type="f64" />
-    <ResponseField name="filled" type="f64" />
-    <ResponseField name="status" type="OrderStatus">
-      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
-    </ResponseField>
-    <ResponseField name="created_at" type="DateTime<Utc>" />
-    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+    <ResponseField name="status" type="OrderStatus" />
+    <ResponseField name="updated_at" type="DateTime?" />
   </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let open = ex.fetch_open_orders(None).await?;
+let result = ex.fetch_open_orders(params).await?;
 ```
 
 ```python Python
-open = ex.fetch_open_orders()
+result = ex.fetch_open_orders(params)
 ```
 
 ```typescript TypeScript
-const open = await ex.fetchOpenOrders();
+const result = await ex.fetchOpenOrders(params);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 [
   {
-    "id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
-    "market_id": "KXBTC-25MAR14-T20000",
-    "outcome": "Yes",
-    "side": "buy",
-    "price": 0.55,
-    "size": 10.0,
-    "filled": 0.0,
-    "status": "open",
-    "created_at": "2026-03-14T15:42:18Z",
-    "updated_at": null
+    "created_at": "2026-01-01T00:00:00Z",
+    "filled": 0.5,
+    "id": "example",
+    "market_id": "example",
+    "outcome": "example",
+    "price": 0.5,
+    "side": {},
+    "size": 0.5,
+    "status": {},
+    "updated_at": "2026-01-01T00:00:00Z"
   }
 ]
 ```

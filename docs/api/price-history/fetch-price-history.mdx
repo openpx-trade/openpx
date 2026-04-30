@@ -3,94 +3,74 @@ title: "fetch_price_history"
 sidebarTitle: "Fetch price history"
 openapi: GET /v1/price-history/fetch_price_history
 playground: simple
-description: "OHLCV candles."
+description: "Fetch historical OHLCV price history / candlestick data for a market outcome."
 ---
 
 ## Parameters
 
-<ParamField path="market_id" type="string" required>
-  Native market ID.
-</ParamField>
-
-<ParamField path="outcome" type="string?">
-  Outcome label. Kalshi infers Yes/No from the market.
-</ParamField>
-
-<ParamField path="token_id" type="string?">
-  Polymarket CLOB token.
-</ParamField>
-
 <ParamField path="condition_id" type="string?">
-  Polymarket condition ID for OI enrichment.
-</ParamField>
-
-<ParamField path="interval" type="PriceHistoryInterval" required>
-  `1m`, `1h`, `6h`, `1d`, `1w`, or `max`.
-</ParamField>
-
-<ParamField path="start_ts" type="i64?">
-  Unix seconds.
+  Condition ID for OI enrichment (Polymarket).
 </ParamField>
 
 <ParamField path="end_ts" type="i64?">
-  Unix seconds.
+  Unix seconds
 </ParamField>
+
+<ParamField path="interval" type="PriceHistoryInterval" required />
+
+<ParamField path="market_id" type="string" required />
+
+<ParamField path="outcome" type="string?" />
+
+<ParamField path="start_ts" type="i64?">
+  Unix seconds
+</ParamField>
+
+<ParamField path="token_id" type="string?" />
 
 ## Returns
 
-`Candlestick[]`.
+<ResponseField name="result" type="Candlestick[]">
+  List of `Candlestick` results.
 
-<ResponseField name="timestamp" type="DateTime<Utc>" />
-<ResponseField name="open" type="f64" />
-<ResponseField name="high" type="f64" />
-<ResponseField name="low" type="f64" />
-<ResponseField name="close" type="f64" />
-<ResponseField name="volume" type="f64" />
-<ResponseField name="open_interest" type="f64?">
-  Kalshi only.
+  <Expandable title="Candlestick">
+    <ResponseField name="close" type="f64" />
+    <ResponseField name="high" type="f64" />
+    <ResponseField name="low" type="f64" />
+    <ResponseField name="open" type="f64" />
+    <ResponseField name="open_interest" type="f64?">Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).</ResponseField>
+    <ResponseField name="timestamp" type="DateTime">Period start timestamp (UTC). lightweight-charts expects start-of-period.</ResponseField>
+    <ResponseField name="volume" type="f64">Trade volume in contracts. 0.0 if exchange doesn't provide volume.</ResponseField>
+  </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::{PriceHistoryRequest, PriceHistoryInterval};
-
-let candles = ex.fetch_price_history(PriceHistoryRequest {
-    market_id: "KXBTC-25MAR14-T20000".into(),
-    interval: PriceHistoryInterval::Hour,
-    ..Default::default()
-}).await?;
+let result = ex.fetch_price_history(req).await?;
 ```
 
 ```python Python
-candles = ex.fetch_price_history(
-    "KXBTC-25MAR14-T20000",
-    "1h",
-    start_ts=1735689600,
-)
+result = ex.fetch_price_history(req)
 ```
 
 ```typescript TypeScript
-const candles = await ex.fetchPriceHistory(
-  "KXBTC-25MAR14-T20000",
-  "1h",
-);
+const result = await ex.fetchPriceHistory(req);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 [
   {
-    "timestamp": "2026-03-14T15:00:00Z",
-    "open": 0.58,
-    "high": 0.64,
-    "low": 0.57,
-    "close": 0.62,
-    "volume": 1247.5,
-    "open_interest": 4280.0
+    "close": 0.5,
+    "high": 0.5,
+    "low": 0.5,
+    "open": 0.5,
+    "open_interest": 0.5,
+    "timestamp": "2026-01-01T00:00:00Z",
+    "volume": 0.5
   }
 ]
 ```

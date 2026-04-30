@@ -1,123 +1,68 @@
 ---
 title: "create_orders_batch"
-sidebarTitle: "Create orders (batch)"
+sidebarTitle: "Create orders batch"
 openapi: POST /v1/orders/create_orders_batch
 playground: simple
-description: "Submit multiple orders in a single round-trip."
+description: "Submit multiple orders in a single round-trip. Both venues cap the"
 ---
 
-Round-trip win for market makers and rebalancers — replaces N parallel
-`create_order` calls. Each venue has its own batch size cap; OpenPX rejects
-oversized batches up-front rather than splitting silently.
-
-<Warning>
-  **Polymarket caps batches at 15 orders.** Kalshi's effective cap depends
-  on your token-budget tier (each order in a batch costs 10 tokens).
-</Warning>
+batch size — Polymarket at 15, Kalshi at a token-budget-dependent
+number. Implementations should reject batches that exceed their cap
+up-front rather than splitting silently.
 
 ## Parameters
 
-<ParamField path="orders" type="NewOrder[]" required>
-  <Expandable title="NewOrder">
-    <ResponseField name="market_id" type="string" required />
-    <ResponseField name="outcome" type="string" required>e.g. `"Yes"` / `"No"`.</ResponseField>
-    <ResponseField name="side" type="OrderSide" required>`buy` or `sell`.</ResponseField>
-    <ResponseField name="order_type" type="OrderType" required>`gtc`, `ioc`, or `fok`. Maps to Kalshi `time_in_force` and Polymarket `order_type` (Polymarket calls IOC `FAK`).</ResponseField>
-    <ResponseField name="price" type="f64" required>Decimal (0.0 – 1.0).</ResponseField>
-    <ResponseField name="size" type="f64" required />
-    <ResponseField name="post_only" type="bool?">Polymarket: pin maker-only. Ignored on Kalshi.</ResponseField>
-    <ResponseField name="reduce_only" type="bool?">Kalshi only — replaces deprecated `sell_position_floor`.</ResponseField>
-    <ResponseField name="client_order_id" type="string?">Idempotency key.</ResponseField>
-    <ResponseField name="expiration_ts" type="i64?">Unix seconds. Required for `gtc` orders that should expire.</ResponseField>
-  </Expandable>
-</ParamField>
+<ParamField path="orders" type="NewOrder[]" required />
 
 ## Returns
 
-<ResponseField name="orders" type="Order[]">
-  Successfully placed orders, in the order they were submitted. Failed orders
-  are logged at `WARN` and omitted from the result.
+<ResponseField name="result" type="Order[]">
+  List of `Order` results.
+
+  <Expandable title="Order">
+    <ResponseField name="created_at" type="DateTime" />
+    <ResponseField name="filled" type="f64" />
+    <ResponseField name="id" type="string" />
+    <ResponseField name="market_id" type="string" />
+    <ResponseField name="outcome" type="string" />
+    <ResponseField name="price" type="f64" />
+    <ResponseField name="side" type="OrderSide" />
+    <ResponseField name="size" type="f64" />
+    <ResponseField name="status" type="OrderStatus" />
+    <ResponseField name="updated_at" type="DateTime?" />
+  </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::{NewOrder, OrderSide, OrderType};
-
-let orders = vec![
-    NewOrder {
-        market_id: "KXBTC-25MAR14-T20000".into(),
-        outcome: "Yes".into(),
-        side: OrderSide::Buy,
-        order_type: OrderType::Gtc,
-        price: 0.42,
-        size: 100.0,
-        post_only: None,
-        reduce_only: None,
-        client_order_id: Some("client-1".into()),
-        expiration_ts: None,
-    },
-    NewOrder {
-        market_id: "KXBTC-25MAR14-T25000".into(),
-        outcome: "Yes".into(),
-        side: OrderSide::Buy,
-        order_type: OrderType::Gtc,
-        price: 0.21,
-        size: 200.0,
-        post_only: None,
-        reduce_only: None,
-        client_order_id: Some("client-2".into()),
-        expiration_ts: None,
-    },
-];
-let placed = ex.create_orders_batch(orders).await?;
+let result = ex.create_orders_batch(vec![]).await?;
 ```
 
 ```python Python
-placed = ex.create_orders_batch([
-    {"market_id": "KXBTC-25MAR14-T20000", "outcome": "Yes",
-     "side": "buy", "order_type": "gtc", "price": 0.42, "size": 100.0},
-    {"market_id": "KXBTC-25MAR14-T25000", "outcome": "Yes",
-     "side": "buy", "order_type": "gtc", "price": 0.21, "size": 200.0},
-])
+result = ex.create_orders_batch(orders)
 ```
 
 ```typescript TypeScript
-const placed = await ex.createOrdersBatch([
-  { marketId: "KXBTC-25MAR14-T20000", outcome: "Yes",
-    side: "buy", orderType: "gtc", price: 0.42, size: 100 },
-  { marketId: "KXBTC-25MAR14-T25000", outcome: "Yes",
-    side: "buy", orderType: "gtc", price: 0.21, size: 200 },
-]);
+const result = await ex.createOrdersBatch(orders);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 [
   {
-    "id": "ord-001",
-    "market_id": "KXBTC-25MAR14-T20000",
-    "outcome": "Yes",
-    "side": "buy",
-    "price": 0.42,
-    "size": 100.0,
-    "filled": 0.0,
-    "status": "Open",
-    "created_at": "2026-04-28T10:00:00Z"
-  },
-  {
-    "id": "ord-002",
-    "market_id": "KXBTC-25MAR14-T25000",
-    "outcome": "Yes",
-    "side": "buy",
-    "price": 0.21,
-    "size": 200.0,
-    "filled": 0.0,
-    "status": "Open",
-    "created_at": "2026-04-28T10:00:00Z"
+    "created_at": "2026-01-01T00:00:00Z",
+    "filled": 0.5,
+    "id": "example",
+    "market_id": "example",
+    "outcome": "example",
+    "price": 0.5,
+    "side": {},
+    "size": 0.5,
+    "status": {},
+    "updated_at": "2026-01-01T00:00:00Z"
   }
 ]
 ```

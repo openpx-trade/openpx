@@ -3,48 +3,36 @@ title: "fetch_open_interest"
 sidebarTitle: "Fetch open interest"
 openapi: GET /v1/pricing/fetch_open_interest
 playground: simple
-description: "Get total outstanding contracts (open interest) for a market."
+description: "Fetch the open interest (total outstanding contracts) for a market."
 ---
 
 ## Parameters
 
-<ParamField path="market_id" type="string" required>
-  Native market identifier. Kalshi: ticker. Polymarket: condition ID.
-</ParamField>
+<ParamField path="market_id" type="string" required />
 
 ## Returns
 
-<ResponseField name="open_interest" type="f64">
-  Total outstanding contracts across both sides of the market.
-</ResponseField>
-
-<Note>
-  **Kalshi** reads `open_interest_fp` from the market summary endpoint.
-  **Polymarket** uses Data API `GET /oi?market={condition_id}` and returns an
-  explicit error when the Data-API miss has no value, rather than silently
-  returning 0.
-</Note>
+<ResponseField name="result" type="f64" />
 
 <RequestExample>
 
 ```rust Rust
-let oi = ex.fetch_open_interest("KXBTC-25MAR14-T20000").await?;
+let result = ex.fetch_open_interest("market_id-example").await?;
 ```
 
 ```python Python
-oi = ex.fetch_open_interest("KXBTC-25MAR14-T20000")
+result = ex.fetch_open_interest(market_id)
 ```
 
 ```typescript TypeScript
-const oi = await ex.fetchOpenInterest("KXBTC-25MAR14-T20000");
+const result = await ex.fetchOpenInterest(market_id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
-4280.0
+0.5
 ```
 
 </ResponseExample>

@@ -3,115 +3,71 @@ title: "create_order"
 sidebarTitle: "Create order"
 openapi: POST /v1/orders/create_order
 playground: simple
-description: "Place an order on the book."
+description: "Create order"
 ---
 
 ## Parameters
 
-<ParamField path="market_id" type="string" required>
-  Native market ID.
-</ParamField>
+<ParamField path="market_id" type="string" required />
 
-<ParamField path="outcome" type="string" required>
-  `"Yes"` or `"No"`.
-</ParamField>
+<ParamField path="outcome" type="string" required />
 
-<ParamField path="side" type="OrderSide" required>
-  `buy` or `sell`.
-</ParamField>
+<ParamField path="side" type="OrderSide" required />
 
-<ParamField path="price" type="f64" required>
-  Decimal in `[0.0, 1.0]`.
-</ParamField>
+<ParamField path="price" type="f64" required />
 
-<ParamField path="size" type="f64" required>
-  Contracts.
-</ParamField>
+<ParamField path="size" type="f64" required />
 
-<ParamField path="params.order_type" type="string">
-  `gtc`, `ioc`, `fok`, or `market`. Defaults to `gtc`.
-</ParamField>
-
-<ParamField path="params.token_id" type="string">
-  Polymarket only. Derived from `market_id` + `outcome` if omitted.
-</ParamField>
+<ParamField path="params" type="{string: string}" required />
 
 ## Returns
 
-<ResponseField name="order" type="Order">
+<ResponseField name="result" type="Order">
+  `Order` payload.
+
   <Expandable title="Order">
-    <ResponseField name="id" type="string">Native order ID.</ResponseField>
+    <ResponseField name="created_at" type="DateTime" />
+    <ResponseField name="filled" type="f64" />
+    <ResponseField name="id" type="string" />
     <ResponseField name="market_id" type="string" />
     <ResponseField name="outcome" type="string" />
-    <ResponseField name="side" type="OrderSide">`buy` or `sell`.</ResponseField>
-    <ResponseField name="price" type="f64">Decimal in `[0, 1]`.</ResponseField>
+    <ResponseField name="price" type="f64" />
+    <ResponseField name="side" type="OrderSide" />
     <ResponseField name="size" type="f64" />
-    <ResponseField name="filled" type="f64">Cumulative fills.</ResponseField>
-    <ResponseField name="status" type="OrderStatus">
-      `pending`, `open`, `filled`, `partially_filled`, `cancelled`, or `rejected`.
-    </ResponseField>
-    <ResponseField name="created_at" type="DateTime<Utc>" />
-    <ResponseField name="updated_at" type="DateTime<Utc>?" />
+    <ResponseField name="status" type="OrderStatus" />
+    <ResponseField name="updated_at" type="DateTime?" />
   </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::OrderSide;
-use std::collections::HashMap;
-
-let mut params = HashMap::new();
-params.insert("order_type".into(), "gtc".into());
-
-let order = ex.create_order(
-    "KXBTC-25MAR14-T20000",
-    "Yes",
-    OrderSide::Buy,
-    0.55,
-    10.0,
-    params,
-).await?;
+let result = ex.create_order("market_id-example", "outcome-example", side, 0.5, 0.5, params).await?;
 ```
 
 ```python Python
-order = ex.create_order(
-    "KXBTC-25MAR14-T20000",
-    "Yes",
-    "buy",
-    0.55,
-    10.0,
-    order_type="gtc",
-)
+result = ex.create_order(market_id, outcome, side, price, size, params)
 ```
 
 ```typescript TypeScript
-const order = await ex.createOrder(
-  "KXBTC-25MAR14-T20000",
-  "Yes",
-  "buy",
-  0.55,
-  10.0,
-  { order_type: "gtc" },
-);
+const result = await ex.createOrder(market_id, outcome, side, price, size, params);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "id": "ord_01HXY2Z3K4N5P6Q7R8S9T0V",
-  "market_id": "KXBTC-25MAR14-T20000",
-  "outcome": "Yes",
+  "created_at": "2026-01-01T00:00:00Z",
+  "filled": 0.5,
+  "id": "example",
+  "market_id": "example",
+  "outcome": "example",
+  "price": 0.5,
   "side": "buy",
-  "price": 0.55,
-  "size": 10.0,
-  "filled": 0.0,
-  "status": "open",
-  "created_at": "2026-03-14T15:42:18Z",
-  "updated_at": null
+  "size": 0.5,
+  "status": "pending",
+  "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
 

@@ -3,110 +3,184 @@ title: "fetch_markets"
 sidebarTitle: "Fetch markets"
 openapi: GET /v1/markets/fetch_markets
 playground: simple
-description: "Page through markets on an exchange."
+description: "Fetch one page of markets from this exchange."
 ---
+
+Returns `(markets, next_cursor)` where `next_cursor` is `None` when no more pages.
+Callers paginate externally by passing `next_cursor` back in `params.cursor`.
+When `params.status` is `None`, exchanges default to `Active`.
+When `params.status` is `Some(All)`, exchanges return all markets regardless of status.
 
 ## Parameters
 
-<ParamField path="limit" type="usize?">
-  Per-page limit. Capped at 1000 (Kalshi) / 500 (Polymarket).
-</ParamField>
-
 <ParamField path="cursor" type="string?">
-  Opaque cursor returned from a prior call.
-</ParamField>
-
-<ParamField path="status" type="MarketStatusFilter?">
-  `active`, `closed`, `resolved`, or `all`. Defaults to `active`.
-</ParamField>
-
-<ParamField path="series_id" type="string?">
-  Kalshi series ticker (e.g. `"KXBTC"`) or Polymarket series ID.
+  Exchange-specific cursor (offset, page number, or cursor string)
 </ParamField>
 
 <ParamField path="event_id" type="string?">
-  Kalshi event ticker or Polymarket event ID/slug. When set, `series_id`,
-  `cursor`, and `limit` are ignored.
+  Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+</ParamField>
+
+<ParamField path="limit" type="integer?">
+  Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.
+</ParamField>
+
+<ParamField path="series_id" type="string?">
+  Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.
+</ParamField>
+
+<ParamField path="status" type="MarketStatusFilter?">
+  Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All` to fetch markets of any status.
 </ParamField>
 
 ## Returns
 
 <ResponseField name="markets" type="Market[]">
-  One page of markets.
+  One page of `Market` results.
 
   <Expandable title="Market">
-    <ResponseField name="id" type="string">Native ID — Kalshi ticker or Polymarket condition ID.</ResponseField>
-    <ResponseField name="native_numeric_id" type="string?">Polymarket numeric DB id, for UI deep-links.</ResponseField>
-    <ResponseField name="event_id" type="string?">Canonical OpenPX event ID grouping related markets.</ResponseField>
-    <ResponseField name="title" type="string" />
-    <ResponseField name="description" type="string" />
-    <ResponseField name="slug" type="string?" />
-    <ResponseField name="status" type="MarketStatus">`Active`, `Closed`, or `Resolved`.</ResponseField>
-    <ResponseField name="outcomes" type="string[]">E.g. `["Yes", "No"]`.</ResponseField>
-    <ResponseField name="token_id_yes" type="string?">Polymarket CLOB token for the Yes outcome.</ResponseField>
-    <ResponseField name="token_id_no" type="string?">Polymarket CLOB token for the No outcome.</ResponseField>
-    <ResponseField name="condition_id" type="string?">Polymarket condition ID.</ResponseField>
-    <ResponseField name="volume" type="f64" />
-    <ResponseField name="liquidity" type="f64?" />
-    <ResponseField name="open_interest" type="f64?">Kalshi only.</ResponseField>
-    <ResponseField name="open_time" type="DateTime?" />
-    <ResponseField name="close_time" type="DateTime?" />
+    <ResponseField name="accepting_orders" type="boolean?">Whether the market is currently accepting orders</ResponseField>
+    <ResponseField name="best_ask" type="f64?">Best ask price (normalized 0-1)</ResponseField>
+    <ResponseField name="best_bid" type="f64?">Best bid price (normalized 0-1)</ResponseField>
+    <ResponseField name="can_close_early" type="boolean?">Kalshi: can close early</ResponseField>
+    <ResponseField name="chain_id" type="string?">Chain ID for on-chain markets</ResponseField>
+    <ResponseField name="close_time" type="DateTime?">Market close time</ResponseField>
+    <ResponseField name="condition_id" type="string?">Condition ID for CTF</ResponseField>
+    <ResponseField name="created_at" type="DateTime?">Market creation time</ResponseField>
+    <ResponseField name="denomination_token" type="string?">Denomination token (e.g. USDC address)</ResponseField>
+    <ResponseField name="description" type="string">Full description</ResponseField>
+    <ResponseField name="event_id" type="string?">Canonical OpenPX event ID for cross-exchange event grouping.</ResponseField>
+    <ResponseField name="exchange" type="string">Exchange identifier (kalshi, polymarket)</ResponseField>
+    <ResponseField name="group_id" type="string?">Source-native event/group ID from the exchange.</ResponseField>
+    <ResponseField name="icon_url" type="string?">Market icon URL</ResponseField>
+    <ResponseField name="id" type="string">Native exchange market ID</ResponseField>
+    <ResponseField name="image_url" type="string?">Market image URL</ResponseField>
+    <ResponseField name="last_trade_price" type="f64?">Last trade price (normalized 0-1)</ResponseField>
+    <ResponseField name="liquidity" type="f64?">Current liquidity</ResponseField>
+    <ResponseField name="maker_fee_bps" type="f64?">Maker fee rate (basis points)</ResponseField>
+    <ResponseField name="market_type" type="MarketType">Market type classification</ResponseField>
+    <ResponseField name="min_order_size" type="f64?">Minimum order size (contracts)</ResponseField>
+    <ResponseField name="native_numeric_id" type="string?">Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.</ResponseField>
+    <ResponseField name="neg_risk" type="boolean?">Polymarket: neg-risk flag</ResponseField>
+    <ResponseField name="neg_risk_market_id" type="string?">Polymarket: neg-risk market ID</ResponseField>
+    <ResponseField name="notional_value" type="f64?">Notional value per contract (Kalshi)</ResponseField>
+    <ResponseField name="open_interest" type="f64?">Current open interest</ResponseField>
+    <ResponseField name="open_time" type="DateTime?">Market open time</ResponseField>
+    <ResponseField name="openpx_id" type="string">Primary key: \{exchange\}:\{native_id\}</ResponseField>
+    <ResponseField name="outcome_prices" type="object?">Outcome prices from the REST API (e.g., \{"Yes": 0.65, "No": 0.35\})</ResponseField>
+    <ResponseField name="outcome_tokens" type="OutcomeToken[]?">Outcome-to-token mapping for orderbook subscriptions</ResponseField>
+    <ResponseField name="outcomes" type="string[]?">Outcome labels (e.g., ["Yes", "No"] for binary markets)</ResponseField>
+    <ResponseField name="previous_price" type="f64?">Kalshi: previous price</ResponseField>
+    <ResponseField name="price_change_1d" type="f64?">24-hour YES price change (decimal, e.g. 0.05 = +5%)</ResponseField>
+    <ResponseField name="price_change_1h" type="f64?">1-hour YES price change</ResponseField>
+    <ResponseField name="price_change_1mo" type="f64?">30-day YES price change</ResponseField>
+    <ResponseField name="price_change_1wk" type="f64?">7-day YES price change</ResponseField>
+    <ResponseField name="price_level_structure" type="string?">Kalshi sub-penny pricing structure</ResponseField>
+    <ResponseField name="question" type="string?">Market question (may differ from title)</ResponseField>
+    <ResponseField name="question_id" type="string?">Question ID (Polymarket)</ResponseField>
+    <ResponseField name="result" type="string?">Resolution result</ResponseField>
+    <ResponseField name="rules" type="string?">Resolution rules</ResponseField>
+    <ResponseField name="settlement_time" type="DateTime?">Settlement / resolution time</ResponseField>
+    <ResponseField name="settlement_value" type="f64?">Kalshi: settlement value</ResponseField>
+    <ResponseField name="slug" type="string?">URL-friendly identifier</ResponseField>
+    <ResponseField name="spread" type="f64?">Bid-ask spread (decimal)</ResponseField>
+    <ResponseField name="status" type="MarketStatus">Normalized status: Active, Closed, Resolved</ResponseField>
+    <ResponseField name="taker_fee_bps" type="f64?">Taker fee rate (basis points)</ResponseField>
+    <ResponseField name="tick_size" type="f64?">Tick size (minimum price increment, normalized decimal e.g. 0.01)</ResponseField>
+    <ResponseField name="title" type="string">Market title</ResponseField>
+    <ResponseField name="token_id_no" type="string?">No outcome token ID</ResponseField>
+    <ResponseField name="token_id_yes" type="string?">Yes outcome token ID</ResponseField>
+    <ResponseField name="volume" type="f64">Total volume (USD)</ResponseField>
+    <ResponseField name="volume_1mo" type="f64?">30-day rolling trading volume (USD)</ResponseField>
+    <ResponseField name="volume_1wk" type="f64?">7-day rolling trading volume (USD)</ResponseField>
+    <ResponseField name="volume_24h" type="f64?">24-hour trading volume (USD)</ResponseField>
   </Expandable>
 </ResponseField>
-
-<ResponseField name="cursor" type="string?">
-  Opaque pagination cursor. `null` on the last page.
-</ResponseField>
+<ResponseField name="cursor" type="string?">Opaque pagination cursor. `null` on the last page.</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-use openpx::{FetchMarketsParams, MarketStatusFilter};
-
-let params = FetchMarketsParams {
-    status: Some(MarketStatusFilter::Active),
-    limit: Some(100),
-    ..Default::default()
-};
-let (markets, cursor) = ex.fetch_markets(&params).await?;
+let result = ex.fetch_markets(&params).await?;
 ```
 
 ```python Python
-result = ex.fetch_markets(status="active")
-markets, cursor = result["markets"], result["cursor"]
+result = ex.fetch_markets(params)
 ```
 
 ```typescript TypeScript
-const markets = await ex.fetchMarkets();
+const result = await ex.fetchMarkets(params);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
   "markets": [
     {
-      "id": "KXBTC-25MAR14-T20000",
-      "native_numeric_id": null,
-      "event_id": "kalshi:KXBTC-25MAR14",
-      "title": "Bitcoin above $20,000 on Mar 14?",
-      "description": "Resolves Yes if BTC > $20,000 at 4pm ET on 2026-03-14.",
-      "slug": "btc-above-20k-mar14",
-      "status": "Active",
-      "outcomes": ["Yes", "No"],
-      "token_id_yes": null,
-      "token_id_no": null,
-      "condition_id": null,
-      "volume": 12453.5,
-      "liquidity": null,
-      "open_interest": 4280.0,
-      "open_time": "2026-03-13T00:00:00Z",
-      "close_time": "2026-03-14T20:00:00Z"
+      "accepting_orders": true,
+      "best_ask": 0.5,
+      "best_bid": 0.5,
+      "can_close_early": true,
+      "chain_id": "example",
+      "close_time": "2026-01-01T00:00:00Z",
+      "condition_id": "example",
+      "created_at": "2026-01-01T00:00:00Z",
+      "denomination_token": "example",
+      "description": "example",
+      "event_id": "example",
+      "exchange": "example",
+      "group_id": "example",
+      "icon_url": "example",
+      "id": "example",
+      "image_url": "example",
+      "last_trade_price": 0.5,
+      "liquidity": 0.5,
+      "maker_fee_bps": 0.5,
+      "market_type": {},
+      "min_order_size": 0.5,
+      "native_numeric_id": "example",
+      "neg_risk": true,
+      "neg_risk_market_id": "example",
+      "notional_value": 0.5,
+      "open_interest": 0.5,
+      "open_time": "2026-01-01T00:00:00Z",
+      "openpx_id": "example",
+      "outcome_prices": {},
+      "outcome_tokens": [
+        null
+      ],
+      "outcomes": [
+        null
+      ],
+      "previous_price": 0.5,
+      "price_change_1d": 0.5,
+      "price_change_1h": 0.5,
+      "price_change_1mo": 0.5,
+      "price_change_1wk": 0.5,
+      "price_level_structure": "example",
+      "question": "example",
+      "question_id": "example",
+      "result": "example",
+      "rules": "example",
+      "settlement_time": "2026-01-01T00:00:00Z",
+      "settlement_value": 0.5,
+      "slug": "example",
+      "spread": 0.5,
+      "status": {},
+      "taker_fee_bps": 0.5,
+      "tick_size": 0.5,
+      "title": "example",
+      "token_id_no": "example",
+      "token_id_yes": "example",
+      "volume": 0.5,
+      "volume_1mo": 0.5,
+      "volume_1wk": 0.5,
+      "volume_24h": 0.5
     }
   ],
-  "cursor": "eyJsYXN0SWQiOiJLWEJUQy0yNU1BUjE0LVQyMDAwMCJ9"
+  "cursor": null
 }
 ```
 

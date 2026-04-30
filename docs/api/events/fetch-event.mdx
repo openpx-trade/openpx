@@ -3,61 +3,71 @@ title: "fetch_event"
 sidebarTitle: "Fetch event"
 openapi: GET /v1/events/fetch_event
 playground: simple
-description: "Look up a single event by ID or slug."
+description: "Fetch a single event by ID or slug (whichever the venue accepts)."
 ---
-
-Looks up one event. Pass a Kalshi `event_ticker`, a Polymarket UUID, or a
-Polymarket slug — the venue is auto-detected.
 
 ## Parameters
 
-<ParamField path="id" type="string" required>
-  Event identifier. Kalshi: `event_ticker` (e.g. `KXPRES-2028`).
-  Polymarket: either a UUID-shaped event ID or a URL slug. The
-  Polymarket implementation dispatches between `/events/{id}` and
-  `/events/slug/{slug}` based on a length+charset heuristic.
-</ParamField>
+<ParamField path="id" type="string" required />
 
 ## Returns
 
-The matching `Event`. See [`fetch_events`](/api/events/fetch-events) for the
-full field list.
+<ResponseField name="result" type="Event">
+  `Event` payload.
+
+  <Expandable title="Event">
+    <ResponseField name="category" type="string?" />
+    <ResponseField name="description" type="string?" />
+    <ResponseField name="end_ts" type="DateTime?" />
+    <ResponseField name="id" type="string" />
+    <ResponseField name="last_updated_ts" type="DateTime?" />
+    <ResponseField name="market_ids" type="string[]?" />
+    <ResponseField name="mutually_exclusive" type="boolean?" />
+    <ResponseField name="open_interest" type="f64?" />
+    <ResponseField name="series_id" type="string?" />
+    <ResponseField name="slug" type="string?" />
+    <ResponseField name="start_ts" type="DateTime?" />
+    <ResponseField name="status" type="string?" />
+    <ResponseField name="title" type="string" />
+    <ResponseField name="volume" type="f64?" />
+  </Expandable>
+</ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let event = ex.fetch_event("KXPRES-2028").await?;
-println!("{} ({} markets)", event.title, event.market_ids.len());
+let result = ex.fetch_event("id-example").await?;
 ```
 
 ```python Python
-event = ex.fetch_event("KXPRES-2028")
+result = ex.fetch_event(id)
 ```
 
 ```typescript TypeScript
-const event = await ex.fetchEvent("KXPRES-2028");
+const result = await ex.fetchEvent(id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 {
-  "id": "KXPRES-2028",
-  "slug": null,
-  "title": "2028 US Presidential Election",
-  "description": "Winning candidate",
-  "category": null,
-  "series_id": "KXPRES",
-  "status": null,
-  "market_ids": ["KXPRES-2028-DEM", "KXPRES-2028-REP", "KXPRES-2028-IND"],
-  "start_ts": null,
-  "end_ts": "2028-11-07T00:00:00Z",
-  "volume": null,
-  "open_interest": null,
+  "category": "example",
+  "description": "example",
+  "end_ts": "2026-01-01T00:00:00Z",
+  "id": "example",
+  "last_updated_ts": "2026-01-01T00:00:00Z",
+  "market_ids": [
+    "example"
+  ],
   "mutually_exclusive": true,
-  "last_updated_ts": "2026-04-26T12:34:56Z"
+  "open_interest": 0.5,
+  "series_id": "example",
+  "slug": "example",
+  "start_ts": "2026-01-01T00:00:00Z",
+  "status": "example",
+  "title": "example",
+  "volume": 0.5
 }
 ```
 

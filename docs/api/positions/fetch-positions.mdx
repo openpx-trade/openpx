@@ -3,53 +3,52 @@ title: "fetch_positions"
 sidebarTitle: "Fetch positions"
 openapi: GET /v1/positions/fetch_positions
 playground: simple
-description: "List open positions, optionally scoped to one market."
+description: "Fetch positions"
 ---
 
 ## Parameters
 
-<ParamField path="market_id" type="string?">
-  Filter to one market. Pass `None` for every open position.
-</ParamField>
+<ParamField path="market_id" type="string?" />
 
 ## Returns
 
-<ResponseField name="positions" type="Position[]">
+<ResponseField name="result" type="Position[]">
+  List of `Position` results.
+
   <Expandable title="Position">
+    <ResponseField name="average_price" type="f64" />
+    <ResponseField name="current_price" type="f64" />
     <ResponseField name="market_id" type="string" />
     <ResponseField name="outcome" type="string" />
     <ResponseField name="size" type="f64" />
-    <ResponseField name="average_price" type="f64" />
-    <ResponseField name="current_price" type="f64" />
   </Expandable>
 </ResponseField>
 
 <RequestExample>
 
 ```rust Rust
-let positions = ex.fetch_positions(None).await?;
+let result = ex.fetch_positions("market_id-example").await?;
 ```
 
 ```python Python
-positions = ex.fetch_positions()
+result = ex.fetch_positions(market_id)
 ```
 
 ```typescript TypeScript
-const positions = await ex.fetchPositions();
+const result = await ex.fetchPositions(market_id);
 ```
 
 </RequestExample>
-
 <ResponseExample>
 
 ```json 200
 [
   {
-    "market_id": "KXBTC-25MAR14-T20000",
-    "outcome": "Yes",
-    "size": 25.0,
-    "average_price": 0.52,
-    "current_price": 0.62
+    "average_price": 0.5,
+    "current_price": 0.5,
+    "market_id": "example",
+    "outcome": "example",
+    "size": 0.5
   }
 ]
 ```
