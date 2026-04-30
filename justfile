@@ -79,9 +79,9 @@ openapi:
 api-mdx: openapi
     python3 tools/gen_api_mdx.py
 
-# Generate docs/openpx.asyncapi.yaml + docs/websockets/stream.mdx from the
-# WsUpdate / SessionEvent types in the JSON Schema. Mintlify renders the
-# embedded AsyncAPI as Send/Receive panels with expandable properties.
+# Generate docs/openpx.asyncapi.yaml from the WsUpdate / SessionEvent types
+# in the JSON Schema. Mintlify renders the embedded AsyncAPI as Send/Receive
+# panels with expandable properties (no per-channel MDX wrappers needed).
 asyncapi:
     python3 tools/gen_asyncapi.py
 
@@ -89,7 +89,7 @@ docs-serve:
     cd docs && mintlify dev
 
 check-sync: schema python-models node-models llms-txt check-mappings render-mappings openapi api-mdx asyncapi
-    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml docs/websockets/
+    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml
 
 # ---------------------------------------------------------------------------
 # Versioning
