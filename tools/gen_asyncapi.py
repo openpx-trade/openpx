@@ -37,9 +37,8 @@ CARGO_TOML = ROOT / "Cargo.toml"
 DOCS_DIR = ROOT / "docs"
 WS_DIR = DOCS_DIR / "websockets"
 # Per Mintlify's AsyncAPI docs, the spec file must live alongside docs.json
-# (not in a subdirectory). Using the .json extension matches the convention
-# their renderer expects (Polymarket's docs use the same pattern).
-OUTPUT_JSON = DOCS_DIR / "openpx.asyncapi.json"
+# (not in a subdirectory).
+OUTPUT_YAML = DOCS_DIR / "openpx.asyncapi.yaml"
 
 # Per-channel content. Each channel name → (sidebarTitle, page title,
 # description, list of (kind, source-union) tuples for receive messages,
@@ -383,10 +382,10 @@ def main() -> int:
     )
     spec = build_asyncapi(schema_defs)
 
-    OUTPUT_JSON.write_text(json.dumps(spec, indent=2) + "\n")
+    OUTPUT_YAML.write_text(yaml.safe_dump(spec, sort_keys=False, width=120))
     print(
-        f"wrote {OUTPUT_JSON.relative_to(ROOT)} "
-        f"({OUTPUT_JSON.stat().st_size:,} bytes, "
+        f"wrote {OUTPUT_YAML.relative_to(ROOT)} "
+        f"({OUTPUT_YAML.stat().st_size:,} bytes, "
         f"{len(spec['operations'])} operations, "
         f"{len(spec['components']['messages'])} messages, "
         f"{len(spec['components']['schemas'])} schemas)"

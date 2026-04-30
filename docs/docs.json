@@ -157,7 +157,7 @@
           {
             "group": "Streams",
             "asyncapi": {
-              "source": "/openpx.asyncapi.json",
+              "source": "/openpx.asyncapi.yaml",
               "directory": "websockets"
             }
           }

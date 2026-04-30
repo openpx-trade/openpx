@@ -2,24 +2,22 @@ asyncapi: 3.0.0
 info:
   title: OpenPX WebSocket
   version: 0.2.6
-  description: "Unified WebSocket stream over prediction-market exchanges. OpenPX is an in-process Rust library; this AsyncAPI\
-    \ document models the message shapes for documentation rendering only \u2014 there is no hosted WebSocket endpoint. The\
-    \ Rust engine translates these messages into each exchange's underlying WS protocol (Kalshi multiplex, Polymarket Socket.IO)\
-    \ behind the trait."
+  description: "Unified WebSocket streams over prediction-market exchanges. OpenPX is an in-process Rust library; this AsyncAPI\
+    \ document models message shapes for documentation only \u2014 there is no hosted endpoint. The Rust engine translates\
+    \ these messages into each exchange's underlying WS protocol behind the trait."
   license:
     name: MIT
 servers:
   inprocess:
     host: openpx-engine
     protocol: ws
-    description: "In-process Tokio channel \u2014 not a real WebSocket. OpenPX dispatches messages directly to your subscribers\
-      \ without going over the network."
+    description: "In-process Tokio channel \u2014 not a real WebSocket. OpenPX dispatches messages directly to your subscribers."
 channels:
-  stream:
-    address: /v1/stream
-    title: OpenPX Stream
-    description: Unified market-data + session-event stream for the connected exchange. Subscribe to any number of markets;
-      OpenPX dispatches every update through one Tokio channel.
+  orderbook:
+    address: /v1/orderbook
+    title: Orderbook Stream
+    description: "Subscribe per market \u2014 OpenPX delivers a `Snapshot` on first subscribe and `Delta` updates thereafter.\
+      \ `Clear` and `BookInvalidated` indicate the cached book should be discarded and rebuilt from the next `Snapshot`."
     messages:
       Snapshot:
         $ref: '#/components/messages/Snapshot'
@@ -27,8 +25,48 @@ channels:
         $ref: '#/components/messages/Delta'
       Clear:
         $ref: '#/components/messages/Clear'
+      Connected:
+        $ref: '#/components/messages/Connected'
+      Reconnected:
+        $ref: '#/components/messages/Reconnected'
+      Lagged:
+        $ref: '#/components/messages/Lagged'
+      BookInvalidated:
+        $ref: '#/components/messages/BookInvalidated'
+      Error:
+        $ref: '#/components/messages/Error'
+      orderbook_subscribe:
+        $ref: '#/components/messages/orderbook_subscribe'
+      orderbook_unsubscribe:
+        $ref: '#/components/messages/orderbook_unsubscribe'
+  trades:
+    address: /v1/trades
+    title: Trades Stream
+    description: Receive every public trade as it prints. The `Trade` payload carries the matched price, size, and aggressor
+      side; not scoped to your orders (use the Fills stream for those).
+    messages:
       Trade:
         $ref: '#/components/messages/Trade'
+      Connected:
+        $ref: '#/components/messages/Connected'
+      Reconnected:
+        $ref: '#/components/messages/Reconnected'
+      Lagged:
+        $ref: '#/components/messages/Lagged'
+      BookInvalidated:
+        $ref: '#/components/messages/BookInvalidated'
+      Error:
+        $ref: '#/components/messages/Error'
+      trades_subscribe:
+        $ref: '#/components/messages/trades_subscribe'
+      trades_unsubscribe:
+        $ref: '#/components/messages/trades_unsubscribe'
+  fills:
+    address: /v1/fills
+    title: Fills Stream
+    description: Receive a `Fill` event each time one of the authenticated user's orders is matched. Includes maker/taker
+      role, fee rate, and the parent order ID. Auth required (the WebSocket uses the same exchange config as the REST surface).
+    messages:
       Fill:
         $ref: '#/components/messages/Fill'
       Connected:
@@ -41,118 +79,426 @@ channels:
         $ref: '#/components/messages/BookInvalidated'
       Error:
         $ref: '#/components/messages/Error'
-      Subscribe:
-        $ref: '#/components/messages/Subscribe'
-      Unsubscribe:
-        $ref: '#/components/messages/Unsubscribe'
+      fills_subscribe:
+        $ref: '#/components/messages/fills_subscribe'
+      fills_unsubscribe:
+        $ref: '#/components/messages/fills_unsubscribe'
+  crypto:
+    address: /v1/crypto
+    title: Crypto Price Stream
+    description: Polymarket re-publishes spot crypto prices over a public WebSocket; OpenPX exposes the same stream as a typed
+      `CryptoPrice` event. No authentication needed.
+    messages:
+      CryptoPrice:
+        $ref: '#/components/messages/CryptoPrice'
+      Connected:
+        $ref: '#/components/messages/Connected'
+      Reconnected:
+        $ref: '#/components/messages/Reconnected'
+      Lagged:
+        $ref: '#/components/messages/Lagged'
+      BookInvalidated:
+        $ref: '#/components/messages/BookInvalidated'
+      Error:
+        $ref: '#/components/messages/Error'
+      crypto_subscribe:
+        $ref: '#/components/messages/crypto_subscribe'
+      crypto_unsubscribe:
+        $ref: '#/components/messages/crypto_unsubscribe'
+  sports:
+    address: /v1/sports
+    title: Sports Stream
+    description: Polymarket's public sports WebSocket emits live game updates for sports markets. OpenPX exposes the same
+      stream as a typed `SportResult` event.
+    messages:
+      SportResult:
+        $ref: '#/components/messages/SportResult'
+      Connected:
+        $ref: '#/components/messages/Connected'
+      Reconnected:
+        $ref: '#/components/messages/Reconnected'
+      Lagged:
+        $ref: '#/components/messages/Lagged'
+      BookInvalidated:
+        $ref: '#/components/messages/BookInvalidated'
+      Error:
+        $ref: '#/components/messages/Error'
+      sports_subscribe:
+        $ref: '#/components/messages/sports_subscribe'
+      sports_unsubscribe:
+        $ref: '#/components/messages/sports_unsubscribe'
 operations:
-  subscribe:
+  orderbook_subscribe:
     action: send
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Subscribe
-    summary: Add a market to the active subscription set
+    summary: Add to the active orderbook subscription set
     messages:
-    - $ref: '#/channels/stream/messages/Subscribe'
-  unsubscribe:
+    - $ref: '#/channels/orderbook/messages/orderbook_subscribe'
+  orderbook_unsubscribe:
     action: send
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Unsubscribe
-    summary: Remove a market from the active subscription set
+    summary: Remove from the active orderbook subscription set
     messages:
-    - $ref: '#/channels/stream/messages/Unsubscribe'
-  receiveSnapshot:
+    - $ref: '#/channels/orderbook/messages/orderbook_unsubscribe'
+  orderbook_receive_Snapshot:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Snapshot
     summary: Full orderbook snapshot. Caller should replace any cached book keyed by `(market_id, asset_id)`. `market_id`
       is the parent market on every exchange; `asset_id` is the per-outcome identifier (Polymarket token, Kalshi ticker).
       Emitted on initial subscribe and after any `BookInvalidated` / `Clear` recovery path.
     messages:
-    - $ref: '#/channels/stream/messages/Snapshot'
-  receiveDelta:
+    - $ref: '#/channels/orderbook/messages/Snapshot'
+  orderbook_receive_Delta:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Delta
     summary: Incremental change to an existing book. Apply in-place, or discard if the caller has seen a matching `Clear`
       / `BookInvalidated` without a follow-up `Snapshot` yet.
     messages:
-    - $ref: '#/channels/stream/messages/Delta'
-  receiveClear:
+    - $ref: '#/channels/orderbook/messages/Delta'
+  orderbook_receive_Clear:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Clear
     summary: "Book invalidation on the same stream as `Snapshot` / `Delta`, so a consumer can say \"seq N was Clear, drop\
       \ anything with seq \u2264 N, wait for the next Snapshot\" without merging with the session stream. Mirrors `SessionEvent::BookInvalidated`,\
       \ which stays as the connection-level signal for global observability."
     messages:
-    - $ref: '#/channels/stream/messages/Clear'
-  receiveTrade:
+    - $ref: '#/channels/orderbook/messages/Clear'
+  orderbook_receive_Connected:
     action: receive
     channel:
-      $ref: '#/channels/stream'
-    title: Trade
-    summary: A public trade (any counterparty). Not tied to a local order.
-    messages:
-    - $ref: '#/channels/stream/messages/Trade'
-  receiveFill:
-    action: receive
-    channel:
-      $ref: '#/channels/stream'
-    title: Fill
-    summary: A fill on one of the authenticated user's orders.
-    messages:
-    - $ref: '#/channels/stream/messages/Fill'
-  receiveConnected:
-    action: receive
-    channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Connected
     summary: Initial socket establishment.
     messages:
-    - $ref: '#/channels/stream/messages/Connected'
-  receiveReconnected:
+    - $ref: '#/channels/orderbook/messages/Connected'
+  orderbook_receive_Reconnected:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Reconnected
     summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
       message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
       for each subscribed market.
     messages:
-    - $ref: '#/channels/stream/messages/Reconnected'
-  receiveLagged:
+    - $ref: '#/channels/orderbook/messages/Reconnected'
+  orderbook_receive_Lagged:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Lagged
     summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
       \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
       \ book state in a way the caller cannot detect from the stream alone."
     messages:
-    - $ref: '#/channels/stream/messages/Lagged'
-  receiveBookInvalidated:
+    - $ref: '#/channels/orderbook/messages/Lagged'
+  orderbook_receive_BookInvalidated:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: BookInvalidated
     summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
       for the next `WsUpdate::Snapshot`.
     messages:
-    - $ref: '#/channels/stream/messages/BookInvalidated'
-  receiveError:
+    - $ref: '#/channels/orderbook/messages/BookInvalidated'
+  orderbook_receive_Error:
     action: receive
     channel:
-      $ref: '#/channels/stream'
+      $ref: '#/channels/orderbook'
     title: Error
     summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
       to log or alert.
     messages:
-    - $ref: '#/channels/stream/messages/Error'
+    - $ref: '#/channels/orderbook/messages/Error'
+  trades_subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/trades'
+    title: Subscribe
+    summary: Add to the active trades subscription set
+    messages:
+    - $ref: '#/channels/trades/messages/trades_subscribe'
+  trades_unsubscribe:
+    action: send
+    channel:
+      $ref: '#/channels/trades'
+    title: Unsubscribe
+    summary: Remove from the active trades subscription set
+    messages:
+    - $ref: '#/channels/trades/messages/trades_unsubscribe'
+  trades_receive_Trade:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: Trade
+    summary: A public trade (any counterparty). Not tied to a local order.
+    messages:
+    - $ref: '#/channels/trades/messages/Trade'
+  trades_receive_Connected:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: Connected
+    summary: Initial socket establishment.
+    messages:
+    - $ref: '#/channels/trades/messages/Connected'
+  trades_receive_Reconnected:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: Reconnected
+    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
+      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
+      for each subscribed market.
+    messages:
+    - $ref: '#/channels/trades/messages/Reconnected'
+  trades_receive_Lagged:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: Lagged
+    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
+      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
+      \ book state in a way the caller cannot detect from the stream alone."
+    messages:
+    - $ref: '#/channels/trades/messages/Lagged'
+  trades_receive_BookInvalidated:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: BookInvalidated
+    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
+      for the next `WsUpdate::Snapshot`.
+    messages:
+    - $ref: '#/channels/trades/messages/BookInvalidated'
+  trades_receive_Error:
+    action: receive
+    channel:
+      $ref: '#/channels/trades'
+    title: Error
+    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
+      to log or alert.
+    messages:
+    - $ref: '#/channels/trades/messages/Error'
+  fills_subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/fills'
+    title: Subscribe
+    summary: Add to the active fills subscription set
+    messages:
+    - $ref: '#/channels/fills/messages/fills_subscribe'
+  fills_unsubscribe:
+    action: send
+    channel:
+      $ref: '#/channels/fills'
+    title: Unsubscribe
+    summary: Remove from the active fills subscription set
+    messages:
+    - $ref: '#/channels/fills/messages/fills_unsubscribe'
+  fills_receive_Fill:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: Fill
+    summary: A fill on one of the authenticated user's orders.
+    messages:
+    - $ref: '#/channels/fills/messages/Fill'
+  fills_receive_Connected:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: Connected
+    summary: Initial socket establishment.
+    messages:
+    - $ref: '#/channels/fills/messages/Connected'
+  fills_receive_Reconnected:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: Reconnected
+    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
+      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
+      for each subscribed market.
+    messages:
+    - $ref: '#/channels/fills/messages/Reconnected'
+  fills_receive_Lagged:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: Lagged
+    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
+      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
+      \ book state in a way the caller cannot detect from the stream alone."
+    messages:
+    - $ref: '#/channels/fills/messages/Lagged'
+  fills_receive_BookInvalidated:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: BookInvalidated
+    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
+      for the next `WsUpdate::Snapshot`.
+    messages:
+    - $ref: '#/channels/fills/messages/BookInvalidated'
+  fills_receive_Error:
+    action: receive
+    channel:
+      $ref: '#/channels/fills'
+    title: Error
+    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
+      to log or alert.
+    messages:
+    - $ref: '#/channels/fills/messages/Error'
+  crypto_subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/crypto'
+    title: Subscribe
+    summary: Add to the active crypto subscription set
+    messages:
+    - $ref: '#/channels/crypto/messages/crypto_subscribe'
+  crypto_unsubscribe:
+    action: send
+    channel:
+      $ref: '#/channels/crypto'
+    title: Unsubscribe
+    summary: Remove from the active crypto subscription set
+    messages:
+    - $ref: '#/channels/crypto/messages/crypto_unsubscribe'
+  crypto_receive_CryptoPrice:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: CryptoPrice
+    summary: Spot price update for a single symbol
+    messages:
+    - $ref: '#/channels/crypto/messages/CryptoPrice'
+  crypto_receive_Connected:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: Connected
+    summary: Initial socket establishment.
+    messages:
+    - $ref: '#/channels/crypto/messages/Connected'
+  crypto_receive_Reconnected:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: Reconnected
+    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
+      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
+      for each subscribed market.
+    messages:
+    - $ref: '#/channels/crypto/messages/Reconnected'
+  crypto_receive_Lagged:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: Lagged
+    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
+      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
+      \ book state in a way the caller cannot detect from the stream alone."
+    messages:
+    - $ref: '#/channels/crypto/messages/Lagged'
+  crypto_receive_BookInvalidated:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: BookInvalidated
+    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
+      for the next `WsUpdate::Snapshot`.
+    messages:
+    - $ref: '#/channels/crypto/messages/BookInvalidated'
+  crypto_receive_Error:
+    action: receive
+    channel:
+      $ref: '#/channels/crypto'
+    title: Error
+    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
+      to log or alert.
+    messages:
+    - $ref: '#/channels/crypto/messages/Error'
+  sports_subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/sports'
+    title: Subscribe
+    summary: Add to the active sports subscription set
+    messages:
+    - $ref: '#/channels/sports/messages/sports_subscribe'
+  sports_unsubscribe:
+    action: send
+    channel:
+      $ref: '#/channels/sports'
+    title: Unsubscribe
+    summary: Remove from the active sports subscription set
+    messages:
+    - $ref: '#/channels/sports/messages/sports_unsubscribe'
+  sports_receive_SportResult:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: SportResult
+    summary: Live game state update
+    messages:
+    - $ref: '#/channels/sports/messages/SportResult'
+  sports_receive_Connected:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: Connected
+    summary: Initial socket establishment.
+    messages:
+    - $ref: '#/channels/sports/messages/Connected'
+  sports_receive_Reconnected:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: Reconnected
+    summary: Socket re-established after an observed outage. `gap_ms` is the wall-clock interval between the last received
+      message and this event. Callers who maintain per-market books should discard them and wait for the next `WsUpdate::Snapshot`
+      for each subscribed market.
+    messages:
+    - $ref: '#/channels/sports/messages/Reconnected'
+  sports_receive_Lagged:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: Lagged
+    summary: "Outbound dispatch channel overflowed \u2014 a slow consumer missed deltas. Unlike `tokio::sync::broadcast` which\
+      \ silently skips ahead, openpx raises this explicitly and invalidates every affected book, because a missed delta corrupts\
+      \ book state in a way the caller cannot detect from the stream alone."
+    messages:
+    - $ref: '#/channels/sports/messages/Lagged'
+  sports_receive_BookInvalidated:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: BookInvalidated
+    summary: A specific market's book is no longer trustworthy. Caller should discard its cache for that `market_id` and wait
+      for the next `WsUpdate::Snapshot`.
+    messages:
+    - $ref: '#/channels/sports/messages/BookInvalidated'
+  sports_receive_Error:
+    action: receive
+    channel:
+      $ref: '#/channels/sports'
+    title: Error
+    summary: A non-fatal error observed on the connection. The session continues; the caller is informed in case they want
+      to log or alert.
+    messages:
+    - $ref: '#/channels/sports/messages/Error'
 components:
   schemas:
     ActivityFill:
@@ -312,6 +658,32 @@ components:
       - volume
       title: Candlestick
       type: object
+    CryptoPrice:
+      properties:
+        source:
+          $ref: '#/components/schemas/CryptoPriceSource'
+        symbol:
+          type: string
+        timestamp:
+          format: uint64
+          minimum: 0.0
+          type: integer
+        value:
+          format: double
+          type: number
+      required:
+      - source
+      - symbol
+      - timestamp
+      - value
+      title: CryptoPrice
+      type: object
+    CryptoPriceSource:
+      enum:
+      - binance
+      - chainlink
+      title: CryptoPriceSource
+      type: string
     Event:
       description: A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State
         Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme
@@ -1578,6 +1950,60 @@ components:
           - 'null'
       title: SettlementSource
       type: object
+    SportResult:
+      description: Real-time sports score/state from the Polymarket Sports WebSocket. Serializes as snake_case for end-users;
+        aliases accept the upstream camelCase.
+      properties:
+        away_team:
+          type: string
+        elapsed:
+          type:
+          - string
+          - 'null'
+        ended:
+          type: boolean
+        finished_timestamp:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        game_id:
+          format: uint64
+          minimum: 0.0
+          type: integer
+        home_team:
+          type: string
+        league_abbreviation:
+          type: string
+        live:
+          type: boolean
+        period:
+          type:
+          - string
+          - 'null'
+        score:
+          type:
+          - string
+          - 'null'
+        slug:
+          type: string
+        status:
+          type: string
+        turn:
+          type:
+          - string
+          - 'null'
+      required:
+      - away_team
+      - ended
+      - game_id
+      - home_team
+      - league_abbreviation
+      - live
+      - slug
+      - status
+      title: SportResult
+      type: object
     Spread:
       description: "Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` \u2014 useful for liquidity\
         \ scoring and PnL marks where only the best levels are needed."
@@ -2225,15 +2651,29 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/Error'
-    Subscribe:
-      name: Subscribe
-      title: Subscribe
-      summary: Add a market to the active subscription set
-      description: "Call `WebSocket.subscribe(market_id)` after the stream is connected to receive updates for that market.\
-        \ Subscriptions are additive \u2014 call multiple times to follow more markets. OpenPX translates this into the per-exchange\
-        \ subscription protocol under the hood."
+    CryptoPrice:
+      name: CryptoPrice
+      title: CryptoPrice
+      summary: Spot price update for a single symbol
+      description: Spot price update from the upstream source.
       contentType: application/json
       payload:
+        $ref: '#/components/schemas/CryptoPrice'
+    SportResult:
+      name: SportResult
+      title: SportResult
+      summary: Live game state update
+      description: Live score, period, and clock for a tracked game.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SportResult'
+    orderbook_subscribe:
+      name: orderbook_subscribe
+      title: Subscribe
+      summary: Add to the active orderbook subscription set
+      description: Call subscribe on the WebSocket after the stream is connected to start receiving orderbook updates.
+      contentType: application/json
+      payload: &id001
         type: object
         required:
         - market_id
@@ -2246,17 +2686,86 @@ components:
             - string
             - 'null'
             description: Optional outcome filter for binary markets.
-    Unsubscribe:
-      name: Unsubscribe
+    orderbook_unsubscribe:
+      name: orderbook_unsubscribe
       title: Unsubscribe
-      summary: Remove a market from the active subscription set
-      description: Call `WebSocket.unsubscribe(market_id)` to stop receiving updates for a market. The session continues for
-        any remaining subscriptions.
+      summary: Remove from the active orderbook subscription set
+      description: Stop receiving updates without closing the stream.
       contentType: application/json
-      payload:
+      payload: *id001
+    trades_subscribe:
+      name: trades_subscribe
+      title: Subscribe
+      summary: Add to the active trades subscription set
+      description: Call subscribe on the WebSocket after the stream is connected to start receiving trades updates.
+      contentType: application/json
+      payload: *id001
+    trades_unsubscribe:
+      name: trades_unsubscribe
+      title: Unsubscribe
+      summary: Remove from the active trades subscription set
+      description: Stop receiving updates without closing the stream.
+      contentType: application/json
+      payload: *id001
+    fills_subscribe:
+      name: fills_subscribe
+      title: Subscribe
+      summary: Add to the active fills subscription set
+      description: Call subscribe on the WebSocket after the stream is connected to start receiving fills updates.
+      contentType: application/json
+      payload: *id001
+    fills_unsubscribe:
+      name: fills_unsubscribe
+      title: Unsubscribe
+      summary: Remove from the active fills subscription set
+      description: Stop receiving updates without closing the stream.
+      contentType: application/json
+      payload: *id001
+    crypto_subscribe:
+      name: crypto_subscribe
+      title: Subscribe
+      summary: Add to the active crypto subscription set
+      description: Call subscribe on the WebSocket after the stream is connected to start receiving crypto updates.
+      contentType: application/json
+      payload: &id002
         type: object
         required:
-        - market_id
+        - source
+        - symbols
         properties:
-          market_id:
+          source:
+            $ref: '#/components/schemas/CryptoPriceSource'
+            description: "Upstream price source \u2014 Binance or Chainlink."
+          symbols:
+            type: array
+            items:
+              type: string
+            description: Symbols to subscribe to (e.g. `["btcusdt", "ethusdt"]`). Empty = all.
+    crypto_unsubscribe:
+      name: crypto_unsubscribe
+      title: Unsubscribe
+      summary: Remove from the active crypto subscription set
+      description: Stop receiving updates without closing the stream.
+      contentType: application/json
+      payload: *id002
+    sports_subscribe:
+      name: sports_subscribe
+      title: Subscribe
+      summary: Add to the active sports subscription set
+      description: Call subscribe on the WebSocket after the stream is connected to start receiving sports updates.
+      contentType: application/json
+      payload: &id003
+        type: object
+        required:
+        - league
+        properties:
+          league:
             type: string
+            description: League slug (e.g. `nba`, `nfl`, `mlb`).
+    sports_unsubscribe:
+      name: sports_unsubscribe
+      title: Unsubscribe
+      summary: Remove from the active sports subscription set
+      description: Stop receiving updates without closing the stream.
+      contentType: application/json
+      payload: *id003
