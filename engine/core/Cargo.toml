@@ -17,6 +17,9 @@ simd-json = ["dep:simd-json"]
 # Exchanges enable this feature; px-schema and other non-HTTP consumers
 # stay lightweight.
 http = ["dep:reqwest"]
+# Shared mapping-contract test harness used by every exchange's
+# `tests/mapping_contract.rs`. Enabled via dev-dependencies only.
+test-support = ["dep:serde_yaml"]
 
 [dependencies]
 tokio = { workspace = true }
@@ -34,6 +37,7 @@ metrics = { workspace = true }
 smallvec = { workspace = true }
 ahash = { workspace = true }
 schemars = { version = "0.8", features = ["chrono", "smallvec"], optional = true }
+serde_yaml = { version = "0.9", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

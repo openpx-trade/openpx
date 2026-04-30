@@ -16,12 +16,11 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+from mapping_lib import load_schema_definitions, load_yaml, normalize_type, resolve_ref
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
@@ -38,45 +37,17 @@ DIRECT_COMPATIBLE: dict[str, set[str]] = {
 }
 
 
-def load_yaml(p: Path) -> Any:
-    return yaml.safe_load(p.read_text())
-
-
 def load_openpx_unified(type_name: str) -> dict[str, Any]:
-    schema = json.loads(SCHEMA.read_text())
-    defs = schema.get("definitions") or schema.get("$defs") or {}
+    defs = load_schema_definitions(SCHEMA)
     if type_name not in defs:
         sys.exit(f"openpx.schema.json has no definition for {type_name!r}")
     return defs[type_name]
 
 
-def resolve_ref(spec: dict[str, Any], ref: str) -> dict[str, Any] | None:
-    """Resolve a JSON-pointer-style ref like '#/components/schemas/Market/properties/ticker'."""
-    if not ref.startswith("#/"):
-        return None
-    cur: Any = spec
-    for part in ref[2:].split("/"):
-        part = part.replace("~1", "/").replace("~0", "~")
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        else:
-            return None
-    return cur if isinstance(cur, dict) else None
-
-
-def _normalize_type(t: Any) -> set[str]:
-    """Return the set of non-null types for an OpenAPI/JSON-Schema type field."""
-    if isinstance(t, list):
-        return {x for x in t if x and x != "null"}
-    if isinstance(t, str):
-        return {t} if t != "null" else set()
-    return set()
-
-
 def _spec_type(node: dict[str, Any]) -> set[str]:
     """Best-effort type extraction from a resolved OpenAPI property node."""
     if "type" in node:
-        return _normalize_type(node["type"])
+        return normalize_type(node["type"])
     # OpenAPI nullable: true with $ref means the ref's type
     if "$ref" in node:
         return {"$ref"}
@@ -90,7 +61,7 @@ def _spec_type(node: dict[str, Any]) -> set[str]:
 
 def _unified_type(node: dict[str, Any]) -> set[str]:
     if "type" in node:
-        return _normalize_type(node["type"])
+        return normalize_type(node["type"])
     if "allOf" in node:
         for sub in node["allOf"]:
             if isinstance(sub, dict) and "$ref" in sub:

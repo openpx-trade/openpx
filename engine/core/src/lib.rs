@@ -11,6 +11,9 @@ pub mod utils;
 pub mod websocket;
 pub mod ws_decoder;
 
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
 pub use buffer_pool::BufferPool;
 pub use error::*;
 pub use events::*;
