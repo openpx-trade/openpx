@@ -153,32 +153,12 @@
       },
       {
         "tab": "WebSockets",
+        "asyncapi": "openpx.asyncapi.yaml",
         "groups": [
           {
-            "group": "Connection",
+            "group": "Stream",
             "pages": [
-              "websockets/overview",
-              "websockets/connecting"
-            ]
-          },
-          {
-            "group": "Updates",
-            "pages": [
-              "websockets/snapshot",
-              "websockets/delta",
-              "websockets/clear",
-              "websockets/trade",
-              "websockets/fill"
-            ]
-          },
-          {
-            "group": "Session Events",
-            "pages": [
-              "websockets/session/connected",
-              "websockets/session/reconnected",
-              "websockets/session/lagged",
-              "websockets/session/book-invalidated",
-              "websockets/session/error"
+              "websockets/stream"
             ]
           }
         ]
