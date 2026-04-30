@@ -258,7 +258,7 @@ MDX_TEMPLATE = """\
 title: "WebSocket Stream"
 sidebarTitle: "Stream"
 description: "Unified WebSocket stream over Kalshi and Polymarket."
-asyncapi: "/openpx.asyncapi.yaml stream"
+asyncapi: "openpx.asyncapi.yaml stream"
 ---
 
 OpenPX exposes one stream per exchange that interleaves market-data
