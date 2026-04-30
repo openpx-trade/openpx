@@ -153,10 +153,15 @@
       },
       {
         "tab": "WebSockets",
-        "asyncapi": {
-          "source": "/openpx.asyncapi.json",
-          "directory": "websockets"
-        }
+        "groups": [
+          {
+            "group": "Streams",
+            "asyncapi": {
+              "source": "/openpx.asyncapi.json",
+              "directory": "websockets"
+            }
+          }
+        ]
       },
       {
         "tab": "Changelog",
