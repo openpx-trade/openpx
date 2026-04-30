@@ -2,7 +2,7 @@
 title: 'Orderbook Stream'
 sidebarTitle: 'Orderbook'
 description: 'Real-time L2 orderbook snapshots and incremental deltas.'
-asyncapi: "openpx.asyncapi.yaml orderbook"
+asyncapi: "/openpx.asyncapi.json orderbook"
 ---
 
 Subscribe per market — OpenPX delivers a `Snapshot` on first subscribe and `Delta` updates thereafter. `Clear` and `BookInvalidated` indicate the cached book should be discarded and rebuilt from the next `Snapshot`.

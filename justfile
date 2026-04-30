@@ -89,7 +89,7 @@ docs-serve:
     cd docs && mintlify dev
 
 check-sync: schema python-models node-models llms-txt check-mappings render-mappings openapi api-mdx asyncapi
-    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/websockets/
+    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/openpx.openapi.yaml docs/openpx.asyncapi.json docs/websockets/
 
 # ---------------------------------------------------------------------------
 # Versioning

@@ -34,8 +34,12 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 JSON_SCHEMA = ROOT / "schema" / "openpx.schema.json"
 CARGO_TOML = ROOT / "Cargo.toml"
-WS_DIR = ROOT / "docs" / "websockets"
-OUTPUT_YAML = WS_DIR / "openpx.asyncapi.yaml"
+DOCS_DIR = ROOT / "docs"
+WS_DIR = DOCS_DIR / "websockets"
+# Per Mintlify's AsyncAPI docs, the spec file must live alongside docs.json
+# (not in a subdirectory). Using the .json extension matches the convention
+# their renderer expects (Polymarket's docs use the same pattern).
+OUTPUT_JSON = DOCS_DIR / "openpx.asyncapi.json"
 
 # Per-channel content. Each channel name → (sidebarTitle, page title,
 # description, list of (kind, source-union) tuples for receive messages,
@@ -371,7 +375,7 @@ MDX_TEMPLATE = """\
 title: {title!r}
 sidebarTitle: {sidebar!r}
 description: {description!r}
-asyncapi: "openpx.asyncapi.yaml {channel_id}"
+asyncapi: "/openpx.asyncapi.json {channel_id}"
 ---
 
 {intro}
@@ -400,11 +404,10 @@ def main() -> int:
     spec = build_asyncapi(schema_defs)
 
     WS_DIR.mkdir(parents=True, exist_ok=True)
-    asyncapi_body = yaml.safe_dump(spec, sort_keys=False, width=120)
-    OUTPUT_YAML.write_text(asyncapi_body)
+    OUTPUT_JSON.write_text(json.dumps(spec, indent=2) + "\n")
     print(
-        f"wrote {OUTPUT_YAML.relative_to(ROOT)} "
-        f"({OUTPUT_YAML.stat().st_size:,} bytes, "
+        f"wrote {OUTPUT_JSON.relative_to(ROOT)} "
+        f"({OUTPUT_JSON.stat().st_size:,} bytes, "
         f"{len(spec['operations'])} operations, "
         f"{len(spec['components']['messages'])} messages, "
         f"{len(spec['components']['schemas'])} schemas)"
