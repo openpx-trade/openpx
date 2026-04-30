@@ -1,0 +1,57 @@
+name: Upstream specs daily refresh
+
+# Daily at 00:00 UTC, refetch every Kalshi and Polymarket OpenAPI/AsyncAPI spec
+# into schema/upstream/. If any byte changes, open a PR for human review.
+# The CI on that PR runs `just check-mappings` — any unresolved $ref is precise
+# upstream drift that needs a mapping update before merge.
+#
+# Manual trigger via Actions tab works the same way.
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    name: Fetch and PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch upstream specs
+        run: python3 tools/fetch_upstream_specs.py
+        # Non-fatal: if a single source 503s the script exits non-zero, but we
+        # still want to PR whatever did update. The PR-creation step handles
+        # the no-changes case cleanly.
+        continue-on-error: true
+      - name: Open PR if specs changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bot/upstream-specs-refresh
+          delete-branch: true
+          title: "chore: refresh upstream OpenAPI specs"
+          commit-message: "chore: refresh upstream OpenAPI specs"
+          body: |
+            Automated daily refresh of upstream OpenAPI/AsyncAPI specs in
+            `schema/upstream/`.
+
+            ## Review checklist
+            - [ ] Read the spec diff for added/removed/renamed fields.
+            - [ ] CI's `mappings-check` job passes — every `$ref` in
+                  `schema/mappings/*.yaml` still resolves.
+            - [ ] If any field referenced by a mapping moved or vanished,
+                  update the mapping (or mark as `synthetic` with a note) before
+                  merging.
+
+            See `tools/fetch_upstream_specs.py` for the URL list and
+            `.claude/references.md` for canonical source documentation.
+          labels: |
+            upstream-spec
+            automated

@@ -548,21 +548,30 @@ impl Kalshi {
         // Kalshi uses 'ticker' as market ID
         let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
 
-        let title = obj
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        // Composite title from the spec-canonical short titles. The `title`
+        // field on Kalshi's Market schema is marked `deprecated: true` in the
+        // OpenAPI spec; `yes_sub_title` / `no_sub_title` are the current
+        // canonical short labels for each side of the binary contract.
+        let title = {
+            let yes = obj
+                .get("yes_sub_title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let no = obj
+                .get("no_sub_title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            format!("{yes} | {no}")
+        };
 
         let description = obj
-            .get("subtitle")
-            .or_else(|| obj.get("rules_primary"))
+            .get("rules_primary")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
         let rules = obj
-            .get("rules_primary")
+            .get("rules_secondary")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -630,6 +639,9 @@ impl Kalshi {
         let volume = parse_fp(obj, "volume_fp")
             .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
             .unwrap_or(0.0);
+
+        let volume_24h = parse_fp(obj, "volume_24h_fp")
+            .or_else(|| obj.get("volume_24h").and_then(|v| v.as_f64()));
 
         let open_interest = parse_fp(obj, "open_interest_fp")
             .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()));
@@ -736,6 +748,7 @@ impl Kalshi {
             outcomes,
             outcome_prices,
             volume,
+            volume_24h,
             open_interest,
             last_trade_price: last_price,
             best_bid: yes_bid,

@@ -35,3 +35,4 @@ pkcs1 = { version = "0.7", features = ["pem"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 rand = "0.8"
 wiremock = "0.6"
+serde_yaml = "0.9"

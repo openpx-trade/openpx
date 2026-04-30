@@ -16,8 +16,8 @@ fn sample_markets_response() -> serde_json::Value {
             {
                 "ticker": "INXD-24DEC31-B5000",
                 "event_ticker": "INXD-24DEC31",
-                "title": "S&P 500 above 5000 on Dec 31?",
-                "subtitle": "Market resolves Yes if S&P closes above 5000",
+                "yes_sub_title": "S&P 500 above 5000 on Dec 31",
+                "no_sub_title": "S&P 500 at or below 5000 on Dec 31",
                 "yes_ask": 65,
                 "volume": 150000.0,
                 "open_interest": 25000.0,
@@ -27,8 +27,8 @@ fn sample_markets_response() -> serde_json::Value {
             {
                 "ticker": "ELON-TWEET-2024",
                 "event_ticker": "ELON-TWEET",
-                "title": "Will Elon tweet about crypto today?",
-                "subtitle": "Any tweet mentioning BTC, ETH, or DOGE",
+                "yes_sub_title": "Elon tweets about crypto today",
+                "no_sub_title": "Elon does not tweet about crypto today",
                 "yes_ask": 42,
                 "volume": 50000.0,
                 "open_interest": 8000.0,
@@ -44,8 +44,8 @@ fn sample_single_market_response() -> serde_json::Value {
     serde_json::json!({
         "market": {
             "ticker": "INXD-24DEC31-B5000",
-            "title": "S&P 500 above 5000 on Dec 31?",
-            "subtitle": "Market resolves Yes if S&P closes above 5000",
+            "yes_sub_title": "S&P 500 above 5000 on Dec 31",
+            "no_sub_title": "S&P 500 at or below 5000 on Dec 31",
             "yes_ask": 65,
             "volume": 150000.0,
             "open_interest": 25000.0,
@@ -82,7 +82,10 @@ async fn test_fetch_markets_parses_response() {
 
     let first = &markets[0];
     assert_eq!(first.id, "INXD-24DEC31-B5000");
-    assert_eq!(first.title, "S&P 500 above 5000 on Dec 31?");
+    assert_eq!(
+        first.title,
+        "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
+    );
     assert_eq!(first.outcomes, vec!["Yes", "No"]);
     assert_eq!(*first.outcome_prices.get("Yes").unwrap(), 0.65);
     assert_eq!(*first.outcome_prices.get("No").unwrap(), 0.35);
@@ -110,7 +113,10 @@ async fn test_fetch_market_by_ticker() {
 
     // #then
     assert_eq!(market.id, "INXD-24DEC31-B5000");
-    assert_eq!(market.title, "S&P 500 above 5000 on Dec 31?");
+    assert_eq!(
+        market.title,
+        "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
+    );
     assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.65);
     assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.35);
 }
@@ -1079,7 +1085,8 @@ async fn test_fetch_market_minimal_response() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "market": {
                 "ticker": "MINIMAL-MKT",
-                "title": "Minimal market",
+                "yes_sub_title": "Yes",
+                "no_sub_title": "No",
                 "yes_ask": 50,
                 "status": "active"
             }
@@ -1097,7 +1104,7 @@ async fn test_fetch_market_minimal_response() {
 
     // #then
     assert_eq!(market.id, "MINIMAL-MKT");
-    assert_eq!(market.title, "Minimal market");
+    assert_eq!(market.title, "Yes | No");
     assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.50);
     assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.50);
     assert_eq!(market.volume, 0.0); // defaults to 0

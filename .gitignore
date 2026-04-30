@@ -42,7 +42,8 @@ output/
 !docs/docs.json
 !maintenance/scripts/exchange-docs.lock.json
 !maintenance/snapshots/polymarket-contracts.snapshot.json
-
+!*.asyncapi.json
+!engine/exchanges/*/tests/fixtures/*.json
 
 # Python
 __pycache__

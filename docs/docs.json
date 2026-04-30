@@ -22,6 +22,12 @@
         "tab": "API",
         "groups": [
           {
+            "group": "Schema Mappings",
+            "pages": [
+              "api/mappings/market"
+            ]
+          },
+          {
             "group": "Reference Data",
             "pages": [
               {

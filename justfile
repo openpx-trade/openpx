@@ -49,11 +49,28 @@ node: node-build
 llms-txt:
     python3 tools/gen_llms_txt.py
 
+# Fetch every upstream OpenAPI/AsyncAPI spec into schema/upstream/.
+# Idempotent — only rewrites files when bytes differ. The daily GitHub Actions
+# cron (`.github/workflows/upstream-specs.yml`) runs this and opens a PR on diff.
+fetch-upstream-specs:
+    python3 tools/fetch_upstream_specs.py
+
+# Validate every schema/mappings/*.yaml: $refs resolve in the cached upstream
+# specs, types are compatible for transform=direct, and every unified field has
+# a declaration. Run after editing a mapping or after a spec refresh.
+check-mappings:
+    python3 tools/validate_mappings.py
+
+# Render schema/mappings/*.yaml into docs/api/mappings/*.mdx (Databento-style
+# crosswalk tables). CI fails if the committed MDX drifts.
+render-mappings:
+    python3 tools/render_mappings.py
+
 docs-serve:
     cd docs && mintlify dev
 
-check-sync: schema python-models node-models llms-txt
-    git diff --exit-code schema/ sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt
+check-sync: schema python-models node-models llms-txt check-mappings render-mappings
+    git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/mappings/
 
 # ---------------------------------------------------------------------------
 # Versioning
