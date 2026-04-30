@@ -15,7 +15,7 @@ fn main() {
     let schemas: Vec<RootSchema> = vec![
         // Models — market
         schema_for!(px_core::Market),
-        schema_for!(px_core::OutcomeToken),
+        schema_for!(px_core::Outcome),
         schema_for!(px_core::MarketStatus),
         schema_for!(px_core::MarketType),
         // Models — order

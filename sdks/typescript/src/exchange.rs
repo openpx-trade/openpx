@@ -69,7 +69,7 @@ impl Exchange {
         status: Option<String>,
         cursor: Option<String>,
         series_id: Option<String>,
-        event_id: Option<String>,
+        event_ticker: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -80,7 +80,7 @@ impl Exchange {
                 .map_err(to_napi_err)?,
             cursor,
             series_id,
-            event_id,
+            event_ticker,
             ..Default::default()
         };
         let result = rt

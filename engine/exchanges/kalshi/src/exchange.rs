@@ -6,11 +6,11 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
-    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    Fill, LastTrade, LiquidityRole, Market, MarketStatus, MarketStatusFilter, MarketTrade,
-    MarketType, MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
-    OrderType as UnifiedOrderType, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
+    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event, EventsRequest, Exchange,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade,
+    LiquidityRole, Market, MarketStatus, MarketStatusFilter, MarketTrade, MarketType,
+    MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
+    OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceHistoryInterval,
     PriceHistoryRequest, PriceLevel, RateLimiter, Series, SeriesRequest, SettlementSource, Spread,
     Tag, TradesRequest, UserTrade, UserTradesRequest,
 };
@@ -546,7 +546,7 @@ impl Kalshi {
         let obj = data.as_object()?;
 
         // Kalshi uses 'ticker' as market ID
-        let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
+        let ticker = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
 
         // Composite title from the spec-canonical short titles. The `title`
         // field on Kalshi's Market schema is marked `deprecated: true` in the
@@ -564,27 +564,24 @@ impl Kalshi {
             format!("{yes} | {no}")
         };
 
-        let description = obj
-            .get("rules_primary")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        // Resolution rules: concat of rules_primary + rules_secondary.
+        let rules = {
+            let primary = obj.get("rules_primary").and_then(|v| v.as_str());
+            let secondary = obj.get("rules_secondary").and_then(|v| v.as_str());
+            match (primary, secondary) {
+                (Some(p), Some(s)) if !p.is_empty() && !s.is_empty() => Some(format!("{p} | {s}")),
+                (Some(p), _) if !p.is_empty() => Some(p.to_string()),
+                (_, Some(s)) if !s.is_empty() => Some(s.to_string()),
+                _ => None,
+            }
+        };
 
-        let rules = obj
-            .get("rules_secondary")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Group/event ID
-        let group_id = obj
+        // Native event ticker passed through verbatim.
+        let event_ticker = obj
             .get("event_ticker")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Canonical cross-exchange event ID
-        let event_id = group_id
-            .as_deref()
-            .and_then(|gid| canonical_event_id("kalshi", gid));
+            .filter(|s| !s.is_empty())
+            .map(String::from);
 
         // Status — Kalshi market objects use a granular lifecycle:
         // active, closed, determined, finalized, initialized, inactive, disputed, amended
@@ -597,15 +594,6 @@ impl Kalshi {
                 _ => MarketStatus::Closed,
             })
             .unwrap_or(MarketStatus::Active);
-
-        // accepting_orders
-        let accepting_orders = obj
-            .get("accepting_orders")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(status == MarketStatus::Active);
-
-        // Binary markets: Yes/No outcomes
-        let outcomes = vec!["Yes".to_string(), "No".to_string()];
 
         // ── Prices (new dollar-string fields first, legacy int/100 fallback) ──
 
@@ -630,11 +618,21 @@ impl Kalshi {
         let yes_price = yes_ask.or(last_price).unwrap_or(0.0);
         let no_price = 1.0 - yes_price;
 
-        let mut outcome_prices = HashMap::new();
-        outcome_prices.insert("Yes".to_string(), yes_price);
-        outcome_prices.insert("No".to_string(), no_price);
+        // Binary markets: Yes/No outcomes — Kalshi has no per-outcome token id.
+        let outcomes = vec![
+            Outcome {
+                label: "Yes".into(),
+                price: Some(yes_price),
+                token_id: None,
+            },
+            Outcome {
+                label: "No".into(),
+                price: Some(no_price),
+                token_id: None,
+            },
+        ];
 
-        // ── Volume / liquidity (fixed-point migration) ──
+        // ── Volume (fixed-point migration) ──
 
         let volume = parse_fp(obj, "volume_fp")
             .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
@@ -643,22 +641,34 @@ impl Kalshi {
         let volume_24h = parse_fp(obj, "volume_24h_fp")
             .or_else(|| obj.get("volume_24h").and_then(|v| v.as_f64()));
 
-        let open_interest = parse_fp(obj, "open_interest_fp")
-            .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()));
-
-        // ── Tick size: try price_level_structure, fallback to tick_size in cents ──
-
+        // ── Tick size: smallest step across the tiered `price_ranges` array.
+        // The unified surface exposes a single number; callers placing orders
+        // outside the finest tier still need to round to that tier's step,
+        // but the smallest step is the right "what's the finest precision
+        // anywhere on this market" answer. The legacy scalar `tick_size`
+        // integer is deprecated upstream — we read `price_ranges` exclusively.
         let tick_size = obj
-            .get("tick_size")
-            .and_then(|v| v.as_f64())
-            .filter(|&v| v > 0.0)
-            .map(|cents| cents / 100.0)
-            .or(Some(0.01));
+            .get("price_ranges")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                arr.iter()
+                    .filter_map(|r| {
+                        r.as_object()?
+                            .get("step")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<f64>().ok())
+                    })
+                    .reduce(f64::min)
+            });
 
-        let price_level_structure = obj
-            .get("price_level_structure")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        // ── Min order size: synthesized from fractional_trading_enabled. ──
+        // No upstream field exists; fractional markets accept 0.01-contract
+        // orders, otherwise the minimum is one whole contract.
+        let fractional = obj
+            .get("fractional_trading_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let min_order_size = Some(if fractional { 0.01 } else { 1.0 });
 
         // ── Time fields ──
 
@@ -692,37 +702,13 @@ impl Kalshi {
                 })
         });
 
-        // ── Kalshi-specific fields ──
-
-        let notional_value = parse_dollars(obj, "notional_value_dollars")
-            .or_else(|| obj.get("notional_value").and_then(|v| v.as_f64()));
-
-        let previous_price = parse_dollars(obj, "previous_price_dollars").or_else(|| {
-            obj.get("previous_price")
-                .and_then(|v| v.as_f64())
-                .map(|p| p / 100.0)
-        });
-
-        let settlement_value = parse_dollars(obj, "settlement_value_dollars").or_else(|| {
-            obj.get("settlement_value")
-                .and_then(|v| v.as_f64())
-                .map(|p| p / 100.0)
-        });
-
-        let can_close_early = obj.get("can_close_early").and_then(|v| v.as_bool());
-
         let result = obj
             .get("result")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
-        // Spread from bid/ask
-        let spread = match (yes_bid, yes_ask) {
-            (Some(b), Some(a)) => Some(a - b),
-            _ => None,
-        };
-
-        let openpx_id = Market::make_openpx_id("kalshi", &id);
+        let openpx_id = Market::make_openpx_id("kalshi", &ticker);
 
         let market_type = obj
             .get("market_type")
@@ -736,34 +722,24 @@ impl Kalshi {
         Some(Market {
             openpx_id,
             exchange: "kalshi".into(),
-            id,
-            group_id,
-            event_id,
+            ticker,
+            event_ticker,
             title,
-            description,
             rules,
             status,
             market_type,
-            accepting_orders,
             outcomes,
-            outcome_prices,
             volume,
             volume_24h,
-            open_interest,
             last_trade_price: last_price,
             best_bid: yes_bid,
             best_ask: yes_ask,
-            spread,
             tick_size,
+            min_order_size,
             close_time,
             open_time,
             created_at,
             settlement_time,
-            notional_value,
-            price_level_structure,
-            settlement_value,
-            previous_price,
-            can_close_early,
             result,
             ..Default::default()
         })
@@ -1107,18 +1083,15 @@ impl Kalshi {
             .unwrap_or("")
             .to_string();
 
-        let description = event_obj
+        let rules = event_obj
             .get("subtitle")
             .or_else(|| event_obj.get("description"))
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
 
-        let mut outcomes = Vec::with_capacity(markets.len());
-        let mut outcome_prices = HashMap::new();
-        let mut outcome_tokens = Vec::with_capacity(markets.len());
+        let mut outcomes: Vec<Outcome> = Vec::with_capacity(markets.len());
         let mut total_volume = 0.0f64;
-        let mut total_open_interest = 0.0f64;
         let mut close_time: Option<chrono::DateTime<chrono::Utc>> = None;
 
         for m in markets {
@@ -1142,21 +1115,16 @@ impl Kalshi {
                         .or_else(|| obj.get("last_price"))
                         .and_then(|v| v.as_f64())
                         .map(|p| p / 100.0)
-                })
-                .unwrap_or(0.0);
+                });
 
-            outcomes.push(outcome_name.clone());
-            outcome_prices.insert(outcome_name.clone(), yes_price);
-            outcome_tokens.push(OutcomeToken {
-                outcome: outcome_name,
-                token_id: ticker.to_string(),
+            outcomes.push(Outcome {
+                label: outcome_name,
+                price: yes_price,
+                token_id: None,
             });
 
             total_volume += parse_fp(obj, "volume_fp")
                 .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
-                .unwrap_or(0.0);
-            total_open_interest += parse_fp(obj, "open_interest_fp")
-                .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()))
                 .unwrap_or(0.0);
 
             // Use the latest close_time across sub-markets
@@ -1175,26 +1143,21 @@ impl Kalshi {
         }
 
         let openpx_id = Market::make_openpx_id("kalshi", event_ticker);
-        let event_id = canonical_event_id("kalshi", event_ticker);
 
         Some(Market {
             openpx_id,
             exchange: "kalshi".into(),
-            id: event_ticker.to_string(),
-            group_id: Some(event_ticker.to_string()),
-            event_id,
+            ticker: event_ticker.to_string(),
+            event_ticker: Some(event_ticker.to_string()),
             title,
-            description,
+            rules,
             status: MarketStatus::Active,
             market_type: MarketType::Categorical,
-            accepting_orders: true,
             outcomes,
-            outcome_tokens,
-            outcome_prices,
             volume: total_volume,
-            open_interest: Some(total_open_interest),
             close_time,
-            tick_size: Some(0.01), // event-level: default to 1 cent
+            tick_size: Some(0.01),
+            min_order_size: Some(1.0),
             ..Default::default()
         })
     }
@@ -1233,8 +1196,8 @@ impl Exchange for Kalshi {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
-        // ── event_id short-circuit: fetch a single event's nested markets ──
-        if let Some(ref event_ticker) = params.event_id {
+        // ── event_ticker short-circuit: fetch a single event's nested markets ──
+        if let Some(ref event_ticker) = params.event_ticker {
             #[derive(serde::Deserialize)]
             struct SingleEventResponse {
                 #[allow(dead_code)]

@@ -55,17 +55,26 @@ fn check_field(
     let unified_present = unified.is_some_and(|v| !v.is_null());
 
     match transform {
-        "direct" => match (source, unified) {
-            (Some(s), Some(u)) if s == u => Ok(()),
-            (Some(s), Some(u)) => match (s.as_f64(), u.as_f64()) {
+        "direct" => {
+            // Treat JSON null as absent on either side.
+            if !source_present && !unified_present {
+                return Ok(());
+            }
+            if source_present != unified_present {
+                return Err(format!(
+                    "direct presence mismatch: source={source:?} unified={unified:?}"
+                ));
+            }
+            let s = source.unwrap();
+            let u = unified.unwrap();
+            if s == u {
+                return Ok(());
+            }
+            match (s.as_f64(), u.as_f64()) {
                 (Some(a), Some(b)) if (a - b).abs() < 1e-9 => Ok(()),
                 _ => Err(format!("direct mismatch: source={s:?} unified={u:?}")),
-            },
-            (None, None) => Ok(()),
-            _ => Err(format!(
-                "direct presence mismatch: source={source:?} unified={unified:?}"
-            )),
-        },
+            }
+        }
         "fixed_point_dollars" | "fixed_point_count" | "string_to_f64" => {
             if source_present != unified_present {
                 return Err(format!(
@@ -124,6 +133,42 @@ fn check_field(
             } else {
                 Ok(())
             }
+        }
+        "tick_size" => {
+            // Source is the kalshi `price_ranges` array of {start, end, step}
+            // strings. Unified is a single number — the smallest step across
+            // all tiers. Presence-only on absence; on presence, verify the
+            // unified value matches min(parsed steps).
+            let source_steps: Vec<f64> = match source {
+                Some(Value::Array(a)) => a
+                    .iter()
+                    .filter_map(|r| r.get("step")?.as_str().and_then(|s| s.parse::<f64>().ok()))
+                    .collect(),
+                _ => vec![],
+            };
+            let source_meaningful = !source_steps.is_empty();
+            if source_meaningful && !unified_present {
+                return Err(format!(
+                    "tick_size: source present but unified is null: source={source:?}"
+                ));
+            }
+            if !source_meaningful && unified_present {
+                return Err(format!(
+                    "tick_size: source absent but unified set: unified={unified:?}"
+                ));
+            }
+            if source_meaningful {
+                let expected = source_steps.iter().copied().fold(f64::INFINITY, f64::min);
+                let actual = unified
+                    .and_then(|v| v.as_f64())
+                    .ok_or_else(|| format!("tick_size: unified not f64: {unified:?}"))?;
+                if (expected - actual).abs() > 1e-9 {
+                    return Err(format!(
+                        "tick_size value mismatch: expected_min_step={expected} unified={actual}"
+                    ));
+                }
+            }
+            Ok(())
         }
         other => Err(format!("unknown transform `{other}`")),
     }

@@ -122,7 +122,7 @@ pub struct FetchMarketsParams {
     /// When set, `series_id`, `cursor`, and `limit` are ignored (not paginated).
     /// `status` filtering is still applied client-side.
     #[serde(default)]
-    pub event_id: Option<String>,
+    pub event_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

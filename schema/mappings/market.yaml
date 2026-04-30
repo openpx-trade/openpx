@@ -8,8 +8,8 @@
 #
 # The hand-written normalizers in engine/exchanges/<name>/src/exchange.rs are
 # the implementation. This file is the *contract* the implementation conforms
-# to. tools/validate_mappings.py asserts every $ref resolves; the contract test
-# (TODO) asserts the actual normalizer output matches what's declared here.
+# to. tools/validate_mappings.py asserts every $ref resolves; the per-exchange
+# mapping_contract.rs tests assert the actual normalizer output matches.
 unified_type: Market
 unified_schema: schema/openpx.schema.json#/definitions/Market
 
@@ -25,31 +25,32 @@ upstream_specs:
 #   fixed_point_count       — Kalshi count-string → f64
 #   string_to_f64           — Polymarket numeric-string → f64
 #   parse_datetime          — string → DateTime<Utc>
-#   first_non_null          — try sources in order, take first present
 #   enum_remap              — map source enum value → unified enum value
+#   tick_size               — Kalshi tiered price_ranges → smallest step (f64)
 fields:
   # ---- Identity ----
-  - name: id
+  - name: ticker
     sources:
       kalshi:
         ref: "#/components/schemas/Market/properties/ticker"
         transform: direct
       polymarket:
-        ref: "#/components/schemas/Market/properties/conditionId"
+        ref: "#/components/schemas/Market/properties/slug"
         transform: direct
         notes: |
-          Polymarket also exposes a numeric `id`; `conditionId` is the on-chain
-          identifier and is what trades reference. Numeric `id` is mapped to
-          `native_numeric_id` for callers that need REST-only deep links.
+          Polymarket exposes both a slug and a numeric `id`; we use slug as
+          the unified ticker because it's stable and human-readable. The
+          on-chain `conditionId` lives in `condition_id`; the numeric id
+          lives in `numeric_id` for REST-only deep links.
 
   - name: openpx_id
-    synthetic: "{exchange}:{id}"
+    synthetic: "{exchange}:{ticker}"
     notes: Composite primary key, never sourced from upstream.
 
   - name: exchange
     synthetic: literal exchange identifier ("kalshi" or "polymarket")
 
-  - name: native_numeric_id
+  - name: numeric_id
     sources:
       kalshi:
         omitted: true
@@ -58,17 +59,19 @@ fields:
         ref: "#/components/schemas/Market/properties/id"
         transform: direct
 
-  - name: group_id
+  - name: event_ticker
     sources:
       kalshi:
         ref: "#/components/schemas/Market/properties/event_ticker"
         transform: direct
+        notes: Kalshi exposes the parent event identifier as `event_ticker`.
       polymarket:
-        omitted: true
-        notes: Derived from the embedded `events` relation in the gamma response, not a flat field.
-
-  - name: event_id
-    synthetic: canonical OpenPX event grouping computed at parse time
+        synthetic: events[0].slug from the embedded events relation
+        notes: |
+          Polymarket's parent event is embedded under `events[]` on each market
+          object; we read `events[0].slug` (the human-readable identifier
+          matching the unified `event_ticker` semantics). Falls back to
+          `events[0].id` only when `slug` is missing on the upstream payload.
 
   # ---- Display ----
   - name: title
@@ -82,54 +85,15 @@ fields:
         ref: "#/components/schemas/Market/properties/question"
         transform: direct
 
-  - name: question
-    sources:
-      kalshi:
-        omitted: true
-        notes: Kalshi does not expose a question form distinct from title.
-      polymarket:
-        ref: "#/components/schemas/Market/properties/question"
-        transform: direct
-
-  - name: description
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/rules_primary"
-        transform: direct
-      polymarket:
-        ref: "#/components/schemas/Market/properties/description"
-        transform: direct
-
   - name: rules
     sources:
       kalshi:
-        ref: "#/components/schemas/Market/properties/rules_secondary"
-        transform: direct
+        synthetic: "{rules_primary} | {rules_secondary}"
+        notes: |
+          Concatenation of the two upstream prose fields with " | "
+          separator. Sources: rules_primary, rules_secondary.
       polymarket:
-        omitted: true
-
-  - name: slug
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/slug"
-        transform: direct
-
-  - name: image_url
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/image"
-        transform: direct
-
-  - name: icon_url
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/icon"
+        ref: "#/components/schemas/Market/properties/description"
         transform: direct
 
   # ---- Lifecycle ----
@@ -155,24 +119,7 @@ fields:
         transform: enum_remap
         notes: "binary | scalar → MarketType::Binary / MarketType::Scalar"
       polymarket:
-        ref: "#/components/schemas/Market/properties/marketType"
-        transform: enum_remap
-
-  - name: accepting_orders
-    sources:
-      kalshi:
-        synthetic: derived from status (accepts orders only when status is "active")
-      polymarket:
-        ref: "#/components/schemas/Market/properties/acceptingOrders"
-        transform: direct
-
-  - name: can_close_early
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/can_close_early"
-        transform: direct
-      polymarket:
-        omitted: true
+        synthetic: derived from outcomes.len() (binary if 2, else categorical)
 
   - name: result
     sources:
@@ -180,8 +127,11 @@ fields:
         ref: "#/components/schemas/Market/properties/result"
         transform: direct
       polymarket:
-        omitted: true
-        notes: Polymarket markets settle on-chain; resolution surface is different.
+        synthetic: outcomes[i] where outcomePrices[i] == 1.0 (resolved markets only)
+        notes: |
+          Polymarket has no single result field; the winning outcome is
+          derived from outcomePrices after settlement. None for unresolved
+          markets. Sources: outcomes, outcomePrices.
 
   # ---- Times ----
   - name: open_time
@@ -191,8 +141,7 @@ fields:
         transform: parse_datetime
       polymarket:
         ref: "#/components/schemas/Market/properties/startDate"
-        transform: first_non_null
-        fallback_ref: "#/components/schemas/Market/properties/startDateIso"
+        transform: parse_datetime
 
   - name: close_time
     sources:
@@ -201,8 +150,7 @@ fields:
         transform: parse_datetime
       polymarket:
         ref: "#/components/schemas/Market/properties/endDate"
-        transform: first_non_null
-        fallback_ref: "#/components/schemas/Market/properties/endDateIso"
+        transform: parse_datetime
 
   - name: created_at
     sources:
@@ -219,7 +167,12 @@ fields:
         ref: "#/components/schemas/Market/properties/settlement_ts"
         transform: parse_datetime
       polymarket:
-        omitted: true
+        ref: "#/components/schemas/Market/properties/closedTime"
+        transform: parse_datetime
+        notes: |
+          closedTime is the actual on-chain settlement timestamp (distinct
+          from endDate, which is the scheduled close). Populated only after
+          settlement.
 
   # ---- Pricing ----
   - name: best_bid
@@ -250,80 +203,36 @@ fields:
         ref: "#/components/schemas/Market/properties/lastTradePrice"
         transform: direct
 
-  - name: previous_price
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/previous_price_dollars"
-        transform: fixed_point_dollars
-      polymarket:
-        omitted: true
-
-  - name: spread
-    sources:
-      kalshi:
-        synthetic: "best_ask - best_bid (computed)"
-      polymarket:
-        ref: "#/components/schemas/Market/properties/spread"
-        transform: direct
-
-  - name: price_change_1h
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/oneHourPriceChange"
-        transform: direct
-
-  - name: price_change_1d
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/oneDayPriceChange"
-        transform: direct
-
-  - name: price_change_1wk
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/oneWeekPriceChange"
-        transform: direct
-
-  - name: price_change_1mo
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/oneMonthPriceChange"
-        transform: direct
-
   - name: tick_size
     sources:
       kalshi:
-        omitted: true
-        notes: Kalshi `tick_size` field is deprecated; tick info is in `price_level_structure`.
+        ref: "#/components/schemas/Market/properties/price_ranges"
+        transform: tick_size
+        notes: |
+          Kalshi exposes a tiered structure (PriceRange array, each with
+          start/end/step strings); the unified value is the smallest step
+          across all tiers — the finest precision the market accepts anywhere
+          on its price curve. Coarser tiers still require their own step,
+          but the single-number unified surface answers "what's the tightest
+          tick I can ever quote?". The deprecated scalar `tick_size` integer
+          is ignored.
       polymarket:
         ref: "#/components/schemas/Market/properties/orderPriceMinTickSize"
         transform: direct
+        notes: Polymarket publishes a single scalar.
 
   - name: min_order_size
     sources:
       kalshi:
-        omitted: true
+        synthetic: "1.0 (or 0.01 when fractional_trading_enabled)"
+        notes: |
+          Kalshi has no upstream min_order_size field. Synthesized from
+          `fractional_trading_enabled`. Source: fractional_trading_enabled.
       polymarket:
         ref: "#/components/schemas/Market/properties/orderMinSize"
         transform: direct
 
-  - name: price_level_structure
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/price_level_structure"
-        transform: direct
-      polymarket:
-        omitted: true
-
-  # ---- Volume / liquidity / interest ----
+  # ---- Volume ----
   - name: volume
     sources:
       kalshi:
@@ -342,82 +251,16 @@ fields:
         ref: "#/components/schemas/Market/properties/volume24hr"
         transform: direct
 
-  - name: volume_1wk
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/volume1wk"
-        transform: direct
-
-  - name: volume_1mo
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/volume1mo"
-        transform: direct
-
-  - name: liquidity
-    sources:
-      kalshi:
-        omitted: true
-        notes: Kalshi's `liquidity_dollars` field is deprecated and always returns "0.0000".
-      polymarket:
-        ref: "#/components/schemas/Market/properties/liquidityNum"
-        transform: direct
-
-  - name: open_interest
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/open_interest_fp"
-        transform: fixed_point_count
-      polymarket:
-        omitted: true
-
-  - name: notional_value
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/notional_value_dollars"
-        transform: fixed_point_dollars
-      polymarket:
-        omitted: true
-
-  - name: settlement_value
-    sources:
-      kalshi:
-        ref: "#/components/schemas/Market/properties/settlement_value_dollars"
-        transform: fixed_point_dollars
-      polymarket:
-        omitted: true
-
-  # ---- Outcomes / tokens ----
+  # ---- Outcomes ----
   - name: outcomes
-    synthetic: derived from market_type — Binary → ["Yes","No"], Scalar derived from strike fields.
-
-  - name: outcome_prices
-    synthetic: "{outcome → price} map computed from best_bid/best_ask"
-
-  - name: outcome_tokens
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: parsed from `clobTokenIds` JSON-encoded string
-
-  - name: token_id_yes
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: first element of parsed clobTokenIds
-
-  - name: token_id_no
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: second element of parsed clobTokenIds
+    synthetic: per-exchange Vec<Outcome{label, price, token_id}>
+    notes: |
+      Kalshi binary: two entries with labels "Yes" and "No"; price computed
+      from yes_ask_dollars/last_price_dollars (No price = 1 - Yes); token_id
+      always None (no per-outcome token surface). Polymarket: zipped
+      element-wise from the stringified-JSON arrays `outcomes`, `outcomePrices`,
+      and `clobTokenIds`. Replaces the previous trio of outcome_prices map +
+      outcome_tokens vec + binary-only token_id_yes/token_id_no.
 
   # ---- Polymarket-specific ----
   - name: condition_id
@@ -428,14 +271,6 @@ fields:
         ref: "#/components/schemas/Market/properties/conditionId"
         transform: direct
 
-  - name: question_id
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/questionID"
-        transform: direct
-
   - name: neg_risk
     sources:
       kalshi:
@@ -443,11 +278,11 @@ fields:
       polymarket:
         synthetic: read from gamma `/markets` response field `negRisk`
         notes: |
-          Spec gap (2026-04-29): the gamma OpenAPI defines `negRisk` only on
-          `Event`, but the live `/markets` response includes it on each market
-          object. Normalizer reads it directly. Re-check upstream spec on each
-          daily refresh — when Polymarket adds it to `Market` properties,
-          replace `synthetic` with a `ref:` here.
+          Spec gap: the gamma OpenAPI defines `negRisk` only on `Event`, but
+          live `/markets` and `/markets/keyset` responses include it on each
+          market object. Re-check on each daily upstream refresh — when
+          Polymarket adds it to `Market` properties, replace `synthetic` with
+          a `ref:` here.
 
   - name: neg_risk_market_id
     sources:
@@ -455,36 +290,4 @@ fields:
         omitted: true
       polymarket:
         synthetic: read from gamma `/markets` response field `negRiskMarketID`
-        notes: |
-          Spec gap (2026-04-29): same pattern as `neg_risk`. Live API includes
-          this field on Market; spec does not yet.
-
-  - name: chain_id
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: hardcoded "137" (Polygon mainnet)
-
-  - name: denomination_token
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        ref: "#/components/schemas/Market/properties/denominationToken"
-        transform: direct
-
-  # ---- Fees ----
-  - name: maker_fee_bps
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: parsed from feeSchedule.rate (replaces deprecated makerBaseFee)
-
-  - name: taker_fee_bps
-    sources:
-      kalshi:
-        omitted: true
-      polymarket:
-        synthetic: parsed from feeSchedule.rate (replaces deprecated takerBaseFee)
+        notes: Spec gap (same pattern as `neg_risk`).

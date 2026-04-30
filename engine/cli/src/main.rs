@@ -72,9 +72,9 @@ enum Command {
         /// Filter by series (Kalshi series ticker or Polymarket series ID)
         #[arg(long)]
         series_id: Option<String>,
-        /// Fetch all markets within an event (Kalshi event ticker or Polymarket event ID)
-        #[arg(long)]
-        event_id: Option<String>,
+        /// Fetch all markets within an event (Kalshi event ticker or Polymarket event slug/id)
+        #[arg(long, alias = "event_id")]
+        event_ticker: Option<String>,
     },
     /// Fetch a single market by ID
     FetchMarket { market_id: String },
@@ -316,14 +316,14 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 cursor,
                 limit,
                 series_id,
-                event_id,
+                event_ticker,
             } => {
                 let params = FetchMarketsParams {
                     status: status.map(Into::into),
                     cursor,
                     limit,
                     series_id,
-                    event_id,
+                    event_ticker,
                 };
                 let (markets, next_cursor) = exchange.fetch_markets(&params).await?;
                 print_json(&serde_json::json!({
@@ -549,13 +549,10 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
     if let Ok(exchange) = ExchangeInner::new(id, config) {
         match exchange.fetch_market(market_id).await {
             Ok(market) => {
-                let tokens = market.get_outcome_tokens();
-                let yes = tokens
-                    .iter()
-                    .find(|t| t.outcome.eq_ignore_ascii_case("yes"));
-                let no = tokens.iter().find(|t| t.outcome.eq_ignore_ascii_case("no"));
+                let yes = market.token_id_yes();
+                let no = market.token_id_no();
                 if let (Some(y), Some(n)) = (yes, no) {
-                    ws.register_outcomes(&y.token_id, &n.token_id).await;
+                    ws.register_outcomes(y, n).await;
                 }
             }
             Err(e) => {

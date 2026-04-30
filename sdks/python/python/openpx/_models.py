@@ -246,9 +246,19 @@ class OrderbookRequest(BaseModel):
     token_id: str | None = None
 
 
-class OutcomeToken(BaseModel):
-    outcome: str
-    token_id: str
+class Outcome(BaseModel):
+    label: str = Field(
+        ...,
+        description='Outcome label (e.g. "Yes", "No", or a categorical option name).',
+    )
+    price: float | None = Field(
+        None,
+        description="Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi markets pre-fill, or Polymarket categorical markets without a price).",
+    )
+    token_id: str | None = Field(
+        None,
+        description="CTF token id (Polymarket only). Used to subscribe to per-outcome orderbook streams. None on Kalshi.",
+    )
 
 
 class Position(BaseModel):
@@ -513,7 +523,7 @@ class FetchMarketsParams(BaseModel):
         None,
         description="Exchange-specific cursor (offset, page number, or cursor string)",
     )
-    event_id: str | None = Field(
+    event_ticker: str | None = Field(
         None,
         description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
     )
@@ -552,109 +562,63 @@ class LastTrade(BaseModel):
 
 
 class Market(BaseModel):
-    accepting_orders: bool | None = Field(
-        False, description="Whether the market is currently accepting orders"
-    )
     best_ask: float | None = Field(None, description="Best ask price (normalized 0-1)")
     best_bid: float | None = Field(None, description="Best bid price (normalized 0-1)")
-    can_close_early: bool | None = Field(None, description="Kalshi: can close early")
-    chain_id: str | None = Field(None, description="Chain ID for on-chain markets")
     close_time: AwareDatetime | None = Field(None, description="Market close time")
-    condition_id: str | None = Field(None, description="Condition ID for CTF")
+    condition_id: str | None = Field(None, description="Polymarket CTF condition id")
     created_at: AwareDatetime | None = Field(None, description="Market creation time")
-    denomination_token: str | None = Field(
-        None, description="Denomination token (e.g. USDC address)"
-    )
-    description: str = Field(..., description="Full description")
-    event_id: str | None = Field(
-        None, description="Canonical OpenPX event ID for cross-exchange event grouping."
+    event_ticker: str | None = Field(
+        None,
+        description="Native event identifier this market belongs to. Kalshi: upstream `event_ticker`. Polymarket: the parent event's `slug`.",
     )
     exchange: str = Field(..., description="Exchange identifier (kalshi, polymarket)")
-    group_id: str | None = Field(
-        None, description="Source-native event/group ID from the exchange."
-    )
-    icon_url: str | None = Field(None, description="Market icon URL")
-    id: str = Field(..., description="Native exchange market ID")
-    image_url: str | None = Field(None, description="Market image URL")
     last_trade_price: float | None = Field(
         None, description="Last trade price (normalized 0-1)"
     )
-    liquidity: float | None = Field(None, description="Current liquidity")
-    maker_fee_bps: float | None = Field(
-        None, description="Maker fee rate (basis points)"
-    )
     market_type: MarketType = Field(..., description="Market type classification")
     min_order_size: float | None = Field(
-        None, description="Minimum order size (contracts)"
-    )
-    native_numeric_id: str | None = Field(
         None,
-        description="Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.",
+        description="Minimum order size (contracts). Kalshi: synthesized — 1.0, or 0.01 when fractional_trading_enabled. Polymarket: read directly from `orderMinSize`.",
     )
     neg_risk: bool | None = Field(None, description="Polymarket: neg-risk flag")
     neg_risk_market_id: str | None = Field(
         None, description="Polymarket: neg-risk market ID"
     )
-    notional_value: float | None = Field(
-        None, description="Notional value per contract (Kalshi)"
-    )
-    open_interest: float | None = Field(None, description="Current open interest")
-    open_time: AwareDatetime | None = Field(None, description="Market open time")
-    openpx_id: str = Field(..., description="Primary key: {exchange}:{native_id}")
-    outcome_prices: dict[str, float] | None = Field(
+    numeric_id: str | None = Field(
         None,
-        description='Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})',
+        description="Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription.",
     )
-    outcome_tokens: list[OutcomeToken] | None = Field(
+    open_time: AwareDatetime | None = Field(None, description="Market open time")
+    openpx_id: str = Field(..., description="Primary key: {exchange}:{ticker}")
+    outcomes: list[Outcome] | None = Field(
         [],
-        description="Outcome-to-token mapping for orderbook subscriptions",
+        description='Ordered list of outcomes. Each entry carries label, price, and (if exposed) token id. Polymarket categorical markets have N entries; Kalshi binary markets always have 2 ("Yes" / "No").',
         validate_default=True,
     )
-    outcomes: list[str] | None = Field(
-        [], description='Outcome labels (e.g., ["Yes", "No"] for binary markets)'
+    result: str | None = Field(
+        None,
+        description="Resolution result. Kalshi: enum string from upstream. Polymarket: derived winning-outcome label (the `outcomes[i]` whose `outcomePrices[i]` is 1.0 after settlement). None for unresolved markets.",
     )
-    previous_price: float | None = Field(None, description="Kalshi: previous price")
-    price_change_1d: float | None = Field(
-        None, description="24-hour YES price change (decimal, e.g. 0.05 = +5%)"
+    rules: str | None = Field(
+        None,
+        description="Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`. Polymarket: `description`.",
     )
-    price_change_1h: float | None = Field(None, description="1-hour YES price change")
-    price_change_1mo: float | None = Field(None, description="30-day YES price change")
-    price_change_1wk: float | None = Field(None, description="7-day YES price change")
-    price_level_structure: str | None = Field(
-        None, description="Kalshi sub-penny pricing structure"
-    )
-    question: str | None = Field(
-        None, description="Market question (may differ from title)"
-    )
-    question_id: str | None = Field(None, description="Question ID (Polymarket)")
-    result: str | None = Field(None, description="Resolution result")
-    rules: str | None = Field(None, description="Resolution rules")
     settlement_time: AwareDatetime | None = Field(
-        None, description="Settlement / resolution time"
+        None,
+        description="Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket: `closedTime` (populated only after on-chain settlement).",
     )
-    settlement_value: float | None = Field(None, description="Kalshi: settlement value")
-    slug: str | None = Field(None, description="URL-friendly identifier")
-    spread: float | None = Field(None, description="Bid-ask spread (decimal)")
     status: MarketStatus = Field(
         ..., description="Normalized status: Active, Closed, Resolved"
     )
-    taker_fee_bps: float | None = Field(
-        None, description="Taker fee rate (basis points)"
-    )
     tick_size: float | None = Field(
         None,
-        description="Tick size (minimum price increment, normalized decimal e.g. 0.01)",
+        description="Minimum price increment in dollars. Polymarket: `orderPriceMinTickSize` directly. Kalshi: the smallest `step` across the tiered `price_ranges` array (the finest precision the market accepts anywhere on its price curve — orders in coarser tiers must still round to that tier's step).",
+    )
+    ticker: str = Field(
+        ..., description="Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`."
     )
     title: str = Field(..., description="Market title")
-    token_id_no: str | None = Field(None, description="No outcome token ID")
-    token_id_yes: str | None = Field(None, description="Yes outcome token ID")
     volume: float = Field(..., description="Total volume (USD)")
-    volume_1mo: float | None = Field(
-        None, description="30-day rolling trading volume (USD)"
-    )
-    volume_1wk: float | None = Field(
-        None, description="7-day rolling trading volume (USD)"
-    )
     volume_24h: float | None = Field(None, description="24-hour trading volume (USD)")
 
 

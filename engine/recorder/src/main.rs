@@ -153,18 +153,12 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
             cursor: cursor.clone(),
             limit: Some(MARKET_FETCH_LIMIT),
             series_id: None,
-            event_id: None,
+            event_ticker: None,
         };
         match exchange.fetch_markets(&params).await {
             Ok((markets, next_cursor)) => {
                 for m in &markets {
-                    // Collect token IDs for markets that need them (polymarket)
-                    let token_ids: Vec<String> = m
-                        .outcome_tokens
-                        .iter()
-                        .map(|t| t.token_id.clone())
-                        .collect();
-                    all.push((m.id.clone(), token_ids));
+                    all.push((m.ticker.clone(), m.token_ids()));
                 }
                 eprintln!("  fetched {} markets (total: {})", markets.len(), all.len());
                 if next_cursor.is_none() || markets.is_empty() {

@@ -9,8 +9,7 @@
   "status": "active",
   "rules_primary": "Primary rules text describing the market.",
   "rules_secondary": "Secondary rules text.",
-  "result": "",
-  "can_close_early": true,
+  "result": null,
   "fractional_trading_enabled": false,
   "open_time": "2025-10-01T14:30:00Z",
   "close_time": "2025-12-31T21:00:00Z",
@@ -28,14 +27,11 @@
   "last_price_dollars": "0.6600",
   "previous_yes_bid_dollars": "0.6300",
   "previous_yes_ask_dollars": "0.6500",
-  "previous_price_dollars": "0.6400",
   "volume_fp": "150000",
   "volume_24h_fp": "5000",
   "open_interest_fp": "25000",
-  "notional_value_dollars": "1.0000",
-  "settlement_value_dollars": null,
   "expiration_value": "",
-  "liquidity_dollars": "0.0000",
-  "price_level_structure": "default",
-  "price_ranges": []
+  "price_ranges": [
+    { "start": "0.0100", "end": "0.9900", "step": "0.0100" }
+  ]
 }

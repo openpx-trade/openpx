@@ -81,16 +81,22 @@ async fn test_fetch_markets_parses_response() {
     assert!(cursor.is_none());
 
     let first = &markets[0];
-    assert_eq!(first.id, "INXD-24DEC31-B5000");
+    assert_eq!(first.ticker, "INXD-24DEC31-B5000");
     assert_eq!(
         first.title,
         "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
     );
-    assert_eq!(first.outcomes, vec!["Yes", "No"]);
-    assert_eq!(*first.outcome_prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*first.outcome_prices.get("No").unwrap(), 0.35);
+    assert_eq!(
+        first
+            .outcomes
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Yes", "No"]
+    );
+    assert_eq!(first.outcomes[0].price, Some(0.65));
+    assert_eq!(first.outcomes[1].price, Some(0.35));
     assert_eq!(first.volume, 150000.0);
-    assert_eq!(first.open_interest, Some(25000.0));
 }
 
 #[tokio::test]
@@ -112,13 +118,13 @@ async fn test_fetch_market_by_ticker() {
     let market = exchange.fetch_market("INXD-24DEC31-B5000").await.unwrap();
 
     // #then
-    assert_eq!(market.id, "INXD-24DEC31-B5000");
+    assert_eq!(market.ticker, "INXD-24DEC31-B5000");
     assert_eq!(
         market.title,
         "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
     );
-    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.35);
+    assert_eq!(market.outcomes[0].price, Some(0.65));
+    assert_eq!(market.outcomes[1].price, Some(0.35));
 }
 
 #[tokio::test]
@@ -548,7 +554,7 @@ async fn test_fetch_markets_with_pagination_cursor() {
 
     // #then
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "EVT-1-MKT1");
+    assert_eq!(markets[0].ticker, "EVT-1-MKT1");
     // Cursor is a compound JSON encoding live + historical pagination;
     // Active filter only paginates live (`r`).
     let cursor_str = cursor.unwrap();
@@ -595,7 +601,7 @@ async fn test_fetch_markets_with_cursor_passes_through() {
 
     // #then
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "EVT-2-MKT1");
+    assert_eq!(markets[0].ticker, "EVT-2-MKT1");
     assert!(cursor.is_none(), "last page should have no cursor");
 }
 
@@ -995,7 +1001,7 @@ async fn test_fetch_markets_filters_by_status() {
 
     // #then - only the "active" market should be returned
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-OPEN");
+    assert_eq!(markets[0].ticker, "MIX-OPEN");
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,12 +1109,19 @@ async fn test_fetch_market_minimal_response() {
     let market = exchange.fetch_market("MINIMAL-MKT").await.unwrap();
 
     // #then
-    assert_eq!(market.id, "MINIMAL-MKT");
+    assert_eq!(market.ticker, "MINIMAL-MKT");
     assert_eq!(market.title, "Yes | No");
-    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.50);
-    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.50);
+    assert_eq!(market.outcomes[0].price, Some(0.50));
+    assert_eq!(market.outcomes[1].price, Some(0.50));
     assert_eq!(market.volume, 0.0); // defaults to 0
-    assert_eq!(market.outcomes, vec!["Yes", "No"]);
+    assert_eq!(
+        market
+            .outcomes
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Yes", "No"]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1148,8 +1161,8 @@ async fn test_fetch_market_dollar_string_fields_preferred() {
     let market = exchange.fetch_market("DOLLAR-MKT").await.unwrap();
 
     // #then - dollar-string fields should be preferred
-    assert!((market.outcome_prices["Yes"] - 0.72).abs() < 1e-8);
-    assert!((market.outcome_prices["No"] - 0.28).abs() < 1e-8);
+    assert!((market.outcomes[0].price.unwrap() - 0.72).abs() < 1e-8);
+    assert!((market.outcomes[1].price.unwrap() - 0.28).abs() < 1e-8);
     assert_eq!(market.best_ask, Some(0.72));
     assert_eq!(market.best_bid, Some(0.68));
     assert_eq!(market.last_trade_price, Some(0.70));
@@ -1390,7 +1403,7 @@ async fn test_fetch_markets_status_active_filters_correctly() {
 
     // #then — only the active market
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-ACTIVE");
+    assert_eq!(markets[0].ticker, "MIX-ACTIVE");
     assert_eq!(markets[0].status, MarketStatus::Active);
 }
 
@@ -1423,7 +1436,7 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
 
     // #then — only the settled/determined market
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].ticker, "MIX-SETTLED");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
 }
 
@@ -1497,7 +1510,7 @@ async fn test_fetch_markets_with_series_id_and_status() {
 
     // #then — both series_id and status passed; client-side filter keeps only resolved
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].ticker, "MIX-SETTLED");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
 }
 
@@ -1556,7 +1569,7 @@ async fn test_fetch_markets_with_event_id() {
 
     // #when — default status=Active filters out the determined market
     let params = FetchMarketsParams {
-        event_id: Some("KXBTC-25MAR14".to_string()),
+        event_ticker: Some("KXBTC-25MAR14".to_string()),
         ..Default::default()
     };
     let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
@@ -1567,8 +1580,8 @@ async fn test_fetch_markets_with_event_id() {
         cursor.is_none(),
         "event_id fetch should not return a cursor"
     );
-    assert_eq!(markets[0].id, "KXBTC-25MAR14-B85000");
-    assert_eq!(markets[1].id, "KXBTC-25MAR14-B90000");
+    assert_eq!(markets[0].ticker, "KXBTC-25MAR14-B85000");
+    assert_eq!(markets[1].ticker, "KXBTC-25MAR14-B90000");
 }
 
 #[tokio::test]
@@ -1609,7 +1622,7 @@ async fn test_fetch_markets_with_event_id_status_all() {
 
     // #when — status=All returns everything
     let params = FetchMarketsParams {
-        event_id: Some("KXBTC-25MAR14".to_string()),
+        event_ticker: Some("KXBTC-25MAR14".to_string()),
         status: Some(MarketStatusFilter::All),
         ..Default::default()
     };

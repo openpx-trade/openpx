@@ -118,12 +118,15 @@ def render_transform(src: dict[str, Any] | None) -> str:
 
 def _safe_prose(s: str) -> str:
     """Escape MDX-hazardous characters in free-text prose. Braces would otherwise
-    open JSX expressions; pipes break markdown tables; newlines collapse rows."""
+    open JSX expressions; angle brackets would open JSX tags (e.g. `Vec<X>` is
+    parsed as an element); pipes break markdown tables; newlines collapse rows."""
     return (
         s.replace("|", "\\|")
         .replace("\n", " ")
         .replace("{", "\\{")
         .replace("}", "\\}")
+        .replace("<", "\\<")
+        .replace(">", "\\>")
     )
 
 

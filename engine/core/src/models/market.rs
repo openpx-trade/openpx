@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Market type classification.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,11 +55,24 @@ impl std::str::FromStr for MarketStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One outcome of a prediction market — label, current price, and (where the
+/// exchange exposes one) the on-chain token id needed to subscribe to its
+/// orderbook stream. Replaces the previous trio of `outcome_prices` map +
+/// `outcome_tokens` vec + binary-only `token_id_yes`/`token_id_no` with a
+/// single ordered list keyed by index.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct OutcomeToken {
-    pub outcome: String,
-    pub token_id: String,
+pub struct Outcome {
+    /// Outcome label (e.g. "Yes", "No", or a categorical option name).
+    pub label: String,
+    /// Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi
+    /// markets pre-fill, or Polymarket categorical markets without a price).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<f64>,
+    /// CTF token id (Polymarket only). Used to subscribe to per-outcome
+    /// orderbook streams. None on Kalshi.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_id: Option<String>,
 }
 
 /// Unified prediction market model.
@@ -78,30 +90,27 @@ pub struct OutcomeToken {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Market {
     // ── Identity ──────────────────────────────────────────────────────────
-    /// Primary key: {exchange}:{native_id}
+    /// Primary key: {exchange}:{ticker}
     pub openpx_id: String,
     /// Exchange identifier (kalshi, polymarket)
     pub exchange: String,
-    /// Native exchange market ID
-    pub id: String,
-    /// Source-native event/group ID from the exchange.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub group_id: Option<String>,
-    /// Canonical OpenPX event ID for cross-exchange event grouping.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_id: Option<String>,
+    /// Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`.
+    pub ticker: String,
+    /// Native event identifier this market belongs to. Kalshi: upstream
+    /// `event_ticker`. Polymarket: the parent event's `slug`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_ticker: Option<String>,
+    /// Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that
+    /// need to build UI deep-links or cross-reference Polymarket's REST-only
+    /// numeric surface. Not used for trading or subscription.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numeric_id: Option<String>,
 
     // ── Display ───────────────────────────────────────────────────────────
     /// Market title
     pub title: String,
-    /// Market question (may differ from title)
-    pub question: Option<String>,
-    /// Full description
-    pub description: String,
-    /// URL-friendly identifier
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub slug: Option<String>,
-    /// Resolution rules
+    /// Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`.
+    /// Polymarket: `description`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rules: Option<String>,
 
@@ -110,40 +119,18 @@ pub struct Market {
     pub status: MarketStatus,
     /// Market type classification
     pub market_type: MarketType,
-    /// Whether the market is currently accepting orders
-    #[serde(default)]
-    pub accepting_orders: bool,
 
     // ── Outcomes ───────────────────────────────────────────────────────────
-    /// Outcome labels (e.g., ["Yes", "No"] for binary markets)
+    /// Ordered list of outcomes. Each entry carries label, price, and (if
+    /// exposed) token id. Polymarket categorical markets have N entries;
+    /// Kalshi binary markets always have 2 ("Yes" / "No").
     #[serde(default)]
-    pub outcomes: Vec<String>,
-    /// Outcome-to-token mapping for orderbook subscriptions
-    #[serde(default)]
-    pub outcome_tokens: Vec<OutcomeToken>,
-    /// Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub outcome_prices: HashMap<String, f64>,
+    pub outcomes: Vec<Outcome>,
 
-    // ── Token / CTF ───────────────────────────────────────────────────────
-    /// Yes outcome token ID
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub token_id_yes: Option<String>,
-    /// No outcome token ID
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub token_id_no: Option<String>,
-    /// Condition ID for CTF
+    // ── CTF ───────────────────────────────────────────────────────────────
+    /// Polymarket CTF condition id
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_id: Option<String>,
-    /// Question ID (Polymarket)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub question_id: Option<String>,
-    /// Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that
-    /// need to build UI deep-links or cross-reference Polymarket's REST-only
-    /// numeric surface. Not used for trading or subscription — `id` (the
-    /// condition_id on Polymarket) is the canonical identifier.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_numeric_id: Option<String>,
 
     // ── Volume ─────────────────────────────────────────────────────────────
     /// Total volume (USD)
@@ -151,20 +138,8 @@ pub struct Market {
     /// 24-hour trading volume (USD)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume_24h: Option<f64>,
-    /// 7-day rolling trading volume (USD)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub volume_1wk: Option<f64>,
-    /// 30-day rolling trading volume (USD)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub volume_1mo: Option<f64>,
 
-    // ── Pricing / Liquidity ────────────────────────────────────────────────
-    /// Current liquidity
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub liquidity: Option<f64>,
-    /// Current open interest
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub open_interest: Option<f64>,
+    // ── Pricing ────────────────────────────────────────────────────────────
     /// Last trade price (normalized 0-1)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_trade_price: Option<f64>,
@@ -174,29 +149,18 @@ pub struct Market {
     /// Best ask price (normalized 0-1)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_ask: Option<f64>,
-    /// Bid-ask spread (decimal)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub spread: Option<f64>,
-
-    // ── Price Changes ──────────────────────────────────────────────────────
-    /// 24-hour YES price change (decimal, e.g. 0.05 = +5%)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub price_change_1d: Option<f64>,
-    /// 1-hour YES price change
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub price_change_1h: Option<f64>,
-    /// 7-day YES price change
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub price_change_1wk: Option<f64>,
-    /// 30-day YES price change
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub price_change_1mo: Option<f64>,
 
     // ── Trading Params ─────────────────────────────────────────────────────
-    /// Tick size (minimum price increment, normalized decimal e.g. 0.01)
+    /// Minimum price increment in dollars. Polymarket:
+    /// `orderPriceMinTickSize` directly. Kalshi: the smallest `step` across
+    /// the tiered `price_ranges` array (the finest precision the market
+    /// accepts anywhere on its price curve — orders in coarser tiers must
+    /// still round to that tier's step).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tick_size: Option<f64>,
-    /// Minimum order size (contracts)
+    /// Minimum order size (contracts).
+    /// Kalshi: synthesized — 1.0, or 0.01 when fractional_trading_enabled.
+    /// Polymarket: read directly from `orderMinSize`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_order_size: Option<f64>,
 
@@ -210,82 +174,51 @@ pub struct Market {
     /// Market creation time
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
-    /// Settlement / resolution time
+    /// Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket:
+    /// `closedTime` (populated only after on-chain settlement).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settlement_time: Option<DateTime<Utc>>,
 
-    // ── Media ──────────────────────────────────────────────────────────────
-    /// Market image URL
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub image_url: Option<String>,
-    /// Market icon URL
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon_url: Option<String>,
-
-    // ── Exchange-Specific ──────────────────────────────────────────────────
+    // ── Polymarket-Specific ────────────────────────────────────────────────
     /// Polymarket: neg-risk flag
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub neg_risk: Option<bool>,
     /// Polymarket: neg-risk market ID
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub neg_risk_market_id: Option<String>,
-    /// Maker fee rate (basis points)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maker_fee_bps: Option<f64>,
-    /// Taker fee rate (basis points)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub taker_fee_bps: Option<f64>,
-    /// Denomination token (e.g. USDC address)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub denomination_token: Option<String>,
-    /// Chain ID for on-chain markets
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub chain_id: Option<String>,
-    /// Notional value per contract (Kalshi)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notional_value: Option<f64>,
-    /// Kalshi sub-penny pricing structure
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub price_level_structure: Option<String>,
-    /// Kalshi: settlement value
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub settlement_value: Option<f64>,
-    /// Kalshi: previous price
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub previous_price: Option<f64>,
-    /// Kalshi: can close early
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub can_close_early: Option<bool>,
-    /// Resolution result
+
+    // ── Resolution ─────────────────────────────────────────────────────────
+    /// Resolution result. Kalshi: enum string from upstream. Polymarket:
+    /// derived winning-outcome label (the `outcomes[i]` whose `outcomePrices[i]`
+    /// is 1.0 after settlement). None for unresolved markets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
 }
 
 impl Market {
-    /// Create openpx_id from exchange and native id
+    /// Create openpx_id from exchange and ticker
     #[inline]
-    pub fn make_openpx_id(exchange: &str, id: &str) -> String {
-        format!("{}:{}", exchange, id)
+    pub fn make_openpx_id(exchange: &str, ticker: &str) -> String {
+        format!("{}:{}", exchange, ticker)
     }
 
-    /// Parse openpx_id into (exchange, native_id)
+    /// Parse openpx_id into (exchange, ticker)
     pub fn parse_openpx_id(openpx_id: &str) -> Option<(&str, &str)> {
-        let (exchange, id) = openpx_id.split_once(':')?;
-        if exchange.is_empty() || id.is_empty() {
+        let (exchange, ticker) = openpx_id.split_once(':')?;
+        if exchange.is_empty() || ticker.is_empty() {
             return None;
         }
-        Some((exchange, id))
+        Some((exchange, ticker))
     }
 
     /// Check if market matches search query (case-insensitive)
     pub fn matches_search(&self, query: &str) -> bool {
         let query_lower = query.to_lowercase();
         self.title.to_lowercase().contains(&query_lower)
-            || self.description.to_lowercase().contains(&query_lower)
             || self
-                .question
+                .rules
                 .as_ref()
-                .is_some_and(|q| q.to_lowercase().contains(&query_lower))
+                .is_some_and(|r| r.to_lowercase().contains(&query_lower))
     }
 
     #[inline]
@@ -304,50 +237,28 @@ impl Market {
         }
     }
 
-    /// Compute bid-ask spread from outcome prices for binary markets.
-    pub fn computed_spread(&self) -> Option<f64> {
-        if let Some(s) = self.spread {
-            return Some(s);
-        }
-        if let (Some(bid), Some(ask)) = (self.best_bid, self.best_ask) {
-            return Some(ask - bid);
-        }
-        if !self.is_binary() || self.outcome_prices.len() != 2 {
-            return None;
-        }
-        Some((1.0 - self.outcome_prices.values().copied().sum::<f64>()).abs())
-    }
-
-    pub fn get_token_ids(&self) -> Vec<String> {
-        if !self.outcome_tokens.is_empty() {
-            return self
-                .outcome_tokens
-                .iter()
-                .map(|t| t.token_id.clone())
-                .collect();
-        }
-        let mut ids = Vec::new();
-        if let Some(ref id) = self.token_id_yes {
-            ids.push(id.clone());
-        }
-        if let Some(ref id) = self.token_id_no {
-            ids.push(id.clone());
-        }
-        ids
-    }
-
-    pub fn get_outcome_tokens(&self) -> Vec<OutcomeToken> {
-        if !self.outcome_tokens.is_empty() {
-            return self.outcome_tokens.clone();
-        }
-        let token_ids = self.get_token_ids();
+    /// Find an outcome by label (case-insensitive).
+    pub fn outcome(&self, label: &str) -> Option<&Outcome> {
         self.outcomes
             .iter()
-            .enumerate()
-            .map(|(i, outcome)| OutcomeToken {
-                outcome: outcome.clone(),
-                token_id: token_ids.get(i).cloned().unwrap_or_default(),
-            })
+            .find(|o| o.label.eq_ignore_ascii_case(label))
+    }
+
+    /// Yes-side token id, when exposed (Polymarket binary markets).
+    pub fn token_id_yes(&self) -> Option<&str> {
+        self.outcome("Yes").and_then(|o| o.token_id.as_deref())
+    }
+
+    /// No-side token id, when exposed (Polymarket binary markets).
+    pub fn token_id_no(&self) -> Option<&str> {
+        self.outcome("No").and_then(|o| o.token_id.as_deref())
+    }
+
+    /// All exposed token ids in outcome order (skips outcomes with no token id).
+    pub fn token_ids(&self) -> Vec<String> {
+        self.outcomes
+            .iter()
+            .filter_map(|o| o.token_id.clone())
             .collect()
     }
 }
@@ -357,58 +268,28 @@ impl Default for Market {
         Self {
             openpx_id: String::new(),
             exchange: String::new(),
-            id: String::new(),
-            group_id: None,
-            event_id: None,
+            ticker: String::new(),
+            event_ticker: None,
+            numeric_id: None,
             title: String::new(),
-            question: None,
-            description: String::new(),
-            slug: None,
             rules: None,
             status: MarketStatus::Active,
             market_type: MarketType::Binary,
-            accepting_orders: true,
             outcomes: vec![],
-            outcome_tokens: vec![],
-            outcome_prices: HashMap::new(),
-            token_id_yes: None,
-            token_id_no: None,
             condition_id: None,
-            question_id: None,
-            native_numeric_id: None,
             volume: 0.0,
             volume_24h: None,
-            volume_1wk: None,
-            volume_1mo: None,
-            liquidity: None,
-            open_interest: None,
             last_trade_price: None,
             best_bid: None,
             best_ask: None,
-            spread: None,
-            price_change_1d: None,
-            price_change_1h: None,
-            price_change_1wk: None,
-            price_change_1mo: None,
             tick_size: None,
             min_order_size: None,
             close_time: None,
             open_time: None,
             created_at: None,
             settlement_time: None,
-            image_url: None,
-            icon_url: None,
             neg_risk: None,
             neg_risk_market_id: None,
-            maker_fee_bps: None,
-            taker_fee_bps: None,
-            denomination_token: None,
-            chain_id: None,
-            notional_value: None,
-            price_level_structure: None,
-            settlement_value: None,
-            previous_price: None,
-            can_close_early: None,
             result: None,
         }
     }
@@ -417,6 +298,14 @@ impl Default for Market {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn outcome(label: &str, price: Option<f64>, token: Option<&str>) -> Outcome {
+        Outcome {
+            label: label.into(),
+            price,
+            token_id: token.map(String::from),
+        }
+    }
 
     #[test]
     fn parse_openpx_id_valid() {
@@ -437,86 +326,82 @@ mod tests {
         let market = Market {
             openpx_id: "test:1".into(),
             exchange: "test".into(),
-            id: "1".into(),
+            ticker: "1".into(),
             title: "Test".into(),
             ..Default::default()
         };
         let json = serde_json::to_value(&market).unwrap();
-        assert!(json.get("volume_1wk").is_none());
         assert!(json.get("volume_24h").is_none());
-        assert!(json.get("volume_1mo").is_none());
         assert!(json.get("min_order_size").is_none());
+        assert!(json.get("event_ticker").is_none());
+        assert!(json.get("tick_size").is_none());
     }
-
-    // TODO(fee-rate): Add fee_rate (basis points) to market data responses. Pro traders need
-    // fee rates for accurate PnL calculations and cost-optimal routing between exchanges.
-    // Per-token `get_fee_rate_bps(token_id)` returning the maker fee rate.
-    // Implementation: add fee_rate_bps field alongside tick_size in the market data pipeline.
-    // Note: fee rates may vary per user tier on some exchanges, so document as "base fee rate."
 
     #[test]
     fn optional_fields_present_when_some() {
         let market = Market {
             openpx_id: "test:1".into(),
             exchange: "test".into(),
-            id: "1".into(),
+            ticker: "1".into(),
             title: "Test".into(),
             volume_24h: Some(1000.0),
-            volume_1wk: Some(7000.0),
-            volume_1mo: Some(30000.0),
             min_order_size: Some(15.0),
+            tick_size: Some(0.01),
+            event_ticker: Some("EV-1".into()),
             ..Default::default()
         };
         let json = serde_json::to_value(&market).unwrap();
         assert_eq!(json["volume_24h"], 1000.0);
-        assert_eq!(json["volume_1wk"], 7000.0);
-        assert_eq!(json["volume_1mo"], 30000.0);
         assert_eq!(json["min_order_size"], 15.0);
+        assert_eq!(json["tick_size"], 0.01);
+        assert_eq!(json["event_ticker"], "EV-1");
     }
 
     #[test]
-    fn matches_search_title() {
+    fn matches_search_title_and_rules() {
         let market = Market {
             title: "Will Bitcoin reach $100k?".into(),
+            rules: Some("Resolves yes if BTC closes above 100000 USD on Coinbase".into()),
             ..Default::default()
         };
         assert!(market.matches_search("bitcoin"));
         assert!(market.matches_search("100k"));
+        assert!(market.matches_search("coinbase"));
         assert!(!market.matches_search("ethereum"));
     }
 
     #[test]
-    fn get_token_ids_from_outcome_tokens() {
+    fn token_id_yes_no_lookup() {
         let market = Market {
-            outcome_tokens: vec![
-                OutcomeToken {
-                    outcome: "Yes".into(),
-                    token_id: "tok1".into(),
-                },
-                OutcomeToken {
-                    outcome: "No".into(),
-                    token_id: "tok2".into(),
-                },
+            outcomes: vec![
+                outcome("Yes", Some(0.65), Some("yes_tok")),
+                outcome("No", Some(0.35), Some("no_tok")),
             ],
             ..Default::default()
         };
-        assert_eq!(market.get_token_ids(), vec!["tok1", "tok2"]);
+        assert_eq!(market.token_id_yes(), Some("yes_tok"));
+        assert_eq!(market.token_id_no(), Some("no_tok"));
+        assert_eq!(market.token_ids(), vec!["yes_tok", "no_tok"]);
     }
 
     #[test]
-    fn get_token_ids_from_yes_no_fields() {
+    fn token_id_yes_no_absent_for_kalshi() {
         let market = Market {
-            token_id_yes: Some("yes_tok".into()),
-            token_id_no: Some("no_tok".into()),
+            outcomes: vec![
+                outcome("Yes", Some(0.65), None),
+                outcome("No", Some(0.35), None),
+            ],
             ..Default::default()
         };
-        assert_eq!(market.get_token_ids(), vec!["yes_tok", "no_tok"]);
+        assert_eq!(market.token_id_yes(), None);
+        assert_eq!(market.token_id_no(), None);
+        assert!(market.token_ids().is_empty());
     }
 
     #[test]
     fn is_binary_and_is_open() {
         let market = Market {
-            outcomes: vec!["Yes".into(), "No".into()],
+            outcomes: vec![outcome("Yes", None, None), outcome("No", None, None)],
             status: MarketStatus::Active,
             ..Default::default()
         };
@@ -524,7 +409,7 @@ mod tests {
         assert!(market.is_open());
 
         let closed = Market {
-            outcomes: vec!["Yes".into(), "No".into()],
+            outcomes: vec![outcome("Yes", None, None), outcome("No", None, None)],
             status: MarketStatus::Closed,
             ..Default::default()
         };
@@ -536,7 +421,7 @@ mod tests {
         let market = Market {
             openpx_id: "test:1".into(),
             exchange: "test".into(),
-            id: "1".into(),
+            ticker: "1".into(),
             title: "Test".into(),
             market_type: MarketType::Categorical,
             ..Default::default()

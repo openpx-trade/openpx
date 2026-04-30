@@ -375,7 +375,7 @@ export interface FetchMarketsParams {
   /**
    * Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
    */
-  event_id?: string | null;
+  event_ticker?: string | null;
   /**
    * Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.
    */
@@ -455,10 +455,6 @@ export interface LastTrade {
  */
 export interface Market {
   /**
-   * Whether the market is currently accepting orders
-   */
-  accepting_orders?: boolean;
-  /**
    * Best ask price (normalized 0-1)
    */
   best_ask?: number | null;
@@ -467,19 +463,11 @@ export interface Market {
    */
   best_bid?: number | null;
   /**
-   * Kalshi: can close early
-   */
-  can_close_early?: boolean | null;
-  /**
-   * Chain ID for on-chain markets
-   */
-  chain_id?: string | null;
-  /**
    * Market close time
    */
   close_time?: string | null;
   /**
-   * Condition ID for CTF
+   * Polymarket CTF condition id
    */
   condition_id?: string | null;
   /**
@@ -487,61 +475,25 @@ export interface Market {
    */
   created_at?: string | null;
   /**
-   * Denomination token (e.g. USDC address)
+   * Native event identifier this market belongs to. Kalshi: upstream `event_ticker`. Polymarket: the parent event's `slug`.
    */
-  denomination_token?: string | null;
-  /**
-   * Full description
-   */
-  description: string;
-  /**
-   * Canonical OpenPX event ID for cross-exchange event grouping.
-   */
-  event_id?: string | null;
+  event_ticker?: string | null;
   /**
    * Exchange identifier (kalshi, polymarket)
    */
   exchange: string;
   /**
-   * Source-native event/group ID from the exchange.
-   */
-  group_id?: string | null;
-  /**
-   * Market icon URL
-   */
-  icon_url?: string | null;
-  /**
-   * Native exchange market ID
-   */
-  id: string;
-  /**
-   * Market image URL
-   */
-  image_url?: string | null;
-  /**
    * Last trade price (normalized 0-1)
    */
   last_trade_price?: number | null;
-  /**
-   * Current liquidity
-   */
-  liquidity?: number | null;
-  /**
-   * Maker fee rate (basis points)
-   */
-  maker_fee_bps?: number | null;
   /**
    * Market type classification
    */
   market_type: MarketType;
   /**
-   * Minimum order size (contracts)
+   * Minimum order size (contracts). Kalshi: synthesized — 1.0, or 0.01 when fractional_trading_enabled. Polymarket: read directly from `orderMinSize`.
    */
   min_order_size?: number | null;
-  /**
-   * Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription — `id` (the condition_id on Polymarket) is the canonical identifier.
-   */
-  native_numeric_id?: string | null;
   /**
    * Polymarket: neg-risk flag
    */
@@ -551,127 +503,53 @@ export interface Market {
    */
   neg_risk_market_id?: string | null;
   /**
-   * Notional value per contract (Kalshi)
+   * Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription.
    */
-  notional_value?: number | null;
-  /**
-   * Current open interest
-   */
-  open_interest?: number | null;
+  numeric_id?: string | null;
   /**
    * Market open time
    */
   open_time?: string | null;
   /**
-   * Primary key: {exchange}:{native_id}
+   * Primary key: {exchange}:{ticker}
    */
   openpx_id: string;
   /**
-   * Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})
+   * Ordered list of outcomes. Each entry carries label, price, and (if exposed) token id. Polymarket categorical markets have N entries; Kalshi binary markets always have 2 ("Yes" / "No").
    */
-  outcome_prices?: {
-    [k: string]: number;
-  };
+  outcomes?: Outcome[];
   /**
-   * Outcome-to-token mapping for orderbook subscriptions
-   */
-  outcome_tokens?: OutcomeToken[];
-  /**
-   * Outcome labels (e.g., ["Yes", "No"] for binary markets)
-   */
-  outcomes?: string[];
-  /**
-   * Kalshi: previous price
-   */
-  previous_price?: number | null;
-  /**
-   * 24-hour YES price change (decimal, e.g. 0.05 = +5%)
-   */
-  price_change_1d?: number | null;
-  /**
-   * 1-hour YES price change
-   */
-  price_change_1h?: number | null;
-  /**
-   * 30-day YES price change
-   */
-  price_change_1mo?: number | null;
-  /**
-   * 7-day YES price change
-   */
-  price_change_1wk?: number | null;
-  /**
-   * Kalshi sub-penny pricing structure
-   */
-  price_level_structure?: string | null;
-  /**
-   * Market question (may differ from title)
-   */
-  question?: string | null;
-  /**
-   * Question ID (Polymarket)
-   */
-  question_id?: string | null;
-  /**
-   * Resolution result
+   * Resolution result. Kalshi: enum string from upstream. Polymarket: derived winning-outcome label (the `outcomes[i]` whose `outcomePrices[i]` is 1.0 after settlement). None for unresolved markets.
    */
   result?: string | null;
   /**
-   * Resolution rules
+   * Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`. Polymarket: `description`.
    */
   rules?: string | null;
   /**
-   * Settlement / resolution time
+   * Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket: `closedTime` (populated only after on-chain settlement).
    */
   settlement_time?: string | null;
-  /**
-   * Kalshi: settlement value
-   */
-  settlement_value?: number | null;
-  /**
-   * URL-friendly identifier
-   */
-  slug?: string | null;
-  /**
-   * Bid-ask spread (decimal)
-   */
-  spread?: number | null;
   /**
    * Normalized status: Active, Closed, Resolved
    */
   status: MarketStatus;
   /**
-   * Taker fee rate (basis points)
-   */
-  taker_fee_bps?: number | null;
-  /**
-   * Tick size (minimum price increment, normalized decimal e.g. 0.01)
+   * Minimum price increment in dollars. Polymarket: `orderPriceMinTickSize` directly. Kalshi: the smallest `step` across the tiered `price_ranges` array (the finest precision the market accepts anywhere on its price curve — orders in coarser tiers must still round to that tier's step).
    */
   tick_size?: number | null;
+  /**
+   * Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`.
+   */
+  ticker: string;
   /**
    * Market title
    */
   title: string;
   /**
-   * No outcome token ID
-   */
-  token_id_no?: string | null;
-  /**
-   * Yes outcome token ID
-   */
-  token_id_yes?: string | null;
-  /**
    * Total volume (USD)
    */
   volume: number;
-  /**
-   * 30-day rolling trading volume (USD)
-   */
-  volume_1mo?: number | null;
-  /**
-   * 7-day rolling trading volume (USD)
-   */
-  volume_1wk?: number | null;
   /**
    * 24-hour trading volume (USD)
    */
@@ -679,12 +557,24 @@ export interface Market {
   [k: string]: unknown;
 }
 /**
+ * One outcome of a prediction market — label, current price, and (where the exchange exposes one) the on-chain token id needed to subscribe to its orderbook stream. Replaces the previous trio of `outcome_prices` map + `outcome_tokens` vec + binary-only `token_id_yes`/`token_id_no` with a single ordered list keyed by index.
+ *
  * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OutcomeToken".
+ * via the `definition` "Outcome".
  */
-export interface OutcomeToken {
-  outcome: string;
-  token_id: string;
+export interface Outcome {
+  /**
+   * Outcome label (e.g. "Yes", "No", or a categorical option name).
+   */
+  label: string;
+  /**
+   * Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi markets pre-fill, or Polymarket categorical markets without a price).
+   */
+  price?: number | null;
+  /**
+   * CTF token id (Polymarket only). Used to subscribe to per-outcome orderbook streams. None on Kalshi.
+   */
+  token_id?: string | null;
   [k: string]: unknown;
 }
 /**
