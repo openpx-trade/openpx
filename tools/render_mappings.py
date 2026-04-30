@@ -11,34 +11,16 @@ from the mapping YAML, source types from the cached upstream specs.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+from mapping_lib import load_schema_definitions, load_yaml, resolve_ref
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
 MAPPINGS_DIR = ROOT / "schema" / "mappings"
 OUTPUT_DIR = ROOT / "docs" / "api" / "mappings"
-
-
-def load_yaml(p: Path) -> Any:
-    return yaml.safe_load(p.read_text())
-
-
-def resolve_ref(spec: dict[str, Any], ref: str) -> dict[str, Any] | None:
-    if not ref.startswith("#/"):
-        return None
-    cur: Any = spec
-    for part in ref[2:].split("/"):
-        part = part.replace("~1", "/").replace("~0", "~")
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        else:
-            return None
-    return cur if isinstance(cur, dict) else None
 
 
 def short_ref(ref: str) -> str:
@@ -258,8 +240,7 @@ def render_table(mapping: dict[str, Any], unified: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    schema = json.loads(SCHEMA.read_text())
-    defs = schema.get("definitions") or schema.get("$defs") or {}
+    defs = load_schema_definitions(SCHEMA)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     files = sorted(MAPPINGS_DIR.glob("*.yaml"))

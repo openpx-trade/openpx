@@ -32,7 +32,7 @@ pkcs8 = { version = "0.10", features = ["pem"] }
 pkcs1 = { version = "0.7", features = ["pem"] }
 
 [dev-dependencies]
+px-core = { workspace = true, features = ["http", "simd-json", "test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 rand = "0.8"
 wiremock = "0.6"
-serde_yaml = "0.9"

@@ -34,6 +34,6 @@ hmac = "0.12"
 sha2 = "0.10"
 
 [dev-dependencies]
+px-core = { workspace = true, features = ["http", "simd-json", "test-support"] }
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
-serde_yaml = "0.9"
