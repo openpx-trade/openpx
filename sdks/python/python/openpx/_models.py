@@ -55,6 +55,11 @@ class Candlestick(BaseModel):
     )
 
 
+class CryptoPriceSource(Enum):
+    binance = "binance"
+    chainlink = "chainlink"
+
+
 class Event(BaseModel):
     category: str | None = None
     description: str | None = None
@@ -358,6 +363,22 @@ class SettlementSource(BaseModel):
     url: str | None = None
 
 
+class SportResult(BaseModel):
+    away_team: str
+    elapsed: str | None = None
+    ended: bool
+    finished_timestamp: AwareDatetime | None = None
+    game_id: conint(ge=0)
+    home_team: str
+    league_abbreviation: str
+    live: bool
+    period: str | None = None
+    score: str | None = None
+    slug: str
+    status: str
+    turn: str | None = None
+
+
 class Spread(BaseModel):
     ask: float
     bid: float
@@ -478,6 +499,13 @@ class ActivityFill(BaseModel):
     tx_hash: str | None = Field(
         None, description="On-chain transaction hash, when the exchange publishes one."
     )
+
+
+class CryptoPrice(BaseModel):
+    source: CryptoPriceSource
+    symbol: str
+    timestamp: conint(ge=0)
+    value: float
 
 
 class FetchMarketsParams(BaseModel):

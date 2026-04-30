@@ -11,6 +11,11 @@
  */
 export type LiquidityRole = "maker" | "taker";
 /**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "CryptoPriceSource".
+ */
+export type CryptoPriceSource = "binance" | "chainlink";
+/**
  * Filter for market status in fetch queries.
  *
  * Unlike `MarketStatus` (which represents a market's actual status), this enum includes an `All` variant for fetching markets regardless of status.
@@ -253,6 +258,17 @@ export interface Candlestick {
    * Trade volume in contracts. 0.0 if exchange doesn't provide volume.
    */
   volume: number;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "CryptoPrice".
+ */
+export interface CryptoPrice {
+  source: CryptoPriceSource;
+  symbol: string;
+  timestamp: number;
+  value: number;
   [k: string]: unknown;
 }
 /**
@@ -912,6 +928,28 @@ export interface SeriesRequest {
    */
   include_volume?: boolean | null;
   limit?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * Real-time sports score/state from the Polymarket Sports WebSocket. Serializes as snake_case for end-users; aliases accept the upstream camelCase.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "SportResult".
+ */
+export interface SportResult {
+  away_team: string;
+  elapsed?: string | null;
+  ended: boolean;
+  finished_timestamp?: string | null;
+  game_id: number;
+  home_team: string;
+  league_abbreviation: string;
+  live: boolean;
+  period?: string | null;
+  score?: string | null;
+  slug: string;
+  status: string;
+  turn?: string | null;
   [k: string]: unknown;
 }
 /**
