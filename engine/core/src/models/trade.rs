@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::models::OrderSide;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicTrade {
     pub proxy_wallet: String,
@@ -65,16 +63,4 @@ pub struct MarketTrade {
     pub no_price: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub taker_address: Option<String>,
-}
-
-/// Last public trade price + side + size for a market outcome. Distinct from
-/// the full `MarketTrade` tape: this is just "what just printed?" — common UI
-/// need that doesn't require the full trade history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct LastTrade {
-    pub price: f64,
-    pub side: OrderSide,
-    pub size: f64,
-    pub ts_ms: i64,
 }

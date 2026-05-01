@@ -7,10 +7,10 @@ use tokio::sync::Mutex;
 
 use px_core::{
     manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Event, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, MidpointRequest,
-    NewOrder, OpenPxError, Order, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook,
-    Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource, Spread, TradesRequest,
+    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market, MarketLineage,
+    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder, OpenPxError, Order,
+    OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position,
+    PriceLevel, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -185,22 +185,6 @@ fn parse_kalshi_series(value: &serde_json::Value) -> Option<Series> {
         volume,
         last_updated_ts,
     })
-}
-
-/// Compute the midpoint for one market object. Returns `None` if either
-/// best-bid or best-ask is missing or zero.
-fn kalshi_midpoint_from_market(
-    market: &serde_json::Map<String, serde_json::Value>,
-    wants_no: bool,
-) -> Option<f64> {
-    let (bid_key, ask_key) = if wants_no {
-        ("no_bid_dollars", "no_ask_dollars")
-    } else {
-        ("yes_bid_dollars", "yes_ask_dollars")
-    };
-    let bid = parse_dollars(market, bid_key)?;
-    let ask = parse_dollars(market, ask_key)?;
-    Some((bid + ask) / 2.0)
 }
 
 pub struct Kalshi {
@@ -856,23 +840,6 @@ impl Kalshi {
             is_taker,
             fee,
             created_at,
-        })
-    }
-
-    /// Fetch a single market and return its raw JSON object. Shared helper for
-    /// the Batch 3 derived-pricing methods (midpoint, spread, last-trade, OI).
-    async fn fetch_kalshi_market_raw(
-        &self,
-        ticker: &str,
-    ) -> Result<serde_json::Map<String, serde_json::Value>, OpenPxError> {
-        #[derive(serde::Deserialize)]
-        struct Resp {
-            market: serde_json::Value,
-        }
-        let path = format!("/markets/{ticker}");
-        let resp: Resp = self.get(&path).await.map_err(to_openpx)?;
-        resp.market.as_object().cloned().ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(ticker.to_string()))
         })
     }
 
@@ -1616,167 +1583,6 @@ impl Exchange for Kalshi {
         Ok(books)
     }
 
-    async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
-        let wants_no = req
-            .outcome
-            .as_deref()
-            .is_some_and(|o| o.eq_ignore_ascii_case("no"));
-        kalshi_midpoint_from_market(&market, wants_no).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(
-                "midpoint unavailable: market missing yes/no bid+ask".into(),
-            ))
-        })
-    }
-
-    async fn fetch_midpoints_batch(
-        &self,
-        market_tickers: Vec<String>,
-    ) -> Result<HashMap<String, f64>, OpenPxError> {
-        if market_tickers.is_empty() {
-            return Ok(HashMap::new());
-        }
-        if market_tickers.len() > 1000 {
-            return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "fetch_midpoints_batch: Kalshi limit is 1000 market_tickers per page".into(),
-            )));
-        }
-
-        #[derive(serde::Deserialize)]
-        struct MarketsResp {
-            #[serde(default)]
-            markets: Vec<serde_json::Value>,
-        }
-        let count = market_tickers.len();
-        let joined = market_tickers.join(",");
-        let path = format!("/markets?tickers={joined}&limit={count}");
-        let resp: MarketsResp = self.get(&path).await.map_err(to_openpx)?;
-
-        let mut out = HashMap::with_capacity(resp.markets.len());
-        for m in resp.markets {
-            if let Some(obj) = m.as_object() {
-                if let (Some(ticker), Some(mid)) = (
-                    obj.get("ticker").and_then(|v| v.as_str()),
-                    kalshi_midpoint_from_market(obj, false),
-                ) {
-                    out.insert(ticker.to_string(), mid);
-                }
-            }
-        }
-        Ok(out)
-    }
-
-    async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
-        let wants_no = req
-            .outcome
-            .as_deref()
-            .is_some_and(|o| o.eq_ignore_ascii_case("no"));
-        let (bid_key, ask_key) = if wants_no {
-            ("no_bid_dollars", "no_ask_dollars")
-        } else {
-            ("yes_bid_dollars", "yes_ask_dollars")
-        };
-        let bid = parse_dollars(&market, bid_key);
-        let ask = parse_dollars(&market, ask_key);
-        match (bid, ask) {
-            (Some(bid), Some(ask)) => Ok(Spread {
-                bid,
-                ask,
-                spread: ask - bid,
-                ts_ms: None,
-            }),
-            _ => Err(OpenPxError::Exchange(px_core::ExchangeError::Api(
-                "spread unavailable: market missing bid+ask".into(),
-            ))),
-        }
-    }
-
-    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
-        let wants_no = req
-            .outcome
-            .as_deref()
-            .is_some_and(|o| o.eq_ignore_ascii_case("no"));
-        let key = if wants_no {
-            "no_last_price_dollars"
-        } else {
-            "last_price_dollars"
-        };
-        // `last_price_dollars` is YES; for NO we fall back to 1 - YES if the explicit
-        // field is absent (Kalshi only guarantees the YES variant).
-        let price = parse_dollars(&market, key)
-            .or_else(|| {
-                if wants_no {
-                    parse_dollars(&market, "last_price_dollars").map(|p| 1.0 - p)
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::Api(
-                    "last trade price unavailable".into(),
-                ))
-            })?;
-
-        // Kalshi doesn't carry side/size on the market summary; pull the head
-        // of /markets/trades for those.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
-        let trade_path = format!("/markets/trades?ticker={ticker}&limit=1");
-        let (side, size, ts_ms) = match self.get::<serde_json::Value>(&trade_path).await {
-            Ok(v) => v
-                .get("trades")
-                .and_then(|t| t.as_array())
-                .and_then(|arr| arr.first())
-                .map(|t| {
-                    let taker = t
-                        .get("taker_side")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("yes");
-                    let side = match (taker, wants_no) {
-                        ("yes", false) | ("no", true) => OrderSide::Buy,
-                        _ => OrderSide::Sell,
-                    };
-                    let size = t
-                        .get("count_fp")
-                        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()))
-                        .or_else(|| t.get("count").and_then(|v| v.as_f64()))
-                        .unwrap_or(0.0);
-                    let ts_ms = t
-                        .get("created_time")
-                        .and_then(|v| v.as_str())
-                        .and_then(parse_iso_datetime)
-                        .map(|dt| dt.timestamp_millis())
-                        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-                    (side, size, ts_ms)
-                })
-                .unwrap_or((OrderSide::Buy, 0.0, chrono::Utc::now().timestamp_millis())),
-            Err(_) => (OrderSide::Buy, 0.0, chrono::Utc::now().timestamp_millis()),
-        };
-
-        Ok(LastTrade {
-            price,
-            side,
-            size,
-            ts_ms,
-        })
-    }
-
-    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(market_ticker).await?;
-        parse_fp(&market, "open_interest_fp")
-            .or_else(|| {
-                market
-                    .get("open_interest")
-                    .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)))
-            })
-            .ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::Api(
-                    "open_interest_fp missing on market".into(),
-                ))
-            })
-    }
-
     async fn cancel_all_orders(
         &self,
         market_ticker: Option<&str>,
@@ -2257,11 +2063,6 @@ impl Exchange for Kalshi {
             has_websocket: self.auth.is_some() && !self.config.demo,
             has_fetch_market_lineage: true,
             has_fetch_orderbooks_batch: true,
-            has_fetch_midpoint: true,
-            has_fetch_midpoints_batch: true,
-            has_fetch_spread: true,
-            has_fetch_last_trade_price: true,
-            has_fetch_open_interest: true,
             has_cancel_all_orders: self.config.is_authenticated(),
             has_create_orders_batch: self.config.is_authenticated(),
         }
@@ -2346,35 +2147,6 @@ mod parse_event_series_tests {
         let v = serde_json::json!({ "ticker": "KX", "title": "x" });
         let s = parse_kalshi_series(&v).expect("parse");
         assert!(s.volume.is_none());
-    }
-}
-
-#[cfg(test)]
-mod batch3_parser_tests {
-    use super::kalshi_midpoint_from_market;
-
-    #[test]
-    fn midpoint_yes_side() {
-        let mut m = serde_json::Map::new();
-        m.insert("yes_bid_dollars".into(), serde_json::json!("0.42"));
-        m.insert("yes_ask_dollars".into(), serde_json::json!("0.46"));
-        let mid = kalshi_midpoint_from_market(&m, false).expect("yes mid");
-        assert!((mid - 0.44).abs() < 1e-9);
-    }
-
-    #[test]
-    fn midpoint_no_side() {
-        let mut m = serde_json::Map::new();
-        m.insert("no_bid_dollars".into(), serde_json::json!("0.50"));
-        m.insert("no_ask_dollars".into(), serde_json::json!("0.55"));
-        let mid = kalshi_midpoint_from_market(&m, true).expect("no mid");
-        assert!((mid - 0.525).abs() < 1e-9);
-    }
-
-    #[test]
-    fn midpoint_returns_none_when_missing() {
-        let m = serde_json::Map::new();
-        assert!(kalshi_midpoint_from_market(&m, false).is_none());
     }
 }
 

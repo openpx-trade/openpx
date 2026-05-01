@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Fill, LastTrade, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
-    Position, Spread,
+    Fill, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
+    OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams};
@@ -133,47 +133,39 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the midpoint price for a single market outcome.
-    async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_midpoint".into()),
-        ))
+    /// Snapshot stats: top-of-book bid/ask, mid, spread (bps), size-weighted
+    /// mid, top-10 imbalance, and total bid/ask depth — pure functions of the
+    /// full-depth orderbook. `exchange_ts` carries the upstream snapshot time;
+    /// `openpx_ts` is set to wall-clock when OpenPX served the response.
+    async fn fetch_orderbook_stats(&self, asset_id: &str) -> Result<OrderbookStats, OpenPxError> {
+        let book = self.fetch_orderbook(asset_id).await?;
+        Ok(crate::models::orderbook_stats(&book))
     }
 
-    /// Fetch midpoint prices for multiple market outcomes in one round-trip.
-    async fn fetch_midpoints_batch(
+    /// Slippage curve at a single requested size. Walks the book consuming
+    /// levels until `size` is filled or the side exhausts; returns partial
+    /// fills with `fill_pct < 100.0`. `size` must be > 0.
+    async fn fetch_orderbook_impact(
         &self,
-        market_tickers: Vec<String>,
-    ) -> Result<HashMap<String, f64>, OpenPxError> {
-        let _ = market_tickers;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_midpoints_batch".into()),
-        ))
+        asset_id: &str,
+        size: f64,
+    ) -> Result<OrderbookImpact, OpenPxError> {
+        if size <= 0.0 {
+            return Err(OpenPxError::InvalidInput("size must be > 0".into()));
+        }
+        let book = self.fetch_orderbook(asset_id).await?;
+        Ok(crate::models::orderbook_impact(&book, size))
     }
 
-    /// Fetch the top-of-book spread (best bid, best ask, ask − bid) for a market outcome.
-    async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_spread".into()),
-        ))
-    }
-
-    /// Fetch the most recent public trade for a market outcome.
-    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_last_trade_price".into()),
-        ))
-    }
-
-    /// Fetch the open interest (total outstanding contracts) for a market.
-    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
-        let _ = market_ticker;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_open_interest".into()),
-        ))
+    /// Microstructure signals: cumulative depth within 10/50/100 bps tiers,
+    /// linear-regression slope of cumulative size vs distance-from-mid (bps),
+    /// largest consecutive-level price gap, and per-side level counts.
+    async fn fetch_orderbook_microstructure(
+        &self,
+        asset_id: &str,
+    ) -> Result<OrderbookMicrostructure, OpenPxError> {
+        let book = self.fetch_orderbook(asset_id).await?;
+        Ok(crate::models::orderbook_microstructure(&book))
     }
 
     /// Cancel all of the caller's open orders, optionally scoped to a market.
@@ -213,11 +205,6 @@ pub trait Exchange: Send + Sync {
             has_websocket: false,
             has_fetch_market_lineage: false,
             has_fetch_orderbooks_batch: false,
-            has_fetch_midpoint: false,
-            has_fetch_midpoints_batch: false,
-            has_fetch_spread: false,
-            has_fetch_last_trade_price: false,
-            has_fetch_open_interest: false,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
         }
@@ -246,11 +233,6 @@ pub struct ExchangeInfo {
     pub has_websocket: bool,
     pub has_fetch_market_lineage: bool,
     pub has_fetch_orderbooks_batch: bool,
-    pub has_fetch_midpoint: bool,
-    pub has_fetch_midpoints_batch: bool,
-    pub has_fetch_spread: bool,
-    pub has_fetch_last_trade_price: bool,
-    pub has_fetch_open_interest: bool,
     pub has_cancel_all_orders: bool,
     pub has_create_orders_batch: bool,
 }
@@ -274,17 +256,6 @@ pub struct TradesRequest {
     pub limit: Option<usize>,
     /// Opaque pagination cursor from a previous response.
     pub cursor: Option<String>,
-}
-
-/// Request for midpoint / spread / last-trade-price methods. The same shape
-/// is reused for all three since they target the same outcome and accept the
-/// same identifier inputs.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct MidpointRequest {
-    pub market_ticker: String,
-    pub outcome: Option<String>,
-    pub token_id: Option<String>,
 }
 
 /// One order in a `create_orders_batch` call. Each venue caps the batch size

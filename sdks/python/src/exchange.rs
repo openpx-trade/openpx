@@ -205,6 +205,49 @@ impl NativeExchange {
         pythonize(py, &book).map_err(|e| to_py_err(e.to_string()))
     }
 
+    #[pyo3(signature = (asset_id))]
+    fn fetch_orderbook_stats<'py>(
+        &self,
+        py: Python<'py>,
+        asset_id: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let asset_id = asset_id.to_string();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbook_stats(&asset_id)));
+        let stats = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &stats).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    #[pyo3(signature = (asset_id, size))]
+    fn fetch_orderbook_impact<'py>(
+        &self,
+        py: Python<'py>,
+        asset_id: &str,
+        size: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let asset_id = asset_id.to_string();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbook_impact(&asset_id, size)));
+        let impact = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &impact).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    #[pyo3(signature = (asset_id))]
+    fn fetch_orderbook_microstructure<'py>(
+        &self,
+        py: Python<'py>,
+        asset_id: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let asset_id = asset_id.to_string();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbook_microstructure(&asset_id)));
+        let micro = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &micro).map_err(|e| to_py_err(e.to_string()))
+    }
+
     #[pyo3(signature = (market_ticker=None, limit=None))]
     fn fetch_fills<'py>(
         &self,

@@ -10,7 +10,7 @@
 # (`parse_kalshi_event`, `parse_polymarket_event`) are the implementation. This
 # file is the *contract* the implementation conforms to. tools/validate_mappings.py
 # asserts every $ref resolves; tools/render_mappings.py renders this into
-# docs/api/mappings/event.mdx automatically.
+# docs/schemas/mappings/event.mdx automatically.
 unified_type: Event
 unified_schema: schema/openpx.schema.json#/definitions/Event
 

@@ -22,95 +22,60 @@
         "tab": "API",
         "groups": [
           {
-            "group": "Schema Mappings",
+            "group": "Markets",
             "pages": [
-              "api/mappings/market",
-              "api/mappings/event",
-              "api/mappings/series"
+              "api/markets/fetch-markets",
+              "api/markets/fetch-market-lineage"
             ]
           },
           {
-            "group": "Reference Data",
+            "group": "Orderbook",
             "pages": [
-              {
-                "group": "Markets",
-                "pages": [
-                  "api/markets/fetch-markets",
-                  "api/markets/fetch-market-lineage"
-                ]
-              }
+              "api/orderbook/fetch-orderbook",
+              "api/orderbook/fetch-orderbooks-batch",
+              "api/orderbook/fetch-orderbook-stats",
+              "api/orderbook/fetch-orderbook-impact",
+              "api/orderbook/fetch-orderbook-microstructure"
             ]
           },
           {
-            "group": "Market Data",
+            "group": "Trades",
             "pages": [
-              {
-                "group": "Orderbook",
-                "pages": [
-                  "api/orderbook/fetch-orderbook",
-                  "api/orderbook/fetch-orderbooks-batch"
-                ]
-              },
-              {
-                "group": "Pricing",
-                "pages": [
-                  "api/pricing/fetch-midpoint",
-                  "api/pricing/fetch-midpoints-batch",
-                  "api/pricing/fetch-spread",
-                  "api/pricing/fetch-last-trade-price",
-                  "api/pricing/fetch-open-interest"
-                ]
-              },
-              {
-                "group": "Trades",
-                "pages": [
-                  "api/trades/fetch-trades"
-                ]
-              }
+              "api/trades/fetch-trades"
             ]
           },
           {
-            "group": "Trading",
+            "group": "Orders",
             "pages": [
-              {
-                "group": "Orders",
-                "pages": [
-                  "api/orders/create-order",
-                  "api/orders/create-orders-batch",
-                  "api/orders/cancel-order",
-                  "api/orders/cancel-all-orders",
-                  "api/orders/fetch-order",
-                  "api/orders/fetch-open-orders"
-                ]
-              }
+              "api/orders/create-order",
+              "api/orders/create-orders-batch",
+              "api/orders/cancel-order",
+              "api/orders/cancel-all-orders",
+              "api/orders/fetch-order",
+              "api/orders/fetch-open-orders"
             ]
           },
           {
-            "group": "Account",
+            "group": "Positions",
             "pages": [
-              {
-                "group": "Positions",
-                "pages": [
-                  "api/positions/fetch-positions"
-                ]
-              },
-              {
-                "group": "Balance",
-                "pages": [
-                  "api/balance/fetch-balance",
-                  "api/balance/refresh-balance"
-                ]
-              },
-              {
-                "group": "Fills",
-                "pages": [
-                  "api/fills/fetch-fills"
-                ]
-              }
+              "api/positions/fetch-positions"
             ]
           },
           {
-            "group": "System",
+            "group": "Balance",
+            "pages": [
+              "api/balance/fetch-balance",
+              "api/balance/refresh-balance"
+            ]
+          },
+          {
+            "group": "Fills",
+            "pages": [
+              "api/fills/fetch-fills"
+            ]
+          },
+          {
+            "group": "Server",
             "pages": [
               "api/server/fetch-server-time"
             ]
@@ -122,10 +87,27 @@
         "groups": [
           {
             "group": "Streams",
-            "asyncapi": {
-              "source": "/openpx.asyncapi.yaml",
-              "directory": "websockets"
-            }
+            "pages": [
+              "websockets/orderbook-stream",
+              "websockets/trades-stream",
+              "websockets/fills-stream",
+              "websockets/crypto-price-stream",
+              "websockets/sports-stream"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Schemas",
+        "groups": [
+          {
+            "group": "Mappings",
+            "pages": [
+              "schemas/mappings/market",
+              "schemas/mappings/event",
+              "schemas/mappings/series",
+              "schemas/mappings/orderbook"
+            ]
           }
         ]
       },
@@ -145,10 +127,21 @@
   "navbar": {
     "links": [
       {
-        "label": "GitHub",
+        "icon": { "name": "github", "library": "fontawesome", "style": "brands" },
+        "label": "",
         "href": "https://github.com/openpx-trade/openpx"
+      },
+      {
+        "icon": "desktop",
+        "label": "",
+        "href": "https://www.openpx.trade"
       }
-    ]
+    ],
+    "primary": {
+      "type": "discord",
+      "label": "Get Help",
+      "href": "https://discord.gg/acWpZpVnBj"
+    }
   },
   "footer": {
     "socials": {

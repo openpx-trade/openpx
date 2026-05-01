@@ -1,0 +1,9 @@
+---
+title: "fetch_orderbook_impact"
+sidebarTitle: "Fetch orderbook impact"
+openapi: /openpx.openapi.yaml GET /v1/orderbook/fetch_orderbook_impact
+---
+
+Slippage curve at a single requested size. Walks the book consuming
+levels until `size` is filled or the side exhausts; returns partial
+fills with `fill_pct < 100.0`. `size` must be > 0.

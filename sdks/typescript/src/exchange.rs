@@ -231,6 +231,49 @@ impl Exchange {
     }
 
     #[napi]
+    pub async fn fetch_orderbook_stats(&self, asset_id: String) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.fetch_orderbook_stats(&asset_id).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn fetch_orderbook_impact(
+        &self,
+        asset_id: String,
+        size: f64,
+    ) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.fetch_orderbook_impact(&asset_id, size).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn fetch_orderbook_microstructure(
+        &self,
+        asset_id: String,
+    ) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.fetch_orderbook_microstructure(&asset_id).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
     pub async fn fetch_fills(
         &self,
         market_ticker: Option<String>,

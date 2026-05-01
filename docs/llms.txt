@@ -8,6 +8,7 @@ OpenPX hides per-exchange quirks behind one Rust `Exchange` trait. Python (PyO3)
 
 - [API reference](https://github.com/openpx-trade/openpx/tree/main/docs/api): unified market, order, position, orderbook, trade, and account endpoints across every supported exchange
 - [WebSocket streams](https://github.com/openpx-trade/openpx/tree/main/docs/websockets): real-time orderbook snapshots, deltas, trades, fills, and session events
+- [Schema mappings](https://github.com/openpx-trade/openpx/tree/main/docs/schemas/mappings): per-field crosswalk between unified OpenPX types and Kalshi/Polymarket upstream sources, auto-generated from `schema/mappings/*.yaml`
 - [Changelog](https://github.com/openpx-trade/openpx/blob/main/docs/changelog.mdx): release history with breaking-change notes
 
 ## Packages

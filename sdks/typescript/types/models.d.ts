@@ -242,6 +242,19 @@ export interface CryptoPrice {
   [k: string]: unknown;
 }
 /**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "DepthBuckets".
+ */
+export interface DepthBuckets {
+  ask_within_100bps: number;
+  ask_within_10bps: number;
+  ask_within_50bps: number;
+  bid_within_100bps: number;
+  bid_within_10bps: number;
+  bid_within_50bps: number;
+  [k: string]: unknown;
+}
+/**
  * A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. "2028 US Presidential Election" with markets per candidate).
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -288,17 +301,12 @@ export interface ExchangeInfo {
   has_create_orders_batch: boolean;
   has_fetch_balance: boolean;
   has_fetch_fills: boolean;
-  has_fetch_last_trade_price: boolean;
   has_fetch_market_lineage: boolean;
   has_fetch_markets: boolean;
-  has_fetch_midpoint: boolean;
-  has_fetch_midpoints_batch: boolean;
-  has_fetch_open_interest: boolean;
   has_fetch_orderbook: boolean;
   has_fetch_orderbooks_batch: boolean;
   has_fetch_positions: boolean;
   has_fetch_server_time: boolean;
-  has_fetch_spread: boolean;
   has_fetch_trades: boolean;
   has_refresh_balance: boolean;
   has_websocket: boolean;
@@ -365,16 +373,12 @@ export interface Fill {
   [k: string]: unknown;
 }
 /**
- * Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape: this is just "what just printed?" — common UI need that doesn't require the full trade history.
- *
  * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "LastTrade".
+ * via the `definition` "LevelCount".
  */
-export interface LastTrade {
-  price: number;
-  side: OrderSide;
-  size: number;
-  ts_ms: number;
+export interface LevelCount {
+  asks: number;
+  bids: number;
   [k: string]: unknown;
 }
 /**
@@ -587,15 +591,12 @@ export interface MarketTrade {
   [k: string]: unknown;
 }
 /**
- * Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.
- *
  * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "MidpointRequest".
+ * via the `definition` "MaxGap".
  */
-export interface MidpointRequest {
-  market_ticker: string;
-  outcome?: string | null;
-  token_id?: string | null;
+export interface MaxGap {
+  ask_gap_bps?: number | null;
+  bid_gap_bps?: number | null;
   [k: string]: unknown;
 }
 /**
@@ -673,6 +674,57 @@ export interface PriceLevel {
 }
 /**
  * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookImpact".
+ */
+export interface OrderbookImpact {
+  asset_id: string;
+  buy_avg_price?: number | null;
+  buy_fill_pct: number;
+  buy_slippage_bps?: number | null;
+  exchange_ts?: string | null;
+  mid?: number | null;
+  openpx_ts: string;
+  sell_avg_price?: number | null;
+  sell_fill_pct: number;
+  sell_slippage_bps?: number | null;
+  size: number;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookMicrostructure".
+ */
+export interface OrderbookMicrostructure {
+  ask_slope?: number | null;
+  asset_id: string;
+  bid_slope?: number | null;
+  depth_buckets: DepthBuckets;
+  exchange_ts?: string | null;
+  level_count: LevelCount;
+  max_gap: MaxGap;
+  openpx_ts: string;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderbookStats".
+ */
+export interface OrderbookStats {
+  ask_depth: number;
+  asset_id: string;
+  best_ask?: number | null;
+  best_bid?: number | null;
+  bid_depth: number;
+  exchange_ts?: string | null;
+  imbalance?: number | null;
+  mid?: number | null;
+  openpx_ts: string;
+  spread_bps?: number | null;
+  weighted_mid?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "Position".
  */
 export interface Position {
@@ -715,19 +767,6 @@ export interface SportResult {
   slug: string;
   status: string;
   turn?: string | null;
-  [k: string]: unknown;
-}
-/**
- * Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` — useful for liquidity scoring and PnL marks where only the best levels are needed.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "Spread".
- */
-export interface Spread {
-  ask: number;
-  bid: number;
-  spread: number;
-  ts_ms?: number | null;
   [k: string]: unknown;
 }
 /**

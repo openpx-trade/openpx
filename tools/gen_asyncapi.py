@@ -27,6 +27,7 @@ JSON_SCHEMA = ROOT / "schema" / "openpx.schema.json"
 CARGO_TOML = ROOT / "Cargo.toml"
 DOCS_DIR = ROOT / "docs"
 OUTPUT_YAML = DOCS_DIR / "openpx.asyncapi.yaml"
+WS_MDX_DIR = DOCS_DIR / "websockets"
 
 # Per-channel content. Each channel name → (sidebarTitle, page title,
 # description, list of (kind, source-union) tuples for receive messages,
@@ -415,10 +416,48 @@ def build_asyncapi(schema_defs: dict[str, Any]) -> dict[str, Any]:
 # MDX wrappers
 # ---------------------------------------------------------------------------
 
-# Mintlify's tab-level `asyncapi: { source, directory }` config in docs.json
-# auto-generates one page per channel from the spec. No per-channel MDX
-# wrappers are needed — Mintlify renders Send/Receive panels with expandable
-# properties from the spec itself, like Kalshi's docs do.
+# Per-channel MDX shells with `asyncapi:` frontmatter, mirroring how
+# `docs/api/<tag>/<method>.mdx` uses `openapi:` frontmatter. Listing the
+# channels explicitly in `docs.json` (instead of relying on Mintlify's
+# tab-level asyncapi auto-discovery) avoids the protocol-based wrapper
+# group ("Websockets") that Mintlify auto-injects when it renders a spec.
+
+
+def channel_slug(channel_id: str, title: str) -> str:
+    """Filesystem slug for the per-channel MDX, kebab-case, with `-stream`
+    suffix matching the visible title (e.g. `orderbook-stream`)."""
+    slug = title.lower().replace(" ", "-")
+    return slug
+
+
+def render_channel_mdx(channel_id: str, meta: dict[str, Any]) -> str:
+    title = meta["title"]
+    sidebar = title
+    intro = meta.get("intro") or meta.get("description") or title
+    out = "---\n"
+    out += f"title: {json.dumps(title)}\n"
+    out += f"sidebarTitle: {json.dumps(sidebar)}\n"
+    out += f"asyncapi: /openpx.asyncapi.yaml {channel_id}\n"
+    out += "---\n\n"
+    out += intro + "\n"
+    return out
+
+
+def write_channel_mdx() -> int:
+    WS_MDX_DIR.mkdir(parents=True, exist_ok=True)
+    written = 0
+    expected: set[str] = set()
+    for channel_id, meta in CHANNELS.items():
+        slug = channel_slug(channel_id, meta["title"])
+        path = WS_MDX_DIR / f"{slug}.mdx"
+        path.write_text(render_channel_mdx(channel_id, meta))
+        expected.add(path.name)
+        written += 1
+    # Drop orphaned MDX files (channels removed from CHANNELS).
+    for existing in WS_MDX_DIR.glob("*.mdx"):
+        if existing.name not in expected:
+            existing.unlink()
+    return written
 
 
 def main() -> int:
@@ -429,6 +468,7 @@ def main() -> int:
     spec = build_asyncapi(schema_defs)
 
     OUTPUT_YAML.write_text(yaml.safe_dump(spec, sort_keys=False, width=120))
+    written = write_channel_mdx()
     print(
         f"wrote {OUTPUT_YAML.relative_to(ROOT)} "
         f"({OUTPUT_YAML.stat().st_size:,} bytes, "
@@ -436,7 +476,7 @@ def main() -> int:
         f"{len(spec['components']['messages'])} messages, "
         f"{len(spec['components']['schemas'])} schemas)"
     )
-    print("Mintlify will auto-generate one page per channel under /websockets/.")
+    print(f"wrote {written} channel MDX shells under {WS_MDX_DIR.relative_to(ROOT)}/")
     return 0
 
 
