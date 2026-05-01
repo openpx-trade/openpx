@@ -1633,7 +1633,7 @@ impl Exchange for Kalshi {
         // order_id + fill_count + remaining_count + average_fill_price +
         // average_fee_paid + error).
         struct Frame {
-            market_ticker: String,
+            asset_id: String,
             outcome_label: &'static str,
             outcome: OrderOutcome,
             side: OrderSide,
@@ -1667,7 +1667,7 @@ impl Exchange for Kalshi {
             };
 
             body_orders.push(serde_json::json!({
-                "ticker": req.market_ticker,
+                "ticker": req.asset_id,
                 "client_order_id": uuid::Uuid::new_v4().to_string(),
                 "side": side_str,
                 "count": format!("{:.2}", req.size),
@@ -1681,7 +1681,7 @@ impl Exchange for Kalshi {
             }));
 
             frames.push(Frame {
-                market_ticker: req.market_ticker,
+                asset_id: req.asset_id,
                 outcome_label,
                 outcome: req.outcome,
                 side: req.side,
@@ -1768,7 +1768,7 @@ impl Exchange for Kalshi {
                     .map(|avg| avg * fill_count);
                 Some(Order {
                     id,
-                    market_ticker: frame.market_ticker,
+                    market_ticker: frame.asset_id,
                     outcome: frame.outcome_label.to_string(),
                     side: frame.side,
                     price: order_price,
@@ -1821,7 +1821,7 @@ impl Exchange for Kalshi {
         // to `taker_at_cross` — the standard "incoming order takes if
         // marketable, otherwise rests" behavior.
         let body = serde_json::json!({
-            "ticker": req.market_ticker,
+            "ticker": req.asset_id,
             "client_order_id": uuid::Uuid::new_v4().to_string(),
             "side": side_str,
             "count": format!("{:.2}", req.size),
@@ -1883,7 +1883,7 @@ impl Exchange for Kalshi {
 
         Ok(Order {
             id: resp.order_id,
-            market_ticker: req.market_ticker,
+            market_ticker: req.asset_id,
             outcome: outcome_label.to_string(),
             side: req.side,
             price: order_price,

@@ -93,17 +93,20 @@ fields:
         transform: direct
         notes: |
           V1 GET responses echo `ticker`. V2 mutation responses do NOT
-          echo it — the adapter preserves the caller-frame ticker from
-          the request and the synthesized Order on cancel paths leaves
-          this empty.
+          echo it; the adapter carries `CreateOrderRequest.asset_id`
+          (which on Kalshi is the market ticker) into the response.
+          Cancel paths synthesize an Order with an empty market_ticker —
+          callers should `fetch_order` for full state.
       polymarket:
-        synthetic: 'OpenOrder.market (condition ID, hex address) → caller-frame slug'
+        omitted: true
         notes: |
-          OpenOrder exposes `market` as the on-chain condition ID
-          (Address). The adapter writes the caller's market_ticker from
-          the request when available, and falls back to the hex
-          condition ID otherwise. SendOrderResponse does not echo any
-          market identifier.
+          `Order.market_ticker` is the unified market identifier;
+          Polymarket's per-outcome `asset_id` is a CTF token, not a
+          market id. Both `OpenOrder.market` (on-chain condition ID) and
+          `SendOrderResponse` (no market field) are wrong-shape for the
+          unified meaning, and the create_order surface no longer
+          accepts a slug — callers needing a slug must run
+          `fetch_market_lineage` separately. Always empty on Polymarket.
 
   - name: outcome
     sources:

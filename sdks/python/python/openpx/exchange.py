@@ -93,7 +93,7 @@ class Exchange:
 
     def create_order(
         self,
-        market_ticker: str,
+        asset_id: str,
         outcome: str,
         side: str,
         price: float,
@@ -102,11 +102,19 @@ class Exchange:
     ) -> Any:
         """Submit a new order on the exchange.
 
-        ``outcome`` is ``"yes"`` / ``"no"`` for binary markets; for Polymarket
-        multi-outcome markets, pass the outcome label or a CTF token id.
+        ``asset_id`` is the per-outcome identifier — Kalshi market ticker or
+        Polymarket CTF token id (same convention as ``fetch_orderbook``).
+        Polymarket callers who only have a market slug + outcome label must
+        resolve the token id first via ``fetch_market``.
+
+        ``outcome`` is ``"yes"`` / ``"no"`` on Kalshi (drives YES-frame
+        bid/ask side selection at the wire). On Polymarket the outcome is
+        already encoded in ``asset_id``; this argument is just a label hint
+        used for the response ``Order.outcome`` field.
+
         ``order_type`` is ``"gtc"`` (default), ``"ioc"``, or ``"fok"``.
         """
-        raw = self._native.create_order(market_ticker, outcome, side, price, size, order_type)
+        raw = self._native.create_order(asset_id, outcome, side, price, size, order_type)
         try:
             from openpx._models import Order
             return Order(**raw)

@@ -20,9 +20,11 @@ export type LiquidityRole = "maker" | "taker";
  */
 export type OrderType = "gtc" | "ioc" | "fok";
 /**
- * Selects which outcome of a market an order targets.
+ * Which outcome an order targets.
  *
- * `Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput` at the Kalshi adapter.
+ * On Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.
+ *
+ * On Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so this field is a response-label hint only — it shows up on `Order.outcome` but does not route the trade.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "OrderOutcome".
@@ -32,12 +34,6 @@ export type OrderOutcome =
   | "no"
   | {
       label: string;
-    }
-  | {
-      index: number;
-    }
-  | {
-      token_id: string;
     };
 /**
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -258,15 +254,15 @@ export interface ActivityTrade {
  */
 export interface CreateOrderRequest {
   /**
-   * Unified market identifier — Kalshi market ticker or Polymarket slug.
+   * Per-outcome asset identifier — Kalshi market ticker, Polymarket CTF token id. Same convention as `Exchange::fetch_orderbook` — the value identifies the orderable thing (a Kalshi market is orderable as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must resolve the token id themselves via `fetch_market` before submitting.
    */
-  market_ticker: string;
+  asset_id: string;
   /**
    * Time-in-force / execution type.
    */
   order_type?: OrderType & string;
   /**
-   * Which outcome of the market to trade.
+   * On Kalshi, drives YES-frame bid/ask side selection — required. On Polymarket, response-label hint only (the actual outcome is encoded in `asset_id`).
    */
   outcome: OrderOutcome;
   /**

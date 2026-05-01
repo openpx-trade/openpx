@@ -52,26 +52,25 @@ pub enum OrderSide {
     Sell,
 }
 
-/// Selects which outcome of a market an order targets.
+/// Which outcome an order targets.
 ///
-/// `Yes` / `No` cover binary markets on both exchanges. The remaining variants
-/// only resolve on Polymarket (multi-outcome categorical markets); Kalshi
-/// markets are always binary, so anything other than `Yes` / `No` is rejected
-/// with `InvalidInput` at the Kalshi adapter.
+/// On Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame
+/// bid/ask side selection and price mirroring at the V2 wire. Anything
+/// other than `Yes` / `No` is rejected with `InvalidInput`.
+///
+/// On Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id`
+/// (the per-outcome CTF token id), so this field is a response-label hint
+/// only — it shows up on `Order.outcome` but does not route the trade.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum OrderOutcome {
-    /// Binary YES outcome (Kalshi YES side, Polymarket `outcomes[0]`).
+    /// Binary YES outcome.
     Yes,
-    /// Binary NO outcome (Kalshi NO side, Polymarket `outcomes[1]`).
+    /// Binary NO outcome.
     No,
-    /// Match a Polymarket outcome by its `label` (case-insensitive).
+    /// Multi-outcome categorical label (Polymarket only; Kalshi rejects).
     Label(String),
-    /// Match a Polymarket outcome by its zero-based ordinal in `Market.outcomes`.
-    Index(usize),
-    /// Polymarket CTF token id — bypass label/index lookup.
-    TokenId(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,9 +102,16 @@ pub enum OrderStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CreateOrderRequest {
-    /// Unified market identifier — Kalshi market ticker or Polymarket slug.
-    pub market_ticker: String,
-    /// Which outcome of the market to trade.
+    /// Per-outcome asset identifier — Kalshi market ticker, Polymarket
+    /// CTF token id. Same convention as `Exchange::fetch_orderbook` —
+    /// the value identifies the orderable thing (a Kalshi market is
+    /// orderable as a whole; a Polymarket order targets one CTF token).
+    /// Polymarket callers who hold a slug + outcome label must resolve
+    /// the token id themselves via `fetch_market` before submitting.
+    pub asset_id: String,
+    /// On Kalshi, drives YES-frame bid/ask side selection — required.
+    /// On Polymarket, response-label hint only (the actual outcome is
+    /// encoded in `asset_id`).
     pub outcome: OrderOutcome,
     /// Buy or sell.
     pub side: OrderSide,

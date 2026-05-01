@@ -191,30 +191,10 @@ class OrderOutcome3(BaseModel):
     label: str
 
 
-class OrderOutcome4(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    index: conint(ge=0)
-
-
-class OrderOutcome5(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    token_id: str
-
-
-class OrderOutcome(
-    RootModel[
-        OrderOutcome1 | OrderOutcome2 | OrderOutcome3 | OrderOutcome4 | OrderOutcome5
-    ]
-):
-    root: (
-        OrderOutcome1 | OrderOutcome2 | OrderOutcome3 | OrderOutcome4 | OrderOutcome5
-    ) = Field(
+class OrderOutcome(RootModel[OrderOutcome1 | OrderOutcome2 | OrderOutcome3]):
+    root: OrderOutcome1 | OrderOutcome2 | OrderOutcome3 = Field(
         ...,
-        description="Selects which outcome of a market an order targets.\n\n`Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput` at the Kalshi adapter.",
+        description="Which outcome an order targets.\n\nOn Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so this field is a response-label hint only — it shows up on `Order.outcome` but does not route the trade.",
         title="OrderOutcome",
     )
 
@@ -465,15 +445,16 @@ class ActivityFill(BaseModel):
 
 
 class CreateOrderRequest(BaseModel):
-    market_ticker: str = Field(
+    asset_id: str = Field(
         ...,
-        description="Unified market identifier — Kalshi market ticker or Polymarket slug.",
+        description="Per-outcome asset identifier — Kalshi market ticker, Polymarket CTF token id. Same convention as `Exchange::fetch_orderbook` — the value identifies the orderable thing (a Kalshi market is orderable as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must resolve the token id themselves via `fetch_market` before submitting.",
     )
     order_type: OrderType | None = Field(
         "gtc", description="Time-in-force / execution type."
     )
     outcome: OrderOutcome = Field(
-        ..., description="Which outcome of the market to trade."
+        ...,
+        description="On Kalshi, drives YES-frame bid/ask side selection — required. On Polymarket, response-label hint only (the actual outcome is encoded in `asset_id`).",
     )
     price: float = Field(
         ..., description="Limit price as YES probability in `(0.0, 1.0)`."

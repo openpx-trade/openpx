@@ -591,8 +591,11 @@ components:
         \ are not exposed. Anything an exchange requires that is not modelled here is generated internally (e.g. Kalshi V2's\
         \ required `client_order_id` is filled with a per-call UUID)."
       properties:
-        market_ticker:
-          description: "Unified market identifier \u2014 Kalshi market ticker or Polymarket slug."
+        asset_id:
+          description: "Per-outcome asset identifier \u2014 Kalshi market ticker, Polymarket CTF token id. Same convention\
+            \ as `Exchange::fetch_orderbook` \u2014 the value identifies the orderable thing (a Kalshi market is orderable\
+            \ as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must\
+            \ resolve the token id themselves via `fetch_market` before submitting."
           type: string
         order_type:
           allOf:
@@ -602,7 +605,8 @@ components:
         outcome:
           allOf:
           - $ref: '#/components/schemas/OrderOutcome'
-          description: Which outcome of the market to trade.
+          description: "On Kalshi, drives YES-frame bid/ask side selection \u2014 required. On Polymarket, response-label\
+            \ hint only (the actual outcome is encoded in `asset_id`)."
         price:
           description: Limit price as YES probability in `(0.0, 1.0)`.
           format: double
@@ -616,7 +620,7 @@ components:
           format: double
           type: number
       required:
-      - market_ticker
+      - asset_id
       - outcome
       - price
       - side
@@ -1246,46 +1250,26 @@ components:
       title: Order
       type: object
     OrderOutcome:
-      description: 'Selects which outcome of a market an order targets.
-
-
-        `Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome
-        categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput`
-        at the Kalshi adapter.'
+      description: "Which outcome an order targets.\n\nOn Kalshi the value is load-bearing \u2014 `Yes` / `No` drives YES-frame\
+        \ bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\
+        \nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so\
+        \ this field is a response-label hint only \u2014 it shows up on `Order.outcome` but does not route the trade."
       oneOf:
-      - description: Binary YES outcome (Kalshi YES side, Polymarket `outcomes[0]`).
+      - description: Binary YES outcome.
         enum:
         - 'yes'
         type: string
-      - description: Binary NO outcome (Kalshi NO side, Polymarket `outcomes[1]`).
+      - description: Binary NO outcome.
         enum:
         - 'no'
         type: string
       - additionalProperties: false
-        description: Match a Polymarket outcome by its `label` (case-insensitive).
+        description: Multi-outcome categorical label (Polymarket only; Kalshi rejects).
         properties:
           label:
             type: string
         required:
         - label
-        type: object
-      - additionalProperties: false
-        description: Match a Polymarket outcome by its zero-based ordinal in `Market.outcomes`.
-        properties:
-          index:
-            format: uint
-            minimum: 0.0
-            type: integer
-        required:
-        - index
-        type: object
-      - additionalProperties: false
-        description: "Polymarket CTF token id \u2014 bypass label/index lookup."
-        properties:
-          token_id:
-            type: string
-        required:
-        - token_id
         type: object
       title: OrderOutcome
     OrderSide:

@@ -1584,67 +1584,19 @@ impl Exchange for Polymarket {
             )));
         }
 
-        // Resolve outcome → token_id. `TokenId` skips the market fetch; the
-        // SDK resolves `neg_risk` on its own during build_order. All other
-        // variants need to look up `Market.outcomes`: binary markets map
-        // `Yes`/`No` to index 0/1, multi-outcome markets accept `Label` or
-        // `Index`. `Market.neg_risk` is auto-resolved from market metadata
-        // (no caller override exposed on the unified surface).
-        let (token_id, market_neg_risk): (String, Option<bool>) = match &req.outcome {
-            OrderOutcome::TokenId(t) => (t.clone(), None),
-            other => {
-                let market = self.fetch_market(&req.market_ticker).await?;
-                let mut token_ids = market.token_ids();
-                if token_ids.is_empty() {
-                    let condition_id = market.condition_id.as_deref().unwrap_or("");
-                    token_ids = self
-                        .fetch_token_ids(condition_id)
-                        .await
-                        .map_err(|e| OpenPxError::Exchange(e.into()))?;
-                }
-                if token_ids.is_empty() {
-                    return Err(OpenPxError::InvalidInput(
-                        "no token IDs found for market".into(),
-                    ));
-                }
-                let idx = match other {
-                    OrderOutcome::Yes => 0,
-                    OrderOutcome::No => 1,
-                    OrderOutcome::Label(label) => market
-                        .outcomes
-                        .iter()
-                        .position(|o| o.label.eq_ignore_ascii_case(label))
-                        .ok_or_else(|| {
-                            OpenPxError::InvalidInput(format!(
-                                "outcome label '{}' not found in market outcomes {:?}",
-                                label, market.outcomes
-                            ))
-                        })?,
-                    OrderOutcome::Index(i) => *i,
-                    OrderOutcome::TokenId(_) => unreachable!("handled above"),
-                };
-                let resolved = token_ids.get(idx).cloned().ok_or_else(|| {
-                    OpenPxError::InvalidInput(format!(
-                        "outcome index {} out of range (market has {} outcomes)",
-                        idx,
-                        token_ids.len()
-                    ))
-                })?;
-                (resolved, market.neg_risk)
-            }
-        };
-
+        // `asset_id` is the CTF token id directly — same convention as
+        // `fetch_orderbook(asset_id)`. No market fetch needed: the SDK
+        // looks up `neg_risk` per-token on its own (cached) during
+        // `build_order`. The outcome field is response-label hint only.
         let outcome_label = match &req.outcome {
             OrderOutcome::Yes => "Yes".to_string(),
             OrderOutcome::No => "No".to_string(),
             OrderOutcome::Label(s) => s.clone(),
-            OrderOutcome::Index(i) => format!("outcome[{i}]"),
-            OrderOutcome::TokenId(t) => t.clone(),
         };
 
-        let token_id_u256 = U256::from_str(&token_id).map_err(|e| {
+        let token_id_u256 = U256::from_str(&req.asset_id).map_err(|e| {
             OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "invalid token_id: {e}"
+                "invalid asset_id (expected CTF token id): {e}"
             )))
         })?;
 
@@ -1668,11 +1620,9 @@ impl Exchange for Polymarket {
             UnifiedOrderType::Fok => OrderType::FOK,
         };
 
-        if matches!(market_neg_risk, Some(true)) {
-            sdk_dispatch!(&*guard, set_neg_risk(token_id_u256, true));
-        }
-
-        // Build the order using SDK's order builder
+        // Build the order using SDK's order builder. The SDK auto-resolves
+        // `neg_risk` per token (cached) during build, so no explicit
+        // pre-population is required now that the asset_id IS the token id.
         let signable_order = sdk_dispatch!(
             &*guard,
             limit_order()
@@ -1841,9 +1791,13 @@ impl Exchange for Polymarket {
             _ => OrderStatus::Open,
         };
 
+        // `Order.market_ticker` is the unified market identifier; on
+        // Polymarket the asset_id is a per-outcome token, not a market id,
+        // so we leave market_ticker empty rather than fabricate one. Use
+        // `fetch_market_lineage` if a slug is needed.
         Ok(Order {
             id: response.order_id,
-            market_ticker: req.market_ticker,
+            market_ticker: String::new(),
             outcome: outcome_label,
             side: req.side,
             price: req.price,

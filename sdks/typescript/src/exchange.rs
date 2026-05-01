@@ -109,7 +109,7 @@ impl Exchange {
     #[napi]
     pub async fn create_order(
         &self,
-        market_ticker: String,
+        asset_id: String,
         outcome: String,
         side: String,
         price: f64,
@@ -140,7 +140,7 @@ impl Exchange {
             _ => px_core::OrderOutcome::Label(outcome.clone()),
         };
         let req = px_core::CreateOrderRequest {
-            market_ticker,
+            asset_id,
             outcome: order_outcome,
             side: order_side,
             price,

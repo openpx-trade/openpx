@@ -84,12 +84,12 @@ impl NativeExchange {
         pythonize(py, &lineage).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker, outcome, side, price, size, order_type="gtc"))]
+    #[pyo3(signature = (asset_id, outcome, side, price, size, order_type="gtc"))]
     #[allow(clippy::too_many_arguments)]
     fn create_order<'py>(
         &self,
         py: Python<'py>,
-        market_ticker: &str,
+        asset_id: &str,
         outcome: &str,
         side: &str,
         price: f64,
@@ -116,7 +116,7 @@ impl NativeExchange {
             _ => px_core::OrderOutcome::Label(outcome.to_string()),
         };
         let req = px_core::CreateOrderRequest {
-            market_ticker: market_ticker.to_string(),
+            asset_id: asset_id.to_string(),
             outcome: order_outcome,
             side: order_side,
             price,
