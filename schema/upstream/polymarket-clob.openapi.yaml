@@ -59,7 +59,8 @@ paths:
                     expiration: '1735689600'
                     timestamp: '1735689600000'
                     metadata: ''
-                    builder: '0x0000000000000000000000000000000000000000000000000000000000000000'
+                    builder: >-
+                      0x0000000000000000000000000000000000000000000000000000000000000000
                     signature: 0x1234abcd...
                     salt: 1234567890
                     signatureType: 0
@@ -123,7 +124,9 @@ paths:
                 signer_mismatch:
                   summary: Signer mismatch
                   value:
-                    error: the order signer address has to be the address of the API KEY
+                    error: >-
+                      the order signer address has to be the address of the API
+                      KEY
                 banned_address:
                   summary: Banned address
                   value:
@@ -135,7 +138,9 @@ paths:
                 invalid_order:
                   summary: Invalid order details
                   value:
-                    error: 'order 0xabc... is invalid. Price (100) breaks minimum tick size rule: 0.1'
+                    error: >-
+                      order 0xabc... is invalid. Price (100) breaks minimum tick
+                      size rule: 0.1
         '401':
           description: Unauthorized - Invalid API key or authentication failed
           content:
@@ -162,11 +167,15 @@ paths:
                 trading_disabled:
                   summary: Trading disabled
                   value:
-                    error: Trading is currently disabled. Check polymarket.com for updates
+                    error: >-
+                      Trading is currently disabled. Check polymarket.com for
+                      updates
                 cancel_only:
                   summary: Cancel-only mode
                   value:
-                    error: Trading is currently cancel-only. New orders are not accepted, but cancels are allowed.
+                    error: >-
+                      Trading is currently cancel-only. New orders are not
+                      accepted, but cancels are allowed.
     delete:
       summary: Cancel single order
       description: |
@@ -240,18 +249,24 @@ paths:
               example:
                 error: Internal server error
         '503':
-          description: Service unavailable - Trading disabled (cancels still work in cancel-only mode)
+          description: >-
+            Service unavailable - Trading disabled (cancels still work in
+            cancel-only mode)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /orders:
     post:
       summary: Post multiple orders
-      description: |
-        Creates multiple new orders in the order book. Orders are processed in parallel.
+      description: >
+        Creates multiple new orders in the order book. Orders are processed in
+        parallel.
+
         Maximum 15 orders per request.
       operationId: postOrders
       tags:
@@ -285,7 +300,8 @@ paths:
                       expiration: '1735689600'
                       timestamp: '1735689600000'
                       metadata: ''
-                      builder: '0x0000000000000000000000000000000000000000000000000000000000000000'
+                      builder: >-
+                        0x0000000000000000000000000000000000000000000000000000000000000000
                       signature: 0x1234abcd...
                       salt: 1234567890
                       signatureType: 0
@@ -302,7 +318,8 @@ paths:
                       expiration: '1735689600'
                       timestamp: '1735689600000'
                       metadata: ''
-                      builder: '0x0000000000000000000000000000000000000000000000000000000000000000'
+                      builder: >-
+                        0x0000000000000000000000000000000000000000000000000000000000000000
                       signature: 0x5678efgh...
                       salt: 1234567891
                       signatureType: 0
@@ -311,7 +328,9 @@ paths:
                     deferExec: false
       responses:
         '200':
-          description: Orders successfully processed. Returns an array of order responses, one for each order in the request.
+          description: >-
+            Orders successfully processed. Returns an array of order responses,
+            one for each order in the request.
           content:
             application/json:
               schema:
@@ -368,7 +387,9 @@ paths:
                 signer_mismatch:
                   summary: Signer mismatch
                   value:
-                    error: the order signer address has to be the address of the API KEY
+                    error: >-
+                      the order signer address has to be the address of the API
+                      KEY
                 banned_address:
                   summary: Banned address
                   value:
@@ -403,11 +424,15 @@ paths:
                 trading_disabled:
                   summary: Trading disabled
                   value:
-                    error: Trading is currently disabled. Check polymarket.com for updates
+                    error: >-
+                      Trading is currently disabled. Check polymarket.com for
+                      updates
                 cancel_only:
                   summary: Cancel-only mode
                   value:
-                    error: Trading is currently cancel-only. New orders are not accepted, but cancels are allowed.
+                    error: >-
+                      Trading is currently cancel-only. New orders are not
+                      accepted, but cancels are allowed.
     delete:
       summary: Cancel multiple orders
       description: |
@@ -504,19 +529,26 @@ paths:
               example:
                 error: Internal server error
         '503':
-          description: Service unavailable - Trading disabled (cancels still work in cancel-only mode)
+          description: >-
+            Service unavailable - Trading disabled (cancels still work in
+            cancel-only mode)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /data/orders:
     get:
       summary: Get user orders
-      description: |
-        Retrieves open orders for the authenticated user. Returns paginated results.
-        Builder-authenticated clients can also use this endpoint to retrieve orders attributed to their builder account.
+      description: >
+        Retrieves open orders for the authenticated user. Returns paginated
+        results.
+
+        Builder-authenticated clients can also use this endpoint to retrieve
+        orders attributed to their builder account.
       operationId: getOrders
       tags:
         - Trade
@@ -574,7 +606,8 @@ paths:
                         status: ORDER_STATUS_LIVE
                         owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                         maker_address: '0x1234567890123456789012345678901234567890'
-                        market: '0x0000000000000000000000000000000000000000000000000000000000000001'
+                        market: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000001
                         asset_id: 0xabc123def456...
                         side: BUY
                         original_size: '100000000'
@@ -589,7 +622,8 @@ paths:
                         status: ORDER_STATUS_LIVE
                         owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                         maker_address: '0x1234567890123456789012345678901234567890'
-                        market: '0x0000000000000000000000000000000000000000000000000000000000000002'
+                        market: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000002
                         asset_id: 0xdef456abc789...
                         side: SELL
                         original_size: '200000000'
@@ -628,9 +662,12 @@ paths:
   /order/{orderID}:
     get:
       summary: Get single order by ID
-      description: |
-        Retrieves a specific order by its ID (order hash) for the authenticated user.
-        Builder-authenticated clients can also use this endpoint to retrieve orders attributed to their builder account.
+      description: >
+        Retrieves a specific order by its ID (order hash) for the authenticated
+        user.
+
+        Builder-authenticated clients can also use this endpoint to retrieve
+        orders attributed to their builder account.
       operationId: getOrder
       tags:
         - Trade
@@ -660,7 +697,8 @@ paths:
                 status: ORDER_STATUS_LIVE
                 owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                 maker_address: '0x1234567890123456789012345678901234567890'
-                market: '0x0000000000000000000000000000000000000000000000000000000000000001'
+                market: >-
+                  0x0000000000000000000000000000000000000000000000000000000000000001
                 asset_id: 0xabc123def456...
                 side: BUY
                 original_size: '100000000'
@@ -706,8 +744,9 @@ paths:
   /cancel-all:
     delete:
       summary: Cancel all orders
-      description: |
-        Cancels all open orders for the authenticated user. Works even in cancel-only mode.
+      description: >
+        Cancels all open orders for the authenticated user. Works even in
+        cancel-only mode.
       operationId: cancelAllOrders
       tags:
         - Trade
@@ -761,18 +800,24 @@ paths:
               example:
                 error: Internal server error
         '503':
-          description: Service unavailable - Trading disabled (cancels still work in cancel-only mode)
+          description: >-
+            Service unavailable - Trading disabled (cancels still work in
+            cancel-only mode)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /cancel-market-orders:
     delete:
       summary: Cancel orders for a market
-      description: |
-        Cancels all open orders for the authenticated user in a specific market (condition) and asset.
+      description: >
+        Cancels all open orders for the authenticated user in a specific market
+        (condition) and asset.
+
         Works even in cancel-only mode.
       operationId: cancelMarketOrders
       tags:
@@ -790,7 +835,8 @@ paths:
             schema:
               $ref: '#/components/schemas/OrderMarketCancelParams'
             example:
-              market: '0x0000000000000000000000000000000000000000000000000000000000000001'
+              market: >-
+                0x0000000000000000000000000000000000000000000000000000000000000001
               asset_id: 0xabc123def456...
       responses:
         '200':
@@ -844,13 +890,17 @@ paths:
               example:
                 error: Internal server error
         '503':
-          description: Service unavailable - Trading disabled (cancels still work in cancel-only mode)
+          description: >-
+            Service unavailable - Trading disabled (cancels still work in
+            cancel-only mode)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /time:
     get:
       summary: Get server time
@@ -880,9 +930,11 @@ paths:
   /midpoint:
     get:
       summary: Get midpoint price
-      description: |
+      description: >
         Retrieves the midpoint price for a specific token ID.
-        The midpoint is calculated as the average of the best bid and best ask prices.
+
+        The midpoint is calculated as the average of the best bid and best ask
+        prices.
       operationId: getMidpoint
       tags:
         - Data
@@ -928,9 +980,11 @@ paths:
   /midpoints:
     get:
       summary: Get midpoint prices (query parameters)
-      description: |
+      description: >
         Retrieves midpoint prices for multiple token IDs using query parameters.
-        The midpoint is calculated as the average of the best bid and best ask prices.
+
+        The midpoint is calculated as the average of the best bid and best ask
+        prices.
       operationId: getMidpointsGet
       tags:
         - Market Data
@@ -975,9 +1029,11 @@ paths:
     post:
       summary: Get midpoint prices (request body)
       security: []
-      description: |
+      description: >
         Retrieves midpoint prices for multiple token IDs using a request body.
-        The midpoint is calculated as the average of the best bid and best ask prices.
+
+        The midpoint is calculated as the average of the best bid and best ask
+        prices.
       operationId: getMidpointsPost
       tags:
         - Market Data
@@ -1122,9 +1178,11 @@ paths:
   /last-trade-price:
     get:
       summary: Get last trade price
-      description: |
+      description: >
         Retrieves the last trade price and side for a specific token ID.
-        Returns default values of "0.5" for price and empty string for side if no trades found.
+
+        Returns default values of "0.5" for price and empty string for side if
+        no trades found.
       operationId: getLastTradePrice
       tags:
         - Market Data
@@ -1179,8 +1237,10 @@ paths:
   /last-trades-prices:
     get:
       summary: Get last trade prices (query parameters)
-      description: |
-        Retrieves last trade prices for multiple token IDs using query parameters.
+      description: >
+        Retrieves last trade prices for multiple token IDs using query
+        parameters.
+
         Maximum 500 token IDs can be requested per call.
       operationId: getLastTradesPricesGet
       tags:
@@ -1335,9 +1395,11 @@ paths:
   /fee-rate:
     get:
       summary: Get fee rate
-      description: |
+      description: >
         Retrieves the base fee rate for a specific token ID.
-        The fee rate can be provided either as a query parameter or as a path parameter.
+
+        The fee rate can be provided either as a query parameter or as a path
+        parameter.
       operationId: getFeeRate
       tags:
         - Market Data
@@ -1386,8 +1448,9 @@ paths:
   /fee-rate/{token_id}:
     get:
       summary: Get fee rate by path parameter
-      description: |
-        Retrieves the base fee rate for a specific token ID using the token ID as a path parameter.
+      description: >
+        Retrieves the base fee rate for a specific token ID using the token ID
+        as a path parameter.
       operationId: getFeeRateByPath
       tags:
         - Market Data
@@ -1436,9 +1499,12 @@ paths:
   /tick-size:
     get:
       summary: Get tick size
-      description: |
-        Retrieves the minimum tick size (price increment) for a specific token ID.
-        The tick size can be provided either as a query parameter or as a path parameter.
+      description: >
+        Retrieves the minimum tick size (price increment) for a specific token
+        ID.
+
+        The tick size can be provided either as a query parameter or as a path
+        parameter.
       operationId: getTickSize
       tags:
         - Market Data
@@ -1487,8 +1553,9 @@ paths:
   /tick-size/{token_id}:
     get:
       summary: Get tick size by path parameter
-      description: |
-        Retrieves the minimum tick size (price increment) for a specific token ID using the token ID as a path parameter.
+      description: >
+        Retrieves the minimum tick size (price increment) for a specific token
+        ID using the token ID as a path parameter.
       operationId: getTickSizeByPath
       tags:
         - Market Data
@@ -1537,9 +1604,11 @@ paths:
   /neg-risk:
     get:
       summary: Get negative risk flag
-      description: |
+      description: >
         Retrieves the negative risk flag for a specific token ID.
-        The token ID can be provided either as a query parameter or as a path parameter.
+
+        The token ID can be provided either as a query parameter or as a path
+        parameter.
       operationId: getNegRisk
       tags:
         - Market Data
@@ -1588,8 +1657,9 @@ paths:
   /neg-risk/{token_id}:
     get:
       summary: Get negative risk flag by path parameter
-      description: |
-        Retrieves the negative risk flag for a specific token ID using the token ID as a path parameter.
+      description: >
+        Retrieves the negative risk flag for a specific token ID using the token
+        ID as a path parameter.
       operationId: getNegRiskByPath
       tags:
         - Market Data
@@ -1638,8 +1708,10 @@ paths:
   /price:
     get:
       summary: Get market price
-      description: |
-        Retrieves the best market price for a specific token ID and side (bid or ask).
+      description: >
+        Retrieves the best market price for a specific token ID and side (bid or
+        ask).
+
         Returns the best bid price for BUY side or best ask price for SELL side.
       operationId: getPrice
       tags:
@@ -1714,8 +1786,9 @@ paths:
   /prices:
     get:
       summary: Get market prices (query parameters)
-      description: |
-        Retrieves market prices for multiple token IDs and sides using query parameters.
+      description: >
+        Retrieves market prices for multiple token IDs and sides using query
+        parameters.
       operationId: getPricesGet
       tags:
         - Market Data
@@ -1730,7 +1803,9 @@ paths:
           example: 0xabc123...,0xdef456...
         - name: sides
           in: query
-          description: Comma-separated list of sides (BUY or SELL) corresponding to token IDs
+          description: >-
+            Comma-separated list of sides (BUY or SELL) corresponding to token
+            IDs
           required: true
           schema:
             type: string
@@ -1787,8 +1862,10 @@ paths:
     post:
       summary: Get market prices (request body)
       security: []
-      description: |
-        Retrieves market prices for multiple token IDs and sides using a request body.
+      description: >
+        Retrieves market prices for multiple token IDs and sides using a request
+        body.
+
         Each request must include both token_id and side.
       operationId: getPricesPost
       tags:
@@ -1926,8 +2003,9 @@ paths:
   /books:
     get:
       summary: Get order books (query parameters)
-      description: |
-        Retrieves order book summaries for multiple token IDs using query parameters.
+      description: >
+        Retrieves order book summaries for multiple token IDs using query
+        parameters.
       operationId: getBooksGet
       tags:
         - Market Data
@@ -1975,8 +2053,9 @@ paths:
     post:
       summary: Get order books (request body)
       security: []
-      description: |
-        Retrieves order book summaries for multiple token IDs using a request body.
+      description: >
+        Retrieves order book summaries for multiple token IDs using a request
+        body.
       operationId: getBooksPost
       tags:
         - Market Data
@@ -2177,7 +2256,9 @@ paths:
     post:
       operationId: getMarketsLiveActivity
       summary: Get live activity markets by condition IDs
-      description: Returns minimal market information for multiple markets, optimized for live activity widgets (e.g., iOS Live Activities, Android widgets)
+      description: >-
+        Returns minimal market information for multiple markets, optimized for
+        live activity widgets (e.g., iOS Live Activities, Android widgets)
       tags:
         - Markets
       security: []
@@ -2212,7 +2293,9 @@ paths:
     get:
       operationId: getMarketLiveActivity
       summary: Get live activity market by condition ID
-      description: Returns minimal market information optimized for live activity widgets (e.g., iOS Live Activities, Android widgets)
+      description: >-
+        Returns minimal market information optimized for live activity widgets
+        (e.g., iOS Live Activities, Android widgets)
       tags:
         - Markets
       security: []
@@ -2467,9 +2550,11 @@ paths:
   /auth/derive-api-key:
     get:
       summary: Derive API key
-      description: |
+      description: >
         Derives an existing API key from an Ethereum address and nonce.
-        The API key must have been previously created using the same address and nonce.
+
+        The API key must have been previously created using the same address and
+        nonce.
       operationId: deriveApiKey
       tags:
         - Account
@@ -2516,9 +2601,12 @@ paths:
   /balance-allowance:
     get:
       summary: Get balance and allowance
-      description: |
-        Retrieves the balance and allowances for the authenticated user's address.
-        The address is determined from the API key authentication and signature type.
+      description: >
+        Retrieves the balance and allowances for the authenticated user's
+        address.
+
+        The address is determined from the API key authentication and signature
+        type.
       operationId: getBalanceAllowance
       tags:
         - Account
@@ -2548,7 +2636,9 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: >-
+            Signature type for address derivation (0=EOA, 1=POLY_PROXY,
+            2=POLY_GNOSIS_SAFE)
           required: false
           schema:
             type: integer
@@ -2602,9 +2692,12 @@ paths:
                 error: Internal server error
     put:
       summary: Update balance and allowance
-      description: |
-        Forces an update of the balance and allowances by fetching fresh data from the blockchain.
-        The address is determined from the API key authentication and signature type.
+      description: >
+        Forces an update of the balance and allowances by fetching fresh data
+        from the blockchain.
+
+        The address is determined from the API key authentication and signature
+        type.
       operationId: updateBalanceAllowance
       tags:
         - Account
@@ -2634,7 +2727,9 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: >-
+            Signature type for address derivation (0=EOA, 1=POLY_PROXY,
+            2=POLY_GNOSIS_SAFE)
           required: false
           schema:
             type: integer
@@ -2685,9 +2780,12 @@ paths:
   /balance-allowance/update:
     get:
       summary: Update balance and allowance
-      description: |
-        Forces an update of the balance and allowances by fetching fresh data from the blockchain.
-        The address is determined from the API key authentication and signature type.
+      description: >
+        Forces an update of the balance and allowances by fetching fresh data
+        from the blockchain.
+
+        The address is determined from the API key authentication and signature
+        type.
       operationId: getUpdateBalanceAllowance
       tags:
         - Account
@@ -2717,7 +2815,9 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: >-
+            Signature type for address derivation (0=EOA, 1=POLY_PROXY,
+            2=POLY_GNOSIS_SAFE)
           required: false
           schema:
             type: integer
@@ -2767,10 +2867,14 @@ paths:
   /auth/ban-status/closed-only:
     get:
       summary: Get closed-only mode status
-      description: |
-        Retrieves the closed-only trading mode status for the authenticated user.
+      description: >
+        Retrieves the closed-only trading mode status for the authenticated
+        user.
 
-        When closed-only mode is enabled, the user can only close existing positions
+
+        When closed-only mode is enabled, the user can only close existing
+        positions
+
         and cannot open new ones.
       operationId: getClosedOnlyMode
       tags:
@@ -2905,11 +3009,15 @@ paths:
                 error: Could not create builder api key
     delete:
       summary: Revoke builder API key
-      description: |
+      description: >
         Revokes a builder API key.
 
-        Builder codes are tied to the authenticated user's profile. Authenticate with
-        standard CLOB L2 headers to revoke a builder API key associated with your account.
+
+        Builder codes are tied to the authenticated user's profile. Authenticate
+        with
+
+        standard CLOB L2 headers to revoke a builder API key associated with
+        your account.
       operationId: revokeBuilderApiKey
       tags:
         - Account
@@ -2950,7 +3058,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: 'Could not revoke the builder api key: 019894b9-cb40-79c4-b2bd-6aecb6f8c6c5'
+                error: >-
+                  Could not revoke the builder api key:
+                  019894b9-cb40-79c4-b2bd-6aecb6f8c6c5
   /notifications:
     get:
       summary: Get notifications
@@ -3002,9 +3112,12 @@ paths:
                   owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                   type: 2
                   payload:
-                    order_id: '0x72c66a1f70c00ac5e5eb9ce0452b7d118bc4869f8b822a1a8d8580c16e3ca83e'
-                    market: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
-                    asset_id: '1343197538147866997676250008839231694243646439454152539053893078719042421992'
+                    order_id: >-
+                      0x72c66a1f70c00ac5e5eb9ce0452b7d118bc4869f8b822a1a8d8580c16e3ca83e
+                    market: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
+                    asset_id: >-
+                      1343197538147866997676250008839231694243646439454152539053893078719042421992
                     side: SELL
                     price: '0.6'
                     original_size: '100'
@@ -3039,9 +3152,12 @@ paths:
                 error: Internal server error
     delete:
       summary: Mark notifications as read
-      description: |
-        Marks the specified notifications as read/seen for the authenticated user.
-        Once marked as read, notifications will no longer appear in GET /notifications.
+      description: >
+        Marks the specified notifications as read/seen for the authenticated
+        user.
+
+        Once marked as read, notifications will no longer appear in GET
+        /notifications.
       operationId: dropNotifications
       tags:
         - Notifications
@@ -3094,12 +3210,16 @@ paths:
   /rewards/user:
     get:
       summary: Get earnings for user by date
-      description: |
+      description: >
         Returns an array of user earnings per market for a provided day.
+
 
         Requires CLOB L2 Auth headers.
 
-        Results are paginated (100 items per page). Use next_cursor to fetch subsequent pages.
+
+        Results are paginated (100 items per page). Use next_cursor to fetch
+        subsequent pages.
+
         A next_cursor value of "LTE=" indicates the last page.
       operationId: getEarningsForUserForDay
       tags:
@@ -3166,7 +3286,8 @@ paths:
                 next_cursor: LTE=
                 data:
                   - date: '2024-03-26T00:00:00Z'
-                    condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                    condition_id: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                     asset_address: '0x9c4E1703476E875070EE25b56A58B008CFb8FA78'
                     maker_address: '0xFeA4cB3dD4ca7CefD3368653B7D6FF9BcDFca604'
                     earnings: 0.237519
@@ -3318,11 +3439,15 @@ paths:
   /rewards/user/percentages:
     get:
       summary: Get reward percentages for user
-      description: |
-        Returns the real-time percentages of rewards that a user is earning per market.
+      description: >
+        Returns the real-time percentages of rewards that a user is earning per
+        market.
+
 
         The response is a map of condition_id to the percentage of total rewards
+
         the user is currently earning in that market.
+
 
         Requires CLOB L2 Auth headers.
       operationId: getRewardPercentagesForUser
@@ -3404,19 +3529,31 @@ paths:
   /rewards/user/markets:
     get:
       summary: Get user earnings and markets configuration
-      description: |
-        Returns an array of current rewards including user earnings and live percentages
+      description: >
+        Returns an array of current rewards including user earnings and live
+        percentages
+
         per market for a provided day.
 
-        Results are paginated (100 items per page by default, max 500). Use next_cursor to fetch subsequent pages.
+
+        Results are paginated (100 items per page by default, max 500). Use
+        next_cursor to fetch subsequent pages.
+
         A next_cursor value of "LTE=" indicates the last page.
+
 
         Requires CLOB L2 Auth headers.
 
+
         Optional features:
+
         - Search by question/description using the `q` parameter
-        - Filter by tag slugs using `tag_slug` parameter (multiple values are OR'ed)
+
+        - Filter by tag slugs using `tag_slug` parameter (multiple values are
+        OR'ed)
+
         - Filter by favorite markets using `favorite_markets=true`
+
         - Sort by various fields using `order_by` and `position` parameters
       operationId: getUserEarningsAndMarketsConfig
       tags:
@@ -3566,23 +3703,27 @@ paths:
                 total_count: 42
                 next_cursor: LTE=
                 data:
-                  - condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                  - condition_id: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                     market_id: '248849'
                     event_id: '12345'
                     question: Will Trump win the 2024 Iowa Caucus?
                     market_slug: will-trump-win-the-2024-iowa-caucus
                     event_slug: will-trump-win-the-2024-iowa-caucus
-                    image: https://polymarket-upload.s3.us-east-2.amazonaws.com/trump1+copy.png
+                    image: >-
+                      https://polymarket-upload.s3.us-east-2.amazonaws.com/trump1+copy.png
                     rewards_max_spread: 99
                     rewards_min_size: 10
                     volume_24hr: 12345.67
                     spread: 0.12
                     market_competitiveness: 0.42
                     tokens:
-                      - token_id: '1343197538147866997676250008839231694243646439454152539053893078719042421992'
+                      - token_id: >-
+                          1343197538147866997676250008839231694243646439454152539053893078719042421992
                         outcome: 'YES'
                         price: 0.8
-                      - token_id: '16678291189211314787145083999015737376658799626183230671758641503291735614088'
+                      - token_id: >-
+                          16678291189211314787145083999015737376658799626183230671758641503291735614088
                         outcome: 'NO'
                         price: 0.2
                     rewards_config:
@@ -3636,12 +3777,16 @@ paths:
   /rewards/markets/current:
     get:
       summary: Get current active rewards configurations
-      description: |
+      description: >
         Returns all current active rewards configurations grouped by market.
+
 
         When `sponsored=true`, returns sponsored reward configurations instead.
 
-        Results are paginated (500 items per page). Use next_cursor to fetch subsequent pages.
+
+        Results are paginated (500 items per page). Use next_cursor to fetch
+        subsequent pages.
+
         A next_cursor value of "LTE=" indicates the last page.
       operationId: getCurrentRewards
       tags:
@@ -3649,7 +3794,9 @@ paths:
       parameters:
         - name: sponsored
           in: query
-          description: If true, returns sponsored reward configurations instead of standard ones
+          description: >-
+            If true, returns sponsored reward configurations instead of standard
+            ones
           required: false
           schema:
             type: boolean
@@ -3672,7 +3819,8 @@ paths:
                 count: 1
                 next_cursor: LTE=
                 data:
-                  - condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                  - condition_id: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                     rewards_max_spread: 99
                     rewards_min_size: 10
                     rewards_config:
@@ -3691,7 +3839,7 @@ paths:
                     sponsored_daily_rate: 0.5
                     sponsors_count: 2
                     native_daily_rate: 2.5
-                    total_daily_rate: 3.0
+                    total_daily_rate: 3
         '400':
           description: Bad request - Invalid next_cursor
           content:
@@ -3711,13 +3859,19 @@ paths:
   /rewards/markets/{condition_id}:
     get:
       summary: Get raw rewards for a specific market
-      description: |
+      description: >
         Returns an array of present and future rewards configured on a market.
 
-        When `sponsored=true`, sponsored daily rates are folded into each config's
+
+        When `sponsored=true`, sponsored daily rates are folded into each
+        config's
+
         `rate_per_day` .
 
-        Results are paginated (100 items per page). Use next_cursor to fetch subsequent pages.
+
+        Results are paginated (100 items per page). Use next_cursor to fetch
+        subsequent pages.
+
         A next_cursor value of "LTE=" indicates the last page.
       operationId: getRawRewardsForMarket
       tags:
@@ -3755,19 +3909,23 @@ paths:
                 count: 1
                 next_cursor: LTE=
                 data:
-                  - condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                  - condition_id: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                     question: Will Trump win the 2024 Iowa Caucus?
                     market_slug: will-trump-win-the-2024-iowa-caucus
                     event_slug: will-trump-win-the-2024-iowa-caucus
-                    image: https://polymarket-upload.s3.us-east-2.amazonaws.com/trump1+copy.png
+                    image: >-
+                      https://polymarket-upload.s3.us-east-2.amazonaws.com/trump1+copy.png
                     rewards_max_spread: 99
                     rewards_min_size: 10
                     market_competitiveness: 0.42
                     tokens:
-                      - token_id: '1343197538147866997676250008839231694243646439454152539053893078719042421992'
+                      - token_id: >-
+                          1343197538147866997676250008839231694243646439454152539053893078719042421992
                         outcome: 'YES'
                         price: 0.8
-                      - token_id: '16678291189211314787145083999015737376658799626183230671758641503291735614088'
+                      - token_id: >-
+                          16678291189211314787145083999015737376658799626183230671758641503291735614088
                         outcome: 'NO'
                         price: 0.2
                     rewards_config:
@@ -3811,11 +3969,15 @@ paths:
   /rewards/markets/multi:
     get:
       summary: Get multiple markets with rewards
-      description: |
+      description: >
         Returns a list of active markets with their reward configurations.
+
         Supports text search, tag filtering, numeric filters, and sorting.
 
-        Results are paginated (100 items per page by default). Use next_cursor to fetch subsequent pages.
+
+        Results are paginated (100 items per page by default). Use next_cursor
+        to fetch subsequent pages.
+
         A next_cursor value of "LTE=" indicates the last page.
       operationId: getMultiMarkets
       tags:
@@ -3829,13 +3991,17 @@ paths:
             type: string
         - name: tag_slug
           in: query
-          description: Filter by tag slug. Can be repeated for OR logic (e.g., ?tag_slug=sports&tag_slug=politics)
+          description: >-
+            Filter by tag slug. Can be repeated for OR logic (e.g.,
+            ?tag_slug=sports&tag_slug=politics)
           required: false
           schema:
             type: string
         - name: event_id
           in: query
-          description: Filter by event ID. Can be repeated for multiple events (e.g., ?event_id=100&event_id=200)
+          description: >-
+            Filter by event ID. Can be repeated for multiple events (e.g.,
+            ?event_id=100&event_id=200)
           required: false
           schema:
             type: string
@@ -3943,7 +4109,8 @@ paths:
                 count: 1
                 next_cursor: NQ==
                 data:
-                  - condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                  - condition_id: >-
+                      0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                     event_id: '12345'
                     event_slug: 2024-us-election
                     created_at: '2024-05-01T12:00:00Z'
@@ -3959,10 +4126,12 @@ paths:
                     spread: 0.12
                     end_date: '2024-08-10 00:00:00'
                     tokens:
-                      - token_id: '1343197538147866997676250008839231694243646439454152539053893078719042421992'
+                      - token_id: >-
+                          1343197538147866997676250008839231694243646439454152539053893078719042421992
                         outcome: 'YES'
                         price: 0.8
-                      - token_id: '16678291189211314787145083999015737376658799626183230671758641503291735614088'
+                      - token_id: >-
+                          16678291189211314787145083999015737376658799626183230671758641503291735614088
                         outcome: 'NO'
                         price: 0.2
                     volume_24hr: 12345.67
@@ -4003,10 +4172,13 @@ paths:
   /rebates/current:
     get:
       summary: Get current rebated fees for a maker
-      description: |
+      description: >
         Returns the current rebated fees for a maker address on a given date.
 
-        Each entry includes the condition ID, asset address, and the USDC amount rebated.
+
+        Each entry includes the condition ID, asset address, and the USDC amount
+        rebated.
+
 
         This endpoint does not require authentication.
       operationId: getCurrentRebatedFees
@@ -4039,7 +4211,8 @@ paths:
                   $ref: '#/components/schemas/RebatedFees'
               example:
                 - date: '2026-02-27'
-                  condition_id: '0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af'
+                  condition_id: >-
+                    0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af
                   asset_address: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
                   maker_address: '0xFeA4cB3dD4ca7CefD3368653B7D6FF9BcDFca604'
                   rebated_fees_usdc: '0.237519'
@@ -4069,10 +4242,15 @@ paths:
   /heartbeats:
     post:
       summary: Send heartbeat
-      description: |
+      description: >
         Sends a heartbeat signal to maintain active session status.
-        If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
-        This is useful for automated trading systems that need to ensure orders are canceled
+
+        If heartbeats are not sent regularly, all open orders for the user will
+        be automatically canceled.
+
+        This is useful for automated trading systems that need to ensure orders
+        are canceled
+
         if the system becomes unresponsive.
       operationId: sendHeartbeat
       tags:
@@ -4111,15 +4289,25 @@ paths:
   /v1/heartbeats:
     post:
       summary: Send heartbeat (v1)
-      description: |
+      description: >
         Sends a heartbeat signal with session tracking via heartbeat ID.
 
-        The first request should include an empty or initial heartbeat_id. The response will contain
-        a new heartbeat_id that must be used in subsequent requests. If the provided heartbeat_id
+
+        The first request should include an empty or initial heartbeat_id. The
+        response will contain
+
+        a new heartbeat_id that must be used in subsequent requests. If the
+        provided heartbeat_id
+
         doesn't match the expected value, the request will fail.
 
-        If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
-        This is useful for automated trading systems that need to ensure orders are canceled
+
+        If heartbeats are not sent regularly, all open orders for the user will
+        be automatically canceled.
+
+        This is useful for automated trading systems that need to ensure orders
+        are canceled
+
         if the system becomes unresponsive.
       operationId: sendHeartbeatV1
       tags:
@@ -4182,13 +4370,19 @@ paths:
   /order-scoring:
     get:
       summary: Get order scoring status
-      description: |
+      description: >
         Checks if a specific order is currently scoring for rewards.
 
-        An order is considered "scoring" if it meets all the criteria for earning maker rewards:
+
+        An order is considered "scoring" if it meets all the criteria for
+        earning maker rewards:
+
         - The order is live on a rewards-eligible market
+
         - The order meets the minimum size requirements
+
         - The order is within the valid spread range
+
         - The order has been live for the required duration
       operationId: getOrderScoring
       tags:
@@ -4262,17 +4456,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /orders-scoring:
     get:
       summary: Get scoring status for multiple orders
-      description: |
+      description: >
         Checks if multiple orders are currently scoring for rewards.
 
-        An order is considered "scoring" if it meets all the criteria for earning maker rewards:
+
+        An order is considered "scoring" if it meets all the criteria for
+        earning maker rewards:
+
         - The order is live on a rewards-eligible market
+
         - The order meets the minimum size requirements
+
         - The order is within the valid spread range
+
         - The order has been live for the required duration
       operationId: getOrdersScoring
       tags:
@@ -4345,17 +4547,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
     post:
       summary: Get scoring status for multiple orders (POST)
-      description: |
+      description: >
         Checks if multiple orders are currently scoring for rewards.
+
         This POST variant accepts order IDs in the request body.
 
-        An order is considered "scoring" if it meets all the criteria for earning maker rewards:
+
+        An order is considered "scoring" if it meets all the criteria for
+        earning maker rewards:
+
         - The order is live on a rewards-eligible market
+
         - The order meets the minimum size requirements
+
         - The order is within the valid spread range
+
         - The order has been live for the required duration
       operationId: postOrdersScoring
       tags:
@@ -4376,8 +4587,10 @@ paths:
                 type: string
               description: Array of order IDs (order hashes) to check scoring status for
             example:
-              - '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
-              - '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
+              - >-
+                0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+              - >-
+                0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
       responses:
         '200':
           description: Successfully retrieved scoring status for all orders
@@ -4426,7 +4639,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: Trading is currently disabled. Check polymarket.com for updates
+                error: >-
+                  Trading is currently disabled. Check polymarket.com for
+                  updates
   /trades:
     get:
       summary: Get trades
@@ -4472,7 +4687,8 @@ paths:
           required: false
           schema:
             type: string
-          example: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+          example: >-
+            15871154585880608648532107628464183779895785213830018178010423617714102767076
         - name: before
           in: query
           description: Filter trades before this Unix timestamp
@@ -4513,8 +4729,10 @@ paths:
                     data:
                       - id: trade-123
                         taker_order_id: '0xabcdef1234567890abcdef1234567890abcdef12'
-                        market: '0x0000000000000000000000000000000000000000000000000000000000000001'
-                        asset_id: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+                        market: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000001
+                        asset_id: >-
+                          15871154585880608648532107628464183779895785213830018178010423617714102767076
                         side: BUY
                         size: '100000000'
                         fee_rate_bps: '30'
@@ -4526,7 +4744,8 @@ paths:
                         bucket_index: 0
                         owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                         maker_address: '0x1234567890123456789012345678901234567890'
-                        transaction_hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
+                        transaction_hash: >-
+                          0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
                         trader_side: TAKER
                         maker_orders: []
         '400':
@@ -4591,7 +4810,8 @@ paths:
           required: false
           schema:
             type: string
-          example: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+          example: >-
+            15871154585880608648532107628464183779895785213830018178010423617714102767076
         - name: before
           in: query
           description: Filter trades before this Unix timestamp
@@ -4633,9 +4853,12 @@ paths:
                       - id: trade-123
                         tradeType: TAKER
                         takerOrderHash: '0xabcdef1234567890abcdef1234567890abcdef12'
-                        builder: '0x0000000000000000000000000000000000000000000000000000000000000001'
-                        market: '0x0000000000000000000000000000000000000000000000000000000000000001'
-                        assetId: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+                        builder: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000001
+                        market: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000001
+                        assetId: >-
+                          15871154585880608648532107628464183779895785213830018178010423617714102767076
                         side: BUY
                         size: '100000000'
                         sizeUsdc: '50000000'
@@ -4645,7 +4868,8 @@ paths:
                         outcomeIndex: 0
                         owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                         maker: '0x1234567890123456789012345678901234567890'
-                        transactionHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
+                        transactionHash: >-
+                          0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
                         matchTime: '1700000000'
                         bucketIndex: 0
                         fee: '300000'
@@ -4703,9 +4927,13 @@ components:
   schemas:
     Order:
       type: object
-      description: |
-        Order payload submitted to the CLOB API. In CLOB V2, `expiration` remains in
-        the POST /order wire body for GTD/order-expiry handling, but it is not part
+      description: >
+        Order payload submitted to the CLOB API. In CLOB V2, `expiration`
+        remains in
+
+        the POST /order wire body for GTD/order-expiry handling, but it is not
+        part
+
         of the EIP-712 signed order struct.
       required:
         - maker
@@ -4723,7 +4951,9 @@ components:
       properties:
         maker:
           type: string
-          description: Ethereum address of the maker (In the default case, this is your proxy address)
+          description: >-
+            Ethereum address of the maker (In the default case, this is your
+            proxy address)
           example: '0x1234567890123456789012345678901234567890'
         signer:
           type: string
@@ -4750,11 +4980,15 @@ components:
           example: BUY
         expiration:
           type: string
-          description: Unix timestamp when the order expires. Present in the API wire body; not part of the CLOB V2 EIP-712 signed order struct.
+          description: >-
+            Unix timestamp when the order expires. Present in the API wire body;
+            not part of the CLOB V2 EIP-712 signed order struct.
           example: '1735689600'
         timestamp:
           type: string
-          description: Unix timestamp in milliseconds when the order was created (used for order uniqueness)
+          description: >-
+            Unix timestamp in milliseconds when the order was created (used for
+            order uniqueness)
           example: '1735689600000'
         metadata:
           type: string
@@ -4762,7 +4996,9 @@ components:
           example: ''
         builder:
           type: string
-          description: Builder code (bytes32) for integrator attribution. `0x` + 64 hex chars or empty.
+          description: >-
+            Builder code (bytes32) for integrator attribution. `0x` + 64 hex
+            chars or empty.
           example: '0x0000000000000000000000000000000000000000000000000000000000000000'
         signature:
           type: string
@@ -4995,7 +5231,9 @@ components:
           example: 100
         next_cursor:
           type: string
-          description: Cursor for pagination (base64 encoded offset). Empty if no more results.
+          description: >-
+            Cursor for pagination (base64 encoded offset). Empty if no more
+            results.
           example: MTAw
         count:
           type: integer
@@ -5200,13 +5438,17 @@ components:
             $ref: '#/components/schemas/SimplifiedMarket'
     ClobMarketDetails:
       type: object
-      description: CLOB-level parameters for a market — tokens, tick size, base fees, rewards, RFQ status, and fee details.
+      description: >-
+        CLOB-level parameters for a market — tokens, tick size, base fees,
+        rewards, RFQ status, and fee details.
       properties:
         gst:
           type: string
           format: date-time
           nullable: true
-          description: Game start time (used for sports markets), ISO 8601 timestamp or null
+          description: >-
+            Game start time (used for sports markets), ISO 8601 timestamp or
+            null
         r:
           $ref: '#/components/schemas/ClobRewards'
         t:
@@ -5255,11 +5497,12 @@ components:
         t:
           type: string
           description: The token ID
-          example: '71321045679252212594626385532706912750332728571942532289631379312455583992563'
+          example: >-
+            71321045679252212594626385532706912750332728571942532289631379312455583992563
         o:
           type: string
           description: Outcome label for the token (e.g. "Yes", "No")
-          example: Yes
+          example: 'Yes'
     FeeDetails:
       type: object
       description: Fee curve parameters for a market.
@@ -5287,7 +5530,9 @@ components:
       additionalProperties: true
     MarketByTokenResponse:
       type: object
-      description: Response for GET /markets-by-token/{token_id} — condition ID and both token IDs in the market.
+      description: >-
+        Response for GET /markets-by-token/{token_id} — condition ID and both
+        token IDs in the market.
       required:
         - condition_id
         - primary_token_id
@@ -5300,11 +5545,13 @@ components:
         primary_token_id:
           type: string
           description: The primary (Yes) token ID
-          example: '71321045679252212594626385532706912750332728571942532289631379312455583992563'
+          example: >-
+            71321045679252212594626385532706912750332728571942532289631379312455583992563
         secondary_token_id:
           type: string
           description: The secondary (No) token ID
-          example: '52114319501245915516055106046884209969926127482827954674443846427813813222426'
+          example: >-
+            52114319501245915516055106046884209969926127482827954674443846427813813222426
     Market:
       type: object
       properties:
@@ -5392,7 +5639,9 @@ components:
             $ref: '#/components/schemas/Market'
     LiveActivityMarket:
       type: object
-      description: Minimal market information for live activity widgets (e.g., iOS Live Activities, Android widgets)
+      description: >-
+        Minimal market information for live activity widgets (e.g., iOS Live
+        Activities, Android widgets)
       properties:
         condition_id:
           type: string
@@ -5566,7 +5815,9 @@ components:
           description: Unique identifier for the notification
         owner:
           type: string
-          description: API key of the notification owner (empty for broadcast notifications)
+          description: >-
+            API key of the notification owner (empty for broadcast
+            notifications)
         type:
           type: integer
           description: |
@@ -6144,9 +6395,12 @@ components:
           example: true
     OrdersScoringResponse:
       type: object
-      description: |
+      description: >
         Map of order IDs to their scoring status.
-        Each key is an order ID (order hash) and the value is a boolean indicating
+
+        Each key is an order ID (order hash) and the value is a boolean
+        indicating
+
         whether that order is currently scoring for maker rewards.
       additionalProperties:
         type: boolean
@@ -6189,7 +6443,8 @@ components:
         asset_id:
           type: string
           description: Asset ID (token ID)
-          example: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+          example: >-
+            15871154585880608648532107628464183779895785213830018178010423617714102767076
         side:
           type: string
           description: Trade side
@@ -6317,7 +6572,9 @@ components:
           example: 100
         next_cursor:
           type: string
-          description: Cursor for next page (base64 encoded offset). "LTE=" indicates no more pages
+          description: >-
+            Cursor for next page (base64 encoded offset). "LTE=" indicates no
+            more pages
           example: MTAw
         count:
           type: integer
@@ -6378,7 +6635,8 @@ components:
         assetId:
           type: string
           description: Asset ID (token ID)
-          example: '15871154585880608648532107628464183779895785213830018178010423617714102767076'
+          example: >-
+            15871154585880608648532107628464183779895785213830018178010423617714102767076
         side:
           type: string
           description: Trade side
@@ -6471,7 +6729,9 @@ components:
           example: 300
         next_cursor:
           type: string
-          description: Cursor for next page (base64 encoded offset). "LTE=" indicates no more pages
+          description: >-
+            Cursor for next page (base64 encoded offset). "LTE=" indicates no
+            more pages
           example: MzAw
         count:
           type: integer

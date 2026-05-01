@@ -9,217 +9,6 @@ servers:
     description: Production server
 
 paths:
-  /historical/cutoff:
-    get:
-      operationId: GetHistoricalCutoff
-      summary: Get Historical Cutoff Timestamps
-      description: |
-        Returns the cutoff timestamps that define the boundary between **live** and **historical** data.
-
-        ## Cutoff fields
-        - `market_settled_ts` : Markets that **settled** before this timestamp, and their candlesticks, must be accessed via `GET /historical/markets` and `GET /historical/markets/{ticker}/candlesticks`.
-        - `trades_created_ts` : Trades that were **filled** before this timestamp must be accessed via `GET /historical/fills`.
-        - `orders_updated_ts` : Orders that were **canceled or fully executed** before this timestamp must be accessed via `GET /historical/orders`. Resting (active) orders are always available in `GET /portfolio/orders`.
-      tags:
-        - historical
-      responses:
-        '200':
-          description: Historical cutoff timestamps retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetHistoricalCutoffResponse'
-        '500':
-          description: Internal server error
-
-  /historical/markets/{ticker}/candlesticks:
-    get:
-      operationId: GetMarketCandlesticksHistorical
-      summary: Get Historical Market Candlesticks
-      description: ' Endpoint for fetching historical candlestick data for markets that have been archived from the live data set. Time period length of each candlestick in minutes. Valid values: 1 (1 minute), 60 (1 hour), 1440 (1 day).'
-      tags:
-        - historical
-      parameters:
-        - name: ticker
-          in: path
-          required: true
-          description: Market ticker - unique identifier for the specific market
-          schema:
-            type: string
-        - name: start_ts
-          in: query
-          required: true
-          description: Start timestamp (Unix timestamp). Candlesticks will include those ending on or after this time.
-          schema:
-            type: integer
-            format: int64
-        - name: end_ts
-          in: query
-          required: true
-          description: End timestamp (Unix timestamp). Candlesticks will include those ending on or before this time.
-          schema:
-            type: integer
-            format: int64
-        - name: period_interval
-          in: query
-          required: true
-          description: Time period length of each candlestick in minutes. Valid values are 1 (1 minute), 60 (1 hour), or 1440 (1 day).
-          schema:
-            type: integer
-            enum: [1, 60, 1440]
-          x-oapi-codegen-extra-tags:
-            validate: "required,oneof=1 60 1440"
-      responses:
-        '200':
-          description: Candlesticks retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketCandlesticksHistoricalResponse'
-        '400':
-          description: Bad request
-        '404':
-          description: Not found
-        '500':
-          description: Internal server error
-
-  /historical/fills:
-    get:
-      operationId: GetFillsHistorical
-      summary: Get Historical Fills
-      description: ' Endpoint for getting all historical fills for the member. A fill is when a trade you have is matched.'
-      tags:
-        - historical
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      parameters:
-        - $ref: '#/components/parameters/TickerQuery'
-        - $ref: '#/components/parameters/MaxTsQuery'
-        - $ref: '#/components/parameters/LimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-      responses:
-        '200':
-          description: Fills retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetFillsResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          description: Internal server error
-
-  /historical/orders:
-    get:
-      operationId: GetHistoricalOrders
-      summary: Get Historical Orders
-      description:  ' Endpoint for getting orders that have been archived to the historical database.'
-      tags:
-        - historical
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      parameters:
-        - $ref: '#/components/parameters/TickerQuery'
-        - $ref: '#/components/parameters/MaxTsQuery'
-        - $ref: '#/components/parameters/LimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-      responses:
-        '200':
-          description: Historical orders retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetOrdersResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /historical/trades:
-    get:
-      operationId: GetTradesHistorical
-      summary: Get Historical Trades
-      description: ' Endpoint for getting all historical trades for all markets. Trades that were filled before the historical cutoff are available via this endpoint. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.'
-      tags:
-        - historical
-      parameters:
-        - $ref: '#/components/parameters/TickerQuery'
-        - $ref: '#/components/parameters/MinTsQuery'
-        - $ref: '#/components/parameters/MaxTsQuery'
-        - $ref: '#/components/parameters/MarketLimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-      responses:
-        '200':
-          description: Historical trades retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetTradesResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /historical/markets:
-    get:
-      operationId: GetHistoricalMarkets
-      summary: Get Historical Markets
-      description: |
-        Endpoint for getting markets that have been archived to the historical database. Filters are mutually exclusive.
-      tags:
-        - historical
-      parameters:
-        - $ref: '#/components/parameters/MarketLimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-        - $ref: '#/components/parameters/TickersQuery'
-        - $ref: '#/components/parameters/SingleEventTickerQuery'
-        - $ref: '#/components/parameters/SeriesTickerQuery'
-        - $ref: '#/components/parameters/MveHistoricalFilterQuery'
-      responses:
-        '200':
-          description: Historical markets retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketsResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /historical/markets/{ticker}:
-    get:
-      operationId: GetHistoricalMarket
-      summary: Get Historical Market
-      description: ' Endpoint for getting data about a specific market by its ticker from the historical database.'
-      tags:
-        - historical
-      parameters:
-        - $ref: '#/components/parameters/TickerPath'
-      responses:
-        '200':
-          description: Historical market retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketResponse'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /exchange/status:
     get:
       operationId: GetExchangeStatus
@@ -333,6 +122,744 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetUserDataTimestampResponse'
+        '500':
+          description: Internal server error
+
+  /series/{series_ticker}/markets/{ticker}/candlesticks:
+    get:
+      operationId: GetMarketCandlesticks
+      summary: Get Market Candlesticks
+      description: |
+        Time period length of each candlestick in minutes. Valid values: 1 (1 minute), 60 (1 hour), 1440 (1 day).
+        Candlesticks for markets that settled before the historical cutoff are only available via `GET /historical/markets/{ticker}/candlesticks`. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.
+      tags:
+        - market
+      parameters:
+        - name: series_ticker
+          in: path
+          required: true
+          description: Series ticker - the series that contains the target market
+          schema:
+            type: string
+        - name: ticker
+          in: path
+          required: true
+          description: Market ticker - unique identifier for the specific market
+          schema:
+            type: string
+        - name: start_ts
+          in: query
+          required: true
+          description: Start timestamp (Unix timestamp). Candlesticks will include those ending on or after this time.
+          schema:
+            type: integer
+            format: int64
+        - name: end_ts
+          in: query
+          required: true
+          description: End timestamp (Unix timestamp). Candlesticks will include those ending on or before this time.
+          schema:
+            type: integer
+            format: int64
+        - name: period_interval
+          in: query
+          required: true
+          description: Time period length of each candlestick in minutes. Valid values are 1 (1 minute), 60 (1 hour), or 1440 (1 day).
+          schema:
+            type: integer
+            enum: [1, 60, 1440]
+          x-oapi-codegen-extra-tags:
+            validate: "required,oneof=1 60 1440"
+        - name: include_latest_before_start
+          in: query
+          required: false
+          description: |
+            If true, prepends the latest candlestick available before the start_ts. This synthetic candlestick is created by:
+            1. Finding the most recent real candlestick before start_ts
+            2. Projecting it forward to the first period boundary (calculated as the next period interval after start_ts)
+            3. Setting all OHLC prices to null, and `previous_price` to the close price from the real candlestick
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Candlesticks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketCandlesticksResponse'
+        '400':
+          description: Bad request
+        '404':
+          description: Not found
+        '500':
+          description: Internal server error
+
+  /markets/trades:
+    get:
+      operationId: GetTrades
+      summary: Get Trades
+      description: |
+        Endpoint for getting all trades for all markets. A trade represents a completed transaction between two users on a specific market. Each trade includes the market ticker, price, quantity, and timestamp information. This endpoint returns a paginated response. Use the 'limit' parameter to control page size (1-1000, defaults to 100). The response includes a 'cursor' field - pass this value in the 'cursor' parameter of your next request to get the next page. An empty cursor indicates no more pages are available.
+      tags:
+        - market
+      parameters:
+        - $ref: '#/components/parameters/MarketLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - $ref: '#/components/parameters/TickerQuery'
+        - $ref: '#/components/parameters/MinTsQuery'
+        - $ref: '#/components/parameters/MaxTsQuery'
+      responses:
+        '200':
+          description: Trades retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTradesResponse'
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error
+
+  /markets/{ticker}/orderbook:
+    get:
+      operationId: GetMarketOrderbook
+      summary: Get Market Orderbook
+      description: ' Endpoint for getting the current order book for a specific market.  The order book shows all active bid orders for both yes and no sides of a binary market. It returns yes bids and no bids only (no asks are returned). This is because in binary markets, a bid for yes at price X is equivalent to an ask for no at price (100-X). For example, a yes bid at 7¢ is the same as a no ask at 93¢, with identical contract sizes.  Each side shows price levels with their corresponding quantities and order counts, organized from best to worst prices.'
+      tags:
+        - market
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - $ref: '#/components/parameters/TickerPath'
+        - name: depth
+          in: query
+          description: Depth of the orderbook to retrieve (0 or negative means all levels, 1-100 for specific depth)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 0
+          x-oapi-codegen-extra-tags:
+            validate: omitempty,min=0,max=100
+      responses:
+        '200':
+          description: Orderbook retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketOrderbookResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /markets/orderbooks:
+    get:
+      operationId: GetMarketOrderbooks
+      summary: Get Multiple Market Orderbooks
+      description: 'Endpoint for getting the current order books for multiple markets in a single request. The order book shows all active bid orders for both yes and no sides of a binary market. It returns yes bids and no bids only (no asks are returned). This is because in binary markets, a bid for yes at price X is equivalent to an ask for no at price (100-X). For example, a yes bid at 7¢ is the same as a no ask at 93¢, with identical contract sizes. Each side shows price levels with their corresponding quantities and order counts, organized from best to worst prices. Returns one orderbook per requested market ticker.'
+      tags:
+        - market
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: tickers
+          in: query
+          required: true
+          description: List of market tickers to fetch orderbooks for
+          schema:
+            type: array
+            items:
+              type: string
+              maxLength: 200
+            minItems: 1
+            maxItems: 100
+          style: form
+          explode: true
+          x-oapi-codegen-extra-tags:
+            validate: required,min=1,max=100,dive,max=200
+      responses:
+        '200':
+          description: Orderbooks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketOrderbooksResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /series/{series_ticker}:
+    get:
+      operationId: GetSeries
+      summary: Get Series
+      description: ' Endpoint for getting data about a specific series by its ticker.  A series represents a template for recurring events that follow the same format and rules (e.g., "Monthly Jobs Report", "Weekly Initial Jobless Claims", "Daily Weather in NYC"). Series define the structure, settlement sources, and metadata that will be applied to each recurring event instance within that series.'
+      tags:
+        - market
+      parameters:
+        - name: series_ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ticker of the series to retrieve
+        - name: include_volume
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          x-go-type-skip-optional-pointer: true
+          description: If true, includes the total volume traded across all events in this series.
+      responses:
+        '200':
+          description: Series retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSeriesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /series:
+    get:
+      operationId: GetSeriesList
+      summary: Get Series List
+      description: ' Endpoint for getting data about multiple series with specified filters.  A series represents a template for recurring events that follow the same format and rules (e.g., "Monthly Jobs Report", "Weekly Initial Jobless Claims", "Daily Weather in NYC"). This endpoint allows you to browse and discover available series templates by category.'
+      tags:
+        - market
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        - name: include_product_metadata
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          x-go-type-skip-optional-pointer: true
+        - name: include_volume
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          x-go-type-skip-optional-pointer: true
+          description: If true, includes the total volume traded across all events in each series.
+        - name: min_updated_ts
+          in: query
+          required: false
+          description: Filter series with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Series list retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSeriesListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /markets:
+    get:
+      operationId: GetMarkets
+      summary: Get Markets
+      description: |
+       Filter by market status. Possible values: `unopened`, `open`, `closed`, `settled`. Leave empty to return markets with any status.
+        - Only one `status` filter may be supplied at a time.
+        - Timestamp filters will be mutually exclusive from other timestamp filters and certain status filters.
+
+        | Compatible Timestamp Filters | Additional Status Filters| Extra Notes |
+        |------------------------------|--------------------------|-------------|
+        | min_created_ts, max_created_ts | `unopened`, `open`, *empty* | |
+        | min_close_ts, max_close_ts | `closed`, *empty* | |
+        | min_settled_ts, max_settled_ts | `settled`, *empty* | |
+        | min_updated_ts | *empty* | Incompatible with all filters besides `mve_filter=exclude` |
+
+        Markets that settled before the historical cutoff are only available via `GET /historical/markets`. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.
+
+      tags:
+        - market
+      parameters:
+        - $ref: '#/components/parameters/MarketLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - $ref: '#/components/parameters/SingleEventTickerQuery'
+        - $ref: '#/components/parameters/SeriesTickerQuery'
+        - $ref: '#/components/parameters/MinCreatedTsQuery'
+        - $ref: '#/components/parameters/MaxCreatedTsQuery'
+        - $ref: '#/components/parameters/MinUpdatedTsQuery'
+        - $ref: '#/components/parameters/MaxCloseTsQuery'
+        - $ref: '#/components/parameters/MinCloseTsQuery'
+        - $ref: '#/components/parameters/MinSettledTsQuery'
+        - $ref: '#/components/parameters/MaxSettledTsQuery'
+        - $ref: '#/components/parameters/MarketStatusQuery'
+        - $ref: '#/components/parameters/TickersQuery'
+        - $ref: '#/components/parameters/MveFilterQuery'
+      responses:
+        '200':
+          description: Markets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketsResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /markets/{ticker}:
+    get:
+      operationId: GetMarket
+      summary: Get Market
+      description: ' Endpoint for getting data about a specific market by its ticker. A market represents a specific binary outcome within an event that users can trade on (e.g., "Will candidate X win?"). Markets have yes/no positions, current prices, volume, and settlement rules.'
+      tags:
+        - market
+      parameters:
+        - $ref: '#/components/parameters/TickerPath'
+      responses:
+        '200':
+          description: Market retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+        '500':
+          description: Internal server error
+
+  /markets/candlesticks:
+    get:
+      operationId: BatchGetMarketCandlesticks
+      summary: Batch Get Market Candlesticks
+      description: |
+        Endpoint for retrieving candlestick data for multiple markets.
+
+        - Accepts up to 100 market tickers per request
+        - Returns up to 10,000 candlesticks total across all markets
+        - Returns candlesticks grouped by market_id
+        - Optionally includes a synthetic initial candlestick for price continuity (see `include_latest_before_start` parameter)
+      tags:
+        - market
+      parameters:
+        - name: market_tickers
+          in: query
+          required: true
+          description: Comma-separated list of market tickers (maximum 100)
+          schema:
+            type: string
+        - name: start_ts
+          in: query
+          required: true
+          description: Start timestamp in Unix seconds
+          schema:
+            type: integer
+            format: int64
+        - name: end_ts
+          in: query
+          required: true
+          description: End timestamp in Unix seconds
+          schema:
+            type: integer
+            format: int64
+        - name: period_interval
+          in: query
+          required: true
+          description: Candlestick period interval in minutes
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+        - name: include_latest_before_start
+          in: query
+          required: false
+          description: |
+            If true, prepends the latest candlestick available before the start_ts. This synthetic candlestick is created by:
+            1. Finding the most recent real candlestick before start_ts
+            2. Projecting it forward to the first period boundary (calculated as the next period interval after start_ts)
+            3. Setting all OHLC prices to null, and `previous_price` to the close price from the real candlestick
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Market candlesticks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGetMarketCandlesticksResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /series/{series_ticker}/events/{ticker}/candlesticks:
+    get:
+      operationId: GetMarketCandlesticksByEvent
+      summary: Get Event Candlesticks
+      description: ' End-point for returning aggregated data across all markets corresponding to an event.'
+      tags:
+        - events
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: The event ticker
+          schema:
+            type: string
+        - name: series_ticker
+          in: path
+          required: true
+          description: The series ticker
+          schema:
+            type: string
+        - name: start_ts
+          in: query
+          required: true
+          description: Start timestamp for the range
+          schema:
+            type: integer
+            format: int64
+          x-oapi-codegen-extra-tags:
+            validate: "required"
+        - name: end_ts
+          in: query
+          required: true
+          description: End timestamp for the range
+          schema:
+            type: integer
+            format: int64
+          x-oapi-codegen-extra-tags:
+            validate: "required"
+        - name: period_interval
+          in: query
+          required: true
+          description: Specifies the length of each candlestick period, in minutes. Must be one minute, one hour, or one day.
+          schema:
+            type: integer
+            format: int32
+            enum: [1, 60, 1440]
+          x-oapi-codegen-extra-tags:
+            validate: "required,oneof=1 60 1440"
+      responses:
+        '200':
+          description: Event candlesticks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEventCandlesticksResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /events:
+    get:
+      operationId: GetEvents
+      summary: Get Events
+      description: |
+        Get all events. This endpoint excludes multivariate events.
+        To retrieve multivariate events, use the GET /events/multivariate endpoint.
+        All events are accessible through this endpoint, even if their associated markets are older than the historical cutoff.
+      tags:
+        - events
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Parameter to specify the number of results per page. Defaults to 200. Maximum value is 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Parameter to specify the pagination cursor. Use the cursor value returned from the previous response to get the next page of results. Leave empty for the first page.
+          schema:
+            type: string
+        - name: with_nested_markets
+          in: query
+          required: false
+          description: Parameter to specify if nested markets should be included in the response. When true, each event will include a 'markets' field containing a list of Market objects associated with that event. Historical markets settled before the historical cutoff will not be included.
+          schema:
+            type: boolean
+            default: false
+          x-go-type-skip-optional-pointer: true
+        - name: with_milestones
+          in: query
+          required: false
+          description: If true, includes related milestones as a field alongside events.
+          schema:
+            type: boolean
+            default: false
+          x-go-type-skip-optional-pointer: true
+        - name: status
+          in: query
+          required: false
+          description: Filter by event status. Possible values are 'unopened', 'open', 'closed', 'settled'. Leave empty to return events with any status.
+          schema:
+            type: string
+            enum: ['unopened', 'open', 'closed', 'settled']
+        - $ref: '#/components/parameters/SeriesTickerQuery'
+        - name: min_close_ts
+          in: query
+          required: false
+          description: Filter events with at least one market with close timestamp greater than this Unix timestamp (in seconds).
+          schema:
+            type: integer
+            format: int64
+        - name: min_updated_ts
+          in: query
+          required: false
+          description: Filter events with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEventsResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /events/multivariate:
+    get:
+      operationId: GetMultivariateEvents
+      summary: Get Multivariate Events
+      description: 'Retrieve multivariate (combo) events. These are dynamically created events from multivariate event collections. Supports filtering by series and collection ticker.'
+      tags:
+        - events
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Number of results per page. Defaults to 100. Maximum value is 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Pagination cursor. Use the cursor value returned from the previous response to get the next page of results.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/SeriesTickerQuery'
+        - name: collection_ticker
+          in: query
+          required: false
+          description: Filter events by collection ticker. Returns only multivariate events belonging to the specified collection. Cannot be used together with series_ticker.
+          schema:
+            type: string
+        - name: with_nested_markets
+          in: query
+          required: false
+          description: Parameter to specify if nested markets should be included in the response. When true, each event will include a 'markets' field containing a list of Market objects associated with that event.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Multivariate events retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMultivariateEventsResponse'
+        '400':
+          description: Bad request - invalid parameters
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /events/{event_ticker}:
+    get:
+      operationId: GetEvent
+      summary: Get Event
+      description: |
+        Endpoint for getting data about an event by its ticker. An event represents a real-world occurrence that can be traded on, such as an election, sports game, or economic indicator release.
+        Events contain one or more markets where users can place trades on different outcomes.
+        All events are accessible through this endpoint, even if their associated markets are older than the historical cutoff.
+      tags:
+        - events
+      parameters:
+        - name: event_ticker
+          in: path
+          required: true
+          description: Event ticker
+          schema:
+            type: string
+        - name: with_nested_markets
+          in: query
+          required: false
+          description: If true, markets are included within the event object. If false (default), markets are returned as a separate top-level field in the response. Historical markets settled before the historical cutoff will not be included.
+          schema:
+            type: boolean
+            default: false
+            x-go-type-skip-optional-pointer: true
+      responses:
+        '200':
+          description: Event retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEventResponse'
+        '400':
+          description: Bad request
+        '404':
+          description: Event not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /events/{event_ticker}/metadata:
+    get:
+      operationId: GetEventMetadata
+      summary: Get Event Metadata
+      description: ' Endpoint for getting metadata about an event by its ticker.  Returns only the metadata information for an event.'
+      tags:
+        - events
+      parameters:
+        - name: event_ticker
+          in: path
+          required: true
+          description: Event ticker
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEventMetadataResponse'
+        '400':
+          description: Bad request
+        '404':
+          description: Event not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /series/{series_ticker}/events/{ticker}/forecast_percentile_history:
+    get:
+      operationId: GetEventForecastPercentilesHistory
+      summary: Get Event Forecast Percentile History
+      description: Endpoint for getting the historical raw and formatted forecast numbers for an event at specific percentiles.
+      tags:
+        - events
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: The event ticker
+          schema:
+            type: string
+        - name: series_ticker
+          in: path
+          required: true
+          description: The series ticker
+          schema:
+            type: string
+        - name: percentiles
+          in: query
+          required: true
+          description: Array of percentile values to retrieve (0-10000, max 10 values)
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int32
+              minimum: 0
+              maximum: 10000
+            maxItems: 10
+          style: form
+          explode: true
+        - name: start_ts
+          in: query
+          required: true
+          description: Start timestamp for the range
+          schema:
+            type: integer
+            format: int64
+        - name: end_ts
+          in: query
+          required: true
+          description: End timestamp for the range
+          schema:
+            type: integer
+            format: int64
+        - name: period_interval
+          in: query
+          required: true
+          description: Specifies the length of each forecast period, in minutes. 0 for 5-second intervals, or 1, 60, or 1440 for minute-based intervals.
+          schema:
+            type: integer
+            format: int32
+            enum: [0, 1, 60, 1440]
+      responses:
+        '200':
+          description: Event forecast percentile history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEventForecastPercentilesHistoryResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
         '500':
           description: Internal server error
 
@@ -1406,1251 +1933,6 @@ paths:
         '500':
           description: Internal server error
 
-  /api_keys:
-    get:
-      operationId: GetApiKeys
-      summary: Get API Keys
-      description: ' Endpoint for retrieving all API keys associated with the authenticated user.  API keys allow programmatic access to the platform without requiring username/password authentication. Each key has a unique identifier and name.'
-      tags:
-        - api-keys
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      responses:
-        '200':
-          description: List of API keys retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetApiKeysResponse'
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-    post:
-      operationId: CreateApiKey
-      summary: Create API Key
-      description: ' Endpoint for creating a new API key with a user-provided public key. This endpoint allows users to create API keys by providing their own RSA public key. The platform will use this public key to verify signatures on API requests.'
-      tags:
-        - api-keys
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateApiKeyRequest'
-      responses:
-        '201':
-          description: API key created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateApiKeyResponse'
-        '400':
-          description: Bad request - invalid input
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden - insufficient API usage level
-        '500':
-          description: Internal server error
-
-  /api_keys/generate:
-    post:
-      operationId: GenerateApiKey
-      summary: Generate API Key
-      description: ' Endpoint for generating a new API key with an automatically created key pair.  This endpoint generates both a public and private RSA key pair. The public key is stored on the platform, while the private key is returned to the user and must be stored securely. The private key cannot be retrieved again.'
-      tags:
-        - api-keys
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GenerateApiKeyRequest'
-      responses:
-        '201':
-          description: API key generated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerateApiKeyResponse'
-        '400':
-          description: Bad request - invalid input
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /api_keys/{api_key}:
-    delete:
-      operationId: DeleteApiKey
-      summary: Delete API Key
-      description: ' Endpoint for deleting an existing API key.  This endpoint permanently deletes an API key. Once deleted, the key can no longer be used for authentication. This action cannot be undone.'
-      tags:
-        - api-keys
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      parameters:
-        - name: api_key
-          in: path
-          required: true
-          description: API key ID to delete
-          schema:
-            type: string
-      responses:
-        '204':
-          description: API key successfully deleted
-        '400':
-          description: Bad request - invalid API key ID
-        '401':
-          description: Unauthorized
-        '404':
-          description: API key not found
-        '500':
-          description: Internal server error
-
-  /search/tags_by_categories:
-    get:
-      operationId: GetTagsForSeriesCategories
-      summary: Get Tags for Series Categories
-      description: |
-        Retrieve tags organized by series categories.
-
-        This endpoint returns a mapping of series categories to their associated tags, which can be used for filtering and search functionality.
-      tags:
-        - search
-      responses:
-        '200':
-          description: Tags retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetTagsForSeriesCategoriesResponse'
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /search/filters_by_sport:
-    get:
-      operationId: GetFiltersForSports
-      summary: Get Filters for Sports
-      description: |
-        Retrieve available filters organized by sport.
-
-        This endpoint returns filtering options available for each sport, including scopes and competitions. It also provides an ordered list of sports for display purposes.
-      tags:
-        - search
-      responses:
-        '200':
-          description: Filters retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetFiltersBySportsResponse'
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /account/limits:
-    get:
-      operationId: GetAccountApiLimits
-      summary: Get Account API Limits 
-      description: ' Endpoint to retrieve the API tier limits associated with the authenticated user.'
-      tags:
-        - account
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      responses:
-        '200':
-          description: Account API tier limits retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetAccountApiLimitsResponse'
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /account/endpoint_costs:
-    get:
-      operationId: GetAccountEndpointCosts
-      summary: List Non-Default Endpoint Costs
-      description: 'Lists API v2 endpoints whose configured token cost differs from the default cost. Endpoints that use the default cost are omitted.'
-      tags:
-        - account
-      responses:
-        '200':
-          description: Non-default endpoint costs retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetAccountEndpointCostsResponse'
-        '500':
-          description: Internal server error
-
-  /series/{series_ticker}/markets/{ticker}/candlesticks:
-    get:
-      operationId: GetMarketCandlesticks
-      summary: Get Market Candlesticks
-      description: |
-        Time period length of each candlestick in minutes. Valid values: 1 (1 minute), 60 (1 hour), 1440 (1 day).
-        Candlesticks for markets that settled before the historical cutoff are only available via `GET /historical/markets/{ticker}/candlesticks`. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.
-      tags:
-        - market
-      parameters:
-        - name: series_ticker
-          in: path
-          required: true
-          description: Series ticker - the series that contains the target market
-          schema:
-            type: string
-        - name: ticker
-          in: path
-          required: true
-          description: Market ticker - unique identifier for the specific market
-          schema:
-            type: string
-        - name: start_ts
-          in: query
-          required: true
-          description: Start timestamp (Unix timestamp). Candlesticks will include those ending on or after this time.
-          schema:
-            type: integer
-            format: int64
-        - name: end_ts
-          in: query
-          required: true
-          description: End timestamp (Unix timestamp). Candlesticks will include those ending on or before this time.
-          schema:
-            type: integer
-            format: int64
-        - name: period_interval
-          in: query
-          required: true
-          description: Time period length of each candlestick in minutes. Valid values are 1 (1 minute), 60 (1 hour), or 1440 (1 day).
-          schema:
-            type: integer
-            enum: [1, 60, 1440]
-          x-oapi-codegen-extra-tags:
-            validate: "required,oneof=1 60 1440"
-        - name: include_latest_before_start
-          in: query
-          required: false
-          description: |
-            If true, prepends the latest candlestick available before the start_ts. This synthetic candlestick is created by:
-            1. Finding the most recent real candlestick before start_ts
-            2. Projecting it forward to the first period boundary (calculated as the next period interval after start_ts)
-            3. Setting all OHLC prices to null, and `previous_price` to the close price from the real candlestick
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: Candlesticks retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketCandlesticksResponse'
-        '400':
-          description: Bad request
-        '404':
-          description: Not found
-        '500':
-          description: Internal server error
-
-  /markets/trades:
-    get:
-      operationId: GetTrades
-      summary: Get Trades
-      description: |
-        Endpoint for getting all trades for all markets. A trade represents a completed transaction between two users on a specific market. Each trade includes the market ticker, price, quantity, and timestamp information. This endpoint returns a paginated response. Use the 'limit' parameter to control page size (1-1000, defaults to 100). The response includes a 'cursor' field - pass this value in the 'cursor' parameter of your next request to get the next page. An empty cursor indicates no more pages are available.
-      tags:
-        - market
-      parameters:
-        - $ref: '#/components/parameters/MarketLimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-        - $ref: '#/components/parameters/TickerQuery'
-        - $ref: '#/components/parameters/MinTsQuery'
-        - $ref: '#/components/parameters/MaxTsQuery'
-      responses:
-        '200':
-          description: Trades retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetTradesResponse'
-        '400':
-          description: Bad request
-        '500':
-          description: Internal server error
-
-  /series/{series_ticker}/events/{ticker}/candlesticks:
-    get:
-      operationId: GetMarketCandlesticksByEvent
-      summary: Get Event Candlesticks
-      description: ' End-point for returning aggregated data across all markets corresponding to an event.'
-      tags:
-        - events
-      parameters:
-        - name: ticker
-          in: path
-          required: true
-          description: The event ticker
-          schema:
-            type: string
-        - name: series_ticker
-          in: path
-          required: true
-          description: The series ticker
-          schema:
-            type: string
-        - name: start_ts
-          in: query
-          required: true
-          description: Start timestamp for the range
-          schema:
-            type: integer
-            format: int64
-          x-oapi-codegen-extra-tags:
-            validate: "required"
-        - name: end_ts
-          in: query
-          required: true
-          description: End timestamp for the range
-          schema:
-            type: integer
-            format: int64
-          x-oapi-codegen-extra-tags:
-            validate: "required"
-        - name: period_interval
-          in: query
-          required: true
-          description: Specifies the length of each candlestick period, in minutes. Must be one minute, one hour, or one day.
-          schema:
-            type: integer
-            format: int32
-            enum: [1, 60, 1440]
-          x-oapi-codegen-extra-tags:
-            validate: "required,oneof=1 60 1440"
-      responses:
-        '200':
-          description: Event candlesticks retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetEventCandlesticksResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /events:
-    get:
-      operationId: GetEvents
-      summary: Get Events
-      description: |
-        Get all events. This endpoint excludes multivariate events.
-        To retrieve multivariate events, use the GET /events/multivariate endpoint.
-        All events are accessible through this endpoint, even if their associated markets are older than the historical cutoff.
-      tags:
-        - events
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          description: Parameter to specify the number of results per page. Defaults to 200. Maximum value is 200.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 200
-        - name: cursor
-          in: query
-          required: false
-          description: Parameter to specify the pagination cursor. Use the cursor value returned from the previous response to get the next page of results. Leave empty for the first page.
-          schema:
-            type: string
-        - name: with_nested_markets
-          in: query
-          required: false
-          description: Parameter to specify if nested markets should be included in the response. When true, each event will include a 'markets' field containing a list of Market objects associated with that event. Historical markets settled before the historical cutoff will not be included.
-          schema:
-            type: boolean
-            default: false
-          x-go-type-skip-optional-pointer: true
-        - name: with_milestones
-          in: query
-          required: false
-          description: If true, includes related milestones as a field alongside events.
-          schema:
-            type: boolean
-            default: false
-          x-go-type-skip-optional-pointer: true
-        - name: status
-          in: query
-          required: false
-          description: Filter by event status. Possible values are 'unopened', 'open', 'closed', 'settled'. Leave empty to return events with any status.
-          schema:
-            type: string
-            enum: ['unopened', 'open', 'closed', 'settled']
-        - $ref: '#/components/parameters/SeriesTickerQuery'
-        - name: min_close_ts
-          in: query
-          required: false
-          description: Filter events with at least one market with close timestamp greater than this Unix timestamp (in seconds).
-          schema:
-            type: integer
-            format: int64
-        - name: min_updated_ts
-          in: query
-          required: false
-          description: Filter events with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Events retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetEventsResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /events/multivariate:
-    get:
-      operationId: GetMultivariateEvents
-      summary: Get Multivariate Events
-      description: 'Retrieve multivariate (combo) events. These are dynamically created events from multivariate event collections. Supports filtering by series and collection ticker.'
-      tags:
-        - events
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          description: Number of results per page. Defaults to 100. Maximum value is 200.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-        - name: cursor
-          in: query
-          required: false
-          description: Pagination cursor. Use the cursor value returned from the previous response to get the next page of results.
-          schema:
-            type: string
-        - $ref: '#/components/parameters/SeriesTickerQuery'
-        - name: collection_ticker
-          in: query
-          required: false
-          description: Filter events by collection ticker. Returns only multivariate events belonging to the specified collection. Cannot be used together with series_ticker.
-          schema:
-            type: string
-        - name: with_nested_markets
-          in: query
-          required: false
-          description: Parameter to specify if nested markets should be included in the response. When true, each event will include a 'markets' field containing a list of Market objects associated with that event.
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: Multivariate events retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMultivariateEventsResponse'
-        '400':
-          description: Bad request - invalid parameters
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /events/{event_ticker}:
-    get:
-      operationId: GetEvent
-      summary: Get Event
-      description: |
-        Endpoint for getting data about an event by its ticker. An event represents a real-world occurrence that can be traded on, such as an election, sports game, or economic indicator release.
-        Events contain one or more markets where users can place trades on different outcomes.
-        All events are accessible through this endpoint, even if their associated markets are older than the historical cutoff.
-      tags:
-        - events
-      parameters:
-        - name: event_ticker
-          in: path
-          required: true
-          description: Event ticker
-          schema:
-            type: string
-        - name: with_nested_markets
-          in: query
-          required: false
-          description: If true, markets are included within the event object. If false (default), markets are returned as a separate top-level field in the response. Historical markets settled before the historical cutoff will not be included.
-          schema:
-            type: boolean
-            default: false
-            x-go-type-skip-optional-pointer: true
-      responses:
-        '200':
-          description: Event retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetEventResponse'
-        '400':
-          description: Bad request
-        '404':
-          description: Event not found
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /events/{event_ticker}/metadata:
-    get:
-      operationId: GetEventMetadata
-      summary: Get Event Metadata
-      description: ' Endpoint for getting metadata about an event by its ticker.  Returns only the metadata information for an event.'
-      tags:
-        - events
-      parameters:
-        - name: event_ticker
-          in: path
-          required: true
-          description: Event ticker
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Event metadata retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetEventMetadataResponse'
-        '400':
-          description: Bad request
-        '404':
-          description: Event not found
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /series/{series_ticker}/events/{ticker}/forecast_percentile_history:
-    get:
-      operationId: GetEventForecastPercentilesHistory
-      summary: Get Event Forecast Percentile History
-      description: Endpoint for getting the historical raw and formatted forecast numbers for an event at specific percentiles.
-      tags:
-        - events
-      parameters:
-        - name: ticker
-          in: path
-          required: true
-          description: The event ticker
-          schema:
-            type: string
-        - name: series_ticker
-          in: path
-          required: true
-          description: The series ticker
-          schema:
-            type: string
-        - name: percentiles
-          in: query
-          required: true
-          description: Array of percentile values to retrieve (0-10000, max 10 values)
-          schema:
-            type: array
-            items:
-              type: integer
-              format: int32
-              minimum: 0
-              maximum: 10000
-            maxItems: 10
-          style: form
-          explode: true
-        - name: start_ts
-          in: query
-          required: true
-          description: Start timestamp for the range
-          schema:
-            type: integer
-            format: int64
-        - name: end_ts
-          in: query
-          required: true
-          description: End timestamp for the range
-          schema:
-            type: integer
-            format: int64
-        - name: period_interval
-          in: query
-          required: true
-          description: Specifies the length of each forecast period, in minutes. 0 for 5-second intervals, or 1, 60, or 1440 for minute-based intervals.
-          schema:
-            type: integer
-            format: int32
-            enum: [0, 1, 60, 1440]
-      responses:
-        '200':
-          description: Event forecast percentile history retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetEventForecastPercentilesHistoryResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /live_data/milestone/{milestone_id}:
-    get:
-      operationId: GetLiveDataByMilestone
-      summary: Get Live Data
-      description: Get live data for a specific milestone.
-      tags:
-        - live-data
-      parameters:
-        - name: milestone_id
-          in: path
-          required: true
-          description: Milestone ID
-          schema:
-            type: string
-        - name: include_player_stats
-          in: query
-          required: false
-          description: >-
-            When true, includes player-level statistics in the live data response.
-            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
-            Has no effect for other sports or milestones without player mappings.
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: Live data retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetLiveDataResponse'
-        '404':
-          description: Live data not found
-        '500':
-          description: Internal server error
-
-  /live_data/{type}/milestone/{milestone_id}:
-    get:
-      operationId: GetLiveData
-      summary: Get Live Data (with type)
-      description: Get live data for a specific milestone. This is the legacy endpoint that requires a type path parameter. Prefer using `/live_data/milestone/{milestone_id}` instead.
-      tags:
-        - live-data
-      parameters:
-        - name: type
-          in: path
-          required: true
-          description: Type of live data
-          schema:
-            type: string
-        - name: milestone_id
-          in: path
-          required: true
-          description: Milestone ID
-          schema:
-            type: string
-        - name: include_player_stats
-          in: query
-          required: false
-          description: >-
-            When true, includes player-level statistics in the live data response.
-            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
-            Has no effect for other sports or milestones without player mappings.
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: Live data retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetLiveDataResponse'
-        '404':
-          description: Live data not found
-        '500':
-          description: Internal server error
-
-  /live_data/batch:
-    get:
-      operationId: GetLiveDatas
-      summary: Get Multiple Live Data
-      description: Get live data for multiple milestones
-      tags:
-        - live-data
-      parameters:
-        - name: milestone_ids
-          in: query
-          required: true
-          description: Array of milestone IDs
-          schema:
-            type: array
-            items:
-              type: string
-            maxItems: 100
-          style: form
-          explode: true
-        - name: include_player_stats
-          in: query
-          required: false
-          description: >-
-            When true, includes player-level statistics in the live data response.
-            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
-            Has no effect for other sports or milestones without player mappings.
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: Live data retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetLiveDatasResponse'
-        '500':
-          description: Internal server error
-
-  /live_data/milestone/{milestone_id}/game_stats:
-    get:
-      operationId: GetGameStats
-      summary: Get Game Stats
-      description: >-
-        Get play-by-play game statistics for a specific milestone.
-        Supported sports: Pro Football, College Football, Pro Basketball, College Men's Basketball, College Women's Basketball, WNBA, Soccer, Pro Hockey, and Pro Baseball.
-        Returns null for unsupported milestone types or milestones without a Sportradar ID.
-      tags:
-        - live-data
-      parameters:
-        - name: milestone_id
-          in: path
-          required: true
-          description: Milestone ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Game stats retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetGameStatsResponse'
-        '404':
-          description: Game stats not found
-        '500':
-          description: Internal server error
-
-
-  /incentive_programs:
-    get:
-      operationId: GetIncentivePrograms
-      summary: Get Incentives
-      description: ' List incentives with optional filters. Incentives are rewards programs for trading activity on specific markets.'
-      tags:
-        - incentive-programs
-      parameters:
-        - name: status
-          in: query
-          required: false
-          description: 'Status filter. Can be "all", "active", "upcoming", "closed", or "paid_out". Default is "all".'
-          schema:
-            type: string
-            enum: [all, active, upcoming, closed, paid_out]
-        - name: type
-          in: query
-          required: false
-          description: 'Type filter. Can be "all", "liquidity", or "volume". Default is "all".'
-          schema:
-            type: string
-            enum: [all, liquidity, volume]
-        - name: incentive_description
-          in: query
-          required: false
-          description: Filter by exact incentive description.
-          schema:
-            type: string
-        - name: limit
-          in: query
-          required: false
-          description: Number of results per page. Defaults to 100. Maximum value is 10000.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 10000
-        - name: cursor
-          in: query
-          required: false
-          description: Cursor for pagination
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Incentive programs retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetIncentiveProgramsResponse'
-        '400':
-          description: Invalid request parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /fcm/orders:
-    get:
-      operationId: GetFCMOrders
-      summary: Get FCM Orders
-      description: |
-        Endpoint for FCM members to get orders filtered by subtrader ID.
-        This endpoint requires FCM member access level and allows filtering orders by subtrader ID.
-      tags:
-        - fcm
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      parameters:
-        - name: subtrader_id
-          in: query
-          required: true
-          description: Restricts the response to orders for a specific subtrader (FCM members only)
-          schema:
-            type: string
-        - $ref: '#/components/parameters/CursorQuery'
-        - $ref: '#/components/parameters/SingleEventTickerQuery'
-        - $ref: '#/components/parameters/TickerQuery'
-        - name: min_ts
-          in: query
-          description: Restricts the response to orders after a timestamp, formatted as a Unix Timestamp
-          schema:
-            type: integer
-            format: int64
-        - name: max_ts
-          in: query
-          description: Restricts the response to orders before a timestamp, formatted as a Unix Timestamp
-          schema:
-            type: integer
-            format: int64
-        - name: status
-          in: query
-          description: Restricts the response to orders that have a certain status
-          schema:
-            type: string
-            enum: [resting, canceled, executed]
-        - name: limit
-          in: query
-          description: Parameter to specify the number of results per page. Defaults to 100
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-      responses:
-        '200':
-          description: Orders retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetOrdersResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '404':
-          description: Not found
-        '500':
-          description: Internal server error
-
-  /fcm/positions:
-    get:
-      operationId: GetFCMPositions
-      summary: Get FCM Positions
-      description: |
-        Endpoint for FCM members to get market positions filtered by subtrader ID.
-        This endpoint requires FCM member access level and allows filtering positions by subtrader ID.
-      tags:
-        - fcm
-      security:
-        - kalshiAccessKey: []
-          kalshiAccessSignature: []
-          kalshiAccessTimestamp: []
-      parameters:
-        - name: subtrader_id
-          in: query
-          required: true
-          description: Restricts the response to positions for a specific subtrader (FCM members only)
-          schema:
-            type: string
-        - name: ticker
-          in: query
-          description: Ticker of desired positions
-          schema:
-            type: string
-            x-go-type-skip-optional-pointer: true
-        - name: event_ticker
-          in: query
-          description: Event ticker of desired positions
-          schema:
-            type: string
-            x-go-type-skip-optional-pointer: true
-        - name: count_filter
-          in: query
-          description: Restricts the positions to those with any of following fields with non-zero values, as a comma separated list
-          schema:
-            type: string
-        - name: settlement_status
-          in: query
-          description: Settlement status of the markets to return. Defaults to unsettled
-          schema:
-            type: string
-            enum: [all, unsettled, settled]
-        - name: limit
-          in: query
-          description: Parameter to specify the number of results per page. Defaults to 100
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-        - name: cursor
-          in: query
-          description: The Cursor represents a pointer to the next page of records in the pagination
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Positions retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetPositionsResponse'
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '404':
-          description: Not found
-        '500':
-          description: Internal server error
-
-  /structured_targets:
-    get:
-      operationId: GetStructuredTargets
-      summary: Get Structured Targets
-      description: 'Page size (min: 1, max: 2000)'
-      tags:
-        - structured-targets
-      parameters:
-        - name: ids
-          in: query
-          description: Filter by specific structured target IDs. Pass multiple IDs by repeating the parameter (e.g. `?ids=uuid1&ids=uuid2`).
-          required: false
-          schema:
-            type: array
-            items:
-              type: string
-          style: form
-          explode: true
-        - name: type
-          in: query
-          description: Filter by structured target type
-          required: false
-          schema:
-            type: string
-            example: basketball_player
-        - name: competition
-          in: query
-          description: 'Filter by competition. Matches against the league, conference, division, or tour in the structured target details.'
-          required: false
-          schema:
-            type: string
-            example: NBA
-        - name: page_size
-          in: query
-          description: Number of items per page (min 1, max 2000, default 100)
-          required: false
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            maximum: 2000
-            default: 100
-        - name: cursor
-          in: query
-          description: Pagination cursor
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Structured targets retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetStructuredTargetsResponse'
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /structured_targets/{structured_target_id}:
-    get:
-      operationId: GetStructuredTarget
-      summary: Get Structured Target
-      description: ' Endpoint for getting data about a specific structured target by its ID.'
-      tags:
-        - structured-targets
-      parameters:
-        - name: structured_target_id
-          in: path
-          required: true
-          description: Structured target ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Structured target retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetStructuredTargetResponse'
-        '401':
-          description: Unauthorized
-        '404':
-          description: Not found
-        '500':
-          description: Internal server error
-
-  /markets/{ticker}/orderbook:
-    get:
-      operationId: GetMarketOrderbook
-      summary: Get Market Orderbook
-      description: ' Endpoint for getting the current order book for a specific market.  The order book shows all active bid orders for both yes and no sides of a binary market. It returns yes bids and no bids only (no asks are returned). This is because in binary markets, a bid for yes at price X is equivalent to an ask for no at price (100-X). For example, a yes bid at 7¢ is the same as a no ask at 93¢, with identical contract sizes.  Each side shows price levels with their corresponding quantities and order counts, organized from best to worst prices.'
-      tags:
-        - market
-      parameters:
-        - $ref: '#/components/parameters/TickerPath'
-        - name: depth
-          in: query
-          description: Depth of the orderbook to retrieve (0 or negative means all levels, 1-100 for specific depth)
-          required: false
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 100
-            default: 0
-          x-oapi-codegen-extra-tags:
-            validate: omitempty,min=0,max=100
-      responses:
-        '200':
-          description: Orderbook retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketOrderbookResponse'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /markets/orderbooks:
-    get:
-      operationId: GetMarketOrderbooks
-      summary: Get Multiple Market Orderbooks
-      description: 'Endpoint for getting the current order books for multiple markets in a single request. The order book shows all active bid orders for both yes and no sides of a binary market. It returns yes bids and no bids only (no asks are returned). This is because in binary markets, a bid for yes at price X is equivalent to an ask for no at price (100-X). For example, a yes bid at 7¢ is the same as a no ask at 93¢, with identical contract sizes. Each side shows price levels with their corresponding quantities and order counts, organized from best to worst prices. Returns one orderbook per requested market ticker.'
-      tags:
-        - market
-      parameters:
-        - name: tickers
-          in: query
-          required: true
-          description: List of market tickers to fetch orderbooks for
-          schema:
-            type: array
-            items:
-              type: string
-              maxLength: 200
-            minItems: 1
-            maxItems: 100
-          style: form
-          explode: true
-          x-oapi-codegen-extra-tags:
-            validate: required,min=1,max=100,dive,max=200
-      responses:
-        '200':
-          description: Orderbooks retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketOrderbooksResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /milestones/{milestone_id}:
-    get:
-      operationId: GetMilestone
-      summary: Get Milestone
-      description: ' Endpoint for getting data about a specific milestone by its ID.'
-      tags:
-        - milestone
-      parameters:
-        - name: milestone_id
-          in: path
-          required: true
-          description: Milestone ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Milestone retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMilestoneResponse'
-        '400':
-          description: Bad Request
-        '401':
-          description: Unauthorized
-        '404':
-          description: Not Found
-        '500':
-          description: Internal Server Error
-
-  /milestones:
-    get:
-      operationId: GetMilestones
-      summary: Get Milestones
-      description: 'Minimum start date to filter milestones. Format: RFC3339 timestamp'
-      tags:
-        - milestone
-      parameters:
-        - name: limit
-          in: query
-          description: Number of milestones to return per page
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 500
-        - name: minimum_start_date
-          in: query
-          description: Minimum start date to filter milestones. Format RFC3339 timestamp
-          required: false
-          schema:
-            type: string
-            format: date-time
-        - name: category
-          in: query
-          description: 'Filter by milestone category. E.g. Sports, Elections, Esports, Crypto.'
-          required: false
-          schema:
-            type: string
-            example: Sports
-        - name: competition
-          in: query
-          description: 'Filter by competition. E.g. Pro Football, Pro Basketball (M), Pro Baseball, Pro Hockey, College Football.'
-          required: false
-          schema:
-            type: string
-            example: Pro Football
-        - name: source_id
-          in: query
-          description: Filter by source id
-          required: false
-          schema:
-            type: string
-        - name: type
-          in: query
-          description: 'Filter by milestone type. E.g. football_game, basketball_game, soccer_tournament_multi_leg, baseball_game, hockey_match, political_race.'
-          required: false
-          schema:
-            type: string
-            example: football_game
-        - name: related_event_ticker
-          in: query
-          description: Filter by related event ticker
-          required: false
-          schema:
-            type: string
-        - name: cursor
-          in: query
-          description: Pagination cursor. Use the cursor value returned from the previous response to get the next page of results
-          required: false
-          schema:
-            type: string
-        - name: min_updated_ts
-          in: query
-          required: false
-          description: Filter milestones with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Milestones retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMilestonesResponse'
-        '400':
-          description: Bad Request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal Server Error
-
-  # Communications endpoints
   /communications/id:
     get:
       operationId: GetCommunicationsID
@@ -3018,6 +2300,555 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   # Multivariate Event Collections endpoints
+  /api_keys:
+    get:
+      operationId: GetApiKeys
+      summary: Get API Keys
+      description: ' Endpoint for retrieving all API keys associated with the authenticated user.  API keys allow programmatic access to the platform without requiring username/password authentication. Each key has a unique identifier and name.'
+      tags:
+        - api-keys
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetApiKeysResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    post:
+      operationId: CreateApiKey
+      summary: Create API Key
+      description: ' Endpoint for creating a new API key with a user-provided public key.  This endpoint allows users with Premier or Market Maker API usage levels to create API keys by providing their own RSA public key. The platform will use this public key to verify signatures on API requests.'
+      tags:
+        - api-keys
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '400':
+          description: Bad request - invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient API usage level
+        '500':
+          description: Internal server error
+
+  /api_keys/generate:
+    post:
+      operationId: GenerateApiKey
+      summary: Generate API Key
+      description: ' Endpoint for generating a new API key with an automatically created key pair.  This endpoint generates both a public and private RSA key pair. The public key is stored on the platform, while the private key is returned to the user and must be stored securely. The private key cannot be retrieved again.'
+      tags:
+        - api-keys
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateApiKeyRequest'
+      responses:
+        '201':
+          description: API key generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateApiKeyResponse'
+        '400':
+          description: Bad request - invalid input
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /api_keys/{api_key}:
+    delete:
+      operationId: DeleteApiKey
+      summary: Delete API Key
+      description: ' Endpoint for deleting an existing API key.  This endpoint permanently deletes an API key. Once deleted, the key can no longer be used for authentication. This action cannot be undone.'
+      tags:
+        - api-keys
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: api_key
+          in: path
+          required: true
+          description: API key ID to delete
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key successfully deleted
+        '400':
+          description: Bad request - invalid API key ID
+        '401':
+          description: Unauthorized
+        '404':
+          description: API key not found
+        '500':
+          description: Internal server error
+
+  /account/limits:
+    get:
+      operationId: GetAccountApiLimits
+      summary: Get Account API Limits 
+      description: ' Endpoint to retrieve the API tier limits associated with the authenticated user.'
+      tags:
+        - account
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      responses:
+        '200':
+          description: Account API tier limits retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccountApiLimitsResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /account/endpoint_costs:
+    get:
+      operationId: GetAccountEndpointCosts
+      summary: List Non-Default Endpoint Costs
+      description: 'Lists API v2 endpoints whose configured token cost differs from the default cost. Endpoints that use the default cost are omitted.'
+      tags:
+        - account
+      responses:
+        '200':
+          description: Non-default endpoint costs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccountEndpointCostsResponse'
+        '500':
+          description: Internal server error
+
+  /search/tags_by_categories:
+    get:
+      operationId: GetTagsForSeriesCategories
+      summary: Get Tags for Series Categories
+      description: |
+        Retrieve tags organized by series categories.
+
+        This endpoint returns a mapping of series categories to their associated tags, which can be used for filtering and search functionality.
+      tags:
+        - search
+      responses:
+        '200':
+          description: Tags retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTagsForSeriesCategoriesResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /search/filters_by_sport:
+    get:
+      operationId: GetFiltersForSports
+      summary: Get Filters for Sports
+      description: |
+        Retrieve available filters organized by sport.
+
+        This endpoint returns filtering options available for each sport, including scopes and competitions. It also provides an ordered list of sports for display purposes.
+      tags:
+        - search
+      responses:
+        '200':
+          description: Filters retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFiltersBySportsResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /live_data/milestone/{milestone_id}:
+    get:
+      operationId: GetLiveDataByMilestone
+      summary: Get Live Data
+      description: Get live data for a specific milestone.
+      tags:
+        - live-data
+      parameters:
+        - name: milestone_id
+          in: path
+          required: true
+          description: Milestone ID
+          schema:
+            type: string
+        - name: include_player_stats
+          in: query
+          required: false
+          description: >-
+            When true, includes player-level statistics in the live data response.
+            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
+            Has no effect for other sports or milestones without player mappings.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Live data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLiveDataResponse'
+        '404':
+          description: Live data not found
+        '500':
+          description: Internal server error
+
+  /live_data/{type}/milestone/{milestone_id}:
+    get:
+      operationId: GetLiveData
+      summary: Get Live Data (with type)
+      description: Get live data for a specific milestone. This is the legacy endpoint that requires a type path parameter. Prefer using `/live_data/milestone/{milestone_id}` instead.
+      tags:
+        - live-data
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Type of live data
+          schema:
+            type: string
+        - name: milestone_id
+          in: path
+          required: true
+          description: Milestone ID
+          schema:
+            type: string
+        - name: include_player_stats
+          in: query
+          required: false
+          description: >-
+            When true, includes player-level statistics in the live data response.
+            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
+            Has no effect for other sports or milestones without player mappings.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Live data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLiveDataResponse'
+        '404':
+          description: Live data not found
+        '500':
+          description: Internal server error
+
+  /live_data/batch:
+    get:
+      operationId: GetLiveDatas
+      summary: Get Multiple Live Data
+      description: Get live data for multiple milestones
+      tags:
+        - live-data
+      parameters:
+        - name: milestone_ids
+          in: query
+          required: true
+          description: Array of milestone IDs
+          schema:
+            type: array
+            items:
+              type: string
+            maxItems: 100
+          style: form
+          explode: true
+        - name: include_player_stats
+          in: query
+          required: false
+          description: >-
+            When true, includes player-level statistics in the live data response.
+            Supported for Pro Football, Pro Basketball, and College Men's Basketball milestones that have player ID mappings configured.
+            Has no effect for other sports or milestones without player mappings.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Live data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLiveDatasResponse'
+        '500':
+          description: Internal server error
+
+  /live_data/milestone/{milestone_id}/game_stats:
+    get:
+      operationId: GetGameStats
+      summary: Get Game Stats
+      description: >-
+        Get play-by-play game statistics for a specific milestone.
+        Supported sports: Pro Football, College Football, Pro Basketball, College Men's Basketball, College Women's Basketball, WNBA, Soccer, Pro Hockey, and Pro Baseball.
+        Returns null for unsupported milestone types or milestones without a Sportradar ID.
+      tags:
+        - live-data
+      parameters:
+        - name: milestone_id
+          in: path
+          required: true
+          description: Milestone ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game stats retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGameStatsResponse'
+        '404':
+          description: Game stats not found
+        '500':
+          description: Internal server error
+
+
+  /structured_targets:
+    get:
+      operationId: GetStructuredTargets
+      summary: Get Structured Targets
+      description: 'Page size (min: 1, max: 2000)'
+      tags:
+        - structured-targets
+      parameters:
+        - name: ids
+          in: query
+          description: Filter by specific structured target IDs. Pass multiple IDs by repeating the parameter (e.g. `?ids=uuid1&ids=uuid2`).
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: type
+          in: query
+          description: Filter by structured target type
+          required: false
+          schema:
+            type: string
+            example: basketball_player
+        - name: competition
+          in: query
+          description: 'Filter by competition. Matches against the league, conference, division, or tour in the structured target details.'
+          required: false
+          schema:
+            type: string
+            example: NBA
+        - name: page_size
+          in: query
+          description: Number of items per page (min 1, max 2000, default 100)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2000
+            default: 100
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Structured targets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStructuredTargetsResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /structured_targets/{structured_target_id}:
+    get:
+      operationId: GetStructuredTarget
+      summary: Get Structured Target
+      description: ' Endpoint for getting data about a specific structured target by its ID.'
+      tags:
+        - structured-targets
+      parameters:
+        - name: structured_target_id
+          in: path
+          required: true
+          description: Structured target ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Structured target retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStructuredTargetResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+        '500':
+          description: Internal server error
+
+  /milestones/{milestone_id}:
+    get:
+      operationId: GetMilestone
+      summary: Get Milestone
+      description: ' Endpoint for getting data about a specific milestone by its ID.'
+      tags:
+        - milestone
+      parameters:
+        - name: milestone_id
+          in: path
+          required: true
+          description: Milestone ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Milestone retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMilestoneResponse'
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+
+  /milestones:
+    get:
+      operationId: GetMilestones
+      summary: Get Milestones
+      description: 'Minimum start date to filter milestones. Format: RFC3339 timestamp'
+      tags:
+        - milestone
+      parameters:
+        - name: limit
+          in: query
+          description: Number of milestones to return per page
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: minimum_start_date
+          in: query
+          description: Minimum start date to filter milestones. Format RFC3339 timestamp
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: category
+          in: query
+          description: 'Filter by milestone category. E.g. Sports, Elections, Esports, Crypto.'
+          required: false
+          schema:
+            type: string
+            example: Sports
+        - name: competition
+          in: query
+          description: 'Filter by competition. E.g. Pro Football, Pro Basketball (M), Pro Baseball, Pro Hockey, College Football.'
+          required: false
+          schema:
+            type: string
+            example: Pro Football
+        - name: source_id
+          in: query
+          description: Filter by source id
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: 'Filter by milestone type. E.g. football_game, basketball_game, soccer_tournament_multi_leg, baseball_game, hockey_match, political_race.'
+          required: false
+          schema:
+            type: string
+            example: football_game
+        - name: related_event_ticker
+          in: query
+          description: Filter by related event ticker
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor. Use the cursor value returned from the previous response to get the next page of results
+          required: false
+          schema:
+            type: string
+        - name: min_updated_ts
+          in: query
+          required: false
+          description: Filter milestones with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Milestones retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMilestonesResponse'
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+
+  # Communications endpoints
   /multivariate_event_collections/{collection_ticker}:
     get:
       operationId: GetMultivariateEventCollection
@@ -3221,159 +3052,125 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /series/{series_ticker}:
+  /incentive_programs:
     get:
-      operationId: GetSeries
-      summary: Get Series
-      description: ' Endpoint for getting data about a specific series by its ticker.  A series represents a template for recurring events that follow the same format and rules (e.g., "Monthly Jobs Report", "Weekly Initial Jobless Claims", "Daily Weather in NYC"). Series define the structure, settlement sources, and metadata that will be applied to each recurring event instance within that series.'
+      operationId: GetIncentivePrograms
+      summary: Get Incentives
+      description: ' List incentives with optional filters. Incentives are rewards programs for trading activity on specific markets.'
       tags:
-        - market
+        - incentive-programs
       parameters:
-        - name: series_ticker
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The ticker of the series to retrieve
-        - name: include_volume
+        - name: status
           in: query
           required: false
+          description: 'Status filter. Can be "all", "active", "upcoming", "closed", or "paid_out". Default is "all".'
           schema:
-            type: boolean
-            default: false
-          x-go-type-skip-optional-pointer: true
-          description: If true, includes the total volume traded across all events in this series.
+            type: string
+            enum: [all, active, upcoming, closed, paid_out]
+        - name: type
+          in: query
+          required: false
+          description: 'Type filter. Can be "all", "liquidity", or "volume". Default is "all".'
+          schema:
+            type: string
+            enum: [all, liquidity, volume]
+        - name: incentive_description
+          in: query
+          required: false
+          description: Filter by exact incentive description.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Number of results per page. Defaults to 100. Maximum value is 10000.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor for pagination
+          schema:
+            type: string
       responses:
         '200':
-          description: Series retrieved successfully
+          description: Incentive programs retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetSeriesResponse'
+                $ref: '#/components/schemas/GetIncentiveProgramsResponse'
         '400':
-          $ref: '#/components/responses/BadRequestError'
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /series:
+  /fcm/orders:
     get:
-      operationId: GetSeriesList
-      summary: Get Series List
-      description: ' Endpoint for getting data about multiple series with specified filters.  A series represents a template for recurring events that follow the same format and rules (e.g., "Monthly Jobs Report", "Weekly Initial Jobless Claims", "Daily Weather in NYC"). This endpoint allows you to browse and discover available series templates by category.'
+      operationId: GetFCMOrders
+      summary: Get FCM Orders
+      description: |
+        Endpoint for FCM members to get orders filtered by subtrader ID.
+        This endpoint requires FCM member access level and allows filtering orders by subtrader ID.
       tags:
-        - market
+        - fcm
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
       parameters:
-        - name: category
+        - name: subtrader_id
           in: query
-          required: false
+          required: true
+          description: Restricts the response to orders for a specific subtrader (FCM members only)
           schema:
             type: string
-          x-go-type-skip-optional-pointer: true
-        - name: tags
+        - $ref: '#/components/parameters/CursorQuery'
+        - $ref: '#/components/parameters/SingleEventTickerQuery'
+        - $ref: '#/components/parameters/TickerQuery'
+        - name: min_ts
           in: query
-          required: false
-          schema:
-            type: string
-          x-go-type-skip-optional-pointer: true
-        - name: include_product_metadata
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          x-go-type-skip-optional-pointer: true
-        - name: include_volume
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          x-go-type-skip-optional-pointer: true
-          description: If true, includes the total volume traded across all events in each series.
-        - name: min_updated_ts
-          in: query
-          required: false
-          description: Filter series with metadata updated after this Unix timestamp (in seconds). Use this to efficiently poll for changes.
+          description: Restricts the response to orders after a timestamp, formatted as a Unix Timestamp
           schema:
             type: integer
             format: int64
+        - name: max_ts
+          in: query
+          description: Restricts the response to orders before a timestamp, formatted as a Unix Timestamp
+          schema:
+            type: integer
+            format: int64
+        - name: status
+          in: query
+          description: Restricts the response to orders that have a certain status
+          schema:
+            type: string
+            enum: [resting, canceled, executed]
+        - name: limit
+          in: query
+          description: Parameter to specify the number of results per page. Defaults to 100
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
       responses:
         '200':
-          description: Series list retrieved successfully
+          description: Orders retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetSeriesListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /markets:
-    get:
-      operationId: GetMarkets
-      summary: Get Markets
-      description: |
-       Filter by market status. Possible values: `unopened`, `open`, `closed`, `settled`. Leave empty to return markets with any status.
-        - Only one `status` filter may be supplied at a time.
-        - Timestamp filters will be mutually exclusive from other timestamp filters and certain status filters.
-
-        | Compatible Timestamp Filters | Additional Status Filters| Extra Notes |
-        |------------------------------|--------------------------|-------------|
-        | min_created_ts, max_created_ts | `unopened`, `open`, *empty* | |
-        | min_close_ts, max_close_ts | `closed`, *empty* | |
-        | min_settled_ts, max_settled_ts | `settled`, *empty* | |
-        | min_updated_ts | *empty* | Incompatible with all filters besides `mve_filter=exclude` |
-
-        Markets that settled before the historical cutoff are only available via `GET /historical/markets`. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.
-
-      tags:
-        - market
-      parameters:
-        - $ref: '#/components/parameters/MarketLimitQuery'
-        - $ref: '#/components/parameters/CursorQuery'
-        - $ref: '#/components/parameters/SingleEventTickerQuery'
-        - $ref: '#/components/parameters/SeriesTickerQuery'
-        - $ref: '#/components/parameters/MinCreatedTsQuery'
-        - $ref: '#/components/parameters/MaxCreatedTsQuery'
-        - $ref: '#/components/parameters/MinUpdatedTsQuery'
-        - $ref: '#/components/parameters/MaxCloseTsQuery'
-        - $ref: '#/components/parameters/MinCloseTsQuery'
-        - $ref: '#/components/parameters/MinSettledTsQuery'
-        - $ref: '#/components/parameters/MaxSettledTsQuery'
-        - $ref: '#/components/parameters/MarketStatusQuery'
-        - $ref: '#/components/parameters/TickersQuery'
-        - $ref: '#/components/parameters/MveFilterQuery'
-      responses:
-        '200':
-          description: Markets retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketsResponse'
+                $ref: '#/components/schemas/GetOrdersResponse'
         '400':
           description: Bad request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Internal server error
-
-  /markets/{ticker}:
-    get:
-      operationId: GetMarket
-      summary: Get Market
-      description: ' Endpoint for getting data about a specific market by its ticker. A market represents a specific binary outcome within an event that users can trade on (e.g., "Will candidate X win?"). Markets have yes/no positions, current prices, volume, and settlement rules.'
-      tags:
-        - market
-      parameters:
-        - $ref: '#/components/parameters/TickerPath'
-      responses:
-        '200':
-          description: Market retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMarketResponse'
         '401':
           description: Unauthorized
         '404':
@@ -3381,72 +3178,287 @@ paths:
         '500':
           description: Internal server error
 
-  /markets/candlesticks:
+  /fcm/positions:
     get:
-      operationId: BatchGetMarketCandlesticks
-      summary: Batch Get Market Candlesticks
+      operationId: GetFCMPositions
+      summary: Get FCM Positions
       description: |
-        Endpoint for retrieving candlestick data for multiple markets.
-
-        - Accepts up to 100 market tickers per request
-        - Returns up to 10,000 candlesticks total across all markets
-        - Returns candlesticks grouped by market_id
-        - Optionally includes a synthetic initial candlestick for price continuity (see `include_latest_before_start` parameter)
+        Endpoint for FCM members to get market positions filtered by subtrader ID.
+        This endpoint requires FCM member access level and allows filtering positions by subtrader ID.
       tags:
-        - market
+        - fcm
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
       parameters:
-        - name: market_tickers
+        - name: subtrader_id
           in: query
           required: true
-          description: Comma-separated list of market tickers (maximum 100)
+          description: Restricts the response to positions for a specific subtrader (FCM members only)
+          schema:
+            type: string
+        - name: ticker
+          in: query
+          description: Ticker of desired positions
+          schema:
+            type: string
+            x-go-type-skip-optional-pointer: true
+        - name: event_ticker
+          in: query
+          description: Event ticker of desired positions
+          schema:
+            type: string
+            x-go-type-skip-optional-pointer: true
+        - name: count_filter
+          in: query
+          description: Restricts the positions to those with any of following fields with non-zero values, as a comma separated list
+          schema:
+            type: string
+        - name: settlement_status
+          in: query
+          description: Settlement status of the markets to return. Defaults to unsettled
+          schema:
+            type: string
+            enum: [all, unsettled, settled]
+        - name: limit
+          in: query
+          description: Parameter to specify the number of results per page. Defaults to 100
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: The Cursor represents a pointer to the next page of records in the pagination
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Positions retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPositionsResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+        '500':
+          description: Internal server error
+
+  /historical/cutoff:
+    get:
+      operationId: GetHistoricalCutoff
+      summary: Get Historical Cutoff Timestamps
+      description: |
+        Returns the cutoff timestamps that define the boundary between **live** and **historical** data.
+
+        ## Cutoff fields
+        - `market_settled_ts` : Markets that **settled** before this timestamp, and their candlesticks, must be accessed via `GET /historical/markets` and `GET /historical/markets/{ticker}/candlesticks`.
+        - `trades_created_ts` : Trades that were **filled** before this timestamp must be accessed via `GET /historical/fills`.
+        - `orders_updated_ts` : Orders that were **canceled or fully executed** before this timestamp must be accessed via `GET /historical/orders`. Resting (active) orders are always available in `GET /portfolio/orders`.
+      tags:
+        - historical
+      responses:
+        '200':
+          description: Historical cutoff timestamps retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHistoricalCutoffResponse'
+        '500':
+          description: Internal server error
+
+  /historical/markets/{ticker}/candlesticks:
+    get:
+      operationId: GetMarketCandlesticksHistorical
+      summary: Get Historical Market Candlesticks
+      description: ' Endpoint for fetching historical candlestick data for markets that have been archived from the live data set. Time period length of each candlestick in minutes. Valid values: 1 (1 minute), 60 (1 hour), 1440 (1 day).'
+      tags:
+        - historical
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          description: Market ticker - unique identifier for the specific market
           schema:
             type: string
         - name: start_ts
           in: query
           required: true
-          description: Start timestamp in Unix seconds
+          description: Start timestamp (Unix timestamp). Candlesticks will include those ending on or after this time.
           schema:
             type: integer
             format: int64
         - name: end_ts
           in: query
           required: true
-          description: End timestamp in Unix seconds
+          description: End timestamp (Unix timestamp). Candlesticks will include those ending on or before this time.
           schema:
             type: integer
             format: int64
         - name: period_interval
           in: query
           required: true
-          description: Candlestick period interval in minutes
+          description: Time period length of each candlestick in minutes. Valid values are 1 (1 minute), 60 (1 hour), or 1440 (1 day).
           schema:
             type: integer
-            format: int32
-            minimum: 1
-        - name: include_latest_before_start
-          in: query
-          required: false
-          description: |
-            If true, prepends the latest candlestick available before the start_ts. This synthetic candlestick is created by:
-            1. Finding the most recent real candlestick before start_ts
-            2. Projecting it forward to the first period boundary (calculated as the next period interval after start_ts)
-            3. Setting all OHLC prices to null, and `previous_price` to the close price from the real candlestick
-          schema:
-            type: boolean
-            default: false
+            enum: [1, 60, 1440]
+          x-oapi-codegen-extra-tags:
+            validate: "required,oneof=1 60 1440"
       responses:
         '200':
-          description: Market candlesticks retrieved successfully
+          description: Candlesticks retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BatchGetMarketCandlesticksResponse'
+                $ref: '#/components/schemas/GetMarketCandlesticksHistoricalResponse'
+        '400':
+          description: Bad request
+        '404':
+          description: Not found
+        '500':
+          description: Internal server error
+
+  /historical/fills:
+    get:
+      operationId: GetFillsHistorical
+      summary: Get Historical Fills
+      description: ' Endpoint for getting all historical fills for the member. A fill is when a trade you have is matched.'
+      tags:
+        - historical
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - $ref: '#/components/parameters/TickerQuery'
+        - $ref: '#/components/parameters/MaxTsQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: Fills retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFillsResponse'
         '400':
           description: Bad request
         '401':
           description: Unauthorized
+        '404':
+          $ref: '#/components/responses/NotFoundError'
         '500':
           description: Internal server error
+
+  /historical/orders:
+    get:
+      operationId: GetHistoricalOrders
+      summary: Get Historical Orders
+      description:  ' Endpoint for getting orders that have been archived to the historical database.'
+      tags:
+        - historical
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - $ref: '#/components/parameters/TickerQuery'
+        - $ref: '#/components/parameters/MaxTsQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: Historical orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrdersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /historical/trades:
+    get:
+      operationId: GetTradesHistorical
+      summary: Get Historical Trades
+      description: ' Endpoint for getting all historical trades for all markets. Trades that were filled before the historical cutoff are available via this endpoint. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.'
+      tags:
+        - historical
+      parameters:
+        - $ref: '#/components/parameters/TickerQuery'
+        - $ref: '#/components/parameters/MinTsQuery'
+        - $ref: '#/components/parameters/MaxTsQuery'
+        - $ref: '#/components/parameters/MarketLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: Historical trades retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTradesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /historical/markets:
+    get:
+      operationId: GetHistoricalMarkets
+      summary: Get Historical Markets
+      description: |
+        Endpoint for getting markets that have been archived to the historical database. Filters are mutually exclusive.
+      tags:
+        - historical
+      parameters:
+        - $ref: '#/components/parameters/MarketLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - $ref: '#/components/parameters/TickersQuery'
+        - $ref: '#/components/parameters/SingleEventTickerQuery'
+        - $ref: '#/components/parameters/SeriesTickerQuery'
+        - $ref: '#/components/parameters/MveHistoricalFilterQuery'
+      responses:
+        '200':
+          description: Historical markets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /historical/markets/{ticker}:
+    get:
+      operationId: GetHistoricalMarket
+      summary: Get Historical Market
+      description: ' Endpoint for getting data about a specific market by its ticker from the historical database.'
+      tags:
+        - historical
+      parameters:
+        - $ref: '#/components/parameters/TickerPath'
+      responses:
+        '200':
+          description: Historical market retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMarketResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -7339,11 +7351,6 @@ components:
           x-omitempty: true
           description: The condition under which the market can close early
           x-go-type-skip-optional-pointer: true
-        tick_size:
-          type: integer
-          deprecated: true
-          x-go-type-skip-optional-pointer: true
-          description: 'DEPRECATED: Use price_level_structure and price_ranges instead.'
         strike_type:
           type: string
           enum: [greater, greater_or_equal, less, less_or_equal, between, functional, custom, structured]
