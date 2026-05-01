@@ -1860,7 +1860,11 @@ impl Exchange for Kalshi {
             (false, false) => OrderStatus::Cancelled,
         };
 
-        let order_price = match resp.average_fill_price.as_deref().and_then(|s| s.parse().ok()) {
+        let order_price = match resp
+            .average_fill_price
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+        {
             Some(yes_price) => match req.outcome {
                 OrderOutcome::Yes => yes_price,
                 OrderOutcome::No => 1.0 - yes_price,
@@ -2167,4 +2171,3 @@ mod parse_event_series_tests {
         assert!(s.volume.is_none());
     }
 }
-

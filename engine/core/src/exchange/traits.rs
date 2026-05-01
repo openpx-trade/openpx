@@ -259,4 +259,3 @@ pub struct TradesRequest {
     /// Opaque cursor from a prior response.
     pub cursor: Option<String>,
 }
-

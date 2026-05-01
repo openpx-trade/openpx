@@ -119,17 +119,21 @@ impl Exchange {
         let inner = self.inner.clone();
         let order_side: px_core::OrderSide =
             serde_json::from_value(serde_json::Value::String(side)).map_err(to_napi_err)?;
-        let order_type_enum: px_core::OrderType =
-            match order_type.as_deref().unwrap_or("gtc").to_ascii_lowercase().as_str() {
-                "gtc" => px_core::OrderType::Gtc,
-                "ioc" => px_core::OrderType::Ioc,
-                "fok" => px_core::OrderType::Fok,
-                other => {
-                    return Err(to_napi_err(format!(
-                        "invalid order_type '{other}' (allowed: gtc, ioc, fok)"
-                    )))
-                }
-            };
+        let order_type_enum: px_core::OrderType = match order_type
+            .as_deref()
+            .unwrap_or("gtc")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "gtc" => px_core::OrderType::Gtc,
+            "ioc" => px_core::OrderType::Ioc,
+            "fok" => px_core::OrderType::Fok,
+            other => {
+                return Err(to_napi_err(format!(
+                    "invalid order_type '{other}' (allowed: gtc, ioc, fok)"
+                )))
+            }
+        };
         let order_outcome = match outcome.to_ascii_lowercase().as_str() {
             "yes" => px_core::OrderOutcome::Yes,
             "no" => px_core::OrderOutcome::No,
