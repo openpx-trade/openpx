@@ -1,15 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Candlestick, Fill, LastTrade, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType,
-    Orderbook, OrderbookSnapshot, Position, PriceHistoryInterval, Spread, Tag, UserTrade,
+    Fill, LastTrade, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
+    Position, Spread, Tag,
 };
 
-use super::config::{FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams};
+use super::config::{FetchMarketsParams, FetchOrdersParams};
 use super::manifest::ExchangeManifest;
 
 #[allow(async_fn_in_trait)]
@@ -78,17 +77,6 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch OHLCV candlestick history — `interval` is `1m`, `1h`, `6h`, `1d`, `1w`, or `max`.
-    async fn fetch_price_history(
-        &self,
-        req: PriceHistoryRequest,
-    ) -> Result<Vec<Candlestick>, OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_price_history".into()),
-        ))
-    }
-
     /// Fetch a paginated tape of recent public trades for a market outcome.
     async fn fetch_trades(
         &self,
@@ -97,40 +85,6 @@ pub trait Exchange: Send + Sync {
         let _ = req;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_trades".into()),
-        ))
-    }
-
-    /// Fetch a paginated list of historical L2 orderbook snapshots for a market.
-    async fn fetch_orderbook_history(
-        &self,
-        req: OrderbookHistoryRequest,
-    ) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_orderbook_history".into()),
-        ))
-    }
-
-    /// Fetch the raw upstream balance response (unprocessed JSON) from the exchange.
-    async fn fetch_balance_raw(&self) -> Result<Value, OpenPxError> {
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_balance_raw".into()),
-        ))
-    }
-
-    /// Fetch user activity (positions, trades, portfolio data) for a wallet address.
-    // TODO(trade-history): Implement per-exchange. No exchange currently implements this.
-    // Kalshi: GET /portfolio/fills returns user's fill history with fees, timestamps, maker/taker.
-    // Polymarket: activity API provides user trade history.
-    // Wire this up to a /api/v1/fills or /api/v1/trade-history endpoint and surface
-    // in the terminal UI as a "My Fills" / "Trade History" view.
-    async fn fetch_user_activity(
-        &self,
-        params: FetchUserActivityParams,
-    ) -> Result<Value, OpenPxError> {
-        let _ = params;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_user_activity".into()),
         ))
     }
 
@@ -221,17 +175,6 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a wallet's trade history — optional `side` filter is `buy` or `sell`.
-    async fn fetch_user_trades(
-        &self,
-        req: UserTradesRequest,
-    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_user_trades".into()),
-        ))
-    }
-
     /// Fetch the tag set associated with a market (or its parent event).
     async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
         let _ = market_ticker;
@@ -269,15 +212,12 @@ pub trait Exchange: Send + Sync {
             has_fetch_positions: true,
             has_fetch_balance: true,
             has_fetch_orderbook: false,
-            has_fetch_price_history: false,
             has_fetch_trades: false,
-            has_fetch_user_activity: false,
             has_fetch_fills: false,
             has_fetch_server_time: false,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: false,
-            has_fetch_orderbook_history: false,
             has_fetch_market_lineage: false,
             has_fetch_orderbooks_batch: false,
             has_fetch_midpoint: false,
@@ -285,7 +225,6 @@ pub trait Exchange: Send + Sync {
             has_fetch_spread: false,
             has_fetch_last_trade_price: false,
             has_fetch_open_interest: false,
-            has_fetch_user_trades: false,
             has_fetch_market_tags: false,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
@@ -307,15 +246,12 @@ pub struct ExchangeInfo {
     pub has_fetch_positions: bool,
     pub has_fetch_balance: bool,
     pub has_fetch_orderbook: bool,
-    pub has_fetch_price_history: bool,
     pub has_fetch_trades: bool,
-    pub has_fetch_user_activity: bool,
     pub has_fetch_fills: bool,
     pub has_fetch_server_time: bool,
     pub has_approvals: bool,
     pub has_refresh_balance: bool,
     pub has_websocket: bool,
-    pub has_fetch_orderbook_history: bool,
     pub has_fetch_market_lineage: bool,
     pub has_fetch_orderbooks_batch: bool,
     pub has_fetch_midpoint: bool,
@@ -323,7 +259,6 @@ pub struct ExchangeInfo {
     pub has_fetch_spread: bool,
     pub has_fetch_last_trade_price: bool,
     pub has_fetch_open_interest: bool,
-    pub has_fetch_user_trades: bool,
     pub has_fetch_market_tags: bool,
     pub has_cancel_all_orders: bool,
     pub has_create_orders_batch: bool,
@@ -336,22 +271,6 @@ pub struct OrderbookRequest {
     pub market_ticker: String,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
-}
-
-/// Request for fetching price history / candlestick data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct PriceHistoryRequest {
-    pub market_ticker: String,
-    pub outcome: Option<String>,
-    pub token_id: Option<String>,
-    /// Condition ID for OI enrichment (Polymarket).
-    pub condition_id: Option<String>,
-    pub interval: PriceHistoryInterval,
-    /// Unix seconds
-    pub start_ts: Option<i64>,
-    /// Unix seconds
-    pub end_ts: Option<i64>,
 }
 
 /// Request for fetching recent public trades ("tape") for a market outcome.
@@ -375,17 +294,6 @@ pub struct TradesRequest {
     pub cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct OrderbookHistoryRequest {
-    pub market_ticker: String,
-    pub token_id: Option<String>,
-    pub start_ts: Option<i64>,
-    pub end_ts: Option<i64>,
-    pub limit: Option<usize>,
-    pub cursor: Option<String>,
-}
-
 /// Request for midpoint / spread / last-trade-price methods. The same shape
 /// is reused for all three since they target the same outcome and accept the
 /// same identifier inputs.
@@ -395,24 +303,6 @@ pub struct MidpointRequest {
     pub market_ticker: String,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
-}
-
-/// Request for `fetch_user_trades`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct UserTradesRequest {
-    /// `None` = caller's own trades (auth required on both venues).
-    /// `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi
-    /// returns `NotSupported`).
-    pub user_address: Option<String>,
-    pub market_ticker: Option<String>,
-    pub side: Option<OrderSide>,
-    /// Unix seconds (inclusive)
-    pub start_ts: Option<i64>,
-    /// Unix seconds (inclusive)
-    pub end_ts: Option<i64>,
-    pub limit: Option<usize>,
-    pub cursor: Option<String>,
 }
 
 /// One order in a `create_orders_batch` call. Each venue caps the batch size

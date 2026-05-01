@@ -78,11 +78,6 @@ export type OrderStatus = "pending" | "open" | "filled" | "partially_filled" | "
  */
 export type Number = number;
 /**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "PriceHistoryInterval".
- */
-export type PriceHistoryInterval = "1m" | "1h" | "6h" | "1d" | "1w" | "max";
-/**
  * Bid or ask side. Serializes as "bid"/"ask" on the wire.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -236,31 +231,6 @@ export interface ActivityTrade {
   [k: string]: unknown;
 }
 /**
- * OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 1.0). Timestamp is the period START (not end). Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "Candlestick".
- */
-export interface Candlestick {
-  close: number;
-  high: number;
-  low: number;
-  open: number;
-  /**
-   * Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).
-   */
-  open_interest?: number | null;
-  /**
-   * Period start timestamp (UTC). lightweight-charts expects start-of-period.
-   */
-  timestamp: string;
-  /**
-   * Trade volume in contracts. 0.0 if exchange doesn't provide volume.
-   */
-  volume: number;
-  [k: string]: unknown;
-}
-/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "CryptoPrice".
  */
@@ -326,15 +296,11 @@ export interface ExchangeInfo {
   has_fetch_midpoints_batch: boolean;
   has_fetch_open_interest: boolean;
   has_fetch_orderbook: boolean;
-  has_fetch_orderbook_history: boolean;
   has_fetch_orderbooks_batch: boolean;
   has_fetch_positions: boolean;
-  has_fetch_price_history: boolean;
   has_fetch_server_time: boolean;
   has_fetch_spread: boolean;
   has_fetch_trades: boolean;
-  has_fetch_user_activity: boolean;
-  has_fetch_user_trades: boolean;
   has_refresh_balance: boolean;
   has_websocket: boolean;
   id: string;
@@ -378,15 +344,6 @@ export interface FetchMarketsParams {
  */
 export interface FetchOrdersParams {
   market_ticker?: string | null;
-  [k: string]: unknown;
-}
-/**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "FetchUserActivityParams".
- */
-export interface FetchUserActivityParams {
-  address: string;
-  limit?: number | null;
   [k: string]: unknown;
 }
 /**
@@ -717,19 +674,6 @@ export interface PriceLevel {
   [k: string]: unknown;
 }
 /**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderbookHistoryRequest".
- */
-export interface OrderbookHistoryRequest {
-  cursor?: string | null;
-  end_ts?: number | null;
-  limit?: number | null;
-  market_ticker: string;
-  start_ts?: number | null;
-  token_id?: string | null;
-  [k: string]: unknown;
-}
-/**
  * Request for fetching an L2 orderbook.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
@@ -742,20 +686,6 @@ export interface OrderbookRequest {
   [k: string]: unknown;
 }
 /**
- * A point-in-time L2 orderbook snapshot, used for historical orderbook data.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderbookSnapshot".
- */
-export interface OrderbookSnapshot {
-  asks: PriceLevel[];
-  bids: PriceLevel[];
-  hash?: string | null;
-  recorded_at?: string | null;
-  timestamp: string;
-  [k: string]: unknown;
-}
-/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "Position".
  */
@@ -765,31 +695,6 @@ export interface Position {
   market_ticker: string;
   outcome: string;
   size: number;
-  [k: string]: unknown;
-}
-/**
- * Request for fetching price history / candlestick data.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "PriceHistoryRequest".
- */
-export interface PriceHistoryRequest {
-  /**
-   * Condition ID for OI enrichment (Polymarket).
-   */
-  condition_id?: string | null;
-  /**
-   * Unix seconds
-   */
-  end_ts?: number | null;
-  interval: PriceHistoryInterval;
-  market_ticker: string;
-  outcome?: string | null;
-  /**
-   * Unix seconds
-   */
-  start_ts?: number | null;
-  token_id?: string | null;
   [k: string]: unknown;
 }
 /**
@@ -884,52 +789,5 @@ export interface TradesRequest {
    */
   start_ts?: number | null;
   token_id?: string | null;
-  [k: string]: unknown;
-}
-/**
- * A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills` returns a subset, with `realized_pnl` and `tx_hash` left as `None`.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "UserTrade".
- */
-export interface UserTrade {
-  asset_id?: string | null;
-  condition_id?: string | null;
-  fee?: number | null;
-  id: string;
-  market_ticker: string;
-  owner?: string | null;
-  price: number;
-  realized_pnl?: number | null;
-  role?: LiquidityRole | null;
-  side: OrderSide;
-  size: number;
-  ts_ms: number;
-  tx_hash?: string | null;
-  [k: string]: unknown;
-}
-/**
- * Request for `fetch_user_trades`.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "UserTradesRequest".
- */
-export interface UserTradesRequest {
-  cursor?: string | null;
-  /**
-   * Unix seconds (inclusive)
-   */
-  end_ts?: number | null;
-  limit?: number | null;
-  market_ticker?: string | null;
-  side?: OrderSide | null;
-  /**
-   * Unix seconds (inclusive)
-   */
-  start_ts?: number | null;
-  /**
-   * `None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).
-   */
-  user_address?: string | null;
   [k: string]: unknown;
 }

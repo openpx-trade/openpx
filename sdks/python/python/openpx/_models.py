@@ -36,25 +36,6 @@ class ActivityTrade(BaseModel):
     trade_id: str | None = None
 
 
-class Candlestick(BaseModel):
-    close: float
-    high: float
-    low: float
-    open: float
-    open_interest: float | None = Field(
-        None,
-        description="Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).",
-    )
-    timestamp: AwareDatetime = Field(
-        ...,
-        description="Period start timestamp (UTC). lightweight-charts expects start-of-period.",
-    )
-    volume: float = Field(
-        ...,
-        description="Trade volume in contracts. 0.0 if exchange doesn't provide volume.",
-    )
-
-
 class CryptoPriceSource(Enum):
     binance = "binance"
     chainlink = "chainlink"
@@ -105,15 +86,11 @@ class ExchangeInfo(BaseModel):
     has_fetch_midpoints_batch: bool
     has_fetch_open_interest: bool
     has_fetch_orderbook: bool
-    has_fetch_orderbook_history: bool
     has_fetch_orderbooks_batch: bool
     has_fetch_positions: bool
-    has_fetch_price_history: bool
     has_fetch_server_time: bool
     has_fetch_spread: bool
     has_fetch_trades: bool
-    has_fetch_user_activity: bool
-    has_fetch_user_trades: bool
     has_refresh_balance: bool
     has_websocket: bool
     id: str
@@ -122,11 +99,6 @@ class ExchangeInfo(BaseModel):
 
 class FetchOrdersParams(BaseModel):
     market_ticker: str | None = None
-
-
-class FetchUserActivityParams(BaseModel):
-    address: str
-    limit: conint(ge=0) | None = None
 
 
 class InvalidationReason1(Enum):
@@ -219,15 +191,6 @@ class OrderType(Enum):
     fok = "fok"
 
 
-class OrderbookHistoryRequest(BaseModel):
-    cursor: str | None = None
-    end_ts: int | None = None
-    limit: conint(ge=0) | None = None
-    market_ticker: str
-    start_ts: int | None = None
-    token_id: str | None = None
-
-
 class OrderbookRequest(BaseModel):
     market_ticker: str
     outcome: str | None = None
@@ -255,27 +218,6 @@ class Position(BaseModel):
     market_ticker: str
     outcome: str
     size: float
-
-
-class PriceHistoryInterval(Enum):
-    field_1m = "1m"
-    field_1h = "1h"
-    field_6h = "6h"
-    field_1d = "1d"
-    field_1w = "1w"
-    max = "max"
-
-
-class PriceHistoryRequest(BaseModel):
-    condition_id: str | None = Field(
-        None, description="Condition ID for OI enrichment (Polymarket)."
-    )
-    end_ts: int | None = Field(None, description="Unix seconds")
-    interval: PriceHistoryInterval
-    market_ticker: str
-    outcome: str | None = None
-    start_ts: int | None = Field(None, description="Unix seconds")
-    token_id: str | None = None
 
 
 class PriceLevelSide(Enum):
@@ -395,35 +337,6 @@ class TradesRequest(BaseModel):
     outcome: str | None = None
     start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     token_id: str | None = None
-
-
-class UserTrade(BaseModel):
-    asset_id: str | None = None
-    condition_id: str | None = None
-    fee: float | None = None
-    id: str
-    market_ticker: str
-    owner: str | None = None
-    price: float
-    realized_pnl: float | None = None
-    role: LiquidityRole | None = None
-    side: OrderSide
-    size: float
-    ts_ms: int
-    tx_hash: str | None = None
-
-
-class UserTradesRequest(BaseModel):
-    cursor: str | None = None
-    end_ts: int | None = Field(None, description="Unix seconds (inclusive)")
-    limit: conint(ge=0) | None = None
-    market_ticker: str | None = None
-    side: OrderSide | None = None
-    start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
-    user_address: str | None = Field(
-        None,
-        description="`None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).",
-    )
 
 
 class Kind5(Enum):
@@ -701,14 +614,6 @@ class Orderbook(BaseModel):
     last_update_id: conint(ge=0) | None = None
     market_ticker: str
     timestamp: AwareDatetime | None = None
-
-
-class OrderbookSnapshot(BaseModel):
-    asks: list[PriceLevel]
-    bids: list[PriceLevel]
-    hash: str | None = None
-    recorded_at: AwareDatetime | None = None
-    timestamp: AwareDatetime
 
 
 class WsUpdate1(BaseModel):

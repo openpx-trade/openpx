@@ -46,53 +46,6 @@ impl HttpClient {
         self.get(&url).await
     }
 
-    /// Like `get_clob` but with a per-request timeout override.
-    /// Use for slow CLOB endpoints (e.g. `/orderbook-history` which can take 10-60s).
-    pub async fn get_clob_slow<T: DeserializeOwned>(
-        &self,
-        endpoint: &str,
-        timeout: std::time::Duration,
-    ) -> Result<T, PolymarketError> {
-        let url = format!("{}{}", self.clob_url, endpoint);
-
-        if self.verbose {
-            tracing::debug!("GET {} (timeout={}s)", url, timeout.as_secs());
-        }
-
-        let send_start = Instant::now();
-        let response = self.client.get(&url).timeout(timeout).send().await?;
-        let send_us = send_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!("openpx.exchange.http_send_us", "exchange" => "polymarket").record(send_us);
-        let status = response.status();
-        let headers = response.headers().clone();
-
-        if status == 429 {
-            let retry_after = headers
-                .get("retry-after")
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
-            return Err(PolymarketError::RateLimited { retry_after });
-        }
-
-        let body_start = Instant::now();
-        let body = response.text().await?;
-        let body_us = body_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!("openpx.exchange.http_body_us", "exchange" => "polymarket").record(body_us);
-
-        if !status.is_success() {
-            return Err(PolymarketError::Api(format!("{status}: {body}")));
-        }
-
-        let parse_start = Instant::now();
-        let parsed = serde_json::from_str(&body)
-            .map_err(|e| PolymarketError::InvalidResponse(format!("parse error: {e}")))?;
-        let parse_us = parse_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!("openpx.exchange.json_parse_us", "exchange" => "polymarket").record(parse_us);
-
-        Ok(parsed)
-    }
-
     pub async fn get_response(&self, url: &str) -> Result<reqwest::Response, PolymarketError> {
         if self.verbose {
             tracing::debug!("GET {}", url);

@@ -270,19 +270,6 @@ pub struct Spread {
     pub ts_ms: Option<i64>,
 }
 
-/// A point-in-time L2 orderbook snapshot, used for historical orderbook data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct OrderbookSnapshot {
-    pub timestamp: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recorded_at: Option<DateTime<Utc>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hash: Option<String>,
-    pub bids: Vec<PriceLevel>,
-    pub asks: Vec<PriceLevel>,
-}
-
 /// Sort price levels in descending order (highest price first) -- bid side ordering.
 /// Uses integer comparison via FixedPrice::Ord (no partial_cmp/NaN handling).
 pub fn sort_bids(levels: &mut [PriceLevel]) {

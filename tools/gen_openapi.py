@@ -43,15 +43,12 @@ METHOD_META: dict[str, tuple[str, str]] = {
     "fetch_market_tags": ("Tags", "GET"),
     "fetch_orderbook": ("Orderbook", "GET"),
     "fetch_orderbooks_batch": ("Orderbook", "GET"),
-    "fetch_orderbook_history": ("Orderbook History", "GET"),
     "fetch_midpoint": ("Pricing", "GET"),
     "fetch_midpoints_batch": ("Pricing", "GET"),
     "fetch_spread": ("Pricing", "GET"),
     "fetch_last_trade_price": ("Pricing", "GET"),
     "fetch_open_interest": ("Pricing", "GET"),
     "fetch_trades": ("Trades", "GET"),
-    "fetch_user_trades": ("Trades", "GET"),
-    "fetch_price_history": ("Price History", "GET"),
     "create_order": ("Orders", "POST"),
     "create_orders_batch": ("Orders", "POST"),
     "cancel_order": ("Orders", "POST"),
@@ -60,10 +57,8 @@ METHOD_META: dict[str, tuple[str, str]] = {
     "fetch_open_orders": ("Orders", "GET"),
     "fetch_positions": ("Positions", "GET"),
     "fetch_balance": ("Balance", "GET"),
-    "fetch_balance_raw": ("Balance", "GET"),
     "refresh_balance": ("Balance", "POST"),
     "fetch_fills": ("Fills", "GET"),
-    "fetch_user_activity": ("Fills", "GET"),
     "fetch_server_time": ("Server", "GET"),
 }
 
@@ -344,10 +339,6 @@ def synthesize_response_wrapper(
         items_field_name = "series"
     elif inner_name == "MarketTrade":
         items_field_name = "trades"
-    elif inner_name == "UserTrade":
-        items_field_name = "trades"
-    elif inner_name == "OrderbookSnapshot":
-        items_field_name = "snapshots"
     elif inner_name == "Order":
         items_field_name = "orders"
 

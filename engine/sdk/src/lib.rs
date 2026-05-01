@@ -139,25 +139,11 @@ impl ExchangeInner {
         dispatch!(self, fetch_orderbook, req)
     }
 
-    pub async fn fetch_price_history(
-        &self,
-        req: PriceHistoryRequest,
-    ) -> Result<Vec<Candlestick>, OpenPxError> {
-        dispatch!(self, fetch_price_history, req)
-    }
-
     pub async fn fetch_trades(
         &self,
         req: TradesRequest,
     ) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError> {
         dispatch!(self, fetch_trades, req)
-    }
-
-    pub async fn fetch_orderbook_history(
-        &self,
-        req: OrderbookHistoryRequest,
-    ) -> Result<(Vec<OrderbookSnapshot>, Option<String>), OpenPxError> {
-        dispatch!(self, fetch_orderbook_history, req)
     }
 
     pub async fn fetch_fills(
@@ -170,17 +156,6 @@ impl ExchangeInner {
 
     pub async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
         dispatch!(self, fetch_server_time)
-    }
-
-    pub async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
-        dispatch!(self, fetch_balance_raw)
-    }
-
-    pub async fn fetch_user_activity(
-        &self,
-        params: FetchUserActivityParams,
-    ) -> Result<serde_json::Value, OpenPxError> {
-        dispatch!(self, fetch_user_activity, params)
     }
 
     pub async fn refresh_balance(&self) -> Result<(), OpenPxError> {
@@ -225,13 +200,6 @@ impl ExchangeInner {
 
     pub async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
         dispatch!(self, fetch_open_interest, market_ticker)
-    }
-
-    pub async fn fetch_user_trades(
-        &self,
-        req: UserTradesRequest,
-    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
-        dispatch!(self, fetch_user_trades, req)
     }
 
     pub async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {

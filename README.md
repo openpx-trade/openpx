@@ -100,7 +100,6 @@ Every exchange exposes the same interface — switch exchanges by changing one s
 | `fetch_markets` | List markets with pagination |
 | `fetch_market` | Get a single market by ID |
 | `fetch_orderbook` | L2 orderbook (bids/asks) |
-| `fetch_price_history` | OHLCV candlestick data |
 | `fetch_trades` | Recent public trades |
 | `create_order` | Place a limit order |
 | `cancel_order` | Cancel an open order |
@@ -117,7 +116,6 @@ Every exchange exposes the same interface — switch exchanges by changing one s
 | Markets | :white_check_mark: | :white_check_mark: |
 | Trading | :white_check_mark: | :white_check_mark: |
 | Orderbook | :white_check_mark: | :white_check_mark: |
-| Price History | :white_check_mark: | :white_check_mark: |
 | Trades | :white_check_mark: | :white_check_mark: |
 | Positions | :white_check_mark: | :white_check_mark: |
 | Balance | :white_check_mark: | :white_check_mark: |
