@@ -145,6 +145,16 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Need help?",
+        "href": "https://discord.gg/acWpZpVnBj",
+        "icon": {
+          "name": "discord",
+          "library": "fontawesome",
+          "style": "brands"
+        },
+        "align": "end"
       }
     ]
   },
@@ -159,10 +169,6 @@
         "icon": "desktop",
         "label": "",
         "href": "https://www.openpx.trade"
-      },
-      {
-        "type": "discord",
-        "href": "https://discord.gg/acWpZpVnBj"
       }
     ]
   },
