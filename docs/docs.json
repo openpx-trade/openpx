@@ -108,7 +108,9 @@
               "schemas/mappings/series",
               "schemas/mappings/orderbook",
               "schemas/mappings/trade",
-              "schemas/mappings/order"
+              "schemas/mappings/order",
+              "schemas/mappings/position",
+              "schemas/mappings/fill"
             ]
           }
         ]

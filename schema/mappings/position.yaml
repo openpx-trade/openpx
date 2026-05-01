@@ -1,0 +1,121 @@
+# Position field mapping: how each upstream position schema maps to the
+# unified OpenPX `Position` model.
+#
+# Coordinate-only: every $ref points at a resolvable path in
+# schema/upstream/<exchange>.openapi.yaml. Type info, nullability, and
+# descriptions are derived at validation/render time. Do not duplicate them
+# here.
+#
+# The hand-written normalizers — `parse_position` in
+# engine/exchanges/kalshi/src/exchange.rs and the `fetch_positions` /
+# `fetch_all_positions` paths in engine/exchanges/polymarket/src/exchange.rs
+# — are the implementation. This file is the *contract* the implementation
+# conforms to.
+unified_type: Position
+unified_schema: schema/openpx.schema.json#/definitions/Position
+
+# Kalshi: GET /portfolio/positions returns GetPositionsResponse with a
+# `market_positions` array of MarketPosition. Filter is at market level via
+# the `ticker` query parameter (the Kalshi market ticker).
+# Polymarket: GET /positions on the Data API returns a flat array of
+# Position objects. Filter is at market level via `market` (an array of
+# condition_ids); the unified adapter resolves the slug to condition_id when
+# a `market_ticker` filter is supplied.
+upstream_specs:
+  kalshi: schema/upstream/kalshi.openapi.yaml
+  polymarket: schema/upstream/polymarket-data.openapi.yaml
+
+# Transform vocabulary:
+#   direct                  — copy value as-is, types compatible
+#   fixed_point_dollars     — Kalshi $-string (FixedPointDollars) → f64
+#   fixed_point_count       — Kalshi count-string (FixedPointCount) → f64
+#   kalshi_position_to_outcome — Kalshi position_fp sign (+ → "Yes",
+#                                 - → "No") → unified outcome label.
+#   kalshi_avg_price        — `total_traded_dollars` / |position_fp| →
+#                             unified average_price (dollars per contract).
+#   kalshi_current_price    — `market_exposure_dollars` / |position_fp| →
+#                             unified current_price (dollars per contract).
+#   abs_value               — absolute value of a signed input, used to map
+#                             Kalshi's signed `position_fp` (negative=NO,
+#                             positive=YES) onto the unsigned unified `size`.
+fields:
+  # ---- Identity ----
+  - name: market_ticker
+    sources:
+      kalshi:
+        ref: "#/components/schemas/MarketPosition/properties/ticker"
+        transform: direct
+        notes: |
+          Kalshi market ticker (e.g. `KXPRESPARTYWIN-26-D`). Same string
+          callers pass to `fetch_markets`.
+      polymarket:
+        ref: "#/components/schemas/Position/properties/slug"
+        transform: direct
+        notes: |
+          Market slug — matches the unified `Market.ticker` semantics on
+          Polymarket. The on-chain `conditionId` is reachable but is the
+          internal lookup id, not the user-facing identifier; we anchor on
+          `slug` so callers can round-trip the value through `fetch_markets`.
+
+  - name: outcome
+    sources:
+      kalshi:
+        synthetic: 'sign(MarketPosition.position_fp) → {"Yes" if ≥0, else "No"}'
+        notes: |
+          Kalshi positions are signed: positive `position_fp` is YES
+          contracts, negative is NO. The unified `outcome` is the
+          re-canonicalized title-case label.
+      polymarket:
+        ref: "#/components/schemas/Position/properties/outcome"
+        transform: direct
+        notes: |
+          Free-form outcome label as published by Polymarket — typically
+          `"Yes"`/`"No"` on binary markets, raw category labels on
+          categorical/neg-risk markets.
+
+  # ---- Quantity ----
+  - name: size
+    sources:
+      kalshi:
+        ref: "#/components/schemas/MarketPosition/properties/position_fp"
+        transform: abs_value
+        notes: |
+          Absolute value of the signed `position_fp` (FixedPointCount
+          string). Sign is consumed by the `outcome` mapping above; the
+          unified `size` is always non-negative.
+      polymarket:
+        ref: "#/components/schemas/Position/properties/size"
+        transform: direct
+        notes: Already a non-negative `number`. Copied as-is.
+
+  - name: average_price
+    sources:
+      kalshi:
+        synthetic: "MarketPosition.total_traded_dollars / |position_fp|"
+        notes: |
+          Cost basis per contract. `total_traded_dollars` is the cumulative
+          dollars spent on the position; dividing by the absolute size gives
+          the realized average entry price in dollars (probability units,
+          0–1 for binary markets).
+      polymarket:
+        ref: "#/components/schemas/Position/properties/avgPrice"
+        transform: direct
+        notes: |
+          Polymarket emits `avgPrice` as a decimal probability (0–1).
+          Copied as-is.
+
+  - name: current_price
+    sources:
+      kalshi:
+        synthetic: "MarketPosition.market_exposure_dollars / |position_fp|"
+        notes: |
+          Mark-to-market price per contract derived from the upstream
+          `market_exposure_dollars`, which represents the aggregate position
+          value at the current mark. Dividing by absolute size yields the
+          per-contract current price.
+      polymarket:
+        ref: "#/components/schemas/Position/properties/curPrice"
+        transform: direct
+        notes: |
+          Polymarket emits `curPrice` as a decimal probability (0–1).
+          Copied as-is.
