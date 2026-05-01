@@ -145,16 +145,6 @@
             ]
           }
         ]
-      },
-      {
-        "tab": "Need help?",
-        "href": "https://discord.gg/acWpZpVnBj",
-        "icon": {
-          "name": "discord",
-          "library": "fontawesome",
-          "style": "brands"
-        },
-        "align": "end"
       }
     ]
   },
@@ -169,8 +159,18 @@
         "icon": "desktop",
         "label": "",
         "href": "https://www.openpx.trade"
+      },
+      {
+        "icon": { "name": "discord", "library": "fontawesome", "style": "brands" },
+        "label": "Get Help",
+        "href": "https://discord.gg/acWpZpVnBj"
       }
-    ]
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Main Site",
+      "href": "https://www.openpx.trade"
+    }
   },
   "footer": {
     "socials": {
