@@ -1194,53 +1194,6 @@ components:
           - 'null'
       title: MaxGap
       type: object
-    NewOrder:
-      description: 'One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).'
-      properties:
-        client_order_id:
-          description: Kalshi-specific idempotency key.
-          type:
-          - string
-          - 'null'
-        expiration_ts:
-          description: Unix seconds. Required for `OrderType::Gtc` orders that should expire.
-          format: int64
-          type:
-          - integer
-          - 'null'
-        market_ticker:
-          type: string
-        order_type:
-          $ref: '#/components/schemas/OrderType'
-        outcome:
-          type: string
-        post_only:
-          description: 'Polymarket: pin maker-only. Ignored on Kalshi.'
-          type:
-          - boolean
-          - 'null'
-        price:
-          format: double
-          type: number
-        reduce_only:
-          description: 'Kalshi: only allow size reductions. Maps to `reduce_only=true`.'
-          type:
-          - boolean
-          - 'null'
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        size:
-          format: double
-          type: number
-      required:
-      - market_ticker
-      - order_type
-      - outcome
-      - price
-      - side
-      - size
-      title: NewOrder
-      type: object
     Order:
       properties:
         created_at:

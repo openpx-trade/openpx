@@ -590,29 +590,6 @@ class Market(BaseModel):
     volume_24h: float | None = Field(None, description="24-hour trading volume (USD)")
 
 
-class NewOrder(BaseModel):
-    client_order_id: str | None = Field(
-        None, description="Kalshi-specific idempotency key."
-    )
-    expiration_ts: int | None = Field(
-        None,
-        description="Unix seconds. Required for `OrderType::Gtc` orders that should expire.",
-    )
-    market_ticker: str
-    order_type: OrderType
-    outcome: str
-    post_only: bool | None = Field(
-        None, description="Polymarket: pin maker-only. Ignored on Kalshi."
-    )
-    price: float
-    reduce_only: bool | None = Field(
-        None,
-        description="Kalshi: only allow size reductions. Maps to `reduce_only=true`.",
-    )
-    side: OrderSide
-    size: float
-
-
 class Order(BaseModel):
     created_at: AwareDatetime
     fee: float | None = Field(

@@ -190,8 +190,8 @@ impl ExchangeInner {
 
     pub async fn create_orders_batch(
         &self,
-        orders: Vec<NewOrder>,
+        reqs: Vec<CreateOrderRequest>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        dispatch!(self, create_orders_batch, orders)
+        dispatch!(self, create_orders_batch, reqs)
     }
 }

@@ -651,37 +651,6 @@ export interface MaxGap {
   [k: string]: unknown;
 }
 /**
- * One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "NewOrder".
- */
-export interface NewOrder {
-  /**
-   * Kalshi-specific idempotency key.
-   */
-  client_order_id?: string | null;
-  /**
-   * Unix seconds. Required for `OrderType::Gtc` orders that should expire.
-   */
-  expiration_ts?: number | null;
-  market_ticker: string;
-  order_type: OrderType;
-  outcome: string;
-  /**
-   * Polymarket: pin maker-only. Ignored on Kalshi.
-   */
-  post_only?: boolean | null;
-  price: number;
-  /**
-   * Kalshi: only allow size reductions. Maps to `reduce_only=true`.
-   */
-  reduce_only?: boolean | null;
-  side: OrderSide;
-  size: number;
-  [k: string]: unknown;
-}
-/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "Order".
  */

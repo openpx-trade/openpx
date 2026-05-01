@@ -19,10 +19,9 @@ use tracing::info;
 use px_core::{
     manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
     ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder,
-    OpenPxError, Order, OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType,
-    Orderbook, Outcome, Position, PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource,
-    TradesRequest,
+    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
+    OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome,
+    Position, PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -2286,37 +2285,23 @@ impl Exchange for Polymarket {
         Ok(cancelled)
     }
 
-    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
-        // Polymarket caps batches at 15 orders per the V2 migration guide.
-        if orders.len() > 15 {
+    async fn create_orders_batch(
+        &self,
+        reqs: Vec<CreateOrderRequest>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        // Polymarket caps native `POST /orders` at 15. Sequential per-order
+        // dispatch via `create_order` is N round-trips — a single-RTT native
+        // batch is a future optimization. Each `create_order` call already
+        // signs and posts independently so failures don't cascade.
+        if reqs.len() > 15 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
                 "create_orders_batch: Polymarket cap is 15 orders per request".into(),
             )));
         }
 
-        // Bridge: until create_orders_batch is rewritten on top of
-        // CreateOrderRequest (subsequent commit), translate each NewOrder
-        // into the lean unified shape and dispatch through create_order.
-        // The NewOrder optional knobs (post_only, expiration_ts,
-        // client_order_id) are intentionally dropped — they don't exist on
-        // the lean unified surface.
-        let mut out = Vec::with_capacity(orders.len());
-        for o in orders {
-            let outcome = match o.outcome.to_ascii_lowercase().as_str() {
-                "yes" => OrderOutcome::Yes,
-                "no" => OrderOutcome::No,
-                _ => OrderOutcome::Label(o.outcome.clone()),
-            };
-            let req = CreateOrderRequest {
-                market_ticker: o.market_ticker,
-                outcome,
-                side: o.side,
-                price: o.price,
-                size: o.size,
-                order_type: o.order_type,
-            };
-            let order = self.create_order(req).await?;
-            out.push(order);
+        let mut out = Vec::with_capacity(reqs.len());
+        for req in reqs {
+            out.push(self.create_order(req).await?);
         }
         Ok(out)
     }

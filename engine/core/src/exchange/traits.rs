@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    CreateOrderRequest, Fill, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType,
-    Orderbook, OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
+    CreateOrderRequest, Fill, Market, MarketLineage, MarketTrade, Order, Orderbook,
+    OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams};
@@ -178,9 +178,14 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Submit multiple orders in one round-trip — each order's `side` is `buy`/`sell` and `order_type` is `gtc`, `ioc`, or `fok` (cap: 15 on Polymarket; token-budget on Kalshi).
-    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
-        let _ = orders;
+    /// Submit multiple orders in one round-trip. Each request shares the
+    /// same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
+    /// Kalshi.
+    async fn create_orders_batch(
+        &self,
+        reqs: Vec<CreateOrderRequest>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        let _ = reqs;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("create_orders_batch".into()),
         ))
@@ -255,23 +260,3 @@ pub struct TradesRequest {
     pub cursor: Option<String>,
 }
 
-/// One order in a `create_orders_batch` call. Each venue caps the batch size
-/// (Polymarket: 15; Kalshi: token-budget-dependent).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct NewOrder {
-    pub market_ticker: String,
-    pub outcome: String,
-    pub side: OrderSide,
-    pub order_type: OrderType,
-    pub price: f64,
-    pub size: f64,
-    /// Polymarket: pin maker-only. Ignored on Kalshi.
-    pub post_only: Option<bool>,
-    /// Kalshi: only allow size reductions. Maps to `reduce_only=true`.
-    pub reduce_only: Option<bool>,
-    /// Kalshi-specific idempotency key.
-    pub client_order_id: Option<String>,
-    /// Unix seconds. Required for `OrderType::Gtc` orders that should expire.
-    pub expiration_ts: Option<i64>,
-}

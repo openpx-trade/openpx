@@ -7,10 +7,9 @@ use tokio::sync::Mutex;
 use px_core::{
     manifests::KALSHI_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
     ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder,
-    OpenPxError, Order, OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType,
-    Orderbook, Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource,
-    TradesRequest,
+    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
+    OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome,
+    Position, PriceLevel, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -34,16 +33,6 @@ fn parse_fp(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Opti
 
 pub(crate) fn to_openpx(e: KalshiError) -> OpenPxError {
     OpenPxError::Exchange(e.into())
-}
-
-/// Map the unified `OrderType` to Kalshi's `time_in_force` wire string.
-/// Kalshi: `fill_or_kill` | `good_till_canceled` | `immediate_or_cancel`.
-fn unified_to_kalshi_tif(t: UnifiedOrderType) -> Option<&'static str> {
-    match t {
-        UnifiedOrderType::Gtc => Some("good_till_canceled"),
-        UnifiedOrderType::Fok => Some("fill_or_kill"),
-        UnifiedOrderType::Ioc => Some("immediate_or_cancel"),
-    }
 }
 
 fn parse_iso_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -1630,140 +1619,164 @@ impl Exchange for Kalshi {
         Ok(cancelled)
     }
 
-    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
+    async fn create_orders_batch(
+        &self,
+        reqs: Vec<CreateOrderRequest>,
+    ) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
-        if orders.is_empty() {
+        if reqs.is_empty() {
             return Ok(Vec::new());
         }
 
-        let body_orders: Vec<serde_json::Value> = orders
-            .iter()
-            .map(|o| {
-                let action = match o.side {
-                    OrderSide::Buy => "buy",
-                    OrderSide::Sell => "sell",
-                };
-                let kalshi_side = if o.outcome.eq_ignore_ascii_case("no") {
-                    "no"
-                } else {
-                    "yes"
-                };
-                let mut entry = serde_json::json!({
-                    "ticker": o.market_ticker,
-                    "side": kalshi_side,
-                    "action": action,
-                    // Kalshi accepts decimal-dollar fixed-point strings post the
-                    // 2026-04-02 fixed-point migration; the legacy integer
-                    // `yes_price`/`no_price` fields are deprecated.
-                    if kalshi_side == "yes" { "yes_price_dollars" } else { "no_price_dollars" }: format!("{:.4}", o.price),
-                    "count_fp": format!("{:.2}", o.size),
-                    "type": "limit",
-                });
-                if let Some(tif) = unified_to_kalshi_tif(o.order_type) {
-                    entry["time_in_force"] = serde_json::Value::String(tif.to_string());
+        // Caller-frame metadata captured per-request so we can reconstruct
+        // each Order from the V2 batch response (which is stripped down to
+        // order_id + fill_count + remaining_count + average_fill_price +
+        // average_fee_paid + error).
+        struct Frame {
+            market_ticker: String,
+            outcome_label: &'static str,
+            outcome: OrderOutcome,
+            side: OrderSide,
+            request_price: f64,
+        }
+
+        let mut frames: Vec<Frame> = Vec::with_capacity(reqs.len());
+        let mut body_orders: Vec<serde_json::Value> = Vec::with_capacity(reqs.len());
+
+        for req in reqs {
+            if req.price <= 0.0 || req.price >= 1.0 {
+                return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
+                    "price must be in (0, 1)".into(),
+                )));
+            }
+            let outcome_label = match &req.outcome {
+                OrderOutcome::Yes => "Yes",
+                OrderOutcome::No => "No",
+                _ => {
+                    return Err(OpenPxError::InvalidInput(
+                        "Kalshi markets are binary; outcome must be Yes or No".into(),
+                    ))
                 }
-                if let Some(p) = o.post_only {
-                    entry["post_only"] = serde_json::Value::Bool(p);
-                }
-                if let Some(r) = o.reduce_only {
-                    entry["reduce_only"] = serde_json::Value::Bool(r);
-                }
-                if let Some(c) = &o.client_order_id {
-                    entry["client_order_id"] = serde_json::Value::String(c.clone());
-                }
-                if let Some(ts) = o.expiration_ts {
-                    // Kalshi expects expiration in milliseconds.
-                    entry["expiration_ts"] = serde_json::Value::from(ts * 1000);
-                }
-                entry
-            })
-            .collect();
+            };
+            let (side_str, wire_price) = match (&req.outcome, req.side) {
+                (OrderOutcome::Yes, OrderSide::Buy) => ("bid", req.price),
+                (OrderOutcome::Yes, OrderSide::Sell) => ("ask", req.price),
+                (OrderOutcome::No, OrderSide::Buy) => ("ask", 1.0 - req.price),
+                (OrderOutcome::No, OrderSide::Sell) => ("bid", 1.0 - req.price),
+                _ => unreachable!("guarded above"),
+            };
+
+            body_orders.push(serde_json::json!({
+                "ticker": req.market_ticker,
+                "client_order_id": uuid::Uuid::new_v4().to_string(),
+                "side": side_str,
+                "count": format!("{:.2}", req.size),
+                "price": format!("{:.4}", wire_price),
+                "time_in_force": match req.order_type {
+                    UnifiedOrderType::Gtc => "good_till_canceled",
+                    UnifiedOrderType::Ioc => "immediate_or_cancel",
+                    UnifiedOrderType::Fok => "fill_or_kill",
+                },
+                "self_trade_prevention_type": "taker_at_cross",
+            }));
+
+            frames.push(Frame {
+                market_ticker: req.market_ticker,
+                outcome_label,
+                outcome: req.outcome,
+                side: req.side,
+                request_price: req.price,
+            });
+        }
 
         let body = serde_json::json!({ "orders": body_orders });
 
         #[derive(serde::Deserialize)]
-        struct BatchCreateResp {
+        struct V2BatchResp {
             #[serde(default)]
-            orders: Vec<BatchCreateEntry>,
+            orders: Vec<V2BatchEntry>,
         }
         #[derive(serde::Deserialize)]
-        struct BatchCreateEntry {
+        struct V2BatchEntry {
             #[serde(default)]
-            order: Option<serde_json::Value>,
+            order_id: Option<String>,
             #[serde(default)]
-            client_order_id: Option<String>,
+            fill_count: Option<String>,
+            #[serde(default)]
+            remaining_count: Option<String>,
+            #[serde(default)]
+            average_fill_price: Option<String>,
+            #[serde(default)]
+            average_fee_paid: Option<String>,
             #[serde(default)]
             error: Option<serde_json::Value>,
         }
 
-        let resp: BatchCreateResp = self
+        let resp: V2BatchResp = self
             .request(
                 reqwest::Method::POST,
-                "/portfolio/orders/batched",
+                "/portfolio/events/orders/batched",
                 Some(&body),
                 Some("create_orders_batch"),
             )
             .await
             .map_err(to_openpx)?;
 
+        let now = chrono::Utc::now();
         let parsed: Vec<Order> = resp
             .orders
             .into_iter()
-            .filter_map(|e| {
-                if let Some(err) = e.error {
-                    tracing::warn!(
-                        client_order_id = ?e.client_order_id,
-                        error = %err,
-                        "Kalshi batch order rejected"
-                    );
+            .zip(frames)
+            .filter_map(|(entry, frame)| {
+                if let Some(err) = entry.error {
+                    tracing::warn!(error = %err, "Kalshi V2 batch order rejected");
                     return None;
                 }
-                let o = e.order?;
-                let obj = o.as_object()?;
+                let id = entry.order_id?;
+                let fill_count: f64 = entry
+                    .fill_count
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let remaining: f64 = entry
+                    .remaining_count
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let status = match (fill_count > 0.0, remaining > 0.0) {
+                    (true, true) => OrderStatus::PartiallyFilled,
+                    (true, false) => OrderStatus::Filled,
+                    (false, true) => OrderStatus::Open,
+                    (false, false) => OrderStatus::Cancelled,
+                };
+                let order_price = match entry
+                    .average_fill_price
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                {
+                    Some(yes_price) => match frame.outcome {
+                        OrderOutcome::Yes => yes_price,
+                        OrderOutcome::No => 1.0 - yes_price,
+                        _ => frame.request_price,
+                    },
+                    None => frame.request_price,
+                };
+                let fee = entry
+                    .average_fee_paid
+                    .as_deref()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .map(|avg| avg * fill_count);
                 Some(Order {
-                    id: obj
-                        .get("order_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    market_ticker: obj
-                        .get("ticker")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    outcome: obj
-                        .get("side")
-                        .and_then(|v| v.as_str())
-                        .map(|s| {
-                            if s.eq_ignore_ascii_case("no") {
-                                "No".to_string()
-                            } else {
-                                "Yes".to_string()
-                            }
-                        })
-                        .unwrap_or_default(),
-                    side: match obj.get("action").and_then(|v| v.as_str()) {
-                        Some("sell") => OrderSide::Sell,
-                        _ => OrderSide::Buy,
-                    },
-                    price: parse_dollars(obj, "yes_price_dollars")
-                        .or_else(|| parse_dollars(obj, "no_price_dollars"))
-                        .unwrap_or(0.0),
-                    size: parse_fp(obj, "initial_count_fp").unwrap_or(0.0),
-                    filled: parse_fp(obj, "fill_count_fp").unwrap_or(0.0),
-                    fee: None,
-                    status: match obj.get("status").and_then(|v| v.as_str()) {
-                        Some("resting") => OrderStatus::Open,
-                        Some("canceled") => OrderStatus::Cancelled,
-                        Some("executed") => OrderStatus::Filled,
-                        _ => OrderStatus::Open,
-                    },
-                    created_at: obj
-                        .get("created_time")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(chrono::Utc::now),
+                    id,
+                    market_ticker: frame.market_ticker,
+                    outcome: frame.outcome_label.to_string(),
+                    side: frame.side,
+                    price: order_price,
+                    size: fill_count + remaining,
+                    filled: fill_count,
+                    fee,
+                    status,
+                    created_at: now,
                     updated_at: None,
                 })
             })
