@@ -19,7 +19,7 @@ use std::env;
 use std::time::Duration;
 
 use openpx::{ExchangeInner, WebSocketInner};
-use px_core::{OrderbookRequest, PriceHistoryInterval, PriceHistoryRequest, TradesRequest};
+use px_core::{OrderbookRequest, TradesRequest};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,11 +83,6 @@ fn is_network_error(e: &px_core::error::OpenPxError) -> bool {
     msg.contains("http error") || msg.contains("timed out") || msg.contains("connection")
 }
 
-/// Helper: returns true if error indicates not-supported.
-fn is_not_supported(e: &px_core::error::OpenPxError) -> bool {
-    format!("{e:?}").contains("NotSupported")
-}
-
 /// Helper: returns true if error indicates invalid input.
 fn is_invalid_input(e: &px_core::error::OpenPxError) -> bool {
     format!("{e:?}").contains("InvalidInput") || format!("{e:?}").contains("invalid input")
@@ -105,17 +100,6 @@ fn is_config_error(e: &px_core::error::OpenPxError) -> bool {
 fn is_rate_limited(e: &px_core::error::OpenPxError) -> bool {
     let msg = format!("{e:?}");
     msg.contains("rate limit") || msg.contains("429") || msg.contains("RateLimited")
-}
-
-/// Derive the wallet/owner address for an exchange from env vars.
-/// Returns None if the exchange doesn't have address-based activity or no address is configured.
-fn owner_address_for(id: &str) -> Option<String> {
-    match id {
-        "polymarket" => env::var("POLYMARKET_FUNDER")
-            .or_else(|_| env::var("POLYMARKET_WALLET_ADDRESS"))
-            .ok(),
-        _ => None,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -541,143 +525,6 @@ macro_rules! exchange_tests {
             // ==================================================================
 
             #[tokio::test]
-            async fn fetch_price_history() {
-                let Some(ex) = get_exchange() else { return };
-                if !ex.describe().has_fetch_price_history {
-                    return;
-                }
-                let markets = match ex.fetch_markets(&Default::default()).await {
-                    Ok((m, _)) if !m.is_empty() => m,
-                    _ => return,
-                };
-                // Try multiple markets — first one may be newly created with no history
-                let mut found_candles = false;
-                for market in &markets {
-                    match ex
-                        .fetch_price_history(PriceHistoryRequest {
-                            market_ticker: market.ticker.clone(),
-                            interval: PriceHistoryInterval::OneDay,
-                            outcome: None,
-                            token_id: None,
-                            condition_id: None,
-                            start_ts: None,
-                            end_ts: None,
-                        })
-                        .await
-                    {
-                        Ok(candles) if !candles.is_empty() => {
-                            for c in &candles {
-                                assert!(c.high >= c.low, "high should >= low");
-                            }
-                            found_candles = true;
-                            break;
-                        }
-                        Ok(_) => continue, // empty, try next market
-                        Err(e) if format!("{e:?}").contains("token_id") => {
-                            eprintln!(
-                                "SKIP {}/fetch_price_history: requires token_id",
-                                stringify!($exchange_id)
-                            );
-                            return;
-                        }
-                        Err(_) => continue,
-                    }
-                }
-                if !found_candles {
-                    eprintln!(
-                        "WARN: {}/fetch_price_history: no candles from any of {} markets",
-                        stringify!($exchange_id),
-                        markets.len()
-                    );
-                }
-            }
-
-            #[tokio::test]
-            async fn fetch_price_history_candle_invariants() {
-                let Some(ex) = get_exchange() else { return };
-                if !ex.describe().has_fetch_price_history {
-                    return;
-                }
-                let markets = match ex.fetch_markets(&Default::default()).await {
-                    Ok((m, _)) if !m.is_empty() => m,
-                    _ => return,
-                };
-
-                for market in markets.iter().take(10) {
-                    let candles = match ex
-                        .fetch_price_history(PriceHistoryRequest {
-                            market_ticker: market.ticker.clone(),
-                            interval: PriceHistoryInterval::OneDay,
-                            outcome: None,
-                            token_id: None,
-                            condition_id: None,
-                            start_ts: None,
-                            end_ts: None,
-                        })
-                        .await
-                    {
-                        Ok(c) if !c.is_empty() => c,
-                        _ => continue,
-                    };
-
-                    for c in &candles {
-                        // OHLC invariants
-                        assert!(c.high >= c.low, "high {} < low {}", c.high, c.low);
-                        assert!(c.high >= c.open, "high {} < open {}", c.high, c.open);
-                        assert!(c.high >= c.close, "high {} < close {}", c.high, c.close);
-                        assert!(c.low <= c.open, "low {} > open {}", c.low, c.open);
-                        assert!(c.low <= c.close, "low {} > close {}", c.low, c.close);
-
-                        // Prices should be in [0, 1] range for prediction markets
-                        assert!(
-                            c.open >= 0.0 && c.open <= 1.0,
-                            "open {} out of [0,1]",
-                            c.open
-                        );
-                        assert!(
-                            c.close >= 0.0 && c.close <= 1.0,
-                            "close {} out of [0,1]",
-                            c.close
-                        );
-
-                        // Volume should be non-negative
-                        assert!(
-                            c.volume >= 0.0,
-                            "candle volume should be non-negative, got {}",
-                            c.volume
-                        );
-
-                        // Open interest, if present, should be non-negative
-                        if let Some(oi) = c.open_interest {
-                            assert!(
-                                oi >= 0.0,
-                                "open_interest should be non-negative, got {}",
-                                oi
-                            );
-                        }
-                    }
-
-                    // Candles should be in chronological order
-                    for window in candles.windows(2) {
-                        assert!(
-                            window[0].timestamp <= window[1].timestamp,
-                            "candles should be chronological: {} > {}",
-                            window[0].timestamp,
-                            window[1].timestamp
-                        );
-                    }
-
-                    // Found valid candles, test passed
-                    return;
-                }
-
-                eprintln!(
-                    "WARN: {}/fetch_price_history_candle_invariants: no candles found",
-                    stringify!($exchange_id)
-                );
-            }
-
-            #[tokio::test]
             async fn fetch_trades() {
                 let Some(ex) = get_exchange() else { return };
                 if !ex.describe().has_fetch_trades {
@@ -830,33 +677,6 @@ macro_rules! exchange_tests {
                         );
                     }
                     Err(e) => panic!("fetch_balance failed: {e:?}"),
-                }
-            }
-
-            #[tokio::test]
-            async fn fetch_balance_raw() {
-                let Some(ex) = get_exchange() else { return };
-                if !is_authenticated(&ex) {
-                    return;
-                }
-                match ex.fetch_balance_raw().await {
-                    Ok(raw) => {
-                        // Raw balance should be a valid JSON value
-                        assert!(!raw.is_null(), "raw balance should not be null");
-                    }
-                    Err(e) if is_not_supported(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_balance_raw: not supported",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Err(e) if is_config_error(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_balance_raw: config/init error: {e}",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Err(e) => panic!("fetch_balance_raw failed: {e:?}"),
                 }
             }
 
@@ -1059,54 +879,6 @@ macro_rules! exchange_tests {
                     fills.len(),
                     limit
                 );
-            }
-
-            #[tokio::test]
-            async fn fetch_user_activity() {
-                let Some(ex) = get_exchange() else { return };
-                if !is_authenticated(&ex) || !ex.describe().has_fetch_user_activity {
-                    return;
-                }
-                let address = match owner_address_for(stringify!($exchange_id)) {
-                    Some(a) => a,
-                    None => {
-                        eprintln!(
-                            "SKIP {}/fetch_user_activity: no wallet address configured",
-                            stringify!($exchange_id)
-                        );
-                        return;
-                    }
-                };
-                match ex
-                    .fetch_user_activity(px_core::FetchUserActivityParams {
-                        address,
-                        limit: None,
-                    })
-                    .await
-                {
-                    Ok(activity) => {
-                        assert!(!activity.is_null(), "user activity should not be null");
-                    }
-                    Err(e) if is_not_supported(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_user_activity: not supported",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Err(e) if is_auth_error(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_user_activity: auth failed",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Err(e) if is_invalid_input(&e) => {
-                        eprintln!(
-                            "SKIP {}/fetch_user_activity: invalid input: {e}",
-                            stringify!($exchange_id)
-                        );
-                    }
-                    Err(e) => panic!("fetch_user_activity failed: {e:?}"),
-                }
             }
 
             // ==================================================================

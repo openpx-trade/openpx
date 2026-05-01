@@ -167,26 +167,6 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
-    def fetch_price_history(
-        self,
-        market_ticker: str,
-        interval: str,
-        *,
-        outcome: Optional[str] = None,
-        token_id: Optional[str] = None,
-        condition_id: Optional[str] = None,
-        start_ts: Optional[int] = None,
-        end_ts: Optional[int] = None,
-    ) -> list[Any]:
-        raw = self._native.fetch_price_history(
-            market_ticker, interval, outcome, token_id, condition_id, start_ts, end_ts
-        )
-        try:
-            from openpx._models import Candlestick
-            return [Candlestick(**c) for c in raw]
-        except (ImportError, Exception):
-            return raw
-
     def fetch_trades(
         self,
         market_ticker: str,
@@ -211,24 +191,3 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
-    def fetch_orderbook_history(
-        self,
-        market_ticker: str,
-        *,
-        token_id: Optional[str] = None,
-        start_ts: Optional[int] = None,
-        end_ts: Optional[int] = None,
-        limit: Optional[int] = None,
-        cursor: Optional[str] = None,
-    ) -> dict[str, Any]:
-        raw = self._native.fetch_orderbook_history(
-            market_ticker, token_id, start_ts, end_ts, limit, cursor
-        )
-        try:
-            from openpx._models import OrderbookSnapshot
-            return {
-                "snapshots": [OrderbookSnapshot(**s) for s in raw["snapshots"]],
-                "cursor": raw.get("cursor"),
-            }
-        except (ImportError, Exception):
-            return raw

@@ -253,20 +253,12 @@ fn kalshi_describe_capabilities() {
         info.has_fetch_orderbook,
         "kalshi should have fetch_orderbook"
     );
-    assert!(
-        info.has_fetch_price_history,
-        "kalshi should have fetch_price_history"
-    );
     assert!(info.has_fetch_trades, "kalshi should have fetch_trades");
     assert!(info.has_fetch_fills, "kalshi should have fetch_fills");
     assert!(!info.has_approvals, "kalshi should not have approvals");
     assert!(
         !info.has_refresh_balance,
         "kalshi should not have refresh_balance"
-    );
-    assert!(
-        !info.has_fetch_user_activity,
-        "kalshi should not have fetch_user_activity"
     );
 }
 
@@ -278,20 +270,12 @@ fn polymarket_describe_capabilities() {
         info.has_fetch_orderbook,
         "polymarket should have fetch_orderbook"
     );
-    assert!(
-        info.has_fetch_price_history,
-        "polymarket should have fetch_price_history"
-    );
     assert!(info.has_fetch_trades, "polymarket should have fetch_trades");
     assert!(info.has_fetch_fills, "polymarket should have fetch_fills");
     assert!(info.has_approvals, "polymarket should have approvals");
     assert!(
         info.has_refresh_balance,
         "polymarket should have refresh_balance"
-    );
-    assert!(
-        info.has_fetch_user_activity,
-        "polymarket should have fetch_user_activity"
     );
     assert!(info.has_websocket, "polymarket should have websocket");
 }

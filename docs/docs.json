@@ -58,12 +58,6 @@
                 ]
               },
               {
-                "group": "Orderbook History",
-                "pages": [
-                  "api/orderbook-history/fetch-orderbook-history"
-                ]
-              },
-              {
                 "group": "Pricing",
                 "pages": [
                   "api/pricing/fetch-midpoint",
@@ -76,14 +70,7 @@
               {
                 "group": "Trades",
                 "pages": [
-                  "api/trades/fetch-trades",
-                  "api/trades/fetch-user-trades"
-                ]
-              },
-              {
-                "group": "Price History",
-                "pages": [
-                  "api/price-history/fetch-price-history"
+                  "api/trades/fetch-trades"
                 ]
               }
             ]
@@ -117,15 +104,13 @@
                 "group": "Balance",
                 "pages": [
                   "api/balance/fetch-balance",
-                  "api/balance/fetch-balance-raw",
                   "api/balance/refresh-balance"
                 ]
               },
               {
                 "group": "Fills",
                 "pages": [
-                  "api/fills/fetch-fills",
-                  "api/fills/fetch-user-activity"
+                  "api/fills/fetch-fills"
                 ]
               }
             ]

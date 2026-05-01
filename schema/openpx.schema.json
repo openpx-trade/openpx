@@ -162,55 +162,6 @@
       "title": "ActivityTrade",
       "type": "object"
     },
-    "Candlestick": {
-      "description": "OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 1.0). Timestamp is the period START (not end). Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.",
-      "properties": {
-        "close": {
-          "format": "double",
-          "type": "number"
-        },
-        "high": {
-          "format": "double",
-          "type": "number"
-        },
-        "low": {
-          "format": "double",
-          "type": "number"
-        },
-        "open": {
-          "format": "double",
-          "type": "number"
-        },
-        "open_interest": {
-          "description": "Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "timestamp": {
-          "description": "Period start timestamp (UTC). lightweight-charts expects start-of-period.",
-          "format": "date-time",
-          "type": "string"
-        },
-        "volume": {
-          "description": "Trade volume in contracts. 0.0 if exchange doesn't provide volume.",
-          "format": "double",
-          "type": "number"
-        }
-      },
-      "required": [
-        "close",
-        "high",
-        "low",
-        "open",
-        "timestamp",
-        "volume"
-      ],
-      "title": "Candlestick",
-      "type": "object"
-    },
     "CryptoPrice": {
       "properties": {
         "source": {
@@ -391,16 +342,10 @@
         "has_fetch_orderbook": {
           "type": "boolean"
         },
-        "has_fetch_orderbook_history": {
-          "type": "boolean"
-        },
         "has_fetch_orderbooks_batch": {
           "type": "boolean"
         },
         "has_fetch_positions": {
-          "type": "boolean"
-        },
-        "has_fetch_price_history": {
           "type": "boolean"
         },
         "has_fetch_server_time": {
@@ -410,12 +355,6 @@
           "type": "boolean"
         },
         "has_fetch_trades": {
-          "type": "boolean"
-        },
-        "has_fetch_user_activity": {
-          "type": "boolean"
-        },
-        "has_fetch_user_trades": {
           "type": "boolean"
         },
         "has_refresh_balance": {
@@ -447,15 +386,11 @@
         "has_fetch_midpoints_batch",
         "has_fetch_open_interest",
         "has_fetch_orderbook",
-        "has_fetch_orderbook_history",
         "has_fetch_orderbooks_batch",
         "has_fetch_positions",
-        "has_fetch_price_history",
         "has_fetch_server_time",
         "has_fetch_spread",
         "has_fetch_trades",
-        "has_fetch_user_activity",
-        "has_fetch_user_trades",
         "has_refresh_balance",
         "has_websocket",
         "id",
@@ -533,26 +468,6 @@
         }
       },
       "title": "FetchOrdersParams",
-      "type": "object"
-    },
-    "FetchUserActivityParams": {
-      "properties": {
-        "address": {
-          "type": "string"
-        },
-        "limit": {
-          "format": "uint",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "address"
-      ],
-      "title": "FetchUserActivityParams",
       "type": "object"
     },
     "Fill": {
@@ -1236,52 +1151,6 @@
       ],
       "type": "object"
     },
-    "OrderbookHistoryRequest": {
-      "properties": {
-        "cursor": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "end_ts": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "uint",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "market_ticker": {
-          "type": "string"
-        },
-        "start_ts": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "token_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "market_ticker"
-      ],
-      "title": "OrderbookHistoryRequest",
-      "type": "object"
-    },
     "OrderbookRequest": {
       "description": "Request for fetching an L2 orderbook.",
       "properties": {
@@ -1305,47 +1174,6 @@
         "market_ticker"
       ],
       "title": "OrderbookRequest",
-      "type": "object"
-    },
-    "OrderbookSnapshot": {
-      "description": "A point-in-time L2 orderbook snapshot, used for historical orderbook data.",
-      "properties": {
-        "asks": {
-          "items": {
-            "$ref": "#/definitions/PriceLevel"
-          },
-          "type": "array"
-        },
-        "bids": {
-          "items": {
-            "$ref": "#/definitions/PriceLevel"
-          },
-          "type": "array"
-        },
-        "hash": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "recorded_at": {
-          "format": "date-time",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "timestamp": {
-          "format": "date-time",
-          "type": "string"
-        }
-      },
-      "required": [
-        "asks",
-        "bids",
-        "timestamp"
-      ],
-      "title": "OrderbookSnapshot",
       "type": "object"
     },
     "Outcome": {
@@ -1405,69 +1233,6 @@
         "size"
       ],
       "title": "Position",
-      "type": "object"
-    },
-    "PriceHistoryInterval": {
-      "enum": [
-        "1m",
-        "1h",
-        "6h",
-        "1d",
-        "1w",
-        "max"
-      ],
-      "type": "string"
-    },
-    "PriceHistoryRequest": {
-      "description": "Request for fetching price history / candlestick data.",
-      "properties": {
-        "condition_id": {
-          "description": "Condition ID for OI enrichment (Polymarket).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "end_ts": {
-          "description": "Unix seconds",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "interval": {
-          "$ref": "#/definitions/PriceHistoryInterval"
-        },
-        "market_ticker": {
-          "type": "string"
-        },
-        "outcome": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "start_ts": {
-          "description": "Unix seconds",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "token_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "interval",
-        "market_ticker"
-      ],
-      "title": "PriceHistoryRequest",
       "type": "object"
     },
     "PriceLevel": {
@@ -1910,150 +1675,6 @@
         "market_ticker"
       ],
       "title": "TradesRequest",
-      "type": "object"
-    },
-    "UserTrade": {
-      "description": "A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills` returns a subset, with `realized_pnl` and `tx_hash` left as `None`.",
-      "properties": {
-        "asset_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "condition_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "fee": {
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "id": {
-          "type": "string"
-        },
-        "market_ticker": {
-          "type": "string"
-        },
-        "owner": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "price": {
-          "format": "double",
-          "type": "number"
-        },
-        "realized_pnl": {
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "role": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/LiquidityRole"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "side": {
-          "$ref": "#/definitions/OrderSide"
-        },
-        "size": {
-          "format": "double",
-          "type": "number"
-        },
-        "ts_ms": {
-          "format": "int64",
-          "type": "integer"
-        },
-        "tx_hash": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "market_ticker",
-        "price",
-        "side",
-        "size",
-        "ts_ms"
-      ],
-      "title": "UserTrade",
-      "type": "object"
-    },
-    "UserTradesRequest": {
-      "description": "Request for `fetch_user_trades`.",
-      "properties": {
-        "cursor": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "end_ts": {
-          "description": "Unix seconds (inclusive)",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "uint",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "market_ticker": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "side": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/OrderSide"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "start_ts": {
-          "description": "Unix seconds (inclusive)",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "user_address": {
-          "description": "`None` = caller's own trades (auth required on both venues). `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi returns `NotSupported`).",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "title": "UserTradesRequest",
       "type": "object"
     },
     "WsUpdate": {

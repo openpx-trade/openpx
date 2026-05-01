@@ -6,13 +6,12 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, LiquidityRole,
-    Market, MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType,
-    MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
-    OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceHistoryInterval,
-    PriceHistoryRequest, PriceLevel, RateLimiter, Series, SettlementSource, Spread, Tag,
-    TradesRequest, UserTrade, UserTradesRequest,
+    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Event, Exchange, ExchangeInfo,
+    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, Market,
+    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, MidpointRequest,
+    NewOrder, OpenPxError, Order, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook,
+    Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource, Spread, Tag,
+    TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -32,30 +31,6 @@ fn parse_fp(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Opti
     obj.get(key)
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok())
-}
-
-/// Parse a price value that may be a dollar string ("0.65") or cents integer (65).
-/// Dollar strings are used as-is; integers are divided by 100.
-fn parse_price_value(val: &Option<serde_json::Value>) -> Option<f64> {
-    let v = val.as_ref()?;
-    if let Some(s) = v.as_str() {
-        s.parse::<f64>().ok()
-    } else if let Some(i) = v.as_i64() {
-        Some(i as f64 / 100.0)
-    } else {
-        v.as_f64()
-    }
-}
-
-/// Parse a numeric value that may be a string ("1500.5") or number (1500).
-/// No cent-to-dollar conversion — used for volume, open interest, etc.
-fn parse_numeric_value(val: &Option<serde_json::Value>) -> Option<f64> {
-    let v = val.as_ref()?;
-    if let Some(s) = v.as_str() {
-        s.parse::<f64>().ok()
-    } else {
-        v.as_f64()
-    }
 }
 
 pub(crate) fn to_openpx(e: KalshiError) -> OpenPxError {
@@ -229,116 +204,11 @@ fn kalshi_midpoint_from_market(
     Some((bid + ask) / 2.0)
 }
 
-fn parse_kalshi_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
-    let obj = value.as_object()?;
-    let id = obj
-        .get("trade_id")
-        .or_else(|| obj.get("fill_id"))
-        .and_then(|v| v.as_str())?
-        .to_string();
-    let market_ticker = obj
-        .get("ticker")
-        .or_else(|| obj.get("market_ticker"))
-        .and_then(|v| v.as_str())?
-        .to_string();
-
-    // Kalshi `side` is yes|no; `action` is buy|sell. The unified `OrderSide`
-    // is the actor's intent — `action` maps directly.
-    let side = match obj.get("action").and_then(|v| v.as_str()) {
-        Some("sell") => OrderSide::Sell,
-        _ => OrderSide::Buy,
-    };
-
-    let outcome_no = obj
-        .get("side")
-        .and_then(|v| v.as_str())
-        .is_some_and(|s| s.eq_ignore_ascii_case("no"));
-    let price = if outcome_no {
-        parse_dollars(obj, "no_price_dollars")
-    } else {
-        parse_dollars(obj, "yes_price_dollars")
-    }?;
-
-    let size = parse_fp(obj, "count_fp").or_else(|| {
-        obj.get("count")
-            .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)))
-    })?;
-
-    let role = obj.get("is_taker").and_then(|v| v.as_bool()).map(|t| {
-        if t {
-            LiquidityRole::Taker
-        } else {
-            LiquidityRole::Maker
-        }
-    });
-
-    let fee = parse_dollars(obj, "fee_cost");
-
-    let ts_ms = obj
-        .get("created_time")
-        .and_then(|v| v.as_str())
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-
-    Some(UserTrade {
-        id,
-        market_ticker,
-        condition_id: None,
-        asset_id: None,
-        side,
-        size,
-        price,
-        role,
-        fee,
-        realized_pnl: None,
-        tx_hash: None,
-        owner: None,
-        ts_ms,
-    })
-}
-
 pub struct Kalshi {
     config: KalshiConfig,
     client: reqwest::Client,
     rate_limiter: Arc<Mutex<RateLimiter>>,
     auth: Option<KalshiAuth>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct KalshiBatchCandlesticksResponse {
-    markets: Vec<KalshiMarketCandlesticks>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct KalshiMarketCandlesticks {
-    #[serde(alias = "marketTicker")]
-    market_ticker: String,
-    #[serde(default)]
-    candlesticks: Vec<KalshiCandlestick>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct KalshiCandlestick {
-    #[serde(alias = "endPeriodTs")]
-    end_period_ts: i64,
-    price: KalshiOhlc,
-    #[serde(alias = "volume")]
-    volume_fp: Option<serde_json::Value>,
-    #[serde(alias = "openInterest", alias = "open_interest")]
-    open_interest_fp: Option<serde_json::Value>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct KalshiOhlc {
-    #[serde(alias = "open")]
-    open_dollars: Option<serde_json::Value>,
-    #[serde(alias = "high")]
-    high_dollars: Option<serde_json::Value>,
-    #[serde(alias = "low")]
-    low_dollars: Option<serde_json::Value>,
-    #[serde(alias = "close")]
-    close_dollars: Option<serde_json::Value>,
 }
 
 impl Kalshi {
@@ -1518,74 +1388,6 @@ impl Exchange for Kalshi {
         })
     }
 
-    async fn fetch_price_history(
-        &self,
-        req: PriceHistoryRequest,
-    ) -> Result<Vec<Candlestick>, OpenPxError> {
-        let period_interval = match req.interval {
-            PriceHistoryInterval::OneMinute => 1,
-            PriceHistoryInterval::OneHour => 60,
-            PriceHistoryInterval::OneDay => 1440,
-            other => {
-                return Err(OpenPxError::Exchange(px_core::ExchangeError::NotSupported(
-                    format!("kalshi does not support {} candlesticks", other.as_str()),
-                )))
-            }
-        };
-
-        let interval_secs = period_interval as i64 * 60;
-        let now = chrono::Utc::now().timestamp();
-        let start_ts = req.start_ts.unwrap_or(now - 86400);
-        let end_ts = req.end_ts.unwrap_or(now);
-
-        // Batch endpoint (no series_ticker needed).
-        // For event market_tickers, token_id contains the resolved sub-market ticker.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
-        let path = format!(
-            "/markets/candlesticks?market_tickers={}&start_ts={}&end_ts={}&period_interval={}&include_latest_before_start=true",
-            ticker, start_ts, end_ts, period_interval
-        );
-
-        let resp: KalshiBatchCandlesticksResponse = self.get(&path).await.map_err(to_openpx)?;
-
-        let market_data = resp
-            .markets
-            .into_iter()
-            .find(|m| m.market_ticker == ticker)
-            .ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::Api(
-                    "no candlestick data returned".into(),
-                ))
-            })?;
-
-        let mut candles: Vec<Candlestick> = market_data
-            .candlesticks
-            .into_iter()
-            .filter_map(|c| {
-                // Parse OHLC prices: dollar strings or cents integers (÷100)
-                let open = parse_price_value(&c.price.open_dollars)?;
-
-                // CRITICAL: end_period_ts is the END of the period.
-                // Subtract interval to get period START (what lightweight-charts expects).
-                let ts = c.end_period_ts - interval_secs;
-                let timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)?;
-
-                Some(Candlestick {
-                    timestamp,
-                    open,
-                    high: parse_price_value(&c.price.high_dollars).unwrap_or(open),
-                    low: parse_price_value(&c.price.low_dollars).unwrap_or(open),
-                    close: parse_price_value(&c.price.close_dollars).unwrap_or(open),
-                    volume: parse_numeric_value(&c.volume_fp).unwrap_or(0.0),
-                    open_interest: parse_numeric_value(&c.open_interest_fp),
-                })
-            })
-            .collect();
-
-        candles.sort_by_key(|c| c.timestamp);
-        Ok(candles)
-    }
-
     async fn fetch_trades(
         &self,
         req: TradesRequest,
@@ -2002,57 +1804,6 @@ impl Exchange for Kalshi {
             size,
             ts_ms,
         })
-    }
-
-    async fn fetch_user_trades(
-        &self,
-        req: UserTradesRequest,
-    ) -> Result<(Vec<UserTrade>, Option<String>), OpenPxError> {
-        // Kalshi only exposes the caller's own fills; public lookup of another
-        // user is unsupported.
-        if req.user_address.is_some() {
-            return Err(OpenPxError::Exchange(px_core::ExchangeError::NotSupported(
-                "kalshi fetch_user_trades(user_address): public lookup not exposed".into(),
-            )));
-        }
-        self.ensure_auth().map_err(to_openpx)?;
-
-        #[derive(serde::Deserialize)]
-        struct FillsResp {
-            cursor: Option<String>,
-            #[serde(default)]
-            fills: Vec<serde_json::Value>,
-        }
-
-        let limit = req.limit.unwrap_or(100).clamp(1, 1000);
-        let mut path = format!("/portfolio/fills?limit={limit}");
-        if let Some(market) = req.market_ticker.as_deref() {
-            path.push_str(&format!("&ticker={market}"));
-        }
-        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
-            path.push_str(&format!("&cursor={c}"));
-        }
-        if let Some(ts) = req.start_ts {
-            path.push_str(&format!("&min_ts={ts}"));
-        }
-        if let Some(ts) = req.end_ts {
-            path.push_str(&format!("&max_ts={ts}"));
-        }
-
-        let resp: FillsResp = self.get(&path).await.map_err(to_openpx)?;
-        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
-
-        // Kalshi `side` filter is post-fetch — the API only filters by ticker /
-        // order_id. Keep this defensive client-side filter so callers see only
-        // the side they asked for.
-        let want_side = req.side;
-        let trades = resp
-            .fills
-            .iter()
-            .filter_map(parse_kalshi_user_trade)
-            .filter(|t| want_side.map(|s| t.side == s).unwrap_or(true))
-            .collect();
-        Ok((trades, next_cursor))
     }
 
     async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
@@ -2531,13 +2282,6 @@ impl Exchange for Kalshi {
         Ok(fills)
     }
 
-    async fn fetch_balance_raw(&self) -> Result<serde_json::Value, OpenPxError> {
-        self.ensure_auth().map_err(to_openpx)?;
-
-        let path = "/portfolio/balance";
-        self.get::<serde_json::Value>(path).await.map_err(to_openpx)
-    }
-
     fn describe(&self) -> ExchangeInfo {
         let authed = self.config.is_authenticated();
         ExchangeInfo {
@@ -2549,15 +2293,12 @@ impl Exchange for Kalshi {
             has_fetch_positions: true,
             has_fetch_balance: true,
             has_fetch_orderbook: true,
-            has_fetch_price_history: true,
             has_fetch_trades: true,
-            has_fetch_user_activity: false,
             has_fetch_fills: true,
             has_fetch_server_time: false,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
-            has_fetch_orderbook_history: false,
             has_fetch_market_lineage: true,
             has_fetch_orderbooks_batch: true,
             has_fetch_midpoint: true,
@@ -2565,7 +2306,6 @@ impl Exchange for Kalshi {
             has_fetch_spread: true,
             has_fetch_last_trade_price: true,
             has_fetch_open_interest: true,
-            has_fetch_user_trades: self.config.is_authenticated(),
             has_fetch_market_tags: true,
             has_cancel_all_orders: self.config.is_authenticated(),
             has_create_orders_batch: self.config.is_authenticated(),

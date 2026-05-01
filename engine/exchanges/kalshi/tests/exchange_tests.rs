@@ -1,6 +1,5 @@
 use px_core::{
-    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest,
-    PriceHistoryInterval, PriceHistoryRequest, TradesRequest,
+    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest, TradesRequest,
 };
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
@@ -377,144 +376,6 @@ async fn fetch_trades_yes_outcome_uses_yes_price() {
 }
 
 // ---------------------------------------------------------------------------
-// fetch_price_history (no auth required)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_fetch_price_history_parses_candlesticks() {
-    // #given
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/markets/candlesticks"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "markets": [{
-                "market_ticker": "TEST-TICKER",
-                "candlesticks": [
-                    {
-                        "end_period_ts": 1719532800,
-                        "price": { "open": 65, "high": 70, "low": 60, "close": 68 },
-                        "volume": 1000,
-                        "open_interest": 500.0
-                    },
-                    {
-                        "end_period_ts": 1719536400,
-                        "price": { "open": 68, "high": 75, "low": 66, "close": 72 },
-                        "volume": 1500,
-                        "open_interest": 600.0
-                    }
-                ]
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let config = KalshiConfig::new()
-        .with_api_url(mock_server.uri())
-        .with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // #when
-    let req = PriceHistoryRequest {
-        market_ticker: "TEST-TICKER".into(),
-        outcome: None,
-        token_id: None,
-        condition_id: None,
-        interval: PriceHistoryInterval::OneHour,
-        start_ts: Some(1719500000),
-        end_ts: Some(1719540000),
-    };
-    let candles = exchange.fetch_price_history(req).await.unwrap();
-
-    // #then
-    assert_eq!(candles.len(), 2);
-
-    // Prices converted from cents to decimal
-    let c0 = &candles[0];
-    assert!((c0.open - 0.65).abs() < 1e-8);
-    assert!((c0.high - 0.70).abs() < 1e-8);
-    assert!((c0.low - 0.60).abs() < 1e-8);
-    assert!((c0.close - 0.68).abs() < 1e-8);
-    assert!((c0.volume - 1000.0).abs() < 1e-8);
-    assert_eq!(c0.open_interest, Some(500.0));
-
-    // OHLC invariants: high >= open, close, low; low <= open, close
-    assert!(c0.high >= c0.open);
-    assert!(c0.high >= c0.close);
-    assert!(c0.high >= c0.low);
-    assert!(c0.low <= c0.open);
-    assert!(c0.low <= c0.close);
-
-    let c1 = &candles[1];
-    assert!((c1.open - 0.68).abs() < 1e-8);
-    assert!((c1.high - 0.75).abs() < 1e-8);
-    assert!((c1.low - 0.66).abs() < 1e-8);
-    assert!((c1.close - 0.72).abs() < 1e-8);
-    assert!((c1.volume - 1500.0).abs() < 1e-8);
-    assert_eq!(c1.open_interest, Some(600.0));
-
-    // Candles should be sorted by timestamp ascending
-    assert!(candles[0].timestamp < candles[1].timestamp);
-
-    // Verify end_period_ts is converted to start-of-period
-    // period_interval=60 (1h) → interval_secs=3600
-    // start = end_period_ts - 3600
-    let expected_ts_0 = 1719532800 - 3600;
-    assert_eq!(candles[0].timestamp.timestamp(), expected_ts_0);
-    let expected_ts_1 = 1719536400 - 3600;
-    assert_eq!(candles[1].timestamp.timestamp(), expected_ts_1);
-}
-
-#[tokio::test]
-async fn test_fetch_price_history_skips_null_ohlc() {
-    // #given - candlestick with null OHLC (padding candle from include_latest_before_start)
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/markets/candlesticks"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "markets": [{
-                "market_ticker": "TEST-TICKER",
-                "candlesticks": [
-                    {
-                        "end_period_ts": 1719529200,
-                        "price": { "open": null, "high": null, "low": null, "close": null },
-                        "volume": 0,
-                        "open_interest": 0.0
-                    },
-                    {
-                        "end_period_ts": 1719532800,
-                        "price": { "open": 65, "high": 70, "low": 60, "close": 68 },
-                        "volume": 1000,
-                        "open_interest": 500.0
-                    }
-                ]
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let config = KalshiConfig::new()
-        .with_api_url(mock_server.uri())
-        .with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // #when
-    let req = PriceHistoryRequest {
-        market_ticker: "TEST-TICKER".into(),
-        outcome: None,
-        token_id: None,
-        condition_id: None,
-        interval: PriceHistoryInterval::OneHour,
-        start_ts: Some(1719500000),
-        end_ts: Some(1719540000),
-    };
-    let candles = exchange.fetch_price_history(req).await.unwrap();
-
-    // #then - padding candle with null OHLC should be filtered out
-    assert_eq!(candles.len(), 1);
-    assert!((candles[0].open - 0.65).abs() < 1e-8);
-}
-
-// ---------------------------------------------------------------------------
 // fetch_markets: pagination cursor pass-through
 // ---------------------------------------------------------------------------
 
@@ -817,24 +678,6 @@ async fn test_fetch_balance_requires_auth() {
 }
 
 #[tokio::test]
-async fn test_fetch_balance_raw_requires_auth() {
-    // #given
-    let config = KalshiConfig::new().with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // #when
-    let result = exchange.fetch_balance_raw().await;
-
-    // #then
-    assert!(result.is_err());
-    let err_str = result.unwrap_err().to_string();
-    assert!(
-        err_str.to_lowercase().contains("auth"),
-        "expected auth required error, got: {err_str}"
-    );
-}
-
-#[tokio::test]
 async fn test_fetch_positions_requires_auth() {
     // #given
     let config = KalshiConfig::new().with_verbose(false);
@@ -1005,37 +848,6 @@ async fn test_fetch_markets_filters_by_status() {
 }
 
 // ---------------------------------------------------------------------------
-// fetch_price_history: unsupported interval
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_fetch_price_history_unsupported_interval() {
-    // #given
-    let config = KalshiConfig::new().with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // #when - SixHours is not supported by Kalshi
-    let req = PriceHistoryRequest {
-        market_ticker: "TEST-TICKER".into(),
-        outcome: None,
-        token_id: None,
-        condition_id: None,
-        interval: PriceHistoryInterval::SixHours,
-        start_ts: None,
-        end_ts: None,
-    };
-    let result = exchange.fetch_price_history(req).await;
-
-    // #then
-    assert!(result.is_err());
-    let err_str = result.unwrap_err().to_string();
-    assert!(
-        err_str.to_lowercase().contains("not support"),
-        "expected not supported error, got: {err_str}"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // describe(): ExchangeInfo reflects auth state
 // ---------------------------------------------------------------------------
 
@@ -1053,7 +865,6 @@ fn test_describe_unauthenticated() {
     assert_eq!(info.name, "Kalshi");
     assert!(info.has_fetch_markets);
     assert!(info.has_fetch_trades);
-    assert!(info.has_fetch_price_history);
     assert!(info.has_fetch_orderbook);
     assert!(info.has_fetch_positions);
     assert!(info.has_fetch_balance);
@@ -1072,10 +883,8 @@ fn test_describe_unauthenticated() {
         "should not have websocket without auth"
     );
     // Unsupported features
-    assert!(!info.has_fetch_user_activity);
     assert!(!info.has_approvals);
     assert!(!info.has_refresh_balance);
-    assert!(!info.has_fetch_orderbook_history);
 }
 
 // ---------------------------------------------------------------------------

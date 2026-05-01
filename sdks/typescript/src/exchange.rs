@@ -262,39 +262,6 @@ impl Exchange {
 
     #[napi]
     #[allow(clippy::too_many_arguments)]
-    pub async fn fetch_price_history(
-        &self,
-        market_ticker: String,
-        interval: String,
-        outcome: Option<String>,
-        token_id: Option<String>,
-        condition_id: Option<String>,
-        start_ts: Option<i64>,
-        end_ts: Option<i64>,
-    ) -> Result<serde_json::Value> {
-        let inner = self.inner.clone();
-        let parsed_interval: px_core::PriceHistoryInterval =
-            interval.parse().map_err(|e: String| to_napi_err(e))?;
-        let req = px_core::PriceHistoryRequest {
-            market_ticker,
-            outcome,
-            token_id,
-            condition_id,
-            interval: parsed_interval,
-            start_ts,
-            end_ts,
-        };
-        let rt = get_runtime();
-        let result = rt
-            .spawn(async move { inner.fetch_price_history(req).await })
-            .await
-            .map_err(to_napi_err)?
-            .map_err(to_napi_err)?;
-        serde_json::to_value(&result).map_err(to_napi_err)
-    }
-
-    #[napi]
-    #[allow(clippy::too_many_arguments)]
     pub async fn fetch_trades(
         &self,
         market_ticker: String,
@@ -325,34 +292,5 @@ impl Exchange {
             .map_err(to_napi_err)?;
         let (trades, next_cursor) = result;
         Ok(serde_json::json!({ "trades": trades, "cursor": next_cursor }))
-    }
-
-    #[napi]
-    pub async fn fetch_orderbook_history(
-        &self,
-        market_ticker: String,
-        token_id: Option<String>,
-        start_ts: Option<i64>,
-        end_ts: Option<i64>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Result<serde_json::Value> {
-        let inner = self.inner.clone();
-        let req = px_core::OrderbookHistoryRequest {
-            market_ticker,
-            token_id,
-            start_ts,
-            end_ts,
-            limit: limit.map(|l| l as usize),
-            cursor,
-        };
-        let rt = get_runtime();
-        let result = rt
-            .spawn(async move { inner.fetch_orderbook_history(req).await })
-            .await
-            .map_err(to_napi_err)?
-            .map_err(to_napi_err)?;
-        let (snapshots, next_cursor) = result;
-        Ok(serde_json::json!({ "snapshots": snapshots, "cursor": next_cursor }))
     }
 }

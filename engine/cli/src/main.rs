@@ -3,13 +3,10 @@ use std::env;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
 use openpx::{ExchangeInner, WebSocketInner};
-use px_core::models::{CryptoPriceSource, PriceHistoryInterval};
+use px_core::models::CryptoPriceSource;
 use px_core::websocket::OrderBookWebSocket;
 use px_core::MarketStatusFilter;
-use px_core::{
-    FetchMarketsParams, FetchOrdersParams, OrderbookHistoryRequest, OrderbookRequest,
-    PriceHistoryRequest, TradesRequest,
-};
+use px_core::{FetchMarketsParams, FetchOrdersParams, OrderbookRequest, TradesRequest};
 use px_crypto::CryptoPriceWebSocket;
 use px_sports::SportsWebSocket;
 
@@ -89,23 +86,6 @@ enum Command {
         #[arg(long)]
         token_id: Option<String>,
     },
-    /// Fetch OHLCV price history
-    FetchPriceHistory {
-        market_ticker: String,
-        /// Interval: 1m, 1h, 6h, 1d, 1w, max
-        #[arg(value_enum)]
-        interval: IntervalArg,
-        #[arg(long)]
-        outcome: Option<String>,
-        #[arg(long)]
-        token_id: Option<String>,
-        /// Start timestamp (unix seconds)
-        #[arg(long)]
-        start_ts: Option<i64>,
-        /// End timestamp (unix seconds)
-        #[arg(long)]
-        end_ts: Option<i64>,
-    },
     /// Fetch recent trades
     FetchTrades {
         market_ticker: String,
@@ -118,21 +98,6 @@ enum Command {
         #[arg(long)]
         cursor: Option<String>,
     },
-    /// Fetch historical orderbook snapshots
-    FetchOrderbookHistory {
-        market_ticker: String,
-        #[arg(long)]
-        token_id: Option<String>,
-        #[arg(long)]
-        start_ts: Option<i64>,
-        #[arg(long)]
-        end_ts: Option<i64>,
-        #[arg(long)]
-        limit: Option<usize>,
-        #[arg(long)]
-        cursor: Option<String>,
-    },
-
     // -- Account (requires auth) --
     /// Fetch account balance
     FetchBalance,
@@ -197,35 +162,6 @@ impl From<StatusArg> for MarketStatusFilter {
             StatusArg::Closed => MarketStatusFilter::Closed,
             StatusArg::Resolved => MarketStatusFilter::Resolved,
             StatusArg::All => MarketStatusFilter::All,
-        }
-    }
-}
-
-#[derive(Clone, ValueEnum)]
-enum IntervalArg {
-    #[value(name = "1m")]
-    OneMinute,
-    #[value(name = "1h")]
-    OneHour,
-    #[value(name = "6h")]
-    SixHours,
-    #[value(name = "1d")]
-    OneDay,
-    #[value(name = "1w")]
-    OneWeek,
-    #[value(name = "max")]
-    Max,
-}
-
-impl From<IntervalArg> for PriceHistoryInterval {
-    fn from(i: IntervalArg) -> Self {
-        match i {
-            IntervalArg::OneMinute => PriceHistoryInterval::OneMinute,
-            IntervalArg::OneHour => PriceHistoryInterval::OneHour,
-            IntervalArg::SixHours => PriceHistoryInterval::SixHours,
-            IntervalArg::OneDay => PriceHistoryInterval::OneDay,
-            IntervalArg::OneWeek => PriceHistoryInterval::OneWeek,
-            IntervalArg::Max => PriceHistoryInterval::Max,
         }
     }
 }
@@ -354,26 +290,6 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let ob = exchange.fetch_orderbook(req).await?;
                 print_json(&ob);
             }
-            Command::FetchPriceHistory {
-                market_ticker,
-                interval,
-                outcome,
-                token_id,
-                start_ts,
-                end_ts,
-            } => {
-                let req = PriceHistoryRequest {
-                    market_ticker,
-                    interval: interval.into(),
-                    outcome,
-                    token_id,
-                    condition_id: None,
-                    start_ts,
-                    end_ts,
-                };
-                let candles = exchange.fetch_price_history(req).await?;
-                print_json(&candles);
-            }
             Command::FetchTrades {
                 market_ticker,
                 outcome,
@@ -396,29 +312,6 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                     "trades": trades,
                     "next_cursor": next_cursor,
                     "count": trades.len(),
-                }));
-            }
-            Command::FetchOrderbookHistory {
-                market_ticker,
-                token_id,
-                start_ts,
-                end_ts,
-                limit,
-                cursor,
-            } => {
-                let req = OrderbookHistoryRequest {
-                    market_ticker,
-                    token_id,
-                    start_ts,
-                    end_ts,
-                    limit,
-                    cursor,
-                };
-                let (snapshots, next_cursor) = exchange.fetch_orderbook_history(req).await?;
-                print_json(&serde_json::json!({
-                    "snapshots": snapshots,
-                    "next_cursor": next_cursor,
-                    "count": snapshots.len(),
                 }));
             }
             Command::FetchBalance => {

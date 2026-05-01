@@ -18,9 +18,7 @@ tags:
 - name: Positions
 - name: Balance
 - name: Orderbook
-- name: Price History
 - name: Trades
-- name: Orderbook History
 - name: Fills
 - name: Server
 - name: Pricing
@@ -372,79 +370,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/price-history/fetch_price_history:
-    get:
-      tags:
-      - Price History
-      summary: Fetch price history
-      description: "Fetch OHLCV candlestick history \u2014 `interval` is `1m`, `1h`, `6h`, `1d`, `1w`, or `max`."
-      operationId: fetch_price_history
-      parameters:
-      - name: condition_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-        description: Condition ID for OI enrichment (Polymarket).
-      - name: end_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: Unix seconds
-      - name: interval
-        in: query
-        required: true
-        schema:
-          $ref: '#/components/schemas/PriceHistoryInterval'
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: outcome
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: start_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: Unix seconds
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Candlestick'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
   /v1/trades/fetch_trades:
     get:
       tags:
@@ -525,125 +450,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MarketTradesPage'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/orderbook-history/fetch_orderbook_history:
-    get:
-      tags:
-      - Orderbook History
-      summary: Fetch orderbook history
-      description: Fetch a paginated list of historical L2 orderbook snapshots for a market.
-      operationId: fetch_orderbook_history
-      parameters:
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: end_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-      - name: limit
-        in: query
-        required: false
-        schema:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: start_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderbookSnapshotsPage'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/balance/fetch_balance_raw:
-    get:
-      tags:
-      - Balance
-      summary: Fetch balance raw
-      description: Fetch the raw upstream balance response (unprocessed JSON) from the exchange.
-      operationId: fetch_balance_raw
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                description: Arbitrary JSON value (raw upstream response).
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/fills/fetch_user_activity:
-    get:
-      tags:
-      - Fills
-      summary: Fetch user activity
-      operationId: fetch_user_activity
-      parameters:
-      - name: address
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: limit
-        in: query
-        required: false
-        schema:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                description: Arbitrary JSON value (raw upstream response).
         default:
           description: Unified error response.
           content:
@@ -942,84 +748,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/trades/fetch_user_trades:
-    get:
-      tags:
-      - Trades
-      summary: Fetch user trades
-      description: "Fetch a wallet's trade history \u2014 optional `side` filter is `buy` or `sell`."
-      operationId: fetch_user_trades
-      parameters:
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: end_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: Unix seconds (inclusive)
-      - name: limit
-        in: query
-        required: false
-        schema:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      - name: market_ticker
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: side
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - $ref: '#/components/schemas/OrderSide'
-          - type: 'null'
-      - name: start_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: Unix seconds (inclusive)
-      - name: user_address
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-        description: '`None` = caller''s own trades (auth required on both venues). `Some(addr)` = public lookup for `addr`
-          (Polymarket only; Kalshi returns `NotSupported`).'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserTradesPage'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
   /v1/tags/fetch_market_tags:
     get:
       tags:
@@ -1237,45 +965,6 @@ components:
       - source_channel
       title: ActivityTrade
       type: object
-    Candlestick:
-      description: OHLCV candlestick, normalized across all exchanges. Prices are decimals (0.0 to 1.0). Timestamp is the
-        period START (not end). Serialized over the wire as RFC3339 (DateTime<Utc>) for API consistency.
-      properties:
-        close:
-          format: double
-          type: number
-        high:
-          format: double
-          type: number
-        low:
-          format: double
-          type: number
-        open:
-          format: double
-          type: number
-        open_interest:
-          description: Open interest at this candle's close. Only available from exchanges that report it (e.g., Kalshi).
-          format: double
-          type:
-          - number
-          - 'null'
-        timestamp:
-          description: Period start timestamp (UTC). lightweight-charts expects start-of-period.
-          format: date-time
-          type: string
-        volume:
-          description: Trade volume in contracts. 0.0 if exchange doesn't provide volume.
-          format: double
-          type: number
-      required:
-      - close
-      - high
-      - low
-      - open
-      - timestamp
-      - volume
-      title: Candlestick
-      type: object
     CryptoPrice:
       properties:
         source:
@@ -1409,23 +1098,15 @@ components:
           type: boolean
         has_fetch_orderbook:
           type: boolean
-        has_fetch_orderbook_history:
-          type: boolean
         has_fetch_orderbooks_batch:
           type: boolean
         has_fetch_positions:
-          type: boolean
-        has_fetch_price_history:
           type: boolean
         has_fetch_server_time:
           type: boolean
         has_fetch_spread:
           type: boolean
         has_fetch_trades:
-          type: boolean
-        has_fetch_user_activity:
-          type: boolean
-        has_fetch_user_trades:
           type: boolean
         has_refresh_balance:
           type: boolean
@@ -1451,15 +1132,11 @@ components:
       - has_fetch_midpoints_batch
       - has_fetch_open_interest
       - has_fetch_orderbook
-      - has_fetch_orderbook_history
       - has_fetch_orderbooks_batch
       - has_fetch_positions
-      - has_fetch_price_history
       - has_fetch_server_time
       - has_fetch_spread
       - has_fetch_trades
-      - has_fetch_user_activity
-      - has_fetch_user_trades
       - has_refresh_balance
       - has_websocket
       - id
@@ -1523,20 +1200,6 @@ components:
           - string
           - 'null'
       title: FetchOrdersParams
-      type: object
-    FetchUserActivityParams:
-      properties:
-        address:
-          type: string
-        limit:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      required:
-      - address
-      title: FetchUserActivityParams
       type: object
     Fill:
       description: A single fill (trade execution) from a user's order.
@@ -2054,38 +1717,6 @@ components:
       - bids
       - market_ticker
       type: object
-    OrderbookHistoryRequest:
-      properties:
-        cursor:
-          type:
-          - string
-          - 'null'
-        end_ts:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        limit:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-        market_ticker:
-          type: string
-        start_ts:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        token_id:
-          type:
-          - string
-          - 'null'
-      required:
-      - market_ticker
-      title: OrderbookHistoryRequest
-      type: object
     OrderbookRequest:
       description: Request for fetching an L2 orderbook.
       properties:
@@ -2102,35 +1733,6 @@ components:
       required:
       - market_ticker
       title: OrderbookRequest
-      type: object
-    OrderbookSnapshot:
-      description: A point-in-time L2 orderbook snapshot, used for historical orderbook data.
-      properties:
-        asks:
-          items:
-            $ref: '#/components/schemas/PriceLevel'
-          type: array
-        bids:
-          items:
-            $ref: '#/components/schemas/PriceLevel'
-          type: array
-        hash:
-          type:
-          - string
-          - 'null'
-        recorded_at:
-          format: date-time
-          type:
-          - string
-          - 'null'
-        timestamp:
-          format: date-time
-          type: string
-      required:
-      - asks
-      - bids
-      - timestamp
-      title: OrderbookSnapshot
       type: object
     Outcome:
       description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
@@ -2177,52 +1779,6 @@ components:
       - outcome
       - size
       title: Position
-      type: object
-    PriceHistoryInterval:
-      enum:
-      - 1m
-      - 1h
-      - 6h
-      - 1d
-      - 1w
-      - max
-      type: string
-    PriceHistoryRequest:
-      description: Request for fetching price history / candlestick data.
-      properties:
-        condition_id:
-          description: Condition ID for OI enrichment (Polymarket).
-          type:
-          - string
-          - 'null'
-        end_ts:
-          description: Unix seconds
-          format: int64
-          type:
-          - integer
-          - 'null'
-        interval:
-          $ref: '#/components/schemas/PriceHistoryInterval'
-        market_ticker:
-          type: string
-        outcome:
-          type:
-          - string
-          - 'null'
-        start_ts:
-          description: Unix seconds
-          format: int64
-          type:
-          - integer
-          - 'null'
-        token_id:
-          type:
-          - string
-          - 'null'
-      required:
-      - interval
-      - market_ticker
-      title: PriceHistoryRequest
       type: object
     PriceLevel:
       properties:
@@ -2546,106 +2102,6 @@ components:
       - market_ticker
       title: TradesRequest
       type: object
-    UserTrade:
-      description: 'A user-facing trade row: distinct from `Fill` because it carries auxiliary fields some venues expose (realized
-        PnL, on-chain tx hash, owner wallet) but others do not. Polymarket Data `/trades` returns these natively; Kalshi `/portfolio/fills`
-        returns a subset, with `realized_pnl` and `tx_hash` left as `None`.'
-      properties:
-        asset_id:
-          type:
-          - string
-          - 'null'
-        condition_id:
-          type:
-          - string
-          - 'null'
-        fee:
-          format: double
-          type:
-          - number
-          - 'null'
-        id:
-          type: string
-        market_ticker:
-          type: string
-        owner:
-          type:
-          - string
-          - 'null'
-        price:
-          format: double
-          type: number
-        realized_pnl:
-          format: double
-          type:
-          - number
-          - 'null'
-        role:
-          anyOf:
-          - $ref: '#/components/schemas/LiquidityRole'
-          - type: 'null'
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        size:
-          format: double
-          type: number
-        ts_ms:
-          format: int64
-          type: integer
-        tx_hash:
-          type:
-          - string
-          - 'null'
-      required:
-      - id
-      - market_ticker
-      - price
-      - side
-      - size
-      - ts_ms
-      title: UserTrade
-      type: object
-    UserTradesRequest:
-      description: Request for `fetch_user_trades`.
-      properties:
-        cursor:
-          type:
-          - string
-          - 'null'
-        end_ts:
-          description: Unix seconds (inclusive)
-          format: int64
-          type:
-          - integer
-          - 'null'
-        limit:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-        market_ticker:
-          type:
-          - string
-          - 'null'
-        side:
-          anyOf:
-          - $ref: '#/components/schemas/OrderSide'
-          - type: 'null'
-        start_ts:
-          description: Unix seconds (inclusive)
-          format: int64
-          type:
-          - integer
-          - 'null'
-        user_address:
-          description: '`None` = caller''s own trades (auth required on both venues). `Some(addr)` = public lookup for `addr`
-            (Polymarket only; Kalshi returns `NotSupported`).'
-          type:
-          - string
-          - 'null'
-      title: UserTradesRequest
-      type: object
     WsUpdate:
       description: "Every per-market event the WebSocket surface emits. Closed tagged union; no untyped escape hatch in the\
         \ stable enum. If an exchange grows a payload we want to surface in raw form, add a separate `raw_events()` stream\
@@ -2835,36 +2291,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MarketTrade'
-        cursor:
-          type:
-          - string
-          - 'null'
-    OrderbookSnapshotsPage:
-      type: object
-      description: One page of `OrderbookSnapshot` results. `cursor` is `null` on the last page; otherwise pass it back in
-        the next request to continue.
-      required:
-      - snapshots
-      properties:
-        snapshots:
-          type: array
-          items:
-            $ref: '#/components/schemas/OrderbookSnapshot'
-        cursor:
-          type:
-          - string
-          - 'null'
-    UserTradesPage:
-      type: object
-      description: One page of `UserTrade` results. `cursor` is `null` on the last page; otherwise pass it back in the next
-        request to continue.
-      required:
-      - trades
-      properties:
-        trades:
-          type: array
-          items:
-            $ref: '#/components/schemas/UserTrade'
         cursor:
           type:
           - string
