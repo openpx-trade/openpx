@@ -135,8 +135,8 @@ impl ExchangeInner {
         dispatch!(self, fetch_balance)
     }
 
-    pub async fn fetch_orderbook(&self, req: OrderbookRequest) -> Result<Orderbook, OpenPxError> {
-        dispatch!(self, fetch_orderbook, req)
+    pub async fn fetch_orderbook(&self, asset_id: &str) -> Result<Orderbook, OpenPxError> {
+        dispatch!(self, fetch_orderbook, asset_id)
     }
 
     pub async fn fetch_trades(
@@ -171,9 +171,9 @@ impl ExchangeInner {
 
     pub async fn fetch_orderbooks_batch(
         &self,
-        market_tickers: Vec<String>,
+        asset_ids: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        dispatch!(self, fetch_orderbooks_batch, market_tickers)
+        dispatch!(self, fetch_orderbooks_batch, asset_ids)
     }
 
     pub async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
@@ -200,10 +200,6 @@ impl ExchangeInner {
 
     pub async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
         dispatch!(self, fetch_open_interest, market_ticker)
-    }
-
-    pub async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
-        dispatch!(self, fetch_market_tags, market_ticker)
     }
 
     pub async fn cancel_all_orders(

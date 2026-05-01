@@ -4,4 +4,5 @@ sidebarTitle: "Fetch orderbook"
 openapi: /openpx.openapi.yaml GET /v1/orderbook/fetch_orderbook
 ---
 
-Fetch the L2 orderbook (bids + asks) for a single market outcome.
+Fetch the full-depth L2 orderbook (bids + asks) for a single asset.
+`asset_id` is the per-outcome identifier — Kalshi market ticker or Polymarket token id.

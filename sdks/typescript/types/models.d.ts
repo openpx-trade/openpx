@@ -290,7 +290,6 @@ export interface ExchangeInfo {
   has_fetch_fills: boolean;
   has_fetch_last_trade_price: boolean;
   has_fetch_market_lineage: boolean;
-  has_fetch_market_tags: boolean;
   has_fetch_markets: boolean;
   has_fetch_midpoint: boolean;
   has_fetch_midpoints_batch: boolean;
@@ -660,7 +659,6 @@ export interface Orderbook {
    */
   hash?: string | null;
   last_update_id?: number | null;
-  market_ticker: string;
   timestamp?: string | null;
   [k: string]: unknown;
 }
@@ -671,18 +669,6 @@ export interface Orderbook {
 export interface PriceLevel {
   price: Number;
   size: number;
-  [k: string]: unknown;
-}
-/**
- * Request for fetching an L2 orderbook.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderbookRequest".
- */
-export interface OrderbookRequest {
-  market_ticker: string;
-  outcome?: string | null;
-  token_id?: string | null;
   [k: string]: unknown;
 }
 /**
@@ -742,18 +728,6 @@ export interface Spread {
   bid: number;
   spread: number;
   ts_ms?: number | null;
-  [k: string]: unknown;
-}
-/**
- * A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "Tag".
- */
-export interface Tag {
-  id: string;
-  name: string;
-  slug?: string | null;
   [k: string]: unknown;
 }
 /**

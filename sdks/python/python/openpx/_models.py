@@ -80,7 +80,6 @@ class ExchangeInfo(BaseModel):
     has_fetch_fills: bool
     has_fetch_last_trade_price: bool
     has_fetch_market_lineage: bool
-    has_fetch_market_tags: bool
     has_fetch_markets: bool
     has_fetch_midpoint: bool
     has_fetch_midpoints_batch: bool
@@ -189,12 +188,6 @@ class OrderType(Enum):
     gtc = "gtc"
     ioc = "ioc"
     fok = "fok"
-
-
-class OrderbookRequest(BaseModel):
-    market_ticker: str
-    outcome: str | None = None
-    token_id: str | None = None
 
 
 class Outcome(BaseModel):
@@ -312,12 +305,6 @@ class Spread(BaseModel):
     bid: float
     spread: float
     ts_ms: int | None = None
-
-
-class Tag(BaseModel):
-    id: str
-    name: str
-    slug: str | None = None
 
 
 class TradesRequest(BaseModel):
@@ -612,7 +599,6 @@ class Orderbook(BaseModel):
         description="Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.",
     )
     last_update_id: conint(ge=0) | None = None
-    market_ticker: str
     timestamp: AwareDatetime | None = None
 
 

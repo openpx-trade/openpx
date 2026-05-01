@@ -389,7 +389,6 @@ impl KalshiWebSocket {
         sort_asks(&mut asks);
 
         let orderbook = Orderbook {
-            market_ticker: payload.market_ticker.clone(),
             asset_id: payload.market_ticker.clone(),
             bids,
             asks,

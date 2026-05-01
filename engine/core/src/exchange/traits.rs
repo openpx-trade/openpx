@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::error::OpenPxError;
 use crate::models::{
     Fill, LastTrade, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
-    Position, Spread, Tag,
+    Position, Spread,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams};
@@ -69,9 +69,10 @@ pub trait Exchange: Send + Sync {
         Ok(())
     }
 
-    /// Fetch the L2 orderbook (bids + asks) for a single market outcome.
-    async fn fetch_orderbook(&self, req: OrderbookRequest) -> Result<Orderbook, OpenPxError> {
-        let _ = req;
+    /// Fetch the full-depth L2 orderbook (bids + asks) for a single asset.
+    /// `asset_id` is the per-outcome identifier — Kalshi market ticker or Polymarket token id.
+    async fn fetch_orderbook(&self, asset_id: &str) -> Result<Orderbook, OpenPxError> {
+        let _ = asset_id;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_orderbook".into()),
         ))
@@ -121,12 +122,12 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch L2 orderbooks for multiple markets in one round-trip.
+    /// Fetch full-depth L2 orderbooks for multiple assets in one round-trip.
     async fn fetch_orderbooks_batch(
         &self,
-        market_tickers: Vec<String>,
+        asset_ids: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        let _ = market_tickers;
+        let _ = asset_ids;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_orderbooks_batch".into()),
         ))
@@ -175,14 +176,6 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the tag set associated with a market (or its parent event).
-    async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
-        let _ = market_ticker;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_market_tags".into()),
-        ))
-    }
-
     /// Cancel all of the caller's open orders, optionally scoped to a market.
     async fn cancel_all_orders(
         &self,
@@ -225,7 +218,6 @@ pub trait Exchange: Send + Sync {
             has_fetch_spread: false,
             has_fetch_last_trade_price: false,
             has_fetch_open_interest: false,
-            has_fetch_market_tags: false,
             has_cancel_all_orders: false,
             has_create_orders_batch: false,
         }
@@ -259,18 +251,8 @@ pub struct ExchangeInfo {
     pub has_fetch_spread: bool,
     pub has_fetch_last_trade_price: bool,
     pub has_fetch_open_interest: bool,
-    pub has_fetch_market_tags: bool,
     pub has_cancel_all_orders: bool,
     pub has_create_orders_batch: bool,
-}
-
-/// Request for fetching an L2 orderbook.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct OrderbookRequest {
-    pub market_ticker: String,
-    pub outcome: Option<String>,
-    pub token_id: Option<String>,
 }
 
 /// Request for fetching recent public trades ("tape") for a market outcome.

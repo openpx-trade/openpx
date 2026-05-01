@@ -324,9 +324,6 @@
         "has_fetch_market_lineage": {
           "type": "boolean"
         },
-        "has_fetch_market_tags": {
-          "type": "boolean"
-        },
         "has_fetch_markets": {
           "type": "boolean"
         },
@@ -380,7 +377,6 @@
         "has_fetch_fills",
         "has_fetch_last_trade_price",
         "has_fetch_market_lineage",
-        "has_fetch_market_tags",
         "has_fetch_markets",
         "has_fetch_midpoint",
         "has_fetch_midpoints_batch",
@@ -1132,9 +1128,6 @@
             "null"
           ]
         },
-        "market_ticker": {
-          "type": "string"
-        },
         "timestamp": {
           "format": "date-time",
           "type": [
@@ -1146,34 +1139,8 @@
       "required": [
         "asks",
         "asset_id",
-        "bids",
-        "market_ticker"
+        "bids"
       ],
-      "type": "object"
-    },
-    "OrderbookRequest": {
-      "description": "Request for fetching an L2 orderbook.",
-      "properties": {
-        "market_ticker": {
-          "type": "string"
-        },
-        "outcome": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "token_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "market_ticker"
-      ],
-      "title": "OrderbookRequest",
       "type": "object"
     },
     "Outcome": {
@@ -1587,29 +1554,6 @@
         "spread"
       ],
       "title": "Spread",
-      "type": "object"
-    },
-    "Tag": {
-      "description": "A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "slug": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "name"
-      ],
-      "title": "Tag",
       "type": "object"
     },
     "TradesRequest": {

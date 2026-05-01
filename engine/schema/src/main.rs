@@ -36,17 +36,15 @@ fn main() {
         // Models — trade
         schema_for!(px_core::MarketTrade),
         schema_for!(px_core::LastTrade),
-        // Models — events / series / tags
+        // Models — events / series
         schema_for!(px_core::Event),
         schema_for!(px_core::Series),
         schema_for!(px_core::SettlementSource),
-        schema_for!(px_core::Tag),
         // Exchange config params
         schema_for!(px_core::MarketStatusFilter),
         schema_for!(px_core::FetchMarketsParams),
         schema_for!(px_core::FetchOrdersParams),
         // Exchange trait request types
-        schema_for!(px_core::OrderbookRequest),
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::MarketLineage),
         schema_for!(px_core::MidpointRequest),
