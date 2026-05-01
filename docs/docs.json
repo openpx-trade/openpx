@@ -87,7 +87,13 @@
         "groups": [
           {
             "group": "Streams",
-            "asyncapi": "/openpx.asyncapi.yaml"
+            "pages": [
+              "websockets/orderbook-stream",
+              "websockets/trades-stream",
+              "websockets/fills-stream",
+              "websockets/crypto-price-stream",
+              "websockets/sports-stream"
+            ]
           }
         ]
       },
