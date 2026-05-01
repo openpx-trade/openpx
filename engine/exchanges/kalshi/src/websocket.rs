@@ -389,7 +389,7 @@ impl KalshiWebSocket {
         sort_asks(&mut asks);
 
         let orderbook = Orderbook {
-            market_id: payload.market_ticker.clone(),
+            market_ticker: payload.market_ticker.clone(),
             asset_id: payload.market_ticker.clone(),
             bids,
             asks,
@@ -514,12 +514,12 @@ impl KalshiWebSocket {
     async fn handle_trade(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
         let msg = value.get("msg").unwrap_or(value);
 
-        let market_ticker = msg
-            .get("market_ticker")
+        let market_id = msg
+            .get("market_id")
             .or_else(|| msg.get("ticker"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let Some(market_ticker) = market_ticker else {
+        let Some(market_id) = market_id else {
             return;
         };
 
@@ -540,8 +540,8 @@ impl KalshiWebSocket {
         let exchange_ts_ms = Self::value_to_ts_ms(msg.get("ts"));
 
         let trade = ActivityTrade {
-            market_id: market_ticker.clone(),
-            asset_id: market_ticker,
+            market_id: market_id.clone(),
+            asset_id: market_id,
             trade_id,
             price,
             size,
@@ -563,11 +563,11 @@ impl KalshiWebSocket {
 
     async fn handle_fill(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
         let msg = value.get("msg").unwrap_or(value);
-        let market_ticker = msg
-            .get("market_ticker")
+        let market_id = msg
+            .get("market_id")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let Some(market_ticker) = market_ticker else {
+        let Some(market_id) = market_id else {
             return;
         };
 
@@ -598,8 +598,8 @@ impl KalshiWebSocket {
             });
 
         let fill = ActivityFill {
-            market_id: market_ticker.clone(),
-            asset_id: market_ticker,
+            market_id: market_id.clone(),
+            asset_id: market_id,
             fill_id,
             order_id,
             price,
@@ -719,7 +719,7 @@ impl KalshiWebSocket {
         Ok(())
     }
 
-    async fn send_subscribe(&self, market_ticker: &str) -> Result<u64, WebSocketError> {
+    async fn send_subscribe(&self, market_id: &str) -> Result<u64, WebSocketError> {
         let id = self.next_command_id();
         let mut channels = vec!["orderbook_delta", "trade"];
         if self.enable_user_fills {
@@ -730,13 +730,13 @@ impl KalshiWebSocket {
             "cmd": "subscribe",
             "params": {
                 "channels": channels,
-                "market_ticker": market_ticker
+                "market_id": market_id
             }
         });
 
         {
             let mut pending = self.pending.write().await;
-            pending.insert(id, market_ticker.to_string());
+            pending.insert(id, market_id.to_string());
         }
 
         let json =
@@ -1091,25 +1091,25 @@ impl OrderBookWebSocket for KalshiWebSocket {
     }
 
     async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        let market_ticker = market_id.to_string();
+        let market_id = market_id.to_string();
 
         {
             let mut subs = self.subscriptions.write().await;
-            subs.entry(market_ticker.clone()).or_insert(None);
+            subs.entry(market_id.clone()).or_insert(None);
         }
 
         if self.state.load() == WebSocketState::Connected {
-            let _ = self.send_subscribe(&market_ticker).await?;
+            let _ = self.send_subscribe(&market_id).await?;
         }
 
         Ok(())
     }
 
     async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        let market_ticker = market_id.to_string();
+        let market_id = market_id.to_string();
         let sid = {
             let mut subs = self.subscriptions.write().await;
-            subs.remove(&market_ticker).and_then(|v| v)
+            subs.remove(&market_id).and_then(|v| v)
         };
 
         if let Some(sid) = sid {
@@ -1118,7 +1118,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
 
         {
             let mut obs = self.orderbooks.write().await;
-            obs.remove(&market_ticker);
+            obs.remove(&market_id);
         }
 
         Ok(())
@@ -1191,7 +1191,7 @@ mod tests {
 
     #[test]
     fn fill_is_taker_absent_yields_none() {
-        let msg = json!({ "market_ticker": "SOME-TICKER" });
+        let msg = json!({ "market_id": "SOME-TICKER" });
         assert_eq!(extract_liquidity_role(&msg), None);
     }
 }

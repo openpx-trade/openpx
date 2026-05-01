@@ -8,7 +8,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Series {
-    pub id: String,
+    /// Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`).
+    /// Polymarket: the series's `ticker` field, falling back to `slug` when
+    /// `ticker` is null upstream.
+    pub ticker: String,
+    /// Polymarket's numeric REST id for the series (e.g. `"10345"`). None on
+    /// Kalshi (no separate numeric series surface).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numeric_id: Option<String>,
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,

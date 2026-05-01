@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Position {
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: String,
     pub size: f64,
     pub average_price: f64,

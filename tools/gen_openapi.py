@@ -39,11 +39,7 @@ OUTPUT = ROOT / "docs" / "openpx.openapi.yaml"
 # placement mirrors the docs/api/<tag-slug>/ filesystem layout.
 METHOD_META: dict[str, tuple[str, str]] = {
     "fetch_markets": ("Markets", "GET"),
-    "fetch_market": ("Markets", "GET"),
-    "fetch_events": ("Events", "GET"),
-    "fetch_event": ("Events", "GET"),
-    "fetch_series": ("Series", "GET"),
-    "fetch_series_one": ("Series", "GET"),
+    "fetch_market_lineage": ("Markets", "GET"),
     "fetch_market_tags": ("Tags", "GET"),
     "fetch_orderbook": ("Orderbook", "GET"),
     "fetch_orderbooks_batch": ("Orderbook", "GET"),

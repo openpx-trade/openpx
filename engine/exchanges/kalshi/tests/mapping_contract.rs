@@ -8,10 +8,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use px_core::{
-    test_support::{assert_mapping_contract, load_mapping},
-    Exchange,
-};
+use px_core::test_support::{assert_mapping_contract, load_mapping};
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use serde_json::Value;
 use wiremock::matchers::{method, path};

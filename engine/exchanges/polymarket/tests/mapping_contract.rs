@@ -8,10 +8,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use px_core::{
-    test_support::{assert_mapping_contract, load_mapping},
-    Exchange,
-};
+use px_core::test_support::{assert_mapping_contract, load_mapping};
 use px_exchange_polymarket::{Polymarket, PolymarketConfig};
 use serde_json::Value;
 use wiremock::matchers::{method, path, query_param};
@@ -25,7 +22,7 @@ fn load_fixture() -> Value {
 #[tokio::test]
 async fn yaml_contract_for_polymarket_market() {
     let fixture = load_fixture();
-    let market_id = fixture
+    let market_ticker = fixture
         .get("id")
         .and_then(|v| v.as_str())
         .expect("fixture missing id")
@@ -34,7 +31,7 @@ async fn yaml_contract_for_polymarket_market() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/markets"))
-        .and(query_param("id", market_id.as_str()))
+        .and(query_param("id", market_ticker.as_str()))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(serde_json::json!([fixture.clone()])),
         )
@@ -46,7 +43,7 @@ async fn yaml_contract_for_polymarket_market() {
         .with_verbose(false);
     let exchange = Polymarket::new(config).unwrap();
     let market = exchange
-        .fetch_market(&market_id)
+        .fetch_market(&market_ticker)
         .await
         .expect("fetch_market should succeed against mock");
 

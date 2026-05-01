@@ -452,7 +452,7 @@ impl PolymarketWebSocket {
             .unwrap_or_default();
 
         let orderbook = Orderbook {
-            market_id: market_id.clone(),
+            market_ticker: market_id.clone(),
             asset_id: asset_id.clone(),
             bids,
             asks,

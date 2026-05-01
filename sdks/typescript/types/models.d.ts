@@ -281,48 +281,29 @@ export interface Event {
   category?: string | null;
   description?: string | null;
   end_ts?: string | null;
-  id: string;
   last_updated_ts?: string | null;
-  market_ids?: string[];
+  /**
+   * Sibling market market_tickers under this event — unified `Market.ticker` values (Kalshi market market_tickers; Polymarket slugs).
+   */
+  market_tickers?: string[];
   mutually_exclusive?: boolean | null;
+  /**
+   * Polymarket's numeric REST id for the event (e.g. `"12585"`). None on Kalshi (no separate numeric event surface).
+   */
+  numeric_id?: string | null;
   open_interest?: number | null;
-  series_id?: string | null;
-  slug?: string | null;
+  /**
+   * Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series's `ticker` (or `slug` if `ticker` is null).
+   */
+  series_ticker?: string | null;
   start_ts?: string | null;
   status?: string | null;
+  /**
+   * Native event identifier. Kalshi: `event_ticker` (e.g. `"KXPRES-2028"`). Polymarket: the event slug (e.g. `"presidential-election-winner-2024"`).
+   */
+  ticker: string;
   title: string;
   volume?: number | null;
-  [k: string]: unknown;
-}
-/**
- * Request for fetching events.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "EventsRequest".
- */
-export interface EventsRequest {
-  cursor?: string | null;
-  limit?: number | null;
-  /**
-   * Unix seconds — only events closing at or after this timestamp.
-   */
-  min_close_ts?: number | null;
-  /**
-   * Unix seconds — only events updated at or after this timestamp.
-   */
-  min_updated_ts?: number | null;
-  /**
-   * Filter by series ID / ticker.
-   */
-  series_id?: string | null;
-  /**
-   * Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).
-   */
-  status?: string | null;
-  /**
-   * Include the events' nested `Market` objects when supported.
-   */
-  with_nested_markets?: boolean | null;
   [k: string]: unknown;
 }
 /**
@@ -336,10 +317,9 @@ export interface ExchangeInfo {
   has_create_order: boolean;
   has_create_orders_batch: boolean;
   has_fetch_balance: boolean;
-  has_fetch_event: boolean;
-  has_fetch_events: boolean;
   has_fetch_fills: boolean;
   has_fetch_last_trade_price: boolean;
+  has_fetch_market_lineage: boolean;
   has_fetch_market_tags: boolean;
   has_fetch_markets: boolean;
   has_fetch_midpoint: boolean;
@@ -350,8 +330,6 @@ export interface ExchangeInfo {
   has_fetch_orderbooks_batch: boolean;
   has_fetch_positions: boolean;
   has_fetch_price_history: boolean;
-  has_fetch_series: boolean;
-  has_fetch_series_one: boolean;
   has_fetch_server_time: boolean;
   has_fetch_spread: boolean;
   has_fetch_trades: boolean;
@@ -373,7 +351,7 @@ export interface FetchMarketsParams {
    */
   cursor?: string | null;
   /**
-   * Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+   * Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event slug (e.g., `"will-trump-win-2024"`). Polymarket numeric event IDs are not accepted — they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
    */
   event_ticker?: string | null;
   /**
@@ -381,9 +359,13 @@ export interface FetchMarketsParams {
    */
   limit?: number | null;
   /**
-   * Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.
+   * Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g., `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`, and `series_ticker` are ignored.
    */
-  series_id?: string | null;
+  market_tickers?: string[];
+  /**
+   * Filter by series ticker. Pass a Kalshi series ticker (e.g., `"KXBTC"`) to fetch only markets in that series. Polymarket support arrives once `series_numeric_id` is added to this struct — until then, this field is ignored on Polymarket.
+   */
+  series_ticker?: string | null;
   /**
    * Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All` to fetch markets of any status.
    */
@@ -395,7 +377,7 @@ export interface FetchMarketsParams {
  * via the `definition` "FetchOrdersParams".
  */
 export interface FetchOrdersParams {
-  market_id?: string | null;
+  market_ticker?: string | null;
   [k: string]: unknown;
 }
 /**
@@ -418,7 +400,7 @@ export interface Fill {
   fee: number;
   fill_id: string;
   is_taker: boolean;
-  market_id: string;
+  market_ticker: string;
   order_id: string;
   outcome: string;
   price: number;
@@ -578,6 +560,54 @@ export interface Outcome {
   [k: string]: unknown;
 }
 /**
+ * A market plus the parent event and series that contextualize it.
+ *
+ * `event` and `series` are `Option` because: - some markets have no parent event surface (Kalshi standalone markets); - the upstream lookup for the parent may legitimately 404 on a dangling reference. A dangling parent should not fail the whole call — the caller still gets the `Market`.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "MarketLineage".
+ */
+export interface MarketLineage {
+  event?: Event | null;
+  market: Market;
+  series?: Series | null;
+  [k: string]: unknown;
+}
+/**
+ * A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "Series".
+ */
+export interface Series {
+  category?: string | null;
+  fee_type?: string | null;
+  frequency?: string | null;
+  last_updated_ts?: string | null;
+  /**
+   * Polymarket's numeric REST id for the series (e.g. `"10345"`). None on Kalshi (no separate numeric series surface).
+   */
+  numeric_id?: string | null;
+  settlement_sources?: SettlementSource[];
+  tags?: string[];
+  /**
+   * Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`). Polymarket: the series's `ticker` field, falling back to `slug` when `ticker` is null upstream.
+   */
+  ticker: string;
+  title: string;
+  volume?: number | null;
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "SettlementSource".
+ */
+export interface SettlementSource {
+  name?: string | null;
+  url?: string | null;
+  [k: string]: unknown;
+}
+/**
  * Normalized public market trade, suitable for "tape" UIs.
  *
  * - `price` is normalized to [0.0, 1.0] across all exchanges. - `timestamp` is the exchange-provided trade timestamp (UTC).
@@ -607,7 +637,7 @@ export interface MarketTrade {
  * via the `definition` "MidpointRequest".
  */
 export interface MidpointRequest {
-  market_id: string;
+  market_ticker: string;
   outcome?: string | null;
   token_id?: string | null;
   [k: string]: unknown;
@@ -627,7 +657,7 @@ export interface NewOrder {
    * Unix seconds. Required for `OrderType::Gtc` orders that should expire.
    */
   expiration_ts?: number | null;
-  market_id: string;
+  market_ticker: string;
   order_type: OrderType;
   outcome: string;
   /**
@@ -651,7 +681,7 @@ export interface Order {
   created_at: string;
   filled: number;
   id: string;
-  market_id: string;
+  market_ticker: string;
   outcome: string;
   price: number;
   side: OrderSide;
@@ -673,7 +703,7 @@ export interface Orderbook {
    */
   hash?: string | null;
   last_update_id?: number | null;
-  market_id: string;
+  market_ticker: string;
   timestamp?: string | null;
   [k: string]: unknown;
 }
@@ -694,7 +724,7 @@ export interface OrderbookHistoryRequest {
   cursor?: string | null;
   end_ts?: number | null;
   limit?: number | null;
-  market_id: string;
+  market_ticker: string;
   start_ts?: number | null;
   token_id?: string | null;
   [k: string]: unknown;
@@ -706,7 +736,7 @@ export interface OrderbookHistoryRequest {
  * via the `definition` "OrderbookRequest".
  */
 export interface OrderbookRequest {
-  market_id: string;
+  market_ticker: string;
   outcome?: string | null;
   token_id?: string | null;
   [k: string]: unknown;
@@ -732,7 +762,7 @@ export interface OrderbookSnapshot {
 export interface Position {
   average_price: number;
   current_price: number;
-  market_id: string;
+  market_ticker: string;
   outcome: string;
   size: number;
   [k: string]: unknown;
@@ -753,7 +783,7 @@ export interface PriceHistoryRequest {
    */
   end_ts?: number | null;
   interval: PriceHistoryInterval;
-  market_id: string;
+  market_ticker: string;
   outcome?: string | null;
   /**
    * Unix seconds
@@ -772,52 +802,6 @@ export interface PriceLevelChange {
   price: Number;
   side: PriceLevelSide;
   size: number;
-  [k: string]: unknown;
-}
-/**
- * A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "Series".
- */
-export interface Series {
-  category?: string | null;
-  fee_type?: string | null;
-  frequency?: string | null;
-  id: string;
-  last_updated_ts?: string | null;
-  settlement_sources?: SettlementSource[];
-  tags?: string[];
-  title: string;
-  volume?: number | null;
-  [k: string]: unknown;
-}
-/**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "SettlementSource".
- */
-export interface SettlementSource {
-  name?: string | null;
-  url?: string | null;
-  [k: string]: unknown;
-}
-/**
- * Request for fetching series.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "SeriesRequest".
- */
-export interface SeriesRequest {
-  /**
-   * Filter by category (e.g. `Politics`, `Sports`).
-   */
-  category?: string | null;
-  cursor?: string | null;
-  /**
-   * Include traded volume in the response when the venue supports it.
-   */
-  include_volume?: boolean | null;
-  limit?: number | null;
   [k: string]: unknown;
 }
 /**
@@ -887,13 +871,13 @@ export interface TradesRequest {
    */
   limit?: number | null;
   /**
-   * Exchange-native market identifier.
-   */
-  market_id: string;
-  /**
-   * Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`.
+   * Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_ticker`.
    */
   market_ref?: string | null;
+  /**
+   * Exchange-native market identifier.
+   */
+  market_ticker: string;
   outcome?: string | null;
   /**
    * Unix seconds (inclusive)
@@ -913,7 +897,7 @@ export interface UserTrade {
   condition_id?: string | null;
   fee?: number | null;
   id: string;
-  market_id: string;
+  market_ticker: string;
   owner?: string | null;
   price: number;
   realized_pnl?: number | null;
@@ -937,7 +921,7 @@ export interface UserTradesRequest {
    */
   end_ts?: number | null;
   limit?: number | null;
-  market_id?: string | null;
+  market_ticker?: string | null;
   side?: OrderSide | null;
   /**
    * Unix seconds (inclusive)

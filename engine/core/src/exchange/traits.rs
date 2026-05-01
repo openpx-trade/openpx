@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Candlestick, Event, Fill, LastTrade, Market, MarketTrade, Order, OrderSide, OrderType,
-    Orderbook, OrderbookSnapshot, Position, PriceHistoryInterval, Series, Spread, Tag, UserTrade,
+    Candlestick, Fill, LastTrade, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType,
+    Orderbook, OrderbookSnapshot, Position, PriceHistoryInterval, Spread, Tag, UserTrade,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams};
@@ -17,19 +17,18 @@ pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
 
-    /// Fetch a paginated list of markets — `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).
+    /// Fetch markets — `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).
+    /// Single-market and multi-market lookups both go through this surface: pass a single ticker via
+    /// `params.market_tickers` to fetch one market, or omit it to page through the full catalog.
     async fn fetch_markets(
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
-    /// Fetch a single market by ID (Kalshi ticker or Polymarket condition_id).
-    async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError>;
-
     /// Submit a new order — `side` is `buy` or `sell`; `params["order_type"]` accepts `gtc`, `ioc`, or `fok`.
     async fn create_order(
         &self,
-        market_id: &str,
+        market_ticker: &str,
         outcome: &str,
         side: OrderSide,
         price: f64,
@@ -41,14 +40,14 @@ pub trait Exchange: Send + Sync {
     async fn cancel_order(
         &self,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Order, OpenPxError>;
 
     /// Fetch a single order by ID, optionally scoped to a market.
     async fn fetch_order(
         &self,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Order, OpenPxError>;
 
     /// Fetch the caller's currently open orders, optionally filtered by market.
@@ -58,7 +57,10 @@ pub trait Exchange: Send + Sync {
     ) -> Result<Vec<Order>, OpenPxError>;
 
     /// Fetch the caller's open positions, optionally filtered by market.
-    async fn fetch_positions(&self, market_id: Option<&str>) -> Result<Vec<Position>, OpenPxError>;
+    async fn fetch_positions(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Position>, OpenPxError>;
 
     /// Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).
     async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError>;
@@ -135,10 +137,10 @@ pub trait Exchange: Send + Sync {
     /// Fetch the caller's fill (trade execution) history, optionally filtered by market.
     async fn fetch_fills(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
-        let _ = (market_id, limit);
+        let _ = (market_ticker, limit);
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_fills".into()),
         ))
@@ -151,52 +153,28 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a paginated list of events (groups of related markets).
-    async fn fetch_events(
+    /// Fetch a market plus its parent event and series in one call. The
+    /// `event` and `series` fields are `Option` — a dangling parent reference
+    /// returns `None` rather than failing the whole call. `market_ticker` is
+    /// the unified `Market.ticker` (Kalshi market ticker or Polymarket slug).
+    async fn fetch_market_lineage(
         &self,
-        req: EventsRequest,
-    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
-        let _ = req;
+        market_ticker: &str,
+    ) -> Result<MarketLineage, OpenPxError> {
+        let _ = market_ticker;
         Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_events".into()),
-        ))
-    }
-
-    /// Fetch a single event by ID or slug.
-    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
-        let _ = id;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_event".into()),
+            crate::error::ExchangeError::NotSupported("fetch_market_lineage".into()),
         ))
     }
 
     /// Fetch L2 orderbooks for multiple markets in one round-trip.
     async fn fetch_orderbooks_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        let _ = market_ids;
+        let _ = market_tickers;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_orderbooks_batch".into()),
-        ))
-    }
-
-    /// Fetch a paginated list of series (recurring families of events).
-    async fn fetch_series(
-        &self,
-        req: SeriesRequest,
-    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
-        let _ = req;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_series".into()),
-        ))
-    }
-
-    /// Fetch a single series by ID or ticker.
-    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
-        let _ = id;
-        Err(OpenPxError::Exchange(
-            crate::error::ExchangeError::NotSupported("fetch_series_one".into()),
         ))
     }
 
@@ -211,9 +189,9 @@ pub trait Exchange: Send + Sync {
     /// Fetch midpoint prices for multiple market outcomes in one round-trip.
     async fn fetch_midpoints_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<HashMap<String, f64>, OpenPxError> {
-        let _ = market_ids;
+        let _ = market_tickers;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_midpoints_batch".into()),
         ))
@@ -236,8 +214,8 @@ pub trait Exchange: Send + Sync {
     }
 
     /// Fetch the open interest (total outstanding contracts) for a market.
-    async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
-        let _ = market_id;
+    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
+        let _ = market_ticker;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_open_interest".into()),
         ))
@@ -255,16 +233,19 @@ pub trait Exchange: Send + Sync {
     }
 
     /// Fetch the tag set associated with a market (or its parent event).
-    async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
-        let _ = market_id;
+    async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
+        let _ = market_ticker;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_market_tags".into()),
         ))
     }
 
     /// Cancel all of the caller's open orders, optionally scoped to a market.
-    async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
-        let _ = market_id;
+    async fn cancel_all_orders(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        let _ = market_ticker;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),
         ))
@@ -297,11 +278,8 @@ pub trait Exchange: Send + Sync {
             has_refresh_balance: false,
             has_websocket: false,
             has_fetch_orderbook_history: false,
-            has_fetch_events: false,
-            has_fetch_event: false,
+            has_fetch_market_lineage: false,
             has_fetch_orderbooks_batch: false,
-            has_fetch_series: false,
-            has_fetch_series_one: false,
             has_fetch_midpoint: false,
             has_fetch_midpoints_batch: false,
             has_fetch_spread: false,
@@ -338,11 +316,8 @@ pub struct ExchangeInfo {
     pub has_refresh_balance: bool,
     pub has_websocket: bool,
     pub has_fetch_orderbook_history: bool,
-    pub has_fetch_events: bool,
-    pub has_fetch_event: bool,
+    pub has_fetch_market_lineage: bool,
     pub has_fetch_orderbooks_batch: bool,
-    pub has_fetch_series: bool,
-    pub has_fetch_series_one: bool,
     pub has_fetch_midpoint: bool,
     pub has_fetch_midpoints_batch: bool,
     pub has_fetch_spread: bool,
@@ -358,7 +333,7 @@ pub struct ExchangeInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookRequest {
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
 }
@@ -367,7 +342,7 @@ pub struct OrderbookRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceHistoryRequest {
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
     /// Condition ID for OI enrichment (Polymarket).
@@ -384,9 +359,9 @@ pub struct PriceHistoryRequest {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TradesRequest {
     /// Exchange-native market identifier.
-    pub market_id: String,
+    pub market_ticker: String,
     /// Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId).
-    /// When provided, exchanges should prefer this over `market_id`.
+    /// When provided, exchanges should prefer this over `market_ticker`.
     pub market_ref: Option<String>,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
@@ -403,43 +378,12 @@ pub struct TradesRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookHistoryRequest {
-    pub market_id: String,
+    pub market_ticker: String,
     pub token_id: Option<String>,
     pub start_ts: Option<i64>,
     pub end_ts: Option<i64>,
     pub limit: Option<usize>,
     pub cursor: Option<String>,
-}
-
-/// Request for fetching events.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct EventsRequest {
-    pub limit: Option<usize>,
-    pub cursor: Option<String>,
-    /// Filter by lifecycle status — venue-specific values (e.g. `open`,
-    /// `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).
-    pub status: Option<String>,
-    /// Filter by series ID / ticker.
-    pub series_id: Option<String>,
-    /// Include the events' nested `Market` objects when supported.
-    pub with_nested_markets: Option<bool>,
-    /// Unix seconds — only events closing at or after this timestamp.
-    pub min_close_ts: Option<i64>,
-    /// Unix seconds — only events updated at or after this timestamp.
-    pub min_updated_ts: Option<i64>,
-}
-
-/// Request for fetching series.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct SeriesRequest {
-    pub limit: Option<usize>,
-    pub cursor: Option<String>,
-    /// Filter by category (e.g. `Politics`, `Sports`).
-    pub category: Option<String>,
-    /// Include traded volume in the response when the venue supports it.
-    pub include_volume: Option<bool>,
 }
 
 /// Request for midpoint / spread / last-trade-price methods. The same shape
@@ -448,7 +392,7 @@ pub struct SeriesRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MidpointRequest {
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: Option<String>,
     pub token_id: Option<String>,
 }
@@ -461,7 +405,7 @@ pub struct UserTradesRequest {
     /// `Some(addr)` = public lookup for `addr` (Polymarket only; Kalshi
     /// returns `NotSupported`).
     pub user_address: Option<String>,
-    pub market_id: Option<String>,
+    pub market_ticker: Option<String>,
     pub side: Option<OrderSide>,
     /// Unix seconds (inclusive)
     pub start_ts: Option<i64>,
@@ -476,7 +420,7 @@ pub struct UserTradesRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NewOrder {
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: String,
     pub side: OrderSide,
     pub order_type: OrderType,

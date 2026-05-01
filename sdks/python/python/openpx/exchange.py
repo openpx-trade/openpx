@@ -51,15 +51,17 @@ class Exchange:
         *,
         status: Optional[str] = None,
         cursor: Optional[str] = None,
-        series_id: Optional[str] = None,
-        event_id: Optional[str] = None,
+        market_tickers: Optional[list[str]] = None,
+        series_ticker: Optional[str] = None,
+        event_ticker: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Fetch one page of markets from the exchange.
+        """Fetch markets from the exchange.
 
-        Returns {"markets": [...], "cursor": "..." | None}.
-        Pass the returned cursor back to fetch the next page.
+        Pass `market_tickers=[...]` for an explicit lookup (single round-trip, no
+        pagination), or omit it to page through the catalog with `cursor`.
+        Returns ``{"markets": [...], "cursor": "..." | None}``.
         """
-        raw = self._native.fetch_markets(status, cursor, series_id, event_id)
+        raw = self._native.fetch_markets(status, cursor, market_tickers, series_ticker, event_ticker)
         try:
             from openpx._models import Market
             return {
@@ -69,57 +71,68 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
-    def fetch_market(self, market_id: str) -> Any:
-        """Fetch a single market by ID."""
-        raw = self._native.fetch_market(market_id)
+    def fetch_market_lineage(self, market_ticker: str) -> Any:
+        """Fetch a market plus its parent event and series in one call.
+
+        Returns ``{"market": Market, "event": Event | None, "series": Series | None}``.
+        Event and series are optional — a dangling parent reference yields
+        ``None`` rather than failing the whole call.
+        """
+        raw = self._native.fetch_market_lineage(market_ticker)
         try:
-            from openpx._models import Market
-            return Market(**raw)
+            from openpx._models import Event, Market, Series
+            event = Event(**raw["event"]) if raw.get("event") else None
+            series = Series(**raw["series"]) if raw.get("series") else None
+            return {
+                "market": Market(**raw["market"]),
+                "event": event,
+                "series": series,
+            }
         except (ImportError, Exception):
             return raw
 
     def create_order(
         self,
-        market_id: str,
+        market_ticker: str,
         outcome: str,
         side: str,
         price: float,
         size: float,
         **params: str,
     ) -> Any:
-        raw = self._native.create_order(market_id, outcome, side, price, size, params or None)
+        raw = self._native.create_order(market_ticker, outcome, side, price, size, params or None)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def cancel_order(self, order_id: str, market_id: Optional[str] = None) -> Any:
-        raw = self._native.cancel_order(order_id, market_id)
+    def cancel_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
+        raw = self._native.cancel_order(order_id, market_ticker)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_order(self, order_id: str, market_id: Optional[str] = None) -> Any:
-        raw = self._native.fetch_order(order_id, market_id)
+    def fetch_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
+        raw = self._native.fetch_order(order_id, market_ticker)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_open_orders(self, market_id: Optional[str] = None) -> list[Any]:
-        raw = self._native.fetch_open_orders(market_id)
+    def fetch_open_orders(self, market_ticker: Optional[str] = None) -> list[Any]:
+        raw = self._native.fetch_open_orders(market_ticker)
         try:
             from openpx._models import Order
             return [Order(**o) for o in raw]
         except (ImportError, Exception):
             return raw
 
-    def fetch_positions(self, market_id: Optional[str] = None) -> list[Any]:
-        raw = self._native.fetch_positions(market_id)
+    def fetch_positions(self, market_ticker: Optional[str] = None) -> list[Any]:
+        raw = self._native.fetch_positions(market_ticker)
         try:
             from openpx._models import Position
             return [Position(**p) for p in raw]
@@ -131,11 +144,11 @@ class Exchange:
 
     def fetch_orderbook(
         self,
-        market_id: str,
+        market_ticker: str,
         outcome: Optional[str] = None,
         token_id: Optional[str] = None,
     ) -> Any:
-        raw = self._native.fetch_orderbook(market_id, outcome, token_id)
+        raw = self._native.fetch_orderbook(market_ticker, outcome, token_id)
         try:
             from openpx._models import Orderbook
             return Orderbook(**raw)
@@ -144,10 +157,10 @@ class Exchange:
 
     def fetch_fills(
         self,
-        market_id: Optional[str] = None,
+        market_ticker: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> list[Any]:
-        raw = self._native.fetch_fills(market_id, limit)
+        raw = self._native.fetch_fills(market_ticker, limit)
         try:
             from openpx._models import Fill
             return [Fill(**f) for f in raw]
@@ -156,7 +169,7 @@ class Exchange:
 
     def fetch_price_history(
         self,
-        market_id: str,
+        market_ticker: str,
         interval: str,
         *,
         outcome: Optional[str] = None,
@@ -166,7 +179,7 @@ class Exchange:
         end_ts: Optional[int] = None,
     ) -> list[Any]:
         raw = self._native.fetch_price_history(
-            market_id, interval, outcome, token_id, condition_id, start_ts, end_ts
+            market_ticker, interval, outcome, token_id, condition_id, start_ts, end_ts
         )
         try:
             from openpx._models import Candlestick
@@ -176,7 +189,7 @@ class Exchange:
 
     def fetch_trades(
         self,
-        market_id: str,
+        market_ticker: str,
         *,
         market_ref: Optional[str] = None,
         outcome: Optional[str] = None,
@@ -187,7 +200,7 @@ class Exchange:
         cursor: Optional[str] = None,
     ) -> dict[str, Any]:
         raw = self._native.fetch_trades(
-            market_id, market_ref, outcome, token_id, start_ts, end_ts, limit, cursor
+            market_ticker, market_ref, outcome, token_id, start_ts, end_ts, limit, cursor
         )
         try:
             from openpx._models import MarketTrade
@@ -200,7 +213,7 @@ class Exchange:
 
     def fetch_orderbook_history(
         self,
-        market_id: str,
+        market_ticker: str,
         *,
         token_id: Optional[str] = None,
         start_ts: Optional[int] = None,
@@ -209,7 +222,7 @@ class Exchange:
         cursor: Optional[str] = None,
     ) -> dict[str, Any]:
         raw = self._native.fetch_orderbook_history(
-            market_id, token_id, start_ts, end_ts, limit, cursor
+            market_ticker, token_id, start_ts, end_ts, limit, cursor
         )
         try:
             from openpx._models import OrderbookSnapshot

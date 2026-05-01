@@ -18,14 +18,13 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use px_core::{
-    manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event, EventsRequest,
-    Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    FetchUserActivityParams, Fill, LastTrade, Market, MarketStatus, MarketStatusFilter,
-    MarketTrade, MarketType, MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
+    manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Candlestick, Event, Exchange,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, FetchUserActivityParams,
+    Fill, LastTrade, Market, MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade,
+    MarketType, MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
     OrderType as UnifiedOrderType, Orderbook, OrderbookHistoryRequest, OrderbookSnapshot, Outcome,
     Position, PriceHistoryInterval, PriceHistoryRequest, PriceLevel, PublicTrade, RateLimiter,
-    Series, SeriesRequest, SettlementSource, Spread, Tag, TradesRequest, UserTrade,
-    UserTradesRequest,
+    Series, SettlementSource, Spread, Tag, TradesRequest, UserTrade, UserTradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -462,6 +461,109 @@ impl Polymarket {
         self.rate_limiter.lock().await.wait().await;
     }
 
+    /// Fetch a single Polymarket event by slug; the upstream payload embeds
+    /// the parent series, so we return both in one round-trip. Used by
+    /// `fetch_market_lineage`; not exposed on the unified `Exchange` trait.
+    pub async fn fetch_event_with_series(
+        &self,
+        event_ticker: &str,
+    ) -> Result<(Event, Option<Series>), OpenPxError> {
+        self.rate_limit().await;
+        let endpoint = format!("/events/slug/{event_ticker}");
+        let value: serde_json::Value = self
+            .client
+            .get_gamma(&endpoint)
+            .await
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        let event = parse_polymarket_event(&value).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse event: {event_ticker}"
+            )))
+        })?;
+
+        // Polymarket events embed `series: Series[]`; pick the primary one
+        // when present (matches `Event.series_ticker` semantics — the unified
+        // model is single-parent).
+        let series = value
+            .get("series")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(parse_polymarket_series);
+
+        Ok((event, series))
+    }
+
+    /// Fetch a single market by slug, numeric id, or condition id. Used
+    /// internally by Polymarket's own trait methods (orderbook lookup,
+    /// position resolution, fills, …) and by mapping/contract tests; not
+    /// exposed on the unified `Exchange` trait — callers use `fetch_markets`
+    /// with `market_tickers: vec![ticker]` instead.
+    pub async fn fetch_market(&self, market_ticker: &str) -> Result<Market, OpenPxError> {
+        self.rate_limit().await;
+
+        // The unified Market.ticker for Polymarket is the slug, so the
+        // canonical lookup is `/markets/slug/{slug}`. Numeric ids and condition
+        // ids fall back to the filtered `/markets?id=...` query.
+        let looks_like_slug = market_ticker
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            && !market_ticker.chars().all(|c| c.is_ascii_digit());
+        let data: serde_json::Value = if looks_like_slug {
+            let endpoint = format!("/markets/slug/{market_ticker}");
+            match self.client.get_gamma::<serde_json::Value>(&endpoint).await {
+                Ok(v) => v,
+                Err(e) => {
+                    let msg = format!("{e}");
+                    if msg.contains("404") {
+                        return Err(OpenPxError::Exchange(
+                            px_core::ExchangeError::MarketNotFound(market_ticker.into()),
+                        ));
+                    }
+                    return Err(OpenPxError::Exchange(e.into()));
+                }
+            }
+        } else {
+            let endpoint = format!("/markets?id={market_ticker}");
+            let mut list: Vec<serde_json::Value> = self
+                .client
+                .get_gamma(&endpoint)
+                .await
+                .map_err(|e| OpenPxError::Exchange(e.into()))?;
+            list.pop().ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_ticker.into()))
+            })?
+        };
+
+        let map_start = Instant::now();
+        let mut parsed = self.parse_market(data).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_ticker.into()))
+        })?;
+        let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
+        histogram!(
+            "openpx.exchange.mapping_us",
+            "exchange" => "polymarket",
+            "operation" => "fetch_market"
+        )
+        .record(map_us);
+
+        if parsed.token_ids().is_empty() {
+            let condition_id = parsed.condition_id.as_deref().unwrap_or("");
+
+            if let Ok(token_ids) = self.fetch_token_ids(condition_id).await {
+                if !token_ids.is_empty() {
+                    for (i, outcome) in parsed.outcomes.iter_mut().enumerate() {
+                        if let Some(tid) = token_ids.get(i) {
+                            outcome.token_id = Some(tid.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(parsed)
+    }
+
     /// Get the owner address (funder if set, otherwise signer address)
     fn owner_address(&self) -> Result<String, PolymarketError> {
         if let Some(ref funder) = self.config.funder {
@@ -549,7 +651,7 @@ impl Polymarket {
             .or_else(|| Some(chrono::Utc::now()));
 
         Ok(Orderbook {
-            market_id: String::new(),
+            market_ticker: String::new(),
             asset_id: token_id.to_string(),
             bids,
             asks,
@@ -590,7 +692,7 @@ impl Polymarket {
 
         Order {
             id: resp.id.clone(),
-            market_id: format!("{:#x}", resp.market),
+            market_ticker: format!("{:#x}", resp.market),
             outcome: resp.outcome.clone(),
             side,
             price,
@@ -629,12 +731,12 @@ impl Polymarket {
             .unwrap_or_else(|| data.as_array().cloned().unwrap_or_default());
 
         for market in markets_list {
-            let market_id = market
+            let market_ticker = market
                 .get("condition_id")
                 .or_else(|| market.get("id"))
                 .and_then(|v| v.as_str());
 
-            if market_id == Some(condition_id) {
+            if market_ticker == Some(condition_id) {
                 if let Some(tokens) = market.get("tokens").and_then(|v| v.as_array()) {
                     let token_ids: Vec<String> = tokens
                         .iter()
@@ -870,7 +972,7 @@ impl Polymarket {
         Fill {
             fill_id: trade.transaction_hash.clone().unwrap_or_default(),
             order_id: String::new(), // Data API doesn't expose order IDs
-            market_id: trade.condition_id.clone(),
+            market_ticker: trade.condition_id.clone(),
             outcome,
             side,
             price: trade.price,
@@ -907,7 +1009,7 @@ impl Polymarket {
             .filter_map(|item| {
                 let obj = item.as_object()?;
 
-                let market_id = obj.get("conditionId").and_then(|v| v.as_str())?.to_string();
+                let market_ticker = obj.get("conditionId").and_then(|v| v.as_str())?.to_string();
 
                 let outcome = obj
                     .get("outcome")
@@ -935,7 +1037,7 @@ impl Polymarket {
                 }
 
                 Some(Position {
-                    market_id,
+                    market_ticker,
                     outcome,
                     size,
                     average_price,
@@ -964,7 +1066,7 @@ impl Polymarket {
     /// Returns the OI value (USDC-denominated outstanding token pairs).
     /// Resolve a CLOB token ID from a `MidpointRequest`. Prefers the explicit
     /// `req.token_id`; falls back to fetching the market and picking the YES
-    /// token (or the outcome-matched one) when only `market_id` is provided.
+    /// token (or the outcome-matched one) when only `market_ticker` is provided.
     async fn resolve_token_id_for_pricing(
         &self,
         req: &MidpointRequest,
@@ -972,7 +1074,7 @@ impl Polymarket {
         if let Some(t) = req.token_id.as_deref().filter(|s| !s.is_empty()) {
             return Ok(t.to_string());
         }
-        let market = self.fetch_market(&req.market_id).await?;
+        let market = self.fetch_market(&req.market_ticker).await?;
         if let Some(outcome) = req.outcome.as_deref() {
             if let Some(o) = market.outcome(outcome) {
                 if let Some(t) = o.token_id.as_deref() {
@@ -987,7 +1089,7 @@ impl Polymarket {
             .ok_or_else(|| {
                 OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
                     "could not resolve token_id for market {}",
-                    req.market_id
+                    req.market_ticker
                 )))
             })
     }
@@ -1653,14 +1755,42 @@ impl Exchange for Polymarket {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // ── market_tickers short-circuit: explicit slug lookup, single round-trip ──
+        if !params.market_tickers.is_empty() {
+            let mut endpoint = String::from("/markets?");
+            for (i, slug) in params.market_tickers.iter().enumerate() {
+                if i > 0 {
+                    endpoint.push('&');
+                }
+                endpoint.push_str("slug=");
+                endpoint.push_str(slug);
+            }
+            match params.status {
+                Some(MarketStatusFilter::Active) | None => endpoint.push_str("&closed=false"),
+                Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => {
+                    endpoint.push_str("&closed=true")
+                }
+                Some(MarketStatusFilter::All) => {}
+            }
+            self.rate_limit().await;
+            let raw_markets: Vec<serde_json::Value> = self
+                .client
+                .get_gamma(&endpoint)
+                .await
+                .map_err(|e| OpenPxError::Exchange(e.into()))?;
+            let markets: Vec<Market> = raw_markets
+                .into_iter()
+                .filter_map(|raw| self.parse_market(raw))
+                .collect();
+            return Ok((markets, None));
+        }
+
         // ── event_ticker short-circuit: fetch a single event's nested markets ──
+        // event_ticker is the Polymarket event slug. Numeric event ids are
+        // intentionally not accepted here — a future `event_numeric_id` field
+        // will carry that case.
         if let Some(ref eid) = params.event_ticker {
-            // Numeric → /events/{id}, otherwise → /events/slug/{slug}
-            let endpoint = if eid.chars().all(|c| c.is_ascii_digit()) {
-                format!("/events/{eid}")
-            } else {
-                format!("/events/slug/{eid}")
-            };
+            let endpoint = format!("/events/slug/{eid}");
             self.rate_limit().await;
 
             let event: serde_json::Value = self
@@ -1726,16 +1856,14 @@ impl Exchange for Polymarket {
             _ => String::new(),
         };
 
-        let series_clause = params
-            .series_id
-            .as_ref()
-            .map(|sid| format!("&series_id={sid}"))
-            .unwrap_or_default();
+        // `series_ticker` is slug-semantic; Polymarket only filters by numeric
+        // series id, which will arrive on a future `series_numeric_id` field.
+        // Until then, we ignore `series_ticker` on Polymarket.
 
         let endpoint = if closed_param.is_empty() {
-            format!("/events/keyset?limit={PAGE_SIZE}{cursor_clause}{series_clause}")
+            format!("/events/keyset?limit={PAGE_SIZE}{cursor_clause}")
         } else {
-            format!("/events/keyset?limit={PAGE_SIZE}&{closed_param}{cursor_clause}{series_clause}")
+            format!("/events/keyset?limit={PAGE_SIZE}&{closed_param}{cursor_clause}")
         };
 
         self.rate_limit().await;
@@ -1809,71 +1937,6 @@ impl Exchange for Polymarket {
         Ok((markets, next_cursor))
     }
 
-    async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
-        self.rate_limit().await;
-
-        // The unified Market.ticker for Polymarket is the slug, so the
-        // canonical lookup is `/markets/slug/{slug}`. Numeric ids and condition
-        // ids fall back to the filtered `/markets?id=...` query.
-        let looks_like_slug = market_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            && !market_id.chars().all(|c| c.is_ascii_digit());
-        let data: serde_json::Value = if looks_like_slug {
-            let endpoint = format!("/markets/slug/{market_id}");
-            match self.client.get_gamma::<serde_json::Value>(&endpoint).await {
-                Ok(v) => v,
-                Err(e) => {
-                    let msg = format!("{e}");
-                    if msg.contains("404") {
-                        return Err(OpenPxError::Exchange(
-                            px_core::ExchangeError::MarketNotFound(market_id.into()),
-                        ));
-                    }
-                    return Err(OpenPxError::Exchange(e.into()));
-                }
-            }
-        } else {
-            let endpoint = format!("/markets?id={market_id}");
-            let mut list: Vec<serde_json::Value> = self
-                .client
-                .get_gamma(&endpoint)
-                .await
-                .map_err(|e| OpenPxError::Exchange(e.into()))?;
-            list.pop().ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_id.into()))
-            })?
-        };
-
-        let map_start = Instant::now();
-        let mut parsed = self.parse_market(data).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_id.into()))
-        })?;
-        let map_us = map_start.elapsed().as_secs_f64() * 1_000_000.0;
-        histogram!(
-            "openpx.exchange.mapping_us",
-            "exchange" => "polymarket",
-            "operation" => "fetch_market"
-        )
-        .record(map_us);
-
-        if parsed.token_ids().is_empty() {
-            let condition_id = parsed.condition_id.as_deref().unwrap_or("");
-
-            if let Ok(token_ids) = self.fetch_token_ids(condition_id).await {
-                if !token_ids.is_empty() {
-                    for (i, outcome) in parsed.outcomes.iter_mut().enumerate() {
-                        if let Some(tid) = token_ids.get(i) {
-                            outcome.token_id = Some(tid.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(parsed)
-    }
-
     async fn fetch_orderbook(
         &self,
         req: px_core::OrderbookRequest,
@@ -1881,7 +1944,7 @@ impl Exchange for Polymarket {
         let token_id = if let Some(token_id) = req.token_id.clone() {
             token_id
         } else {
-            let market = self.fetch_market(&req.market_id).await?;
+            let market = self.fetch_market(&req.market_ticker).await?;
             let mut token_ids = market.token_ids();
 
             if token_ids.is_empty() {
@@ -1939,7 +2002,7 @@ impl Exchange for Polymarket {
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        orderbook.market_id = req.market_id.clone();
+        orderbook.market_ticker = req.market_ticker.clone();
         orderbook.asset_id = token_id;
         Ok(orderbook)
     }
@@ -2025,7 +2088,7 @@ impl Exchange for Polymarket {
             if let Some(condition_id) = req.market_ref.clone().filter(|s| !s.trim().is_empty()) {
                 condition_id
             } else {
-                let market = self.fetch_market(&req.market_id).await?;
+                let market = self.fetch_market(&req.market_ticker).await?;
                 market.condition_id.clone().unwrap_or_default()
             };
 
@@ -2262,7 +2325,7 @@ impl Exchange for Polymarket {
 
     async fn create_order(
         &self,
-        market_id: &str,
+        market_ticker: &str,
         outcome: &str,
         side: OrderSide,
         price: f64,
@@ -2288,7 +2351,7 @@ impl Exchange for Polymarket {
             (tid.clone(), None)
         } else {
             // Fetch market to get token_ids
-            let market = self.fetch_market(market_id).await?;
+            let market = self.fetch_market(market_ticker).await?;
             let mut token_ids = market.token_ids();
 
             if token_ids.is_empty() {
@@ -2523,7 +2586,7 @@ impl Exchange for Polymarket {
 
         Ok(Order {
             id: response.order_id,
-            market_id: market_id.to_string(),
+            market_ticker: market_ticker.to_string(),
             outcome: outcome.to_string(),
             side,
             price,
@@ -2653,19 +2716,22 @@ impl Exchange for Polymarket {
         Ok(page.data.iter().map(|o| self.parse_sdk_order(o)).collect())
     }
 
-    async fn fetch_positions(&self, market_id: Option<&str>) -> Result<Vec<Position>, OpenPxError> {
+    async fn fetch_positions(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Position>, OpenPxError> {
         let owner = self
             .owner_address()
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        let market_id = match market_id {
+        let market_ticker = match market_ticker {
             Some(id) => id,
             None => return self.fetch_all_positions(&owner).await,
         };
 
         // Use the Data API with condition_id filter for rich position data
         // (avgPrice, curPrice, cashPnl) instead of raw on-chain balances.
-        let market = self.fetch_market(market_id).await?;
+        let market = self.fetch_market(market_ticker).await?;
         let condition_id = market.condition_id.as_deref();
         if let Some(cid) = condition_id {
             let data_api_url = &self.config.data_api_url;
@@ -2702,7 +2768,7 @@ impl Exchange for Polymarket {
                                     })
                                     .unwrap_or(0.0);
                                 Some(Position {
-                                    market_id: market_id.to_string(),
+                                    market_ticker: market_ticker.to_string(),
                                     outcome,
                                     size,
                                     average_price,
@@ -2712,7 +2778,7 @@ impl Exchange for Polymarket {
                             .collect();
                         tracing::info!(
                             exchange = "polymarket",
-                            market_id,
+                            market_ticker,
                             count = positions.len(),
                             "fetched positions via data-api"
                         );
@@ -2770,7 +2836,7 @@ impl Exchange for Polymarket {
                 let current_price = market.outcomes.get(i).and_then(|o| o.price).unwrap_or(0.0);
 
                 positions.push(Position {
-                    market_id: market_id.to_string(),
+                    market_ticker: market_ticker.to_string(),
                     outcome,
                     size: balance,
                     average_price: 0.0,
@@ -2781,7 +2847,7 @@ impl Exchange for Polymarket {
 
         tracing::info!(
             exchange = "polymarket",
-            market_id,
+            market_ticker,
             count = positions.len(),
             "fetched positions via on-chain fallback"
         );
@@ -2791,7 +2857,7 @@ impl Exchange for Polymarket {
 
     async fn fetch_fills(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
         let owner = self
@@ -2799,7 +2865,7 @@ impl Exchange for Polymarket {
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
         // Resolve condition_id when filtering by market
-        let condition_id = if let Some(mid) = market_id {
+        let condition_id = if let Some(mid) = market_ticker {
             let market = self.fetch_market(mid).await?;
             market.condition_id.clone()
         } else {
@@ -2822,7 +2888,7 @@ impl Exchange for Polymarket {
 
         tracing::info!(
             exchange = "polymarket",
-            market = market_id.unwrap_or("all"),
+            market = market_ticker.unwrap_or("all"),
             count = fills.len(),
             "fetched fills"
         );
@@ -2988,137 +3054,27 @@ impl Exchange for Polymarket {
         }))
     }
 
-    async fn fetch_events(
+    async fn fetch_market_lineage(
         &self,
-        req: EventsRequest,
-    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        #[serde(untagged)]
-        enum EventsResp {
-            Wrapped {
-                #[serde(default)]
-                events: Vec<serde_json::Value>,
-                #[serde(default)]
-                next_cursor: Option<String>,
-            },
-            Bare(Vec<serde_json::Value>),
-        }
-
-        let limit = req.limit.unwrap_or(20).clamp(1, 500);
-        let mut endpoint = format!("/events/keyset?limit={limit}");
-        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
-            endpoint.push_str(&format!("&after_cursor={c}"));
-        }
-        if let Some(s) = req.status.as_deref() {
-            // Polymarket uses `closed=true|false` rather than a free-form status.
-            match s {
-                "closed" => endpoint.push_str("&closed=true"),
-                "open" => endpoint.push_str("&closed=false"),
-                other => endpoint.push_str(&format!("&{other}")),
-            }
-        }
-        if let Some(s) = req.series_id.as_deref() {
-            endpoint.push_str(&format!("&series_id={s}"));
-        }
-        if let Some(ts) = req.min_close_ts {
-            endpoint.push_str(&format!("&end_date_min={ts}"));
-        }
-
-        let resp: EventsResp = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-        let (raw, next_cursor) = match resp {
-            EventsResp::Wrapped {
-                events,
-                next_cursor,
-            } => (events, next_cursor.filter(|c| !c.is_empty())),
-            EventsResp::Bare(events) => (events, None),
+        market_ticker: &str,
+    ) -> Result<MarketLineage, OpenPxError> {
+        let market = self.fetch_market(market_ticker).await?;
+        let (event, series) = match market.event_ticker.as_deref() {
+            Some(t) => self
+                .fetch_event_with_series(t)
+                .await
+                .map(|(e, s)| (Some(e), s))
+                .unwrap_or((None, None)),
+            None => (None, None),
         };
-        let events = raw.iter().filter_map(parse_polymarket_event).collect();
-        Ok((events, next_cursor))
-    }
-
-    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
-        // Polymarket accepts both UUID-shaped IDs and slugs. UUID-like input
-        // hits `/events/{id}`; everything else falls back to `/events/slug/{slug}`.
-        let endpoint = if id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') && id.len() >= 32 {
-            format!("/events/{id}")
-        } else {
-            format!("/events/slug/{id}")
-        };
-
-        let value: serde_json::Value = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-
-        parse_polymarket_event(&value).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "could not parse event: {id}"
-            )))
+        Ok(MarketLineage {
+            market,
+            event,
+            series,
         })
     }
 
-    async fn fetch_series(
-        &self,
-        req: SeriesRequest,
-    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        #[serde(untagged)]
-        enum SeriesResp {
-            Wrapped {
-                #[serde(default)]
-                series: Vec<serde_json::Value>,
-                #[serde(default)]
-                next_cursor: Option<String>,
-            },
-            Bare(Vec<serde_json::Value>),
-        }
-
-        let limit = req.limit.unwrap_or(20).clamp(1, 500);
-        let mut endpoint = format!("/series?limit={limit}");
-        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
-            endpoint.push_str(&format!("&after_cursor={c}"));
-        }
-        if let Some(c) = req.category.as_deref() {
-            endpoint.push_str(&format!("&category={c}"));
-        }
-
-        let resp: SeriesResp = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-        let (raw, next_cursor) = match resp {
-            SeriesResp::Wrapped {
-                series,
-                next_cursor,
-            } => (series, next_cursor.filter(|c| !c.is_empty())),
-            SeriesResp::Bare(series) => (series, None),
-        };
-        let series = raw.iter().filter_map(parse_polymarket_series).collect();
-        Ok((series, next_cursor))
-    }
-
-    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
-        let endpoint = format!("/series/{id}");
-        let value: serde_json::Value = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-
-        parse_polymarket_series(&value).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "could not parse series: {id}"
-            )))
-        })
-    }
-
-    async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
+    async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
         #[derive(Debug, serde::Deserialize)]
         #[serde(untagged)]
         enum TagsResp {
@@ -3129,7 +3085,7 @@ impl Exchange for Polymarket {
             Bare(Vec<serde_json::Value>),
         }
 
-        let endpoint = format!("/markets/{market_id}/tags");
+        let endpoint = format!("/markets/{market_ticker}/tags");
         let resp: TagsResp = self
             .client
             .get_gamma(&endpoint)
@@ -3164,12 +3120,12 @@ impl Exchange for Polymarket {
 
     async fn fetch_orderbooks_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        if market_ids.is_empty() {
+        if market_tickers.is_empty() {
             return Ok(Vec::new());
         }
-        let body: Vec<serde_json::Value> = market_ids
+        let body: Vec<serde_json::Value> = market_tickers
             .iter()
             .map(|t| serde_json::json!({ "token_id": t }))
             .collect();
@@ -3210,12 +3166,12 @@ impl Exchange for Polymarket {
 
     async fn fetch_midpoints_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<HashMap<String, f64>, OpenPxError> {
-        if market_ids.is_empty() {
+        if market_tickers.is_empty() {
             return Ok(HashMap::new());
         }
-        let body: Vec<serde_json::Value> = market_ids
+        let body: Vec<serde_json::Value> = market_tickers
             .iter()
             .map(|t| serde_json::json!({ "token_id": t }))
             .collect();
@@ -3236,7 +3192,7 @@ impl Exchange for Polymarket {
             .json()
             .await
             .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
-        let mut out = HashMap::with_capacity(market_ids.len());
+        let mut out = HashMap::with_capacity(market_tickers.len());
         if let Some(map) = raw.as_object() {
             for (k, v) in map {
                 if let Some(price) = v
@@ -3315,16 +3271,16 @@ impl Exchange for Polymarket {
         })
     }
 
-    async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
-        // Trait method takes a market_id; on Polymarket that's the conditionId.
+    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
+        // Trait method takes a market_ticker; on Polymarket that's the conditionId.
         // The inherent fetch_open_interest method returns Option<f64> on
         // Data-API miss; lift to Result so missing OI is an explicit error.
-        Polymarket::fetch_open_interest(self, market_id)
+        Polymarket::fetch_open_interest(self, market_ticker)
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?
             .ok_or_else(|| {
                 OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                    "polymarket /oi returned no value for {market_id}"
+                    "polymarket /oi returned no value for {market_ticker}"
                 )))
             })
     }
@@ -3351,7 +3307,7 @@ impl Exchange for Polymarket {
             .unwrap_or(0);
 
         let mut endpoint = format!("/trades?user={user}&limit={limit}&offset={offset}");
-        if let Some(market) = req.market_id.as_deref() {
+        if let Some(market) = req.market_ticker.as_deref() {
             endpoint.push_str(&format!("&market={market}"));
         }
         if let Some(side) = req.side {
@@ -3390,20 +3346,23 @@ impl Exchange for Polymarket {
         Ok((trades, next_cursor))
     }
 
-    async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Order>, OpenPxError> {
         // Sequential loop over the caller's open orders. The Polymarket
         // CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
         // endpoints that are O(1). TODO(batch5-v2): swap to those once the
         // V2 SDK lands and exposes them. For now this works against both V1
         // and V2 SDKs and matches the trait contract.
         let params = FetchOrdersParams {
-            market_id: market_id.map(String::from),
+            market_ticker: market_ticker.map(String::from),
         };
         let open = self.fetch_open_orders(Some(params)).await?;
 
         let mut cancelled = Vec::with_capacity(open.len());
         for order in open {
-            match self.cancel_order(&order.id, market_id).await {
+            match self.cancel_order(&order.id, market_ticker).await {
                 Ok(o) => cancelled.push(o),
                 Err(e) => tracing::warn!(
                     order_id = %order.id,
@@ -3444,7 +3403,14 @@ impl Exchange for Polymarket {
                 params.insert("expiration".to_string(), ts.to_string());
             }
             let order = self
-                .create_order(&o.market_id, &o.outcome, o.side, o.price, o.size, params)
+                .create_order(
+                    &o.market_ticker,
+                    &o.outcome,
+                    o.side,
+                    o.price,
+                    o.size,
+                    params,
+                )
                 .await?;
             out.push(order);
         }
@@ -3475,11 +3441,8 @@ impl Exchange for Polymarket {
             // Flag is false because historical data is now served from S3 Parquet
             // (backfilled via historical data pipeline), not proxied through CLOB.
             has_fetch_orderbook_history: false,
-            has_fetch_events: true,
-            has_fetch_event: true,
+            has_fetch_market_lineage: true,
             has_fetch_orderbooks_batch: true,
-            has_fetch_series: true,
-            has_fetch_series_one: true,
             has_fetch_midpoint: true,
             has_fetch_midpoints_batch: true,
             has_fetch_spread: true,
@@ -3496,14 +3459,14 @@ impl Exchange for Polymarket {
 fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
     let obj = value.as_object()?;
 
-    let id = obj.get("id").and_then(|v| {
+    let numeric_id = obj.get("id").and_then(|v| {
         v.as_str()
             .map(String::from)
             .or_else(|| v.as_i64().map(|i| i.to_string()))
             .or_else(|| v.as_u64().map(|u| u.to_string()))
-    })?;
+    });
 
-    let slug = obj.get("slug").and_then(|v| v.as_str()).map(String::from);
+    let ticker = obj.get("slug").and_then(|v| v.as_str())?.to_string();
     let title = obj
         .get("title")
         .and_then(|v| v.as_str())
@@ -3519,15 +3482,18 @@ fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let series_id = obj
+    // Polymarket events embed `series: Series[]`; the series identifier we
+    // surface is its `ticker` field (or `slug` fallback when ticker is null).
+    let series_ticker = obj
         .get("series")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.first())
-        .and_then(|s| s.get("id"))
-        .and_then(|v| {
-            v.as_str()
+        .and_then(|s| {
+            s.get("ticker")
+                .and_then(|v| v.as_str())
+                .filter(|t| !t.is_empty())
+                .or_else(|| s.get("slug").and_then(|v| v.as_str()))
                 .map(String::from)
-                .or_else(|| v.as_i64().map(|i| i.to_string()))
         });
 
     let parse_dt = |key: &str| -> Option<chrono::DateTime<chrono::Utc>> {
@@ -3554,16 +3520,12 @@ fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
         .or_else(|| obj.get("mutuallyExclusive"))
         .and_then(|v| v.as_bool());
 
-    let market_ids = obj
+    let market_tickers = obj
         .get("markets")
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|m| {
-                    m.get("id")
-                        .or_else(|| m.get("conditionId"))
-                        .and_then(|v| v.as_str().map(String::from))
-                })
+                .filter_map(|m| m.get("slug").and_then(|v| v.as_str().map(String::from)))
                 .collect()
         })
         .unwrap_or_default();
@@ -3574,14 +3536,14 @@ fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
         .map(|c| if c { "closed" } else { "open" }.to_string());
 
     Some(Event {
-        id,
-        slug,
+        ticker,
+        numeric_id,
         title,
         description,
         category,
-        series_id,
+        series_ticker,
         status,
-        market_ids,
+        market_tickers,
         start_ts,
         end_ts,
         volume,
@@ -3594,12 +3556,22 @@ fn parse_polymarket_event(value: &serde_json::Value) -> Option<Event> {
 fn parse_polymarket_series(value: &serde_json::Value) -> Option<Series> {
     let obj = value.as_object()?;
 
-    let id = obj.get("id").and_then(|v| {
+    let numeric_id = obj.get("id").and_then(|v| {
         v.as_str()
             .map(String::from)
             .or_else(|| v.as_i64().map(|i| i.to_string()))
             .or_else(|| v.as_u64().map(|u| u.to_string()))
-    })?;
+    });
+
+    // Polymarket Series exposes both `ticker` and `slug` (both nullable);
+    // prefer the explicit `ticker`, fall back to `slug`. Skip the row entirely
+    // when neither is present.
+    let ticker = obj
+        .get("ticker")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| obj.get("slug").and_then(|v| v.as_str()))
+        .map(String::from)?;
 
     let title = obj
         .get("title")
@@ -3628,7 +3600,8 @@ fn parse_polymarket_series(value: &serde_json::Value) -> Option<Series> {
     });
 
     Some(Series {
-        id,
+        ticker,
+        numeric_id,
         title,
         category,
         frequency,
@@ -3660,7 +3633,7 @@ fn parse_polymarket_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
         .or_else(|| obj.get("asset_id"))
         .and_then(|v| v.as_str())
         .map(String::from);
-    let market_id = condition_id.clone().unwrap_or_default();
+    let market_ticker = condition_id.clone().unwrap_or_default();
 
     let side = match obj.get("side").and_then(|v| v.as_str()) {
         Some(s) if s.eq_ignore_ascii_case("sell") => OrderSide::Sell,
@@ -3704,7 +3677,7 @@ fn parse_polymarket_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
 
     Some(UserTrade {
         id,
-        market_id,
+        market_ticker,
         condition_id,
         asset_id,
         side,
@@ -3727,7 +3700,7 @@ fn parse_polymarket_book(v: &serde_json::Value) -> Option<Orderbook> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let market_id = obj
+    let market_ticker = obj
         .get("market")
         .and_then(|v| v.as_str())
         .map(String::from)
@@ -3773,7 +3746,7 @@ fn parse_polymarket_book(v: &serde_json::Value) -> Option<Orderbook> {
     sort_asks(&mut asks);
 
     Some(Orderbook {
-        market_id,
+        market_ticker,
         asset_id,
         bids,
         asks,
@@ -3874,23 +3847,23 @@ mod tests {
             "negRisk": true,
             "closed": false,
             "markets": [
-                { "id": "0xMARKET1", "conditionId": "0xCID1" },
-                { "conditionId": "0xCID2" },
+                { "slug": "trump-2028", "conditionId": "0xCID1" },
+                { "slug": "harris-2028", "conditionId": "0xCID2" },
             ],
-            "series": [{ "id": "ser-99" }],
+            "series": [{ "id": "ser-99", "ticker": "us-pres" }],
         });
         let e = parse_polymarket_event(&v).expect("parse");
-        assert_eq!(e.id, "abc-123");
-        assert_eq!(e.slug.as_deref(), Some("us-2028-election"));
+        assert_eq!(e.ticker, "us-2028-election");
+        assert_eq!(e.numeric_id.as_deref(), Some("abc-123"));
         assert_eq!(e.category.as_deref(), Some("Politics"));
-        assert_eq!(e.series_id.as_deref(), Some("ser-99"));
+        assert_eq!(e.series_ticker.as_deref(), Some("us-pres"));
         assert_eq!(e.status.as_deref(), Some("open"));
         assert_eq!(e.volume, Some(1_234_567.5));
         assert_eq!(e.open_interest, Some(50_000.0));
         assert_eq!(e.mutually_exclusive, Some(true));
         assert_eq!(
-            e.market_ids,
-            vec!["0xMARKET1".to_string(), "0xCID2".to_string()]
+            e.market_tickers,
+            vec!["trump-2028".to_string(), "harris-2028".to_string()]
         );
         assert!(e.start_ts.is_some());
         assert!(e.end_ts.is_some());
@@ -3898,14 +3871,15 @@ mod tests {
 
     #[test]
     fn parse_polymarket_event_numeric_id_coerces_to_string() {
-        let v = serde_json::json!({ "id": 42, "title": "n" });
+        let v = serde_json::json!({ "id": 42, "slug": "n", "title": "n" });
         let e = parse_polymarket_event(&v).expect("parse");
-        assert_eq!(e.id, "42");
+        assert_eq!(e.ticker, "n");
+        assert_eq!(e.numeric_id.as_deref(), Some("42"));
     }
 
     #[test]
     fn parse_polymarket_event_closed_event_yields_closed_status() {
-        let v = serde_json::json!({ "id": "x", "title": "t", "closed": true });
+        let v = serde_json::json!({ "id": "x", "slug": "x", "title": "t", "closed": true });
         let e = parse_polymarket_event(&v).expect("parse");
         assert_eq!(e.status.as_deref(), Some("closed"));
     }
@@ -3914,6 +3888,7 @@ mod tests {
     fn parse_polymarket_series_minimal() {
         let v = serde_json::json!({
             "id": 7,
+            "ticker": "weekly-nfp",
             "title": "Weekly NFP",
             "category": "Economics",
             "recurrence": "weekly",
@@ -3921,12 +3896,25 @@ mod tests {
             "volume": "98765.43",
         });
         let s = parse_polymarket_series(&v).expect("parse");
-        assert_eq!(s.id, "7");
+        assert_eq!(s.ticker, "weekly-nfp");
+        assert_eq!(s.numeric_id.as_deref(), Some("7"));
         assert_eq!(s.title, "Weekly NFP");
         assert_eq!(s.category.as_deref(), Some("Economics"));
         assert_eq!(s.frequency.as_deref(), Some("weekly"));
         assert_eq!(s.volume, Some(98_765.43));
         assert!(s.last_updated_ts.is_some());
+    }
+
+    #[test]
+    fn parse_polymarket_series_falls_back_to_slug_when_ticker_missing() {
+        let v = serde_json::json!({
+            "id": 8,
+            "slug": "fed-decisions",
+            "title": "Fed Rate Decisions",
+        });
+        let s = parse_polymarket_series(&v).expect("parse");
+        assert_eq!(s.ticker, "fed-decisions");
+        assert_eq!(s.numeric_id.as_deref(), Some("8"));
     }
 
     // --- Batch 3 parser tests ---
@@ -3952,7 +3940,7 @@ mod tests {
         });
         let b = parse_polymarket_book(&v).expect("parse");
         assert_eq!(b.asset_id, "0xTOKEN");
-        assert_eq!(b.market_id, "0xCONDITION");
+        assert_eq!(b.market_ticker, "0xCONDITION");
         assert_eq!(b.hash.as_deref(), Some("abc"));
         // bids sorted descending — best bid first.
         assert!(b.best_bid().unwrap() >= 0.59);

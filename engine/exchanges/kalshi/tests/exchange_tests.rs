@@ -257,7 +257,7 @@ async fn fetch_trades_no_outcome_uses_real_no_price() {
 
     // Query with outcome=No
     let req = TradesRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         market_ref: None,
         outcome: Some("No".into()),
         token_id: None,
@@ -337,7 +337,7 @@ async fn fetch_trades_yes_outcome_uses_yes_price() {
 
     // Query with outcome=Yes (default)
     let req = TradesRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         market_ref: None,
         outcome: Some("Yes".into()),
         token_id: None,
@@ -415,7 +415,7 @@ async fn test_fetch_price_history_parses_candlesticks() {
 
     // #when
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -499,7 +499,7 @@ async fn test_fetch_price_history_skips_null_ohlc() {
 
     // #when
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -783,7 +783,7 @@ async fn test_fetch_orderbook_requires_auth() {
 
     // #when
     let req = OrderbookRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
     };
@@ -1016,7 +1016,7 @@ async fn test_fetch_price_history_unsupported_interval() {
 
     // #when - SixHours is not supported by Kalshi
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -1193,7 +1193,7 @@ async fn test_fetch_trades_empty_response() {
 
     // #when
     let req = TradesRequest {
-        market_id: "EMPTY-MKT".into(),
+        market_ticker: "EMPTY-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1234,7 +1234,7 @@ async fn test_fetch_trades_returns_cursor() {
 
     // #when
     let req = TradesRequest {
-        market_id: "TEST-MKT".into(),
+        market_ticker: "TEST-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1285,7 +1285,7 @@ async fn test_fetch_trades_filters_zero_size() {
 
     // #when
     let req = TradesRequest {
-        market_id: "TEST-MKT".into(),
+        market_ticker: "TEST-MKT".into(),
         outcome: Some("Yes".into()),
         ..Default::default()
     };
@@ -1468,7 +1468,7 @@ async fn test_fetch_markets_with_series_id() {
 
     // #when
     let params = FetchMarketsParams {
-        series_id: Some("INXD".to_string()),
+        series_ticker: Some("INXD".to_string()),
         ..Default::default()
     };
     let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
@@ -1502,7 +1502,7 @@ async fn test_fetch_markets_with_series_id_and_status() {
 
     // #when
     let params = FetchMarketsParams {
-        series_id: Some("KXBTC".to_string()),
+        series_ticker: Some("KXBTC".to_string()),
         status: Some(MarketStatusFilter::Resolved),
         ..Default::default()
     };
@@ -1631,4 +1631,131 @@ async fn test_fetch_markets_with_event_id_status_all() {
     // #then
     assert_eq!(markets.len(), 2);
     assert!(cursor.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// fetch_market_lineage: market → event → series, sequential
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_market_lineage_full_chain() {
+    let mock_server = MockServer::start().await;
+
+    // 1) Market lookup
+    Mock::given(method("GET"))
+        .and(path("/markets/KXPRES-2028-DJT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "market": {
+                "ticker": "KXPRES-2028-DJT",
+                "event_ticker": "KXPRES-2028",
+                "title": "Donald Trump",
+                "yes_sub_title": "Yes",
+                "no_sub_title": "No",
+                "status": "active",
+                "yes_ask": 42,
+                "yes_bid": 41,
+                "last_price": 42,
+                "volume": 100000,
+                "market_type": "binary"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // 2) Event lookup
+    Mock::given(method("GET"))
+        .and(path("/events/KXPRES-2028"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "event": {
+                "event_ticker": "KXPRES-2028",
+                "title": "2028 US Presidential Election",
+                "sub_title": "Winner",
+                "series_ticker": "KXPRES",
+                "mutually_exclusive": true,
+                "markets": [
+                    { "ticker": "KXPRES-2028-DJT" },
+                    { "ticker": "KXPRES-2028-KH" }
+                ]
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // 3) Series lookup
+    Mock::given(method("GET"))
+        .and(path("/series/KXPRES"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "series": {
+                "ticker": "KXPRES",
+                "title": "US Presidential Elections",
+                "category": "Politics",
+                "frequency": "quadrennial",
+                "tags": ["politics", "elections"],
+                "settlement_sources": [{ "name": "AP", "url": "https://apnews.com" }],
+                "fee_type": "quadratic"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    let lineage = exchange
+        .fetch_market_lineage("KXPRES-2028-DJT")
+        .await
+        .unwrap();
+
+    assert_eq!(lineage.market.ticker, "KXPRES-2028-DJT");
+    let event = lineage.event.as_ref().expect("event present");
+    assert_eq!(event.ticker, "KXPRES-2028");
+    assert_eq!(event.series_ticker.as_deref(), Some("KXPRES"));
+    assert!(event.numeric_id.is_none());
+    assert_eq!(event.market_tickers.len(), 2);
+    let series = lineage.series.as_ref().expect("series present");
+    assert_eq!(series.ticker, "KXPRES");
+    assert!(series.numeric_id.is_none());
+    assert_eq!(series.frequency.as_deref(), Some("quadrennial"));
+}
+
+#[tokio::test]
+async fn test_fetch_market_lineage_returns_none_event_when_lookup_fails() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/markets/STANDALONE-MKT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "market": {
+                "ticker": "STANDALONE-MKT",
+                "event_ticker": "MISSING-EVENT",
+                "title": "Standalone",
+                "yes_sub_title": "Yes",
+                "no_sub_title": "No",
+                "status": "active",
+                "yes_ask": 50,
+                "market_type": "binary"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/MISSING-EVENT"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    let lineage = exchange
+        .fetch_market_lineage("STANDALONE-MKT")
+        .await
+        .unwrap();
+
+    assert_eq!(lineage.market.ticker, "STANDALONE-MKT");
+    assert!(lineage.event.is_none());
+    assert!(lineage.series.is_none());
 }

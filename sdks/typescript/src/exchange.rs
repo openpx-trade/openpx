@@ -68,7 +68,8 @@ impl Exchange {
         &self,
         status: Option<String>,
         cursor: Option<String>,
-        series_id: Option<String>,
+        market_tickers: Option<Vec<String>>,
+        series_ticker: Option<String>,
         event_ticker: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
@@ -79,7 +80,8 @@ impl Exchange {
                 .transpose()
                 .map_err(to_napi_err)?,
             cursor,
-            series_id,
+            market_tickers: market_tickers.unwrap_or_default(),
+            series_ticker,
             event_ticker,
             ..Default::default()
         };
@@ -93,11 +95,11 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_market(&self, market_id: String) -> Result<serde_json::Value> {
+    pub async fn fetch_market_lineage(&self, market_ticker: String) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.fetch_market(&market_id).await })
+            .spawn(async move { inner.fetch_market_lineage(&market_ticker).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -107,7 +109,7 @@ impl Exchange {
     #[napi]
     pub async fn create_order(
         &self,
-        market_id: String,
+        market_ticker: String,
         outcome: String,
         side: String,
         price: f64,
@@ -124,7 +126,7 @@ impl Exchange {
         let result = rt
             .spawn(async move {
                 inner
-                    .create_order(&market_id, &outcome, order_side, price, size, extra)
+                    .create_order(&market_ticker, &outcome, order_side, price, size, extra)
                     .await
             })
             .await
@@ -137,12 +139,16 @@ impl Exchange {
     pub async fn cancel_order(
         &self,
         order_id: String,
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.cancel_order(&order_id, market_id.as_deref()).await })
+            .spawn(async move {
+                inner
+                    .cancel_order(&order_id, market_ticker.as_deref())
+                    .await
+            })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -153,12 +159,12 @@ impl Exchange {
     pub async fn fetch_order(
         &self,
         order_id: String,
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.fetch_order(&order_id, market_id.as_deref()).await })
+            .spawn(async move { inner.fetch_order(&order_id, market_ticker.as_deref()).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -166,13 +172,16 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_open_orders(&self, market_id: Option<String>) -> Result<serde_json::Value> {
+    pub async fn fetch_open_orders(
+        &self,
+        market_ticker: Option<String>,
+    ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
             .spawn(async move {
-                let params = market_id.map(|mid| px_core::FetchOrdersParams {
-                    market_id: Some(mid),
+                let params = market_ticker.map(|mid| px_core::FetchOrdersParams {
+                    market_ticker: Some(mid),
                 });
                 inner.fetch_open_orders(params).await
             })
@@ -183,11 +192,14 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_positions(&self, market_id: Option<String>) -> Result<serde_json::Value> {
+    pub async fn fetch_positions(
+        &self,
+        market_ticker: Option<String>,
+    ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.fetch_positions(market_id.as_deref()).await })
+            .spawn(async move { inner.fetch_positions(market_ticker.as_deref()).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -209,13 +221,13 @@ impl Exchange {
     #[napi]
     pub async fn fetch_orderbook(
         &self,
-        market_id: String,
+        market_ticker: String,
         outcome: Option<String>,
         token_id: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let req = px_core::OrderbookRequest {
-            market_id,
+            market_ticker,
             outcome,
             token_id,
         };
@@ -231,7 +243,7 @@ impl Exchange {
     #[napi]
     pub async fn fetch_fills(
         &self,
-        market_id: Option<String>,
+        market_ticker: Option<String>,
         limit: Option<u32>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
@@ -239,7 +251,7 @@ impl Exchange {
         let result = rt
             .spawn(async move {
                 inner
-                    .fetch_fills(market_id.as_deref(), limit.map(|l| l as usize))
+                    .fetch_fills(market_ticker.as_deref(), limit.map(|l| l as usize))
                     .await
             })
             .await
@@ -252,7 +264,7 @@ impl Exchange {
     #[allow(clippy::too_many_arguments)]
     pub async fn fetch_price_history(
         &self,
-        market_id: String,
+        market_ticker: String,
         interval: String,
         outcome: Option<String>,
         token_id: Option<String>,
@@ -264,7 +276,7 @@ impl Exchange {
         let parsed_interval: px_core::PriceHistoryInterval =
             interval.parse().map_err(|e: String| to_napi_err(e))?;
         let req = px_core::PriceHistoryRequest {
-            market_id,
+            market_ticker,
             outcome,
             token_id,
             condition_id,
@@ -285,7 +297,7 @@ impl Exchange {
     #[allow(clippy::too_many_arguments)]
     pub async fn fetch_trades(
         &self,
-        market_id: String,
+        market_ticker: String,
         market_ref: Option<String>,
         outcome: Option<String>,
         token_id: Option<String>,
@@ -296,7 +308,7 @@ impl Exchange {
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let req = px_core::TradesRequest {
-            market_id,
+            market_ticker,
             market_ref,
             outcome,
             token_id,
@@ -318,7 +330,7 @@ impl Exchange {
     #[napi]
     pub async fn fetch_orderbook_history(
         &self,
-        market_id: String,
+        market_ticker: String,
         token_id: Option<String>,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
@@ -327,7 +339,7 @@ impl Exchange {
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let req = px_core::OrderbookHistoryRequest {
-            market_id,
+            market_ticker,
             token_id,
             start_ts,
             end_ts,

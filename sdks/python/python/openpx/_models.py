@@ -64,38 +64,29 @@ class Event(BaseModel):
     category: str | None = None
     description: str | None = None
     end_ts: AwareDatetime | None = None
-    id: str
     last_updated_ts: AwareDatetime | None = None
-    market_ids: list[str] | None = []
+    market_tickers: list[str] | None = Field(
+        [],
+        description="Sibling market market_tickers under this event — unified `Market.ticker` values (Kalshi market market_tickers; Polymarket slugs).",
+    )
     mutually_exclusive: bool | None = None
+    numeric_id: str | None = Field(
+        None,
+        description='Polymarket\'s numeric REST id for the event (e.g. `"12585"`). None on Kalshi (no separate numeric event surface).',
+    )
     open_interest: float | None = None
-    series_id: str | None = None
-    slug: str | None = None
+    series_ticker: str | None = Field(
+        None,
+        description="Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series's `ticker` (or `slug` if `ticker` is null).",
+    )
     start_ts: AwareDatetime | None = None
     status: str | None = None
+    ticker: str = Field(
+        ...,
+        description='Native event identifier. Kalshi: `event_ticker` (e.g. `"KXPRES-2028"`). Polymarket: the event slug (e.g. `"presidential-election-winner-2024"`).',
+    )
     title: str
     volume: float | None = None
-
-
-class EventsRequest(BaseModel):
-    cursor: str | None = None
-    limit: conint(ge=0) | None = None
-    min_close_ts: int | None = Field(
-        None,
-        description="Unix seconds — only events closing at or after this timestamp.",
-    )
-    min_updated_ts: int | None = Field(
-        None,
-        description="Unix seconds — only events updated at or after this timestamp.",
-    )
-    series_id: str | None = Field(None, description="Filter by series ID / ticker.")
-    status: str | None = Field(
-        None,
-        description="Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).",
-    )
-    with_nested_markets: bool | None = Field(
-        None, description="Include the events' nested `Market` objects when supported."
-    )
 
 
 class ExchangeInfo(BaseModel):
@@ -105,10 +96,9 @@ class ExchangeInfo(BaseModel):
     has_create_order: bool
     has_create_orders_batch: bool
     has_fetch_balance: bool
-    has_fetch_event: bool
-    has_fetch_events: bool
     has_fetch_fills: bool
     has_fetch_last_trade_price: bool
+    has_fetch_market_lineage: bool
     has_fetch_market_tags: bool
     has_fetch_markets: bool
     has_fetch_midpoint: bool
@@ -119,8 +109,6 @@ class ExchangeInfo(BaseModel):
     has_fetch_orderbooks_batch: bool
     has_fetch_positions: bool
     has_fetch_price_history: bool
-    has_fetch_series: bool
-    has_fetch_series_one: bool
     has_fetch_server_time: bool
     has_fetch_spread: bool
     has_fetch_trades: bool
@@ -133,7 +121,7 @@ class ExchangeInfo(BaseModel):
 
 
 class FetchOrdersParams(BaseModel):
-    market_id: str | None = None
+    market_ticker: str | None = None
 
 
 class FetchUserActivityParams(BaseModel):
@@ -206,7 +194,7 @@ class MarketType(Enum):
 
 
 class MidpointRequest(BaseModel):
-    market_id: str
+    market_ticker: str
     outcome: str | None = None
     token_id: str | None = None
 
@@ -235,13 +223,13 @@ class OrderbookHistoryRequest(BaseModel):
     cursor: str | None = None
     end_ts: int | None = None
     limit: conint(ge=0) | None = None
-    market_id: str
+    market_ticker: str
     start_ts: int | None = None
     token_id: str | None = None
 
 
 class OrderbookRequest(BaseModel):
-    market_id: str
+    market_ticker: str
     outcome: str | None = None
     token_id: str | None = None
 
@@ -264,7 +252,7 @@ class Outcome(BaseModel):
 class Position(BaseModel):
     average_price: float
     current_price: float
-    market_id: str
+    market_ticker: str
     outcome: str
     size: float
 
@@ -284,7 +272,7 @@ class PriceHistoryRequest(BaseModel):
     )
     end_ts: int | None = Field(None, description="Unix seconds")
     interval: PriceHistoryInterval
-    market_id: str
+    market_ticker: str
     outcome: str | None = None
     start_ts: int | None = Field(None, description="Unix seconds")
     token_id: str | None = None
@@ -293,18 +281,6 @@ class PriceHistoryRequest(BaseModel):
 class PriceLevelSide(Enum):
     bid = "bid"
     ask = "ask"
-
-
-class SeriesRequest(BaseModel):
-    category: str | None = Field(
-        None, description="Filter by category (e.g. `Politics`, `Sports`)."
-    )
-    cursor: str | None = None
-    include_volume: bool | None = Field(
-        None,
-        description="Include traded volume in the response when the venue supports it.",
-    )
-    limit: conint(ge=0) | None = None
 
 
 class Kind(Enum):
@@ -411,11 +387,11 @@ class TradesRequest(BaseModel):
         None,
         description="Max number of trades to return (exchange-specific caps may apply).",
     )
-    market_id: str = Field(..., description="Exchange-native market identifier.")
     market_ref: str | None = Field(
         None,
-        description="Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`.",
+        description="Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_ticker`.",
     )
+    market_ticker: str = Field(..., description="Exchange-native market identifier.")
     outcome: str | None = None
     start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     token_id: str | None = None
@@ -426,7 +402,7 @@ class UserTrade(BaseModel):
     condition_id: str | None = None
     fee: float | None = None
     id: str
-    market_id: str
+    market_ticker: str
     owner: str | None = None
     price: float
     realized_pnl: float | None = None
@@ -441,7 +417,7 @@ class UserTradesRequest(BaseModel):
     cursor: str | None = None
     end_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     limit: conint(ge=0) | None = None
-    market_id: str | None = None
+    market_ticker: str | None = None
     side: OrderSide | None = None
     start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     user_address: str | None = Field(
@@ -525,15 +501,19 @@ class FetchMarketsParams(BaseModel):
     )
     event_ticker: str | None = Field(
         None,
-        description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
+        description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event slug (e.g., `"will-trump-win-2024"`). Polymarket numeric event IDs are not accepted — they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
     )
     limit: conint(ge=0) | None = Field(
         None,
         description="Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.",
     )
-    series_id: str | None = Field(
+    market_tickers: list[str] | None = Field(
+        [],
+        description='Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g., `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`, and `series_ticker` are ignored.',
+    )
+    series_ticker: str | None = Field(
         None,
-        description='Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`) or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.',
+        description='Filter by series ticker. Pass a Kalshi series ticker (e.g., `"KXBTC"`) to fetch only markets in that series. Polymarket support arrives once `series_numeric_id` is added to this struct — until then, this field is ignored on Polymarket.',
     )
     status: MarketStatusFilter | None = Field(
         None,
@@ -546,7 +526,7 @@ class Fill(BaseModel):
     fee: float
     fill_id: str
     is_taker: bool
-    market_id: str
+    market_ticker: str
     order_id: str
     outcome: str
     price: float
@@ -630,7 +610,7 @@ class NewOrder(BaseModel):
         None,
         description="Unix seconds. Required for `OrderType::Gtc` orders that should expire.",
     )
-    market_id: str
+    market_ticker: str
     order_type: OrderType
     outcome: str
     post_only: bool | None = Field(
@@ -649,7 +629,7 @@ class Order(BaseModel):
     created_at: AwareDatetime
     filled: float
     id: str
-    market_id: str
+    market_ticker: str
     outcome: str
     price: float
     side: OrderSide
@@ -673,10 +653,17 @@ class Series(BaseModel):
     category: str | None = None
     fee_type: str | None = None
     frequency: str | None = None
-    id: str
     last_updated_ts: AwareDatetime | None = None
+    numeric_id: str | None = Field(
+        None,
+        description='Polymarket\'s numeric REST id for the series (e.g. `"10345"`). None on Kalshi (no separate numeric series surface).',
+    )
     settlement_sources: list[SettlementSource] | None = Field([], validate_default=True)
     tags: list[str] | None = []
+    ticker: str = Field(
+        ...,
+        description='Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`). Polymarket: the series\'s `ticker` field, falling back to `slug` when `ticker` is null upstream.',
+    )
     title: str
     volume: float | None = None
 
@@ -697,6 +684,12 @@ class WsUpdate5(BaseModel):
     local_ts_ms: conint(ge=0)
 
 
+class MarketLineage(BaseModel):
+    event: Event | None = None
+    market: Market
+    series: Series | None = None
+
+
 class Orderbook(BaseModel):
     asks: list[PriceLevel]
     asset_id: str
@@ -706,7 +699,7 @@ class Orderbook(BaseModel):
         description="Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.",
     )
     last_update_id: conint(ge=0) | None = None
-    market_id: str
+    market_ticker: str
     timestamp: AwareDatetime | None = None
 
 

@@ -21,9 +21,9 @@ class WebSocket:
 
         for update in ws.updates():
             match update:
-                case Snapshot(market_id, book, exchange_ts, local_ts_ms, seq):
+                case Snapshot(market_ticker, book, exchange_ts, local_ts_ms, seq):
                     ...
-                case Delta(market_id, changes, exchange_ts, local_ts_ms, seq):
+                case Delta(market_ticker, changes, exchange_ts, local_ts_ms, seq):
                     ...
                 case Trade(trade, local_ts_ms):
                     ...
@@ -49,13 +49,13 @@ class WebSocket:
         """Disconnect from the WebSocket server."""
         self._native.disconnect()
 
-    def subscribe(self, market_id: str) -> None:
+    def subscribe(self, market_ticker: str) -> None:
         """Subscribe to orderbook updates for a market."""
-        self._native.subscribe(market_id)
+        self._native.subscribe(market_ticker)
 
-    def unsubscribe(self, market_id: str) -> None:
+    def unsubscribe(self, market_ticker: str) -> None:
         """Unsubscribe from a market."""
-        self._native.unsubscribe(market_id)
+        self._native.unsubscribe(market_ticker)
 
     @property
     def state(self) -> str:

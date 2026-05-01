@@ -1,5 +1,6 @@
 mod crypto;
 mod event;
+mod lineage;
 mod market;
 mod order;
 mod orderbook;
@@ -11,6 +12,7 @@ mod trade;
 
 pub use crypto::*;
 pub use event::*;
+pub use lineage::*;
 pub use market::*;
 pub use order::*;
 pub use orderbook::*;

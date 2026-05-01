@@ -159,7 +159,7 @@ impl PriceLevel {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Orderbook {
-    pub market_id: String,
+    pub market_ticker: String,
     pub asset_id: String,
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
@@ -246,7 +246,7 @@ impl Orderbook {
         sort_asks(&mut parsed_asks);
 
         Self {
-            market_id: String::new(),
+            market_ticker: String::new(),
             asset_id: asset_id.into(),
             bids: parsed_bids,
             asks: parsed_asks,

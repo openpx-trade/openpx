@@ -50,20 +50,20 @@ impl WebSocket {
     }
 
     #[napi]
-    pub async fn subscribe(&self, market_id: String) -> Result<()> {
+    pub async fn subscribe(&self, market_ticker: String) -> Result<()> {
         let ws = self.inner.clone();
         let rt = get_runtime();
-        rt.spawn(async move { ws.lock().await.subscribe(&market_id).await })
+        rt.spawn(async move { ws.lock().await.subscribe(&market_ticker).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)
     }
 
     #[napi]
-    pub async fn unsubscribe(&self, market_id: String) -> Result<()> {
+    pub async fn unsubscribe(&self, market_ticker: String) -> Result<()> {
         let ws = self.inner.clone();
         let rt = get_runtime();
-        rt.spawn(async move { ws.lock().await.unsubscribe(&market_id).await })
+        rt.spawn(async move { ws.lock().await.unsubscribe(&market_ticker).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)

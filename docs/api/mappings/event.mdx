@@ -1,0 +1,43 @@
+---
+title: "Event mapping"
+description: "How each upstream exchange schema maps to OpenPX Event."
+---
+
+_A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme (e.g. "2028 US Presidential Election" with markets per candidate)._
+
+## Coverage
+
+| Exchange | Sourced | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 7 | 1 | 6 |
+| polymarket | 12 | 2 | 0 |
+
+**Sourced** — value copied or transformed from a documented upstream field.  
+**Synthetic** — computed by OpenPX, not present upstream.  
+**Omitted** — upstream does not expose this concept.  
+
+## Field crosswalk
+
+| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
+|---|---|---|---|---|---|
+| `ticker` | string | `EventData.event_ticker` (string) | `Event.slug` (string) | direct | **kalshi:** Kalshi's primary event identifier — slug-shaped, human-readable. **polymarket:** Polymarket events have both a numeric `id` and a human-readable `slug`; we pick `slug` as the unified ticker (parallel to the Market.ticker = slug choice). The numeric id moves to `numeric_id`. |
+| `numeric_id` | string? | _not exposed_ | `Event.id` (string) | direct | **kalshi:** Kalshi has no separate numeric event surface. |
+| `title` | string | `EventData.title` (string) | `Event.title` (string) | direct |  |
+| `description` | string? | `EventData.sub_title` (string) | `Event.description` (string) | direct | **kalshi:** Kalshi exposes the human prose under `sub_title` on event payloads (the title is the question; the sub_title is the disambiguating gloss). Empty strings are treated as None. |
+| `category` | string? | _not exposed_ | `Event.category` (string) | direct | **kalshi:** Kalshi events don't carry a `category` field directly; the category lives on the parent Series. Filled in by `fetch_market_lineage` only when the caller traverses up to series. |
+| `series_ticker` | string? | `EventData.series_ticker` (string) | _computed_ — events.series[0].ticker (fallback to slug when ticker is null) | direct / synthetic | **polymarket:** Polymarket embeds `series: Series[]` on each event; we read the first element's `ticker` (preferred) or `slug` (fallback). The unified model is single-parent, so additional series entries are not surfaced. Sources: Event.series[0].ticker, Event.series[0].slug. |
+| `market_tickers` | array | _computed_ — `markets[*].ticker from /events/{event_ticker}?with_nested_markets=true` | _computed_ — events.markets[*].slug | synthetic | **kalshi:** Sourced from the nested `markets[]` array on the upstream event response when `with_nested_markets=true`, falling back to the sibling top-level `markets[]` field when present. **polymarket:** Each child market's `slug` is harvested as the unified ticker identifier — matches `Market.ticker = slug` semantics on Polymarket. Source: Event.markets[*].slug. |
+| `status` | string? | _not exposed_ | `Event.closed` (boolean) | bool_to_status | **kalshi:** Kalshi's GetEvent response doesn't expose a single `status` field at the event level (lifecycle is per-market). Left None on the unified shape; callers infer status from the contained markets. **polymarket:** Polymarket exposes `closed: bool`; we derive `status = "closed"` when true, otherwise `"open"`. The Polymarket `active` and `archived` booleans are not currently surfaced. |
+| `start_ts` | string? (date-time) | _not exposed_ | `Event.startDate` (string (date-time)) | parse_datetime | **kalshi:** Kalshi events expose only `strike_date` (resolution time), no separate start. |
+| `end_ts` | string? (date-time) | `EventData.strike_date` (string (date-time)) | `Event.endDate` (string (date-time)) | parse_datetime | **kalshi:** Kalshi's strike_date is the resolution / end timestamp. |
+| `last_updated_ts` | string? (date-time) | `EventData.last_updated_ts` (string (date-time)) | `Event.updatedAt` (string (date-time)) | parse_datetime |  |
+| `volume` | number? (double) | _not exposed_ | `Event.volume` (number) | direct | **kalshi:** Kalshi events don't aggregate volume at the event level on the standard GetEvent payload; surface only series-level volume. |
+| `open_interest` | number? (double) | _not exposed_ | `openInterest` — _spec gap_ | direct | **polymarket:** Spec gap: gamma OpenAPI declares `openInterestAmm` but live event payloads also return a flat `openInterest` aggregate. The parser reads the flat field directly. Re-check on each daily upstream refresh — when Polymarket adds it to the spec, promote to `ref:`. |
+| `mutually_exclusive` | boolean? | `EventData.mutually_exclusive` (boolean) | `Event.negRisk` (boolean) | direct | **kalshi:** Kalshi exposes a dedicated boolean for events whose child markets are mutually exclusive (only one outcome resolves YES across the event). True for races, false for binary referenda. **polymarket:** Polymarket's `negRisk` flag carries the same semantics for neg-risk categorical events (pick-one-of-N). The parser also accepts a `mutuallyExclusive` field if upstream ever surfaces it, but `negRisk` is the canonical field today. |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket-gamma.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-gamma.openapi.yaml)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.

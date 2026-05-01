@@ -268,9 +268,6 @@
             "null"
           ]
         },
-        "id": {
-          "type": "string"
-        },
         "last_updated_ts": {
           "format": "date-time",
           "type": [
@@ -278,8 +275,9 @@
             "null"
           ]
         },
-        "market_ids": {
+        "market_tickers": {
           "default": [],
+          "description": "Sibling market market_tickers under this event — unified `Market.ticker` values (Kalshi market market_tickers; Polymarket slugs).",
           "items": {
             "type": "string"
           },
@@ -291,6 +289,13 @@
             "null"
           ]
         },
+        "numeric_id": {
+          "description": "Polymarket's numeric REST id for the event (e.g. `\"12585\"`). None on Kalshi (no separate numeric event surface).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "open_interest": {
           "format": "double",
           "type": [
@@ -298,13 +303,8 @@
             "null"
           ]
         },
-        "series_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "slug": {
+        "series_ticker": {
+          "description": "Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series's `ticker` (or `slug` if `ticker` is null).",
           "type": [
             "string",
             "null"
@@ -323,6 +323,10 @@
             "null"
           ]
         },
+        "ticker": {
+          "description": "Native event identifier. Kalshi: `event_ticker` (e.g. `\"KXPRES-2028\"`). Polymarket: the event slug (e.g. `\"presidential-election-winner-2024\"`).",
+          "type": "string"
+        },
         "title": {
           "type": "string"
         },
@@ -335,68 +339,9 @@
         }
       },
       "required": [
-        "id",
+        "ticker",
         "title"
       ],
-      "title": "Event",
-      "type": "object"
-    },
-    "EventsRequest": {
-      "description": "Request for fetching events.",
-      "properties": {
-        "cursor": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "uint",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "min_close_ts": {
-          "description": "Unix seconds — only events closing at or after this timestamp.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "min_updated_ts": {
-          "description": "Unix seconds — only events updated at or after this timestamp.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "series_id": {
-          "description": "Filter by series ID / ticker.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status": {
-          "description": "Filter by lifecycle status — venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi; `closed=true/false` on Polymarket).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "with_nested_markets": {
-          "description": "Include the events' nested `Market` objects when supported.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        }
-      },
-      "title": "EventsRequest",
       "type": "object"
     },
     "ExchangeInfo": {
@@ -419,16 +364,13 @@
         "has_fetch_balance": {
           "type": "boolean"
         },
-        "has_fetch_event": {
-          "type": "boolean"
-        },
-        "has_fetch_events": {
-          "type": "boolean"
-        },
         "has_fetch_fills": {
           "type": "boolean"
         },
         "has_fetch_last_trade_price": {
+          "type": "boolean"
+        },
+        "has_fetch_market_lineage": {
           "type": "boolean"
         },
         "has_fetch_market_tags": {
@@ -459,12 +401,6 @@
           "type": "boolean"
         },
         "has_fetch_price_history": {
-          "type": "boolean"
-        },
-        "has_fetch_series": {
-          "type": "boolean"
-        },
-        "has_fetch_series_one": {
           "type": "boolean"
         },
         "has_fetch_server_time": {
@@ -502,10 +438,9 @@
         "has_create_order",
         "has_create_orders_batch",
         "has_fetch_balance",
-        "has_fetch_event",
-        "has_fetch_events",
         "has_fetch_fills",
         "has_fetch_last_trade_price",
+        "has_fetch_market_lineage",
         "has_fetch_market_tags",
         "has_fetch_markets",
         "has_fetch_midpoint",
@@ -516,8 +451,6 @@
         "has_fetch_orderbooks_batch",
         "has_fetch_positions",
         "has_fetch_price_history",
-        "has_fetch_series",
-        "has_fetch_series_one",
         "has_fetch_server_time",
         "has_fetch_spread",
         "has_fetch_trades",
@@ -543,7 +476,7 @@
         },
         "event_ticker": {
           "default": null,
-          "description": "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`) or a Polymarket event ID or slug (e.g., `\"903\"` or `\"will-trump-win-2024\"`) to get its child markets. When set, `series_id`, `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.",
+          "description": "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`) or a Polymarket event slug (e.g., `\"will-trump-win-2024\"`). Polymarket numeric event IDs are not accepted — they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not paginated). `status` filtering is still applied client-side.",
           "type": [
             "string",
             "null"
@@ -558,9 +491,17 @@
             "null"
           ]
         },
-        "series_id": {
+        "market_tickers": {
+          "default": [],
+          "description": "Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g., `\"KXBTCD-25APR1517\"`) or a Polymarket market slug (e.g., `\"will-trump-win-2024\"`). When non-empty, `cursor`, `event_ticker`, and `series_ticker` are ignored.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "series_ticker": {
           "default": null,
-          "description": "Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) or a Polymarket series ID (e.g., `\"10345\"`) to fetch only markets in that series.",
+          "description": "Filter by series ticker. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) to fetch only markets in that series. Polymarket support arrives once `series_numeric_id` is added to this struct — until then, this field is ignored on Polymarket.",
           "type": [
             "string",
             "null"
@@ -584,7 +525,7 @@
     },
     "FetchOrdersParams": {
       "properties": {
-        "market_id": {
+        "market_ticker": {
           "type": [
             "string",
             "null"
@@ -631,7 +572,7 @@
         "is_taker": {
           "type": "boolean"
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "order_id": {
@@ -657,7 +598,7 @@
         "fee",
         "fill_id",
         "is_taker",
-        "market_id",
+        "market_ticker",
         "order_id",
         "outcome",
         "price",
@@ -930,7 +871,39 @@
         "title",
         "volume"
       ],
-      "title": "Market",
+      "type": "object"
+    },
+    "MarketLineage": {
+      "description": "A market plus the parent event and series that contextualize it.\n\n`event` and `series` are `Option` because: - some markets have no parent event surface (Kalshi standalone markets); - the upstream lookup for the parent may legitimately 404 on a dangling reference. A dangling parent should not fail the whole call — the caller still gets the `Market`.",
+      "properties": {
+        "event": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Event"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "market": {
+          "$ref": "#/definitions/Market"
+        },
+        "series": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Series"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "market"
+      ],
+      "title": "MarketLineage",
       "type": "object"
     },
     "MarketStatus": {
@@ -940,7 +913,6 @@
         "closed",
         "resolved"
       ],
-      "title": "MarketStatus",
       "type": "string"
     },
     "MarketStatusFilter": {
@@ -1038,13 +1010,12 @@
         "categorical",
         "scalar"
       ],
-      "title": "MarketType",
       "type": "string"
     },
     "MidpointRequest": {
       "description": "Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since they target the same outcome and accept the same identifier inputs.",
       "properties": {
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "outcome": {
@@ -1061,7 +1032,7 @@
         }
       },
       "required": [
-        "market_id"
+        "market_ticker"
       ],
       "title": "MidpointRequest",
       "type": "object"
@@ -1084,7 +1055,7 @@
             "null"
           ]
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "order_type": {
@@ -1120,7 +1091,7 @@
         }
       },
       "required": [
-        "market_id",
+        "market_ticker",
         "order_type",
         "outcome",
         "price",
@@ -1143,7 +1114,7 @@
         "id": {
           "type": "string"
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "outcome": {
@@ -1176,7 +1147,7 @@
         "created_at",
         "filled",
         "id",
-        "market_id",
+        "market_ticker",
         "outcome",
         "price",
         "side",
@@ -1246,7 +1217,7 @@
             "null"
           ]
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "timestamp": {
@@ -1261,7 +1232,7 @@
         "asks",
         "asset_id",
         "bids",
-        "market_id"
+        "market_ticker"
       ],
       "type": "object"
     },
@@ -1288,7 +1259,7 @@
             "null"
           ]
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "start_ts": {
@@ -1306,7 +1277,7 @@
         }
       },
       "required": [
-        "market_id"
+        "market_ticker"
       ],
       "title": "OrderbookHistoryRequest",
       "type": "object"
@@ -1314,7 +1285,7 @@
     "OrderbookRequest": {
       "description": "Request for fetching an L2 orderbook.",
       "properties": {
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "outcome": {
@@ -1331,7 +1302,7 @@
         }
       },
       "required": [
-        "market_id"
+        "market_ticker"
       ],
       "title": "OrderbookRequest",
       "type": "object"
@@ -1403,7 +1374,6 @@
       "required": [
         "label"
       ],
-      "title": "Outcome",
       "type": "object"
     },
     "Position": {
@@ -1416,7 +1386,7 @@
           "format": "double",
           "type": "number"
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "outcome": {
@@ -1430,7 +1400,7 @@
       "required": [
         "average_price",
         "current_price",
-        "market_id",
+        "market_ticker",
         "outcome",
         "size"
       ],
@@ -1469,7 +1439,7 @@
         "interval": {
           "$ref": "#/definitions/PriceHistoryInterval"
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "outcome": {
@@ -1495,7 +1465,7 @@
       },
       "required": [
         "interval",
-        "market_id"
+        "market_ticker"
       ],
       "title": "PriceHistoryRequest",
       "type": "object"
@@ -1566,11 +1536,15 @@
             "null"
           ]
         },
-        "id": {
-          "type": "string"
-        },
         "last_updated_ts": {
           "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "numeric_id": {
+          "description": "Polymarket's numeric REST id for the series (e.g. `\"10345\"`). None on Kalshi (no separate numeric series surface).",
           "type": [
             "string",
             "null"
@@ -1590,6 +1564,10 @@
           },
           "type": "array"
         },
+        "ticker": {
+          "description": "Native series identifier. Kalshi: `ticker` (e.g. `\"KXPRES\"`). Polymarket: the series's `ticker` field, falling back to `slug` when `ticker` is null upstream.",
+          "type": "string"
+        },
         "title": {
           "type": "string"
         },
@@ -1602,45 +1580,9 @@
         }
       },
       "required": [
-        "id",
+        "ticker",
         "title"
       ],
-      "title": "Series",
-      "type": "object"
-    },
-    "SeriesRequest": {
-      "description": "Request for fetching series.",
-      "properties": {
-        "category": {
-          "description": "Filter by category (e.g. `Politics`, `Sports`).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "cursor": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "include_volume": {
-          "description": "Include traded volume in the response when the venue supports it.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "uint",
-          "minimum": 0.0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "title": "SeriesRequest",
       "type": "object"
     },
     "SessionEvent": {
@@ -1775,7 +1717,6 @@
           ]
         }
       },
-      "title": "SettlementSource",
       "type": "object"
     },
     "SportResult": {
@@ -1933,16 +1874,16 @@
             "null"
           ]
         },
-        "market_id": {
-          "description": "Exchange-native market identifier.",
-          "type": "string"
-        },
         "market_ref": {
-          "description": "Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_id`.",
+          "description": "Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_ticker`.",
           "type": [
             "string",
             "null"
           ]
+        },
+        "market_ticker": {
+          "description": "Exchange-native market identifier.",
+          "type": "string"
         },
         "outcome": {
           "type": [
@@ -1966,7 +1907,7 @@
         }
       },
       "required": [
-        "market_id"
+        "market_ticker"
       ],
       "title": "TradesRequest",
       "type": "object"
@@ -1996,7 +1937,7 @@
         "id": {
           "type": "string"
         },
-        "market_id": {
+        "market_ticker": {
           "type": "string"
         },
         "owner": {
@@ -2046,7 +1987,7 @@
       },
       "required": [
         "id",
-        "market_id",
+        "market_ticker",
         "price",
         "side",
         "size",
@@ -2080,7 +2021,7 @@
             "null"
           ]
         },
-        "market_id": {
+        "market_ticker": {
           "type": [
             "string",
             "null"

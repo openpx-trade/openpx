@@ -1,0 +1,10 @@
+---
+title: "fetch_market_lineage"
+sidebarTitle: "Fetch market lineage"
+openapi: /openpx.openapi.yaml GET /v1/markets/fetch_market_lineage
+---
+
+Fetch a market plus its parent event and series in one call. The
+`event` and `series` fields are `Option` — a dangling parent reference
+returns `None` rather than failing the whole call. `market_ticker` is
+the unified `Market.ticker` (Kalshi market ticker or Polymarket slug).

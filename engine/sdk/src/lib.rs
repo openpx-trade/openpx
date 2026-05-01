@@ -80,13 +80,9 @@ impl ExchangeInner {
         dispatch!(self, fetch_markets, params)
     }
 
-    pub async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
-        dispatch!(self, fetch_market, market_id)
-    }
-
     pub async fn create_order(
         &self,
-        market_id: &str,
+        market_ticker: &str,
         outcome: &str,
         side: OrderSide,
         price: f64,
@@ -96,7 +92,7 @@ impl ExchangeInner {
         dispatch!(
             self,
             create_order,
-            market_id,
+            market_ticker,
             outcome,
             side,
             price,
@@ -108,17 +104,17 @@ impl ExchangeInner {
     pub async fn cancel_order(
         &self,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        dispatch!(self, cancel_order, order_id, market_id)
+        dispatch!(self, cancel_order, order_id, market_ticker)
     }
 
     pub async fn fetch_order(
         &self,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Order, OpenPxError> {
-        dispatch!(self, fetch_order, order_id, market_id)
+        dispatch!(self, fetch_order, order_id, market_ticker)
     }
 
     pub async fn fetch_open_orders(
@@ -130,9 +126,9 @@ impl ExchangeInner {
 
     pub async fn fetch_positions(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Vec<Position>, OpenPxError> {
-        dispatch!(self, fetch_positions, market_id)
+        dispatch!(self, fetch_positions, market_ticker)
     }
 
     pub async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError> {
@@ -166,10 +162,10 @@ impl ExchangeInner {
 
     pub async fn fetch_fills(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
-        dispatch!(self, fetch_fills, market_id, limit)
+        dispatch!(self, fetch_fills, market_ticker, limit)
     }
 
     pub async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
@@ -191,33 +187,18 @@ impl ExchangeInner {
         dispatch!(self, refresh_balance)
     }
 
-    pub async fn fetch_events(
+    pub async fn fetch_market_lineage(
         &self,
-        req: EventsRequest,
-    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
-        dispatch!(self, fetch_events, req)
-    }
-
-    pub async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
-        dispatch!(self, fetch_event, id)
+        market_ticker: &str,
+    ) -> Result<MarketLineage, OpenPxError> {
+        dispatch!(self, fetch_market_lineage, market_ticker)
     }
 
     pub async fn fetch_orderbooks_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        dispatch!(self, fetch_orderbooks_batch, market_ids)
-    }
-
-    pub async fn fetch_series(
-        &self,
-        req: SeriesRequest,
-    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
-        dispatch!(self, fetch_series, req)
-    }
-
-    pub async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
-        dispatch!(self, fetch_series_one, id)
+        dispatch!(self, fetch_orderbooks_batch, market_tickers)
     }
 
     pub async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
@@ -226,9 +207,9 @@ impl ExchangeInner {
 
     pub async fn fetch_midpoints_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<HashMap<String, f64>, OpenPxError> {
-        dispatch!(self, fetch_midpoints_batch, market_ids)
+        dispatch!(self, fetch_midpoints_batch, market_tickers)
     }
 
     pub async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
@@ -242,8 +223,8 @@ impl ExchangeInner {
         dispatch!(self, fetch_last_trade_price, req)
     }
 
-    pub async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
-        dispatch!(self, fetch_open_interest, market_id)
+    pub async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
+        dispatch!(self, fetch_open_interest, market_ticker)
     }
 
     pub async fn fetch_user_trades(
@@ -253,15 +234,15 @@ impl ExchangeInner {
         dispatch!(self, fetch_user_trades, req)
     }
 
-    pub async fn fetch_market_tags(&self, market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
-        dispatch!(self, fetch_market_tags, market_id)
+    pub async fn fetch_market_tags(&self, market_ticker: &str) -> Result<Vec<Tag>, OpenPxError> {
+        dispatch!(self, fetch_market_tags, market_ticker)
     }
 
     pub async fn cancel_all_orders(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        dispatch!(self, cancel_all_orders, market_id)
+        dispatch!(self, cancel_all_orders, market_ticker)
     }
 
     pub async fn create_orders_batch(
