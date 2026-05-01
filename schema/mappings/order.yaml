@@ -1,0 +1,275 @@
+# Order field mapping: how each upstream order schema maps to the unified
+# OpenPX `Order` model.
+#
+# Coordinate-only: every $ref points at a resolvable path in
+# schema/upstream/<exchange>.openapi.yaml. Type info, nullability, and
+# descriptions are derived at validation/render time. Do not duplicate them
+# here.
+#
+# The hand-written normalizers — `parse_order` (V1 GET shape) and the V2
+# response readers in engine/exchanges/kalshi/src/exchange.rs, plus
+# `parse_sdk_order` and the `PostOrderResponse` reader in
+# engine/exchanges/polymarket/src/exchange.rs — are the implementation.
+# This file is the *contract* the implementation conforms to.
+unified_type: Order
+unified_schema: schema/openpx.schema.json#/definitions/Order
+
+# Kalshi: the unified `Order` is produced by FIVE adapter call sites:
+#   1. `create_order`           → POST /portfolio/events/orders     (V2)
+#   2. `cancel_order`           → DELETE /portfolio/events/orders/{id} (V2)
+#   3. `cancel_all_orders`      → DELETE /portfolio/events/orders/batched (V2)
+#   4. `create_orders_batch`    → POST /portfolio/events/orders/batched (V2)
+#   5. `fetch_order` /
+#      `fetch_open_orders`      → GET /portfolio/orders[/{id}]       (V1 only —
+#                                                                     no V2 GET)
+# V1 Order is the fullest read source (every unified field has an upstream
+# coordinate). V2 mutation responses are strictly thinner subsets:
+#   CreateOrderV2Response   → order_id, fill_count, remaining_count,
+#                             average_fill_price?, average_fee_paid?
+#   CancelOrderV2Response   → order_id, client_order_id?, reduced_by
+#   BatchCreateOrdersV2Resp → array of CreateOrderV2Response-shaped entries
+#                             (inline, with optional `error`)
+# Each field below names V1 Order as the primary coordinate and lists the V2
+# coordinate the adapter ALSO reads (so a rename on either path fails CI).
+#
+# Polymarket: `Order` is produced by:
+#   1. `create_order`        → POST /order   (SendOrderResponse)
+#   2. `cancel_order` /
+#      `fetch_order` /
+#      `fetch_open_orders`   → GET /data/order[s]  (OpenOrder)
+# OpenOrder is the canonical read source. SendOrderResponse covers create
+# only and is the only place to anchor the live/matched/delayed status enum.
+upstream_specs:
+  kalshi: schema/upstream/kalshi.openapi.yaml
+  polymarket: schema/upstream/polymarket-clob.openapi.yaml
+
+# Transform vocabulary:
+#   direct                  — copy value as-is, types compatible
+#   fixed_point_dollars     — Kalshi $-string (FixedPointDollars) → f64 in
+#                             [0, 1] (probability of YES)
+#   fixed_point_count       — Kalshi count-string (FixedPointCount) → f64
+#   parse_datetime          — RFC3339 string → DateTime<Utc>
+#   unix_seconds_to_utc     — Polymarket integer unix-seconds → DateTime<Utc>
+#   poly_decimal_to_f64     — Polymarket fixed-math 6-decimal string → f64
+#                             (divide by 1e6); used for size_matched /
+#                             original_size on OpenOrder
+#   poly_price_to_f64       — Polymarket price string ("0.5") → f64; already
+#                             a probability, no scaling
+#   kalshi_v2_yes_frame_to_caller — Kalshi V2 average_fill_price (YES-frame
+#                                   probability) → caller-frame price; on
+#                                   NO-side orders the value is mirrored as
+#                                   `1 - p`. Caller frame is captured from
+#                                   the request, not echoed in the response.
+#   kalshi_v2_status_from_counts — Status derived from V2 (fill_count,
+#                                  remaining_count): both > 0 →
+#                                  PartiallyFilled, fill > 0 → Filled, rem
+#                                  > 0 → Open, both 0 → Cancelled.
+fields:
+  # ---- Identity ----
+  - name: id
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/order_id"
+        fallback_ref: "#/components/schemas/CreateOrderV2Response/properties/order_id"
+        transform: direct
+        notes: |
+          Kalshi-issued order id. Stable across V1 GET responses and every
+          V2 mutation response (Cancel, BatchCreate, BatchCancel all share
+          the `order_id` field name). The fallback_ref pins V2 for drift
+          detection — both call sites share the same string-typed field.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/id"
+        fallback_ref: "#/components/schemas/SendOrderResponse/properties/orderID"
+        transform: direct
+        notes: |
+          Order hash. GET endpoints expose it as `id`; POST /order
+          response exposes it as `orderID` (note the casing). The adapter
+          handles both via SDK-side aliasing.
+
+  - name: market_ticker
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/ticker"
+        transform: direct
+        notes: |
+          V1 GET responses echo `ticker`. V2 mutation responses do NOT
+          echo it — the adapter preserves the caller-frame ticker from
+          the request and the synthesized Order on cancel paths leaves
+          this empty.
+      polymarket:
+        synthetic: 'OpenOrder.market (condition ID, hex address) → caller-frame slug'
+        notes: |
+          OpenOrder exposes `market` as the on-chain condition ID
+          (Address). The adapter writes the caller's market_ticker from
+          the request when available, and falls back to the hex
+          condition ID otherwise. SendOrderResponse does not echo any
+          market identifier.
+
+  - name: outcome
+    sources:
+      kalshi:
+        synthetic: 'Order.side ∈ {yes, no} → {"Yes", "No"}; V2 uses caller-frame'
+        notes: |
+          V1 GET: re-canonicalize the `side` enum to title case. V2
+          mutation responses don't echo outcome at all — the adapter
+          carries the caller's `OrderOutcome::Yes`/`No` through to the
+          response. Kalshi markets are always binary; non-Yes/No outcome
+          variants are rejected at request time with InvalidInput.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/outcome"
+        transform: direct
+        notes: |
+          Free-form outcome label as published by Polymarket (typically
+          `"YES"`/`"NO"` on binary markets, categorical labels on
+          neg-risk markets). On create paths the adapter carries the
+          caller-frame label since SendOrderResponse doesn't echo it.
+
+  - name: side
+    sources:
+      kalshi:
+        synthetic: 'Order.action ∈ {buy, sell} → OrderSide enum'
+        notes: |
+          V1 GET: `action` carries Buy/Sell while `side` carries the
+          outcome (Yes/No) — the unified `side` is sourced from `action`,
+          not from `side`. V2 mutation responses don't echo action; the
+          adapter preserves the caller-frame `OrderSide`.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/side"
+        transform: direct
+        notes: 'BUY/SELL enum, 1:1 with unified `OrderSide`.'
+
+  # ---- Quantitative ----
+  - name: price
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/yes_price_dollars"
+        fallback_ref: "#/components/schemas/CreateOrderV2Response/properties/average_fill_price"
+        transform: fixed_point_dollars
+        notes: |
+          V1 GET returns both `yes_price_dollars` and `no_price_dollars`;
+          the adapter reads the populated one and converts to the
+          caller-frame outcome. V2 returns only `average_fill_price`
+          (YES-frame, populated when `fill_count > 0`); the adapter
+          mirrors it for NO-side orders via the
+          `kalshi_v2_yes_frame_to_caller` transform and falls back to
+          the caller's request price when no fill occurred.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/price"
+        transform: poly_price_to_f64
+        notes: |
+          OpenOrder.price is already a decimal probability string
+          (e.g. `"0.5"`). On create paths the adapter carries the
+          caller-frame price since SendOrderResponse doesn't echo it.
+
+  - name: size
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/initial_count_fp"
+        fallback_ref: "#/components/schemas/CreateOrderV2Response/properties/remaining_count"
+        transform: fixed_point_count
+        notes: |
+          V1 GET reports `initial_count_fp` directly. V2 doesn't include
+          a single "size" field; the adapter reconstructs it as
+          `fill_count + remaining_count`. The fallback_ref pins
+          `remaining_count` for drift detection (its sibling
+          `fill_count` is pinned via the `filled` field below).
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/original_size"
+        transform: poly_decimal_to_f64
+        notes: |
+          Fixed-math 6-decimal string. On create paths the adapter
+          carries the caller-frame size since SendOrderResponse doesn't
+          echo it.
+
+  - name: filled
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/fill_count_fp"
+        fallback_ref: "#/components/schemas/CreateOrderV2Response/properties/fill_count"
+        transform: fixed_point_count
+        notes: |
+          V1 GET emits `fill_count_fp` (FixedPointCount). V2 emits a
+          stripped `fill_count` (also FixedPointCount, same scaling).
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/size_matched"
+        transform: poly_decimal_to_f64
+        notes: |
+          Cumulative matched size on the read side. POST /order response
+          path always sets this to 0.0 — `taking_amount`/`making_amount`
+          on SendOrderResponse encode the executed quantity in different
+          units and are not surfaced on the unified Order today.
+
+  - name: fee
+    sources:
+      kalshi:
+        ref: "#/components/schemas/CreateOrderV2Response/properties/average_fee_paid"
+        transform: fixed_point_dollars
+        notes: |
+          V2 reports per-contract average fee on the create response;
+          the adapter multiplies by `fill_count` for the dollar total.
+          V1 GET Order DOES expose `taker_fees_dollars` and
+          `maker_fees_dollars` but `parse_order` doesn't yet read them —
+          fetch_order paths return `fee: None`. Future commit can add
+          `taker_fees_dollars + maker_fees_dollars` to lift V1 fees too.
+      polymarket:
+        omitted: true
+        notes: |
+          Polymarket charges fees at trade settlement, not on order
+          creation or lookup. SendOrderResponse and OpenOrder don't
+          carry fee fields. Always None on the unified surface.
+
+  - name: status
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/status"
+        transform: direct
+        notes: |
+          V1 GET: `status` is the Kalshi `OrderStatus` enum
+          (`resting | canceled | executed`); the adapter maps to unified
+          `Open | Cancelled | Filled`. V2 mutations don't echo status;
+          the adapter derives it from `(fill_count, remaining_count)`
+          via `kalshi_v2_status_from_counts` (see vocabulary above).
+          Cancel paths synthesize `Cancelled` directly.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/status"
+        fallback_ref: "#/components/schemas/SendOrderResponse/properties/status"
+        transform: direct
+        notes: |
+          OpenOrder uses prefixed `ORDER_STATUS_*` enum values; the SDK
+          normalizes them to its own `OrderStatusType` (Live, Matched,
+          Canceled, Delayed, Unmatched, …) before the adapter maps to
+          unified `OrderStatus`. SendOrderResponse uses the
+          unprefixed `live | matched | delayed` shape on the create
+          response only.
+
+  # ---- Timestamps ----
+  - name: created_at
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/created_time"
+        transform: parse_datetime
+        notes: |
+          V1 GET: RFC3339 string. V2 responses don't include a creation
+          timestamp; the adapter falls back to wall-clock at parse time.
+      polymarket:
+        ref: "#/components/schemas/OpenOrder/properties/created_at"
+        transform: unix_seconds_to_utc
+        notes: |
+          Unix seconds. SendOrderResponse doesn't echo created_at; on
+          create paths the adapter falls back to wall-clock.
+
+  - name: updated_at
+    sources:
+      kalshi:
+        ref: "#/components/schemas/Order/properties/last_update_time"
+        transform: parse_datetime
+        notes: |
+          V1 GET: RFC3339, nullable in upstream — None when the order
+          hasn't been touched since creation. V2 mutation responses
+          don't echo it; the adapter sets `Some(now())` on cancel paths
+          and `None` on create paths.
+      polymarket:
+        omitted: true
+        notes: |
+          Neither OpenOrder nor SendOrderResponse expose an updated_at
+          field. The SDK doesn't track it either. Always None.
