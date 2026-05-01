@@ -11,6 +11,40 @@
  */
 export type LiquidityRole = "maker" | "taker";
 /**
+ * Order time-in-force / execution type.
+ *
+ * Normalized across all exchanges: - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest. - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderType".
+ */
+export type OrderType = "gtc" | "ioc" | "fok";
+/**
+ * Selects which outcome of a market an order targets.
+ *
+ * `Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput` at the Kalshi adapter.
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderOutcome".
+ */
+export type OrderOutcome =
+  | "yes"
+  | "no"
+  | {
+      label: string;
+    }
+  | {
+      index: number;
+    }
+  | {
+      token_id: string;
+    };
+/**
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "OrderSide".
+ */
+export type OrderSide = "buy" | "sell";
+/**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "CryptoPriceSource".
  */
@@ -24,11 +58,6 @@ export type CryptoPriceSource = "binance" | "chainlink";
  * via the `definition` "MarketStatusFilter".
  */
 export type MarketStatusFilter = "active" | "closed" | "resolved" | "all";
-/**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderSide".
- */
-export type OrderSide = "buy" | "sell";
 /**
  * Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.
  *
@@ -58,15 +87,6 @@ export type MarketType = "binary" | "categorical" | "scalar";
  * via the `definition` "MarketStatus".
  */
 export type MarketStatus = "active" | "closed" | "resolved";
-/**
- * Order time-in-force / execution type.
- *
- * Normalized across all exchanges: - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest. - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
- *
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "OrderType".
- */
-export type OrderType = "gtc" | "ioc" | "fok";
 /**
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "OrderStatus".
@@ -228,6 +248,39 @@ export interface ActivityTrade {
   size: number;
   source_channel: string;
   trade_id?: string | null;
+  [k: string]: unknown;
+}
+/**
+ * Lean input shape for `Exchange::create_order`. All cross-venue and per-venue knobs are deliberately absent — `post_only`, `expiration_ts`, `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and subaccounts are not exposed. Anything an exchange requires that is not modelled here is generated internally (e.g. Kalshi V2's required `client_order_id` is filled with a per-call UUID).
+ *
+ * This interface was referenced by `OpenPX`'s JSON-Schema
+ * via the `definition` "CreateOrderRequest".
+ */
+export interface CreateOrderRequest {
+  /**
+   * Unified market identifier — Kalshi market ticker or Polymarket slug.
+   */
+  market_ticker: string;
+  /**
+   * Time-in-force / execution type.
+   */
+  order_type?: OrderType & string;
+  /**
+   * Which outcome of the market to trade.
+   */
+  outcome: OrderOutcome;
+  /**
+   * Limit price as YES probability in `(0.0, 1.0)`.
+   */
+  price: number;
+  /**
+   * Buy or sell.
+   */
+  side: OrderSide;
+  /**
+   * Order size in contracts.
+   */
+  size: number;
   [k: string]: unknown;
 }
 /**
@@ -634,6 +687,10 @@ export interface NewOrder {
  */
 export interface Order {
   created_at: string;
+  /**
+   * Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars. Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement, so this stays `None` on initial create response.
+   */
+  fee?: number | null;
   filled: number;
   id: string;
   market_ticker: string;

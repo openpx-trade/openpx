@@ -114,21 +114,38 @@ impl Exchange {
         side: String,
         price: f64,
         size: f64,
-        params: Option<serde_json::Value>,
+        order_type: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let order_side: px_core::OrderSide =
             serde_json::from_value(serde_json::Value::String(side)).map_err(to_napi_err)?;
-        let extra: std::collections::HashMap<String, String> = params
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default();
+        let order_type_enum: px_core::OrderType =
+            match order_type.as_deref().unwrap_or("gtc").to_ascii_lowercase().as_str() {
+                "gtc" => px_core::OrderType::Gtc,
+                "ioc" => px_core::OrderType::Ioc,
+                "fok" => px_core::OrderType::Fok,
+                other => {
+                    return Err(to_napi_err(format!(
+                        "invalid order_type '{other}' (allowed: gtc, ioc, fok)"
+                    )))
+                }
+            };
+        let order_outcome = match outcome.to_ascii_lowercase().as_str() {
+            "yes" => px_core::OrderOutcome::Yes,
+            "no" => px_core::OrderOutcome::No,
+            _ => px_core::OrderOutcome::Label(outcome.clone()),
+        };
+        let req = px_core::CreateOrderRequest {
+            market_ticker,
+            outcome: order_outcome,
+            side: order_side,
+            price,
+            size,
+            order_type: order_type_enum,
+        };
         let rt = get_runtime();
         let result = rt
-            .spawn(async move {
-                inner
-                    .create_order(&market_ticker, &outcome, order_side, price, size, extra)
-                    .await
-            })
+            .spawn(async move { inner.create_order(req).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

@@ -23,6 +23,7 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tokio-tungstenite = { workspace = true }
 tokio-stream = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
 
 # RSA-PSS signing (getrandom enables Signer trait with OsRng)
 rsa = { version = "0.9", features = ["getrandom"] }

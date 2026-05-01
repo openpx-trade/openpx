@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Fill, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
-    OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
+    CreateOrderRequest, Fill, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType,
+    Orderbook, OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
 };
 
 use super::config::{FetchMarketsParams, FetchOrdersParams};
@@ -24,16 +24,13 @@ pub trait Exchange: Send + Sync {
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
-    /// Submit a new order — `side` is `buy` or `sell`; `params["order_type"]` accepts `gtc`, `ioc`, or `fok`.
-    async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError>;
+    /// Submit a new order. The unified surface exposes only the six fields on
+    /// `CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
+    /// expiration, idempotency keys, neg-risk overrides, builder/metadata,
+    /// subaccounts) are not modelled. Each adapter generates whatever its
+    /// upstream requires (e.g. Kalshi V2's required `client_order_id` and
+    /// `self_trade_prevention_type`) internally.
+    async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError>;
 
     /// Cancel an existing order by ID, optionally scoped to a market.
     async fn cancel_order(

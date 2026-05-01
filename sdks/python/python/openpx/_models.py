@@ -176,6 +176,49 @@ class MaxGap(BaseModel):
     bid_gap_bps: float | None = None
 
 
+class OrderOutcome1(Enum):
+    yes = "yes"
+
+
+class OrderOutcome2(Enum):
+    no = "no"
+
+
+class OrderOutcome3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+
+
+class OrderOutcome4(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    index: conint(ge=0)
+
+
+class OrderOutcome5(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    token_id: str
+
+
+class OrderOutcome(
+    RootModel[
+        OrderOutcome1 | OrderOutcome2 | OrderOutcome3 | OrderOutcome4 | OrderOutcome5
+    ]
+):
+    root: (
+        OrderOutcome1 | OrderOutcome2 | OrderOutcome3 | OrderOutcome4 | OrderOutcome5
+    ) = Field(
+        ...,
+        description="Selects which outcome of a market an order targets.\n\n`Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput` at the Kalshi adapter.",
+        title="OrderOutcome",
+    )
+
+
 class OrderSide(Enum):
     buy = "buy"
     sell = "sell"
@@ -421,6 +464,24 @@ class ActivityFill(BaseModel):
     )
 
 
+class CreateOrderRequest(BaseModel):
+    market_ticker: str = Field(
+        ...,
+        description="Unified market identifier — Kalshi market ticker or Polymarket slug.",
+    )
+    order_type: OrderType | None = Field(
+        "gtc", description="Time-in-force / execution type."
+    )
+    outcome: OrderOutcome = Field(
+        ..., description="Which outcome of the market to trade."
+    )
+    price: float = Field(
+        ..., description="Limit price as YES probability in `(0.0, 1.0)`."
+    )
+    side: OrderSide = Field(..., description="Buy or sell.")
+    size: float = Field(..., description="Order size in contracts.")
+
+
 class CryptoPrice(BaseModel):
     source: CryptoPriceSource
     symbol: str
@@ -554,6 +615,10 @@ class NewOrder(BaseModel):
 
 class Order(BaseModel):
     created_at: AwareDatetime
+    fee: float | None = Field(
+        None,
+        description="Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars. Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement, so this stays `None` on initial create response.",
+    )
     filled: float
     id: str
     market_ticker: str

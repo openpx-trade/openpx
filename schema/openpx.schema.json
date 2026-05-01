@@ -162,6 +162,59 @@
       "title": "ActivityTrade",
       "type": "object"
     },
+    "CreateOrderRequest": {
+      "description": "Lean input shape for `Exchange::create_order`. All cross-venue and per-venue knobs are deliberately absent — `post_only`, `expiration_ts`, `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and subaccounts are not exposed. Anything an exchange requires that is not modelled here is generated internally (e.g. Kalshi V2's required `client_order_id` is filled with a per-call UUID).",
+      "properties": {
+        "market_ticker": {
+          "description": "Unified market identifier — Kalshi market ticker or Polymarket slug.",
+          "type": "string"
+        },
+        "order_type": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OrderType"
+            }
+          ],
+          "default": "gtc",
+          "description": "Time-in-force / execution type."
+        },
+        "outcome": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OrderOutcome"
+            }
+          ],
+          "description": "Which outcome of the market to trade."
+        },
+        "price": {
+          "description": "Limit price as YES probability in `(0.0, 1.0)`.",
+          "format": "double",
+          "type": "number"
+        },
+        "side": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OrderSide"
+            }
+          ],
+          "description": "Buy or sell."
+        },
+        "size": {
+          "description": "Order size in contracts.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "market_ticker",
+        "outcome",
+        "price",
+        "side",
+        "size"
+      ],
+      "title": "CreateOrderRequest",
+      "type": "object"
+    },
     "CryptoPrice": {
       "properties": {
         "source": {
@@ -1010,6 +1063,15 @@
           "format": "date-time",
           "type": "string"
         },
+        "fee": {
+          "default": null,
+          "description": "Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars. Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement, so this stays `None` on initial create response.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "filled": {
           "format": "double",
           "type": "number"
@@ -1059,6 +1121,67 @@
       ],
       "title": "Order",
       "type": "object"
+    },
+    "OrderOutcome": {
+      "description": "Selects which outcome of a market an order targets.\n\n`Yes` / `No` cover binary markets on both exchanges. The remaining variants only resolve on Polymarket (multi-outcome categorical markets); Kalshi markets are always binary, so anything other than `Yes` / `No` is rejected with `InvalidInput` at the Kalshi adapter.",
+      "oneOf": [
+        {
+          "description": "Binary YES outcome (Kalshi YES side, Polymarket `outcomes[0]`).",
+          "enum": [
+            "yes"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Binary NO outcome (Kalshi NO side, Polymarket `outcomes[1]`).",
+          "enum": [
+            "no"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Match a Polymarket outcome by its `label` (case-insensitive).",
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Match a Polymarket outcome by its zero-based ordinal in `Market.outcomes`.",
+          "properties": {
+            "index": {
+              "format": "uint",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Polymarket CTF token id — bypass label/index lookup.",
+          "properties": {
+            "token_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "token_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "OrderOutcome"
     },
     "OrderSide": {
       "enum": [

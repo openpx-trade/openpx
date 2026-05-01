@@ -98,9 +98,15 @@ class Exchange:
         side: str,
         price: float,
         size: float,
-        **params: str,
+        order_type: str = "gtc",
     ) -> Any:
-        raw = self._native.create_order(market_ticker, outcome, side, price, size, params or None)
+        """Submit a new order on the exchange.
+
+        ``outcome`` is ``"yes"`` / ``"no"`` for binary markets; for Polymarket
+        multi-outcome markets, pass the outcome label or a CTF token id.
+        ``order_type`` is ``"gtc"`` (default), ``"ioc"``, or ``"fok"``.
+        """
+        raw = self._native.create_order(market_ticker, outcome, side, price, size, order_type)
         try:
             from openpx._models import Order
             return Order(**raw)

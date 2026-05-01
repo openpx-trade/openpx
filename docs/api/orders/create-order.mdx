@@ -4,4 +4,9 @@ sidebarTitle: "Create order"
 openapi: /openpx.openapi.yaml POST /v1/orders/create_order
 ---
 
-Submit a new order — `side` is `buy` or `sell`; `params["order_type"]` accepts `gtc`, `ioc`, or `fok`.
+Submit a new order. The unified surface exposes only the six fields on
+`CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
+expiration, idempotency keys, neg-risk overrides, builder/metadata,
+subaccounts) are not modelled. Each adapter generates whatever its
+upstream requires (e.g. Kalshi V2's required `client_order_id` and
+`self_trade_prevention_type`) internally.

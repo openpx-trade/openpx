@@ -5,11 +5,12 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Event, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market, MarketLineage,
-    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder, OpenPxError, Order,
-    OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position,
-    PriceLevel, RateLimiter, Series, SettlementSource, TradesRequest,
+    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
+    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder,
+    OpenPxError, Order, OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType,
+    Orderbook, Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource,
+    TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -700,6 +701,7 @@ impl Kalshi {
             price,
             size,
             filled,
+            fee: None,
             status,
             created_at,
             updated_at,
@@ -1070,22 +1072,6 @@ impl Kalshi {
             min_order_size: Some(1.0),
             ..Default::default()
         })
-    }
-}
-
-fn kalshi_time_in_force(params: &HashMap<String, String>) -> Result<Option<String>, OpenPxError> {
-    let order_type = params
-        .get("order_type")
-        .map(|v| v.as_str())
-        .unwrap_or("gtc");
-
-    match order_type {
-        "gtc" => Ok(None),
-        "ioc" => Ok(Some("immediate_or_cancel".to_string())),
-        "fok" => Ok(Some("fill_or_kill".to_string())),
-        _ => Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-            format!("invalid order_type '{order_type}' (allowed: gtc, ioc, fok)"),
-        ))),
     }
 }
 
@@ -1625,6 +1611,7 @@ impl Exchange for Kalshi {
                     price: 0.0,
                     size: 0.0,
                     filled: 0.0,
+                    fee: None,
                     status: OrderStatus::Cancelled,
                     created_at: now,
                     updated_at: Some(now),
@@ -1755,6 +1742,7 @@ impl Exchange for Kalshi {
                         .unwrap_or(0.0),
                     size: parse_fp(obj, "initial_count_fp").unwrap_or(0.0),
                     filled: parse_fp(obj, "fill_count_fp").unwrap_or(0.0),
+                    fee: None,
                     status: match obj.get("status").and_then(|v| v.as_str()) {
                         Some("resting") => OrderStatus::Open,
                         Some("canceled") => OrderStatus::Cancelled,
@@ -1774,87 +1762,112 @@ impl Exchange for Kalshi {
         Ok(parsed)
     }
 
-    async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError> {
+    async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
-        if price <= 0.0 || price >= 1.0 {
+        if req.price <= 0.0 || req.price >= 1.0 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "Price must be between 0 and 1".into(),
+                "price must be in (0, 1)".into(),
             )));
         }
 
-        // Convert outcome to Kalshi side (yes/no)
-        let kalshi_side = outcome.to_lowercase();
-        if kalshi_side != "yes" && kalshi_side != "no" {
-            return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "Outcome must be 'Yes' or 'No'".into(),
-            )));
-        }
-
-        // Convert side to Kalshi action
-        let action = match side {
-            OrderSide::Buy => "buy",
-            OrderSide::Sell => "sell",
+        // Kalshi V2 quotes a single book in YES-frame: `bid` buys YES, `ask`
+        // sells YES. NO-side intents are mirrored: buying NO at p is sending
+        // an `ask` at (1 - p), and selling NO at p is sending a `bid` at
+        // (1 - p). The unified `Order` we return reports caller-frame fields,
+        // so we also un-mirror `average_fill_price` on the way back.
+        let outcome_label = match &req.outcome {
+            OrderOutcome::Yes => "Yes",
+            OrderOutcome::No => "No",
+            _ => {
+                return Err(OpenPxError::InvalidInput(
+                    "Kalshi markets are binary; outcome must be Yes or No".into(),
+                ))
+            }
+        };
+        let (side_str, wire_price) = match (&req.outcome, req.side) {
+            (OrderOutcome::Yes, OrderSide::Buy) => ("bid", req.price),
+            (OrderOutcome::Yes, OrderSide::Sell) => ("ask", req.price),
+            (OrderOutcome::No, OrderSide::Buy) => ("ask", 1.0 - req.price),
+            (OrderOutcome::No, OrderSide::Sell) => ("bid", 1.0 - req.price),
+            _ => unreachable!("guarded by outcome_label match"),
         };
 
-        // Format price as dollar string (e.g. 0.65 → "0.65") and size as fp string
-        let price_dollars = format!("{:.2}", price);
-        let count_fp = format!("{:.2}", size);
-
-        #[derive(serde::Serialize)]
-        struct CreateOrderRequest {
-            ticker: String,
-            action: String,
-            side: String,
-            #[serde(rename = "type")]
-            order_type: String,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            time_in_force: Option<String>,
-            count_fp: String,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            yes_price_dollars: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            no_price_dollars: Option<String>,
-        }
-
-        let time_in_force = kalshi_time_in_force(&params)?;
-
-        let (yes_price_dollars, no_price_dollars) = if kalshi_side == "yes" {
-            (Some(price_dollars), None)
-        } else {
-            (None, Some(price_dollars))
-        };
-
-        let request = CreateOrderRequest {
-            ticker: market_ticker.to_string(),
-            action: action.to_string(),
-            side: kalshi_side.clone(),
-            order_type: "limit".to_string(),
-            time_in_force,
-            count_fp,
-            yes_price_dollars,
-            no_price_dollars,
-        };
+        // V2 requires `client_order_id` and `self_trade_prevention_type`. The
+        // unified surface does not expose either: the UUID is generated once
+        // per call (idempotent across in-adapter retries), and STP is fixed
+        // to `taker_at_cross` — the standard "incoming order takes if
+        // marketable, otherwise rests" behavior.
+        let body = serde_json::json!({
+            "ticker": req.market_ticker,
+            "client_order_id": uuid::Uuid::new_v4().to_string(),
+            "side": side_str,
+            "count": format!("{:.2}", req.size),
+            "price": format!("{:.4}", wire_price),
+            "time_in_force": match req.order_type {
+                UnifiedOrderType::Gtc => "good_till_canceled",
+                UnifiedOrderType::Ioc => "immediate_or_cancel",
+                UnifiedOrderType::Fok => "fill_or_kill",
+            },
+            "self_trade_prevention_type": "taker_at_cross",
+        });
 
         #[derive(serde::Deserialize)]
-        struct CreateOrderResponse {
-            order: serde_json::Value,
+        struct V2Response {
+            order_id: String,
+            fill_count: String,
+            remaining_count: String,
+            #[serde(default)]
+            average_fill_price: Option<String>,
+            #[serde(default)]
+            average_fee_paid: Option<String>,
         }
 
-        let resp: CreateOrderResponse = self
-            .post("/portfolio/orders", &request)
+        let resp: V2Response = self
+            .post("/portfolio/events/orders", &body)
             .await
             .map_err(to_openpx)?;
 
-        Ok(self.parse_order(&resp.order))
+        let fill_count: f64 = resp.fill_count.parse().unwrap_or(0.0);
+        let remaining_count: f64 = resp.remaining_count.parse().unwrap_or(0.0);
+
+        let status = match (fill_count > 0.0, remaining_count > 0.0) {
+            (true, true) => OrderStatus::PartiallyFilled,
+            (true, false) => OrderStatus::Filled,
+            (false, true) => OrderStatus::Open,
+            (false, false) => OrderStatus::Cancelled,
+        };
+
+        let order_price = match resp.average_fill_price.as_deref().and_then(|s| s.parse().ok()) {
+            Some(yes_price) => match req.outcome {
+                OrderOutcome::Yes => yes_price,
+                OrderOutcome::No => 1.0 - yes_price,
+                _ => req.price,
+            },
+            None => req.price,
+        };
+
+        // V2 reports `average_fee_paid` as per-contract; multiply by fills
+        // to get the dollar fee for this order.
+        let fee = resp
+            .average_fee_paid
+            .as_deref()
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|avg| avg * fill_count);
+
+        Ok(Order {
+            id: resp.order_id,
+            market_ticker: req.market_ticker,
+            outcome: outcome_label.to_string(),
+            side: req.side,
+            price: order_price,
+            size: fill_count + remaining_count,
+            filled: fill_count,
+            fee,
+            status,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        })
     }
 
     async fn cancel_order(
@@ -2110,48 +2123,3 @@ mod parse_event_series_tests {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::kalshi_time_in_force;
-    use std::collections::HashMap;
-
-    #[test]
-    fn order_type_defaults_to_gtc() {
-        let params = HashMap::new();
-        assert_eq!(kalshi_time_in_force(&params).unwrap(), None);
-    }
-
-    #[test]
-    fn order_type_gtc_maps_to_none() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "gtc".to_string());
-        assert_eq!(kalshi_time_in_force(&params).unwrap(), None);
-    }
-
-    #[test]
-    fn order_type_ioc_maps_to_immediate_or_cancel() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "ioc".to_string());
-        assert_eq!(
-            kalshi_time_in_force(&params).unwrap(),
-            Some("immediate_or_cancel".to_string())
-        );
-    }
-
-    #[test]
-    fn order_type_fok_maps_to_fill_or_kill() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "fok".to_string());
-        assert_eq!(
-            kalshi_time_in_force(&params).unwrap(),
-            Some("fill_or_kill".to_string())
-        );
-    }
-
-    #[test]
-    fn invalid_order_type_is_rejected() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "market".to_string());
-        assert!(kalshi_time_in_force(&params).is_err());
-    }
-}

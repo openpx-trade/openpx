@@ -9,10 +9,11 @@ use std::str::FromStr;
 /// - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled.
 /// - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest.
 /// - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum OrderType {
+    #[default]
     Gtc,
     Ioc,
     Fok,
@@ -51,6 +52,28 @@ pub enum OrderSide {
     Sell,
 }
 
+/// Selects which outcome of a market an order targets.
+///
+/// `Yes` / `No` cover binary markets on both exchanges. The remaining variants
+/// only resolve on Polymarket (multi-outcome categorical markets); Kalshi
+/// markets are always binary, so anything other than `Yes` / `No` is rejected
+/// with `InvalidInput` at the Kalshi adapter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OrderOutcome {
+    /// Binary YES outcome (Kalshi YES side, Polymarket `outcomes[0]`).
+    Yes,
+    /// Binary NO outcome (Kalshi NO side, Polymarket `outcomes[1]`).
+    No,
+    /// Match a Polymarket outcome by its `label` (case-insensitive).
+    Label(String),
+    /// Match a Polymarket outcome by its zero-based ordinal in `Market.outcomes`.
+    Index(usize),
+    /// Polymarket CTF token id — bypass label/index lookup.
+    TokenId(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -71,12 +94,32 @@ pub enum OrderStatus {
     Rejected,
 }
 
+/// Lean input shape for `Exchange::create_order`. All cross-venue and
+/// per-venue knobs are deliberately absent — `post_only`, `expiration_ts`,
+/// `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and
+/// subaccounts are not exposed. Anything an exchange requires that is not
+/// modelled here is generated internally (e.g. Kalshi V2's required
+/// `client_order_id` is filled with a per-call UUID).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-// TODO(order-fees): Add fee fields (e.g. `fee: Option<f64>`, `fee_rate_bps: Option<u32>`).
-// Kalshi returns fees in create_order and fill responses — capture them here.
-// Polymarket fees are protocol-level and can be computed from trade data.
-// OpenPX does not charge fees; only the underlying exchange does.
+pub struct CreateOrderRequest {
+    /// Unified market identifier — Kalshi market ticker or Polymarket slug.
+    pub market_ticker: String,
+    /// Which outcome of the market to trade.
+    pub outcome: OrderOutcome,
+    /// Buy or sell.
+    pub side: OrderSide,
+    /// Limit price as YES probability in `(0.0, 1.0)`.
+    pub price: f64,
+    /// Order size in contracts.
+    pub size: f64,
+    /// Time-in-force / execution type.
+    #[serde(default)]
+    pub order_type: OrderType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Order {
     pub id: String,
     pub market_ticker: String,
@@ -85,6 +128,12 @@ pub struct Order {
     pub price: f64,
     pub size: f64,
     pub filled: f64,
+    /// Volume-weighted per-contract fee paid for fills resulting from this
+    /// order, in quote-currency dollars. Kalshi reports it on `create_order`
+    /// when fills occur immediately; Polymarket charges fees at trade
+    /// settlement, so this stays `None` on initial create response.
+    #[serde(default)]
+    pub fee: Option<f64>,
     pub status: OrderStatus,
     pub created_at: DateTime<Utc>,
     #[serde(default)]

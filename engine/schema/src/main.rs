@@ -52,6 +52,8 @@ fn main() {
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::MarketLineage),
         schema_for!(px_core::NewOrder),
+        schema_for!(px_core::CreateOrderRequest),
+        schema_for!(px_core::OrderOutcome),
         schema_for!(px_core::ExchangeInfo),
         // WebSocket types
         schema_for!(px_core::WsUpdate),

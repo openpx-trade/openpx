@@ -80,25 +80,8 @@ impl ExchangeInner {
         dispatch!(self, fetch_markets, params)
     }
 
-    pub async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError> {
-        dispatch!(
-            self,
-            create_order,
-            market_ticker,
-            outcome,
-            side,
-            price,
-            size,
-            params
-        )
+    pub async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError> {
+        dispatch!(self, create_order, req)
     }
 
     pub async fn cancel_order(

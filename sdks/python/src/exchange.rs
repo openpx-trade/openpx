@@ -84,7 +84,7 @@ impl NativeExchange {
         pythonize(py, &lineage).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker, outcome, side, price, size, params=None))]
+    #[pyo3(signature = (market_ticker, outcome, side, price, size, order_type="gtc"))]
     #[allow(clippy::too_many_arguments)]
     fn create_order<'py>(
         &self,
@@ -94,29 +94,37 @@ impl NativeExchange {
         side: &str,
         price: f64,
         size: f64,
-        params: Option<&Bound<'py, PyDict>>,
+        order_type: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_ticker = market_ticker.to_string();
-        let outcome = outcome.to_string();
         let order_side: px_core::OrderSide =
             serde_json::from_value(serde_json::Value::String(side.to_string()))
                 .map_err(|e| to_py_err(e.to_string()))?;
-        let extra: std::collections::HashMap<String, String> = match params {
-            Some(d) => pythonize::depythonize(d).unwrap_or_default(),
-            None => std::collections::HashMap::new(),
+        let order_type_enum: px_core::OrderType = match order_type.to_ascii_lowercase().as_str() {
+            "gtc" => px_core::OrderType::Gtc,
+            "ioc" => px_core::OrderType::Ioc,
+            "fok" => px_core::OrderType::Fok,
+            other => {
+                return Err(to_py_err(format!(
+                    "invalid order_type '{other}' (allowed: gtc, ioc, fok)"
+                )))
+            }
+        };
+        let order_outcome = match outcome.to_ascii_lowercase().as_str() {
+            "yes" => px_core::OrderOutcome::Yes,
+            "no" => px_core::OrderOutcome::No,
+            _ => px_core::OrderOutcome::Label(outcome.to_string()),
+        };
+        let req = px_core::CreateOrderRequest {
+            market_ticker: market_ticker.to_string(),
+            outcome: order_outcome,
+            side: order_side,
+            price,
+            size,
+            order_type: order_type_enum,
         };
         let rt = get_runtime();
-        let result = py.detach(|| {
-            rt.block_on(inner.create_order(
-                &market_ticker,
-                &outcome,
-                order_side,
-                price,
-                size,
-                extra,
-            ))
-        });
+        let result = py.detach(|| rt.block_on(inner.create_order(req)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
