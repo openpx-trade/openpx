@@ -185,7 +185,8 @@ def render_table(mapping: dict[str, Any], unified: dict[str, Any]) -> str:
     )
     lines.append("---")
     lines.append("")
-    desc = (unified.get("description") or "").splitlines()[0].strip()
+    raw_desc = (unified.get("description") or "").splitlines()
+    desc = raw_desc[0].strip() if raw_desc else ""
     if desc:
         lines.append(f"_{desc}_")
         lines.append("")

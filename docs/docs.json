@@ -26,7 +26,8 @@
             "pages": [
               "api/mappings/market",
               "api/mappings/event",
-              "api/mappings/series"
+              "api/mappings/series",
+              "api/mappings/orderbook"
             ]
           },
           {
