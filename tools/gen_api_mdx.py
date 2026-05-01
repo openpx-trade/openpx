@@ -39,7 +39,6 @@ OUTPUT_DIR = ROOT / "docs" / "api"
 METHOD_META: dict[str, tuple[str, str]] = {
     "fetch_markets": ("Markets", "GET"),
     "fetch_market_lineage": ("Markets", "GET"),
-    "fetch_market_tags": ("Tags", "GET"),
     "fetch_orderbook": ("Orderbook", "GET"),
     "fetch_orderbooks_batch": ("Orderbook", "GET"),
     "fetch_midpoint": ("Pricing", "GET"),

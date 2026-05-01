@@ -7,7 +7,6 @@ mod orderbook;
 mod position;
 mod series;
 mod sport;
-mod tag;
 mod trade;
 
 pub use crypto::*;
@@ -19,5 +18,4 @@ pub use orderbook::*;
 pub use position::*;
 pub use series::*;
 pub use sport::*;
-pub use tag::*;
 pub use trade::*;

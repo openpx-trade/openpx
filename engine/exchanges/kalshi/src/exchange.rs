@@ -10,8 +10,7 @@ use px_core::{
     ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, Market,
     MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, MidpointRequest,
     NewOrder, OpenPxError, Order, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook,
-    Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource, Spread, Tag,
-    TradesRequest,
+    Outcome, Position, PriceLevel, RateLimiter, Series, SettlementSource, Spread, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -1163,7 +1162,7 @@ impl Exchange for Kalshi {
         // ── market_tickers short-circuit: explicit market lookup, single round-trip ──
         if !params.market_tickers.is_empty() {
             let joined = params.market_tickers.join(",");
-            let endpoint = format!("/markets?market_tickers={joined}");
+            let endpoint = format!("/markets?tickers={joined}");
             let resp: MarketsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
             let parsed: Vec<Market> = resp
                 .markets
@@ -1347,39 +1346,24 @@ impl Exchange for Kalshi {
         Ok((all_markets, next_cursor))
     }
 
-    async fn fetch_orderbook(
-        &self,
-        req: px_core::OrderbookRequest,
-    ) -> Result<Orderbook, OpenPxError> {
-        // For event market_tickers, token_id holds the resolved sub-market ticker.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
-        let (yes, no) = self.fetch_orderbook_raw(ticker).await.map_err(to_openpx)?;
+    async fn fetch_orderbook(&self, asset_id: &str) -> Result<Orderbook, OpenPxError> {
+        let (yes, no) = self
+            .fetch_orderbook_raw(asset_id)
+            .await
+            .map_err(to_openpx)?;
 
-        let outcome = req.outcome.as_deref().unwrap_or("Yes");
-        // For multivariate event outcomes (e.g. "Natalie Anderson"), each sub-market
-        // is binary yes/no on that contestant, so treat as Yes perspective.
-        let is_no = outcome.eq_ignore_ascii_case("no");
-
-        let (mut bids, mut asks): (Vec<PriceLevel>, Vec<PriceLevel>) = if is_no {
-            let asks: Vec<PriceLevel> = yes
-                .into_iter()
-                .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
-                .collect();
-            (no, asks)
-        } else {
-            let asks: Vec<PriceLevel> = no
-                .into_iter()
-                .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
-                .collect();
-            (yes, asks)
-        };
+        // Yes-perspective: yes-side bids as bids, no-side bids complemented as asks.
+        let mut bids = yes;
+        let mut asks: Vec<PriceLevel> = no
+            .into_iter()
+            .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
+            .collect();
 
         sort_bids(&mut bids);
         sort_asks(&mut asks);
 
         Ok(Orderbook {
-            market_ticker: req.market_ticker.clone(),
-            asset_id: req.market_ticker,
+            asset_id: asset_id.to_string(),
             bids,
             asks,
             last_update_id: None,
@@ -1548,45 +1532,16 @@ impl Exchange for Kalshi {
         })
     }
 
-    async fn fetch_market_tags(&self, _market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
-        // Kalshi doesn't expose per-market tags; it groups tags by category at
-        // the global level. Return the flattened union — same content for any
-        // market_ticker input.
-        #[derive(Debug, serde::Deserialize)]
-        struct TagsResp {
-            #[serde(default)]
-            tags_by_categories: HashMap<String, Vec<String>>,
-        }
-
-        let resp: TagsResp = self
-            .get("/search/tags_by_categories")
-            .await
-            .map_err(to_openpx)?;
-
-        let tags = resp
-            .tags_by_categories
-            .into_values()
-            .flat_map(|names| {
-                names.into_iter().map(|name| Tag {
-                    id: name.clone(),
-                    slug: Some(name.to_ascii_lowercase().replace(' ', "-")),
-                    name,
-                })
-            })
-            .collect();
-        Ok(tags)
-    }
-
     async fn fetch_orderbooks_batch(
         &self,
-        market_tickers: Vec<String>,
+        asset_ids: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        if market_tickers.is_empty() {
+        if asset_ids.is_empty() {
             return Ok(Vec::new());
         }
-        if market_tickers.len() > 100 {
+        if asset_ids.len() > 100 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "fetch_orderbooks_batch: Kalshi limit is 100 market_tickers per request".into(),
+                "fetch_orderbooks_batch: Kalshi limit is 100 asset_ids per request".into(),
             )));
         }
 
@@ -1609,8 +1564,12 @@ impl Exchange for Kalshi {
             no_dollars: Option<Vec<[String; 2]>>,
         }
 
-        let market_tickers = market_tickers.join(",");
-        let path = format!("/markets/orderbooks?market_tickers={market_tickers}");
+        let query = asset_ids
+            .iter()
+            .map(|t| format!("tickers={t}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let path = format!("/markets/orderbooks?{query}");
         let resp: BatchResp = self.get(&path).await.map_err(to_openpx)?;
 
         let now = chrono::Utc::now();
@@ -1645,7 +1604,6 @@ impl Exchange for Kalshi {
                 sort_bids(&mut bids);
                 sort_asks(&mut asks);
                 Orderbook {
-                    market_ticker: entry.ticker.clone(),
                     asset_id: entry.ticker,
                     bids,
                     asks,
@@ -1689,11 +1647,9 @@ impl Exchange for Kalshi {
             #[serde(default)]
             markets: Vec<serde_json::Value>,
         }
-        let market_tickers = market_tickers.join(",");
-        let path = format!(
-            "/markets?market_tickers={market_tickers}&limit={}",
-            market_tickers.len()
-        );
+        let count = market_tickers.len();
+        let joined = market_tickers.join(",");
+        let path = format!("/markets?tickers={joined}&limit={count}");
         let resp: MarketsResp = self.get(&path).await.map_err(to_openpx)?;
 
         let mut out = HashMap::with_capacity(resp.markets.len());
@@ -2306,7 +2262,6 @@ impl Exchange for Kalshi {
             has_fetch_spread: true,
             has_fetch_last_trade_price: true,
             has_fetch_open_interest: true,
-            has_fetch_market_tags: true,
             has_cancel_all_orders: self.config.is_authenticated(),
             has_create_orders_batch: self.config.is_authenticated(),
         }

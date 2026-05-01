@@ -1,6 +1,4 @@
-use px_core::{
-    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, OrderbookRequest, TradesRequest,
-};
+use px_core::{Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, TradesRequest};
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -643,12 +641,7 @@ async fn test_fetch_orderbook_requires_auth() {
     assert!(!exchange.describe().has_create_order); // confirms not authed
 
     // #when
-    let req = OrderbookRequest {
-        market_ticker: "TEST-TICKER".into(),
-        outcome: None,
-        token_id: None,
-    };
-    let result = exchange.fetch_orderbook(req).await;
+    let result = exchange.fetch_orderbook("TEST-TICKER").await;
 
     // #then
     assert!(result.is_err());

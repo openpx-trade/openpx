@@ -6,7 +6,7 @@ use openpx::{ExchangeInner, WebSocketInner};
 use px_core::models::CryptoPriceSource;
 use px_core::websocket::OrderBookWebSocket;
 use px_core::MarketStatusFilter;
-use px_core::{FetchMarketsParams, FetchOrdersParams, OrderbookRequest, TradesRequest};
+use px_core::{FetchMarketsParams, FetchOrdersParams, TradesRequest};
 use px_crypto::CryptoPriceWebSocket;
 use px_sports::SportsWebSocket;
 
@@ -78,14 +78,8 @@ enum Command {
     },
     /// Fetch a market plus its parent event and series in one call
     FetchMarketLineage { market_ticker: String },
-    /// Fetch L2 orderbook
-    FetchOrderbook {
-        market_ticker: String,
-        #[arg(long)]
-        outcome: Option<String>,
-        #[arg(long)]
-        token_id: Option<String>,
-    },
+    /// Fetch full-depth L2 orderbook (bids + asks) for an asset_id (Kalshi market ticker or Polymarket token id)
+    FetchOrderbook { asset_id: String },
     /// Fetch recent trades
     FetchTrades {
         market_ticker: String,
@@ -277,17 +271,8 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let lineage = exchange.fetch_market_lineage(&market_ticker).await?;
                 print_json(&lineage);
             }
-            Command::FetchOrderbook {
-                market_ticker,
-                outcome,
-                token_id,
-            } => {
-                let req = OrderbookRequest {
-                    market_ticker,
-                    outcome,
-                    token_id,
-                };
-                let ob = exchange.fetch_orderbook(req).await?;
+            Command::FetchOrderbook { asset_id } => {
+                let ob = exchange.fetch_orderbook(&asset_id).await?;
                 print_json(&ob);
             }
             Command::FetchTrades {

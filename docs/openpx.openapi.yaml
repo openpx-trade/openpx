@@ -22,7 +22,6 @@ tags:
 - name: Fills
 - name: Server
 - name: Pricing
-- name: Tags
 paths:
   /v1/markets/fetch_markets:
     get:
@@ -335,28 +334,15 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbook
-      description: Fetch the L2 orderbook (bids + asks) for a single market outcome.
+      description: "Fetch the full-depth L2 orderbook (bids + asks) for a single asset.\n`asset_id` is the per-outcome identifier\
+        \ \u2014 Kalshi market ticker or Polymarket token id."
       operationId: fetch_orderbook
       parameters:
-      - name: market_ticker
+      - name: asset_id
         in: query
         required: true
         schema:
           type: string
-      - name: outcome
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
       responses:
         '200':
           description: Success.
@@ -544,10 +530,10 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbooks batch
-      description: Fetch L2 orderbooks for multiple markets in one round-trip.
+      description: Fetch full-depth L2 orderbooks for multiple assets in one round-trip.
       operationId: fetch_orderbooks_batch
       parameters:
-      - name: market_tickers
+      - name: asset_ids
         in: query
         required: true
         schema:
@@ -742,34 +728,6 @@ paths:
               schema:
                 type: number
                 format: double
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/tags/fetch_market_tags:
-    get:
-      tags:
-      - Tags
-      summary: Fetch market tags
-      description: Fetch the tag set associated with a market (or its parent event).
-      operationId: fetch_market_tags
-      parameters:
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Tag'
         default:
           description: Unified error response.
           content:
@@ -1086,8 +1044,6 @@ components:
           type: boolean
         has_fetch_market_lineage:
           type: boolean
-        has_fetch_market_tags:
-          type: boolean
         has_fetch_markets:
           type: boolean
         has_fetch_midpoint:
@@ -1126,7 +1082,6 @@ components:
       - has_fetch_fills
       - has_fetch_last_trade_price
       - has_fetch_market_lineage
-      - has_fetch_market_tags
       - has_fetch_markets
       - has_fetch_midpoint
       - has_fetch_midpoints_batch
@@ -1704,8 +1659,6 @@ components:
           type:
           - integer
           - 'null'
-        market_ticker:
-          type: string
         timestamp:
           format: date-time
           type:
@@ -1715,24 +1668,6 @@ components:
       - asks
       - asset_id
       - bids
-      - market_ticker
-      type: object
-    OrderbookRequest:
-      description: Request for fetching an L2 orderbook.
-      properties:
-        market_ticker:
-          type: string
-        outcome:
-          type:
-          - string
-          - 'null'
-        token_id:
-          type:
-          - string
-          - 'null'
-      required:
-      - market_ticker
-      title: OrderbookRequest
       type: object
     Outcome:
       description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
@@ -2036,23 +1971,6 @@ components:
       - bid
       - spread
       title: Spread
-      type: object
-    Tag:
-      description: A category or tag attached to a market or event. Used for filtering and search. Kalshi exposes tags via
-        category-keyed lookups; Polymarket exposes per-market and per-event tag arrays.
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        slug:
-          type:
-          - string
-          - 'null'
-      required:
-      - id
-      - name
-      title: Tag
       type: object
     TradesRequest:
       description: Request for fetching recent public trades ("tape") for a market outcome.

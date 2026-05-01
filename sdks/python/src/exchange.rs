@@ -195,22 +195,12 @@ impl NativeExchange {
         pythonize(py, &balance).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker, outcome=None, token_id=None))]
-    fn fetch_orderbook<'py>(
-        &self,
-        py: Python<'py>,
-        market_ticker: &str,
-        outcome: Option<String>,
-        token_id: Option<String>,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    #[pyo3(signature = (asset_id))]
+    fn fetch_orderbook<'py>(&self, py: Python<'py>, asset_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let req = px_core::OrderbookRequest {
-            market_ticker: market_ticker.to_string(),
-            outcome,
-            token_id,
-        };
+        let asset_id = asset_id.to_string();
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_orderbook(req)));
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbook(&asset_id)));
         let book = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &book).map_err(|e| to_py_err(e.to_string()))
     }

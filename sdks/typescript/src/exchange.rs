@@ -219,21 +219,11 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_orderbook(
-        &self,
-        market_ticker: String,
-        outcome: Option<String>,
-        token_id: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn fetch_orderbook(&self, asset_id: String) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
-        let req = px_core::OrderbookRequest {
-            market_ticker,
-            outcome,
-            token_id,
-        };
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.fetch_orderbook(req).await })
+            .spawn(async move { inner.fetch_orderbook(&asset_id).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

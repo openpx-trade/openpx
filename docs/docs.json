@@ -38,12 +38,6 @@
                   "api/markets/fetch-markets",
                   "api/markets/fetch-market-lineage"
                 ]
-              },
-              {
-                "group": "Tags",
-                "pages": [
-                  "api/tags/fetch-market-tags"
-                ]
               }
             ]
           },

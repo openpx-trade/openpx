@@ -19,7 +19,7 @@ use std::env;
 use std::time::Duration;
 
 use openpx::{ExchangeInner, WebSocketInner};
-use px_core::{OrderbookRequest, TradesRequest};
+use px_core::TradesRequest;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -372,27 +372,19 @@ macro_rules! exchange_tests {
                     _ => return,
                 };
 
-                // Prefer a binary market (no outcome required); fall back to first market
-                // with an explicit outcome for non-binary markets.
-                let (market_ticker, outcome) =
-                    if let Some(m) = markets.iter().find(|m| m.is_binary()) {
-                        (m.ticker.clone(), None)
-                    } else {
-                        let m = &markets[0];
-                        (
-                            m.ticker.clone(),
-                            m.outcomes.first().map(|o| o.label.clone()),
-                        )
-                    };
+                // Pick the first outcome's asset_id: Kalshi returns the market ticker,
+                // Polymarket returns the per-outcome token id.
+                let m = markets
+                    .iter()
+                    .find(|m| m.is_binary())
+                    .unwrap_or(&markets[0]);
+                let asset_id = m
+                    .outcomes
+                    .first()
+                    .and_then(|o| o.token_id.clone())
+                    .unwrap_or_else(|| m.ticker.clone());
 
-                match ex
-                    .fetch_orderbook(OrderbookRequest {
-                        market_ticker,
-                        outcome,
-                        token_id: None,
-                    })
-                    .await
-                {
+                match ex.fetch_orderbook(&asset_id).await {
                     Ok(book) => {
                         let _ = &book.bids;
                         let _ = &book.asks;
@@ -435,14 +427,12 @@ macro_rules! exchange_tests {
 
                 // Try a few markets to find one with orderbook data
                 for market in markets.iter().take(5) {
-                    let book = match ex
-                        .fetch_orderbook(OrderbookRequest {
-                            market_ticker: market.ticker.clone(),
-                            outcome: None,
-                            token_id: None,
-                        })
-                        .await
-                    {
+                    let asset_id = market
+                        .outcomes
+                        .first()
+                        .and_then(|o| o.token_id.clone())
+                        .unwrap_or_else(|| market.ticker.clone());
+                    let book = match ex.fetch_orderbook(&asset_id).await {
                         Ok(b) if b.has_data() => b,
                         _ => continue,
                     };
