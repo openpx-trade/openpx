@@ -196,11 +196,7 @@ impl NativeExchange {
     }
 
     #[pyo3(signature = (asset_id))]
-    fn fetch_orderbook<'py>(
-        &self,
-        py: Python<'py>,
-        asset_id: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn fetch_orderbook<'py>(&self, py: Python<'py>, asset_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let asset_id = asset_id.to_string();
         let rt = get_runtime();

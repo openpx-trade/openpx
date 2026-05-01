@@ -1,6 +1,4 @@
-use px_core::{
-    Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, TradesRequest,
-};
+use px_core::{Exchange, FetchMarketsParams, MarketStatus, MarketStatusFilter, TradesRequest};
 use px_exchange_kalshi::{Kalshi, KalshiConfig};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};

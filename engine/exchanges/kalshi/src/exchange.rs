@@ -1347,7 +1347,10 @@ impl Exchange for Kalshi {
     }
 
     async fn fetch_orderbook(&self, asset_id: &str) -> Result<Orderbook, OpenPxError> {
-        let (yes, no) = self.fetch_orderbook_raw(asset_id).await.map_err(to_openpx)?;
+        let (yes, no) = self
+            .fetch_orderbook_raw(asset_id)
+            .await
+            .map_err(to_openpx)?;
 
         // Yes-perspective: yes-side bids as bids, no-side bids complemented as asks.
         let mut bids = yes;
