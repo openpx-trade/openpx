@@ -100,10 +100,6 @@ class ExchangeInfo(BaseModel):
     name: str
 
 
-class FetchOrdersParams(BaseModel):
-    market_ticker: str | None = None
-
-
 class InvalidationReason1(Enum):
     Reconnect = "Reconnect"
     Lag = "Lag"
@@ -174,6 +170,29 @@ class MarketType(Enum):
 class MaxGap(BaseModel):
     ask_gap_bps: float | None = None
     bid_gap_bps: float | None = None
+
+
+class OrderOutcome1(Enum):
+    yes = "yes"
+
+
+class OrderOutcome2(Enum):
+    no = "no"
+
+
+class OrderOutcome3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+
+
+class OrderOutcome(RootModel[OrderOutcome1 | OrderOutcome2 | OrderOutcome3]):
+    root: OrderOutcome1 | OrderOutcome2 | OrderOutcome3 = Field(
+        ...,
+        description="Which outcome an order targets.\n\nOn Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so this field is a response-label hint only — it shows up on `Order.outcome` but does not route the trade.",
+        title="OrderOutcome",
+    )
 
 
 class OrderSide(Enum):
@@ -421,6 +440,25 @@ class ActivityFill(BaseModel):
     )
 
 
+class CreateOrderRequest(BaseModel):
+    asset_id: str = Field(
+        ...,
+        description="Per-outcome asset identifier — Kalshi market ticker, Polymarket CTF token id. Same convention as `Exchange::fetch_orderbook` — the value identifies the orderable thing (a Kalshi market is orderable as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must resolve the token id themselves via `fetch_market` before submitting.",
+    )
+    order_type: OrderType | None = Field(
+        "gtc", description="Time-in-force / execution type."
+    )
+    outcome: OrderOutcome = Field(
+        ...,
+        description="On Kalshi, drives YES-frame bid/ask side selection — required. On Polymarket, response-label hint only (the actual outcome is encoded in `asset_id`).",
+    )
+    price: float = Field(
+        ..., description="Limit price as YES probability in `(0.0, 1.0)`."
+    )
+    side: OrderSide = Field(..., description="Buy or sell.")
+    size: float = Field(..., description="Order size in contracts.")
+
+
 class CryptoPrice(BaseModel):
     source: CryptoPriceSource
     symbol: str
@@ -529,31 +567,12 @@ class Market(BaseModel):
     volume_24h: float | None = Field(None, description="24-hour trading volume (USD)")
 
 
-class NewOrder(BaseModel):
-    client_order_id: str | None = Field(
-        None, description="Kalshi-specific idempotency key."
-    )
-    expiration_ts: int | None = Field(
-        None,
-        description="Unix seconds. Required for `OrderType::Gtc` orders that should expire.",
-    )
-    market_ticker: str
-    order_type: OrderType
-    outcome: str
-    post_only: bool | None = Field(
-        None, description="Polymarket: pin maker-only. Ignored on Kalshi."
-    )
-    price: float
-    reduce_only: bool | None = Field(
-        None,
-        description="Kalshi: only allow size reductions. Maps to `reduce_only=true`.",
-    )
-    side: OrderSide
-    size: float
-
-
 class Order(BaseModel):
     created_at: AwareDatetime
+    fee: float | None = Field(
+        None,
+        description="Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars. Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement, so this stays `None` on initial create response.",
+    )
     filled: float
     id: str
     market_ticker: str

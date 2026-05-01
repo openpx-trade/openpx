@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use crate::error::OpenPxError;
 use crate::models::{
-    Fill, Market, MarketLineage, MarketTrade, Order, OrderSide, OrderType, Orderbook,
+    CreateOrderRequest, Fill, Market, MarketLineage, MarketTrade, Order, Orderbook,
     OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
 };
 
-use super::config::{FetchMarketsParams, FetchOrdersParams};
+use super::config::FetchMarketsParams;
 use super::manifest::ExchangeManifest;
 
 #[allow(async_fn_in_trait)]
@@ -24,36 +24,26 @@ pub trait Exchange: Send + Sync {
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
-    /// Submit a new order — `side` is `buy` or `sell`; `params["order_type"]` accepts `gtc`, `ioc`, or `fok`.
-    async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError>;
+    /// Submit a new order. The unified surface exposes only the six fields on
+    /// `CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
+    /// expiration, idempotency keys, neg-risk overrides, builder/metadata,
+    /// subaccounts) are not modelled. Each adapter generates whatever its
+    /// upstream requires (e.g. Kalshi V2's required `client_order_id` and
+    /// `self_trade_prevention_type`) internally.
+    async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError>;
 
-    /// Cancel an existing order by ID, optionally scoped to a market.
-    async fn cancel_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError>;
+    /// Cancel an existing order by ID. The order_id is globally unique on
+    /// both exchanges, so no scope qualifier is required.
+    async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch a single order by ID, optionally scoped to a market.
-    async fn fetch_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError>;
+    /// Fetch a single order by ID. As with `cancel_order`, the order_id
+    /// is globally unique on both exchanges.
+    async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch the caller's currently open orders, optionally filtered by market.
-    async fn fetch_open_orders(
-        &self,
-        params: Option<FetchOrdersParams>,
-    ) -> Result<Vec<Order>, OpenPxError>;
+    /// Fetch the caller's currently open orders, optionally filtered by
+    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
+    /// convention as `fetch_orderbook` and `create_order`).
+    async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError>;
 
     /// Fetch the caller's open positions, optionally filtered by market.
     async fn fetch_positions(
@@ -170,20 +160,23 @@ pub trait Exchange: Send + Sync {
         Ok(crate::models::orderbook_microstructure(&book))
     }
 
-    /// Cancel all of the caller's open orders, optionally scoped to a market.
-    async fn cancel_all_orders(
-        &self,
-        market_ticker: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
-        let _ = market_ticker;
+    /// Cancel all of the caller's open orders, optionally scoped to one
+    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id).
+    async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
+        let _ = asset_id;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),
         ))
     }
 
-    /// Submit multiple orders in one round-trip — each order's `side` is `buy`/`sell` and `order_type` is `gtc`, `ioc`, or `fok` (cap: 15 on Polymarket; token-budget on Kalshi).
-    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
-        let _ = orders;
+    /// Submit multiple orders in one round-trip. Each request shares the
+    /// same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
+    /// Kalshi.
+    async fn create_orders_batch(
+        &self,
+        reqs: Vec<CreateOrderRequest>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        let _ = reqs;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("create_orders_batch".into()),
         ))
@@ -256,25 +249,4 @@ pub struct TradesRequest {
     pub limit: Option<usize>,
     /// Opaque cursor from a prior response.
     pub cursor: Option<String>,
-}
-
-/// One order in a `create_orders_batch` call. Each venue caps the batch size
-/// (Polymarket: 15; Kalshi: token-budget-dependent).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct NewOrder {
-    pub market_ticker: String,
-    pub outcome: String,
-    pub side: OrderSide,
-    pub order_type: OrderType,
-    pub price: f64,
-    pub size: f64,
-    /// Polymarket: pin maker-only. Ignored on Kalshi.
-    pub post_only: Option<bool>,
-    /// Kalshi: only allow size reductions. Maps to `reduce_only=true`.
-    pub reduce_only: Option<bool>,
-    /// Kalshi-specific idempotency key.
-    pub client_order_id: Option<String>,
-    /// Unix seconds. Required for `OrderType::Gtc` orders that should expire.
-    pub expiration_ts: Option<i64>,
 }

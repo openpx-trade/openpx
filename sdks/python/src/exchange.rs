@@ -84,91 +84,80 @@ impl NativeExchange {
         pythonize(py, &lineage).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker, outcome, side, price, size, params=None))]
+    #[pyo3(signature = (asset_id, outcome, side, price, size, order_type="gtc"))]
     #[allow(clippy::too_many_arguments)]
     fn create_order<'py>(
         &self,
         py: Python<'py>,
-        market_ticker: &str,
+        asset_id: &str,
         outcome: &str,
         side: &str,
         price: f64,
         size: f64,
-        params: Option<&Bound<'py, PyDict>>,
+        order_type: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_ticker = market_ticker.to_string();
-        let outcome = outcome.to_string();
         let order_side: px_core::OrderSide =
             serde_json::from_value(serde_json::Value::String(side.to_string()))
                 .map_err(|e| to_py_err(e.to_string()))?;
-        let extra: std::collections::HashMap<String, String> = match params {
-            Some(d) => pythonize::depythonize(d).unwrap_or_default(),
-            None => std::collections::HashMap::new(),
+        let order_type_enum: px_core::OrderType = match order_type.to_ascii_lowercase().as_str() {
+            "gtc" => px_core::OrderType::Gtc,
+            "ioc" => px_core::OrderType::Ioc,
+            "fok" => px_core::OrderType::Fok,
+            other => {
+                return Err(to_py_err(format!(
+                    "invalid order_type '{other}' (allowed: gtc, ioc, fok)"
+                )))
+            }
+        };
+        let order_outcome = match outcome.to_ascii_lowercase().as_str() {
+            "yes" => px_core::OrderOutcome::Yes,
+            "no" => px_core::OrderOutcome::No,
+            _ => px_core::OrderOutcome::Label(outcome.to_string()),
+        };
+        let req = px_core::CreateOrderRequest {
+            asset_id: asset_id.to_string(),
+            outcome: order_outcome,
+            side: order_side,
+            price,
+            size,
+            order_type: order_type_enum,
         };
         let rt = get_runtime();
-        let result = py.detach(|| {
-            rt.block_on(inner.create_order(
-                &market_ticker,
-                &outcome,
-                order_side,
-                price,
-                size,
-                extra,
-            ))
-        });
+        let result = py.detach(|| rt.block_on(inner.create_order(req)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_ticker=None))]
-    fn cancel_order<'py>(
-        &self,
-        py: Python<'py>,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    #[pyo3(signature = (order_id))]
+    fn cancel_order<'py>(&self, py: Python<'py>, order_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_ticker.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.cancel_order(&order_id)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_ticker=None))]
-    fn fetch_order<'py>(
-        &self,
-        py: Python<'py>,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    #[pyo3(signature = (order_id))]
+    fn fetch_order<'py>(&self, py: Python<'py>, order_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_ticker.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_order(&order_id)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker=None))]
+    #[pyo3(signature = (asset_id=None))]
     fn fetch_open_orders<'py>(
         &self,
         py: Python<'py>,
-        market_ticker: Option<String>,
+        asset_id: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.detach(|| {
-            let params = market_ticker.map(|mid| px_core::FetchOrdersParams {
-                market_ticker: Some(mid),
-            });
-            rt.block_on(inner.fetch_open_orders(params))
-        });
+        let result = py.detach(|| rt.block_on(inner.fetch_open_orders(asset_id.as_deref())));
         let orders = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &orders).map_err(|e| to_py_err(e.to_string()))
     }
@@ -193,6 +182,21 @@ impl NativeExchange {
         let result = py.detach(|| rt.block_on(inner.fetch_balance()));
         let balance = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &balance).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    fn refresh_balance(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.refresh_balance()));
+        result.map_err(|e| to_py_err(e.to_string()))
+    }
+
+    fn fetch_server_time<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_server_time()));
+        let ts = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &ts.to_rfc3339()).map_err(|e| to_py_err(e.to_string()))
     }
 
     #[pyo3(signature = (asset_id))]

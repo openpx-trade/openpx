@@ -17,11 +17,11 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use px_core::{
-    manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Event, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market, MarketLineage,
-    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder, OpenPxError, Order,
-    OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position,
-    PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
+    manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, Fill, Market, MarketLineage, MarketStatus,
+    MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderOutcome, OrderSide,
+    OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceLevel,
+    PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -633,6 +633,7 @@ impl Polymarket {
             price,
             size,
             filled,
+            fee: None,
             status,
             created_at: resp.created_at,
             updated_at: None, // SDK doesn't have updated_at, using None
@@ -952,7 +953,10 @@ impl Polymarket {
             .filter_map(|item| {
                 let obj = item.as_object()?;
 
-                let market_ticker = obj.get("conditionId").and_then(|v| v.as_str())?.to_string();
+                // Use the user-facing market slug (matches unified `Market.ticker`)
+                // and not the on-chain condition_id. Slug is present on every row;
+                // skip if missing rather than leaking the hash.
+                let market_ticker = obj.get("slug").and_then(|v| v.as_str())?.to_string();
 
                 let outcome = obj
                     .get("outcome")
@@ -1254,22 +1258,6 @@ impl Polymarket {
     /// and Neg Risk Adapter contracts.
     pub async fn approve_all(&self) -> Result<ApprovalResponse, PolymarketError> {
         self.set_approvals(&ApprovalRequest::all()).await
-    }
-}
-
-fn polymarket_order_type(params: &HashMap<String, String>) -> Result<OrderType, OpenPxError> {
-    let order_type = params
-        .get("order_type")
-        .map(|v| v.as_str())
-        .unwrap_or("gtc");
-
-    match order_type {
-        "gtc" => Ok(OrderType::GTC),
-        "ioc" => Ok(OrderType::FAK),
-        "fok" => Ok(OrderType::FOK),
-        _ => Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-            format!("invalid order_type '{order_type}' (allowed: gtc, ioc, fok)"),
-        ))),
     }
 }
 
@@ -1585,21 +1573,12 @@ impl Exchange for Polymarket {
         Ok((trades, next_cursor))
     }
 
-    async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError> {
+    async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
             .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
-        // Resolve signing strategy: local key (self/per-request) or external signer (managed)
         let has_local_signer = self.signer.is_some();
         let has_external_signer = self.external_signer.is_some();
         if !has_local_signer && !has_external_signer {
@@ -1608,93 +1587,45 @@ impl Exchange for Polymarket {
             )));
         }
 
-        // Resolve token_id: use params if provided, otherwise fetch from market metadata
-        let (token_id, market_neg_risk) = if let Some(tid) = params.get("token_id") {
-            (tid.clone(), None)
-        } else {
-            // Fetch market to get token_ids
-            let market = self.fetch_market(market_ticker).await?;
-            let mut token_ids = market.token_ids();
-
-            if token_ids.is_empty() {
-                let condition_id = market.condition_id.as_deref().unwrap_or("");
-                token_ids = self
-                    .fetch_token_ids(condition_id)
-                    .await
-                    .map_err(|e| OpenPxError::Exchange(e.into()))?;
-            }
-
-            if token_ids.is_empty() {
-                return Err(OpenPxError::InvalidInput(
-                    "no token IDs found for market".into(),
-                ));
-            }
-
-            // Map outcome to token index
-            let outcomes = &market.outcomes;
-            let outcome_idx = if let Ok(idx) = outcome.parse::<usize>() {
-                idx
-            } else {
-                outcomes
-                    .iter()
-                    .position(|o| o.label.eq_ignore_ascii_case(outcome))
-                    .ok_or_else(|| {
-                        OpenPxError::InvalidInput(format!(
-                            "outcome '{}' not found in market outcomes {:?}",
-                            outcome, outcomes
-                        ))
-                    })?
-            };
-
-            let resolved_token_id = token_ids
-                .get(outcome_idx)
-                .cloned()
-                .ok_or_else(|| OpenPxError::InvalidInput("token not found for outcome".into()))?;
-
-            // Extract neg_risk from market
-            let neg_risk_from_market = market.neg_risk;
-
-            (resolved_token_id, neg_risk_from_market)
+        // `asset_id` is the CTF token id directly — same convention as
+        // `fetch_orderbook(asset_id)`. No market fetch needed: the SDK
+        // looks up `neg_risk` per-token on its own (cached) during
+        // `build_order`. The outcome field is response-label hint only.
+        let outcome_label = match &req.outcome {
+            OrderOutcome::Yes => "Yes".to_string(),
+            OrderOutcome::No => "No".to_string(),
+            OrderOutcome::Label(s) => s.clone(),
         };
 
-        // Extract neg_risk from params, falling back to market metadata
-        let neg_risk = params
-            .get("neg_risk")
-            .map(|s| s == "true" || s == "1")
-            .or(market_neg_risk)
-            .unwrap_or(false);
-
-        // Convert token_id to U256
-        let token_id_u256 = U256::from_str(&token_id).map_err(|e| {
+        let token_id_u256 = U256::from_str(&req.asset_id).map_err(|e| {
             OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "invalid token_id: {e}"
+                "invalid asset_id (expected CTF token id): {e}"
             )))
         })?;
 
-        // Convert price and size to Decimal
-        let price_decimal = Decimal::try_from(price).map_err(|e| {
+        let price_decimal = Decimal::try_from(req.price).map_err(|e| {
             OpenPxError::Exchange(px_core::ExchangeError::Api(format!("invalid price: {e}")))
         })?;
-        let size_decimal = Decimal::try_from(size).map_err(|e| {
+        let size_decimal = Decimal::try_from(req.size).map_err(|e| {
             OpenPxError::Exchange(px_core::ExchangeError::Api(format!("invalid size: {e}")))
         })?;
 
-        // Determine SDK side
-        let sdk_side = match side {
+        let sdk_side = match req.side {
             OrderSide::Buy => Side::Buy,
             OrderSide::Sell => Side::Sell,
         };
 
         let guard = sdk_state.client.read().await;
 
-        let order_type = polymarket_order_type(&params)?;
+        let order_type = match req.order_type {
+            UnifiedOrderType::Gtc => OrderType::GTC,
+            UnifiedOrderType::Ioc => OrderType::FAK,
+            UnifiedOrderType::Fok => OrderType::FOK,
+        };
 
-        // Pre-populate neg_risk cache if we know it
-        if neg_risk {
-            sdk_dispatch!(&*guard, set_neg_risk(token_id_u256, true));
-        }
-
-        // Build the order using SDK's order builder
+        // Build the order using SDK's order builder. The SDK auto-resolves
+        // `neg_risk` per token (cached) during build, so no explicit
+        // pre-population is required now that the asset_id IS the token id.
         let signable_order = sdk_dispatch!(
             &*guard,
             limit_order()
@@ -1846,25 +1777,43 @@ impl Exchange for Polymarket {
         )
         .record(send_us);
 
+        // Faithful mapping of Polymarket V2 POST /order status. `delayed`
+        // is "marketable, awaiting the 1s sports-market delay window" — the
+        // closest unified state is `Pending`. `unmatched` is "delay expired
+        // without a match, now resting on the book" — closer to `Open` than
+        // `Cancelled`. `Canceled` only appears on cancel paths but mapped
+        // for completeness.
+        let status = match response.status {
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Live => OrderStatus::Open,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Matched => OrderStatus::Filled,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Delayed => OrderStatus::Pending,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Unmatched => OrderStatus::Open,
+            polymarket_client_sdk_v2::clob::types::OrderStatusType::Canceled => {
+                OrderStatus::Cancelled
+            }
+            _ => OrderStatus::Open,
+        };
+
+        // `Order.market_ticker` is the unified market identifier; on
+        // Polymarket the asset_id is a per-outcome token, not a market id,
+        // so we leave market_ticker empty rather than fabricate one. Use
+        // `fetch_market_lineage` if a slug is needed.
         Ok(Order {
             id: response.order_id,
-            market_ticker: market_ticker.to_string(),
-            outcome: outcome.to_string(),
-            side,
-            price,
-            size,
+            market_ticker: String::new(),
+            outcome: outcome_label,
+            side: req.side,
+            price: req.price,
+            size: req.size,
             filled: 0.0,
-            status: OrderStatus::Open,
+            fee: None,
+            status,
             created_at: chrono::Utc::now(),
             updated_at: None,
         })
     }
 
-    async fn cancel_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -1914,11 +1863,7 @@ impl Exchange for Polymarket {
         Ok(order)
     }
 
-    async fn fetch_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -1946,10 +1891,7 @@ impl Exchange for Polymarket {
         Ok(self.parse_sdk_order(&order_resp))
     }
 
-    async fn fetch_open_orders(
-        &self,
-        _params: Option<FetchOrdersParams>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -1958,7 +1900,17 @@ impl Exchange for Polymarket {
         let guard = sdk_state.client.read().await;
 
         let send_start = Instant::now();
-        let request = OrdersRequest::default();
+        // Polymarket's `OrdersRequest.asset_id` filters by token id (the
+        // per-outcome identifier). Same convention as `fetch_orderbook` and
+        // `create_order`.
+        let mut request = OrdersRequest::default();
+        if let Some(t) = asset_id {
+            request.asset_id = Some(U256::from_str(t).map_err(|e| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "invalid asset_id (expected CTF token id): {e}"
+                )))
+            })?);
+        }
         let page = sdk_dispatch!(
             &*guard,
             orders(&request, None).await.map_err(|e| {
@@ -2210,6 +2162,31 @@ impl Exchange for Polymarket {
         Ok(())
     }
 
+    async fn fetch_server_time(&self) -> Result<chrono::DateTime<chrono::Utc>, OpenPxError> {
+        // CLOB exposes a public `GET /time` endpoint returning Unix seconds
+        // (clob-openapi.yaml /time). Public, no auth.
+        let url = format!("{}/time", self.config.clob_url);
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "fetch server time failed: {status} - {text}"
+            ))));
+        }
+        let unix_seconds: i64 = response
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        chrono::DateTime::<chrono::Utc>::from_timestamp(unix_seconds, 0).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "invalid unix timestamp from /time: {unix_seconds}"
+            )))
+        })
+    }
+
     async fn fetch_market_lineage(
         &self,
         market_ticker: &str,
@@ -2261,23 +2238,17 @@ impl Exchange for Polymarket {
         Ok(raw.iter().filter_map(parse_polymarket_book).collect())
     }
 
-    async fn cancel_all_orders(
-        &self,
-        market_ticker: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         // Sequential loop over the caller's open orders. The Polymarket
-        // CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
-        // endpoints that are O(1). TODO(batch5-v2): swap to those once the
-        // V2 SDK lands and exposes them. For now this works against both V1
-        // and V2 SDKs and matches the trait contract.
-        let params = FetchOrdersParams {
-            market_ticker: market_ticker.map(String::from),
-        };
-        let open = self.fetch_open_orders(Some(params)).await?;
+        // CLOB has native `DELETE /cancel-all` and per-market cancel
+        // endpoints that are O(1); switching to those is a future
+        // optimization. For now this matches the trait contract and
+        // honours the asset_id filter via fetch_open_orders.
+        let open = self.fetch_open_orders(asset_id).await?;
 
         let mut cancelled = Vec::with_capacity(open.len());
         for order in open {
-            match self.cancel_order(&order.id, market_ticker).await {
+            match self.cancel_order(&order.id).await {
                 Ok(o) => cancelled.push(o),
                 Err(e) => tracing::warn!(
                     order_id = %order.id,
@@ -2289,45 +2260,23 @@ impl Exchange for Polymarket {
         Ok(cancelled)
     }
 
-    async fn create_orders_batch(&self, orders: Vec<NewOrder>) -> Result<Vec<Order>, OpenPxError> {
-        // Polymarket caps batches at 15 orders per the V2 migration guide.
-        if orders.len() > 15 {
+    async fn create_orders_batch(
+        &self,
+        reqs: Vec<CreateOrderRequest>,
+    ) -> Result<Vec<Order>, OpenPxError> {
+        // Polymarket caps native `POST /orders` at 15. Sequential per-order
+        // dispatch via `create_order` is N round-trips — a single-RTT native
+        // batch is a future optimization. Each `create_order` call already
+        // signs and posts independently so failures don't cascade.
+        if reqs.len() > 15 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
                 "create_orders_batch: Polymarket cap is 15 orders per request".into(),
             )));
         }
 
-        // Sequential per-order submission via the existing create_order path.
-        // TODO(batch5-v2): when V2 lands, swap to the native `POST /orders`
-        // batch endpoint with array body — single round-trip, deferred
-        // execution support. For now this works on V1 and matches the
-        // unified contract.
-        let mut out = Vec::with_capacity(orders.len());
-        for o in orders {
-            let mut params: HashMap<String, String> = HashMap::new();
-            if let Some(tif) = polymarket_unified_tif(o.order_type) {
-                params.insert("order_type".to_string(), tif.to_string());
-            }
-            if let Some(p) = o.post_only {
-                params.insert("post_only".to_string(), p.to_string());
-            }
-            if let Some(c) = &o.client_order_id {
-                params.insert("client_order_id".to_string(), c.clone());
-            }
-            if let Some(ts) = o.expiration_ts {
-                params.insert("expiration".to_string(), ts.to_string());
-            }
-            let order = self
-                .create_order(
-                    &o.market_ticker,
-                    &o.outcome,
-                    o.side,
-                    o.price,
-                    o.size,
-                    params,
-                )
-                .await?;
-            out.push(order);
+        let mut out = Vec::with_capacity(reqs.len());
+        for req in reqs {
+            out.push(self.create_order(req).await?);
         }
         Ok(out)
     }
@@ -2345,7 +2294,7 @@ impl Exchange for Polymarket {
             has_fetch_orderbook: true,
             has_fetch_trades: true,
             has_fetch_fills: true,
-            has_fetch_server_time: false,
+            has_fetch_server_time: true,
             has_approvals: true,
             has_refresh_balance: true,
             has_websocket: true,
@@ -2572,72 +2521,8 @@ fn parse_polymarket_book(v: &serde_json::Value) -> Option<Orderbook> {
     })
 }
 
-/// Map the unified `OrderType` to a Polymarket-recognized time-in-force string
-/// (consumed by `create_order` via the params map).
-fn polymarket_unified_tif(t: UnifiedOrderType) -> Option<&'static str> {
-    match t {
-        UnifiedOrderType::Gtc => Some("GTC"),
-        UnifiedOrderType::Fok => Some("FOK"),
-        // Polymarket calls IOC "FAK" (fill-and-kill); the existing
-        // `polymarket_order_type` parser maps both spellings.
-        UnifiedOrderType::Ioc => Some("FAK"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::polymarket_order_type;
-    use polymarket_client_sdk_v2::clob::types::OrderType;
-    use std::collections::HashMap;
-
-    #[test]
-    fn order_type_defaults_to_gtc() {
-        let params = HashMap::new();
-        assert!(matches!(
-            polymarket_order_type(&params).unwrap(),
-            OrderType::GTC
-        ));
-    }
-
-    #[test]
-    fn order_type_gtc_maps_to_gtc() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "gtc".to_string());
-        assert!(matches!(
-            polymarket_order_type(&params).unwrap(),
-            OrderType::GTC
-        ));
-    }
-
-    #[test]
-    fn order_type_ioc_maps_to_fak() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "ioc".to_string());
-        assert!(matches!(
-            polymarket_order_type(&params).unwrap(),
-            OrderType::FAK
-        ));
-    }
-
-    #[test]
-    fn order_type_fok_maps_to_fok() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "fok".to_string());
-        assert!(matches!(
-            polymarket_order_type(&params).unwrap(),
-            OrderType::FOK
-        ));
-    }
-
-    #[test]
-    fn invalid_order_type_is_rejected() {
-        let mut params = HashMap::new();
-        params.insert("order_type".to_string(), "market".to_string());
-        assert!(polymarket_order_type(&params).is_err());
-    }
-
-    // --- Event / Series parser tests (Batch 2) ---
-
     use super::{parse_polymarket_event, parse_polymarket_series};
 
     #[test]

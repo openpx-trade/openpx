@@ -133,12 +133,6 @@ pub struct FetchMarketsParams {
     pub event_ticker: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct FetchOrdersParams {
-    pub market_ticker: Option<String>,
-}
-
 // ============================================================================
 // Customer Credentials (for per-customer exchange authentication)
 //

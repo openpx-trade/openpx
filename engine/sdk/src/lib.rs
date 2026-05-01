@@ -80,48 +80,23 @@ impl ExchangeInner {
         dispatch!(self, fetch_markets, params)
     }
 
-    pub async fn create_order(
-        &self,
-        market_ticker: &str,
-        outcome: &str,
-        side: OrderSide,
-        price: f64,
-        size: f64,
-        params: HashMap<String, String>,
-    ) -> Result<Order, OpenPxError> {
-        dispatch!(
-            self,
-            create_order,
-            market_ticker,
-            outcome,
-            side,
-            price,
-            size,
-            params
-        )
+    pub async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError> {
+        dispatch!(self, create_order, req)
     }
 
-    pub async fn cancel_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
-        dispatch!(self, cancel_order, order_id, market_ticker)
+    pub async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
+        dispatch!(self, cancel_order, order_id)
     }
 
-    pub async fn fetch_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
-        dispatch!(self, fetch_order, order_id, market_ticker)
+    pub async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
+        dispatch!(self, fetch_order, order_id)
     }
 
     pub async fn fetch_open_orders(
         &self,
-        params: Option<FetchOrdersParams>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        dispatch!(self, fetch_open_orders, params)
+        dispatch!(self, fetch_open_orders, asset_id)
     }
 
     pub async fn fetch_positions(
@@ -200,15 +175,15 @@ impl ExchangeInner {
 
     pub async fn cancel_all_orders(
         &self,
-        market_ticker: Option<&str>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        dispatch!(self, cancel_all_orders, market_ticker)
+        dispatch!(self, cancel_all_orders, asset_id)
     }
 
     pub async fn create_orders_batch(
         &self,
-        orders: Vec<NewOrder>,
+        reqs: Vec<CreateOrderRequest>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        dispatch!(self, create_orders_batch, orders)
+        dispatch!(self, create_orders_batch, reqs)
     }
 }

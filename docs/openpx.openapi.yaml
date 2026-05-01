@@ -114,39 +114,24 @@ paths:
       tags:
       - Orders
       summary: Create order
-      description: "Submit a new order \u2014 `side` is `buy` or `sell`; `params[\"order_type\"]` accepts `gtc`, `ioc`, or\
-        \ `fok`."
+      description: 'Submit a new order. The unified surface exposes only the six fields on
+
+        `CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
+
+        expiration, idempotency keys, neg-risk overrides, builder/metadata,
+
+        subaccounts) are not modelled. Each adapter generates whatever its
+
+        upstream requires (e.g. Kalshi V2''s required `client_order_id` and
+
+        `self_trade_prevention_type`) internally.'
       operationId: create_order
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                market_ticker:
-                  type: string
-                outcome:
-                  type: string
-                side:
-                  $ref: '#/components/schemas/OrderSide'
-                price:
-                  type: number
-                  format: double
-                size:
-                  type: number
-                  format: double
-                params:
-                  type: object
-                  additionalProperties:
-                    type: string
-              required:
-              - market_ticker
-              - outcome
-              - side
-              - price
-              - size
-              - params
+              $ref: '#/components/schemas/CreateOrderRequest'
       responses:
         '200':
           description: Success.
@@ -165,7 +150,9 @@ paths:
       tags:
       - Orders
       summary: Cancel order
-      description: Cancel an existing order by ID, optionally scoped to a market.
+      description: 'Cancel an existing order by ID. The order_id is globally unique on
+
+        both exchanges, so no scope qualifier is required.'
       operationId: cancel_order
       requestBody:
         required: true
@@ -176,10 +163,6 @@ paths:
               properties:
                 order_id:
                   type: string
-                market_ticker:
-                  type:
-                  - string
-                  - 'null'
               required:
               - order_id
       responses:
@@ -200,17 +183,14 @@ paths:
       tags:
       - Orders
       summary: Fetch order
-      description: Fetch a single order by ID, optionally scoped to a market.
+      description: 'Fetch a single order by ID. As with `cancel_order`, the order_id
+
+        is globally unique on both exchanges.'
       operationId: fetch_order
       parameters:
       - name: order_id
         in: query
         required: true
-        schema:
-          type: string
-      - name: market_ticker
-        in: query
-        required: false
         schema:
           type: string
       responses:
@@ -231,16 +211,18 @@ paths:
       tags:
       - Orders
       summary: Fetch open orders
-      description: Fetch the caller's currently open orders, optionally filtered by market.
+      description: 'Fetch the caller''s currently open orders, optionally filtered by
+
+        `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
+
+        convention as `fetch_orderbook` and `create_order`).'
       operationId: fetch_open_orders
       parameters:
-      - name: market_ticker
+      - name: asset_id
         in: query
         required: false
         schema:
-          type:
-          - string
-          - 'null'
+          type: string
       responses:
         '200':
           description: Success.
@@ -633,7 +615,9 @@ paths:
       tags:
       - Orders
       summary: Cancel all orders
-      description: Cancel all of the caller's open orders, optionally scoped to a market.
+      description: 'Cancel all of the caller''s open orders, optionally scoped to one
+
+        `asset_id` (Kalshi market ticker | Polymarket CTF token id).'
       operationId: cancel_all_orders
       requestBody:
         required: true
@@ -642,7 +626,7 @@ paths:
             schema:
               type: object
               properties:
-                market_ticker:
+                asset_id:
                   type:
                   - string
                   - 'null'
@@ -666,8 +650,11 @@ paths:
       tags:
       - Orders
       summary: Create orders batch
-      description: "Submit multiple orders in one round-trip \u2014 each order's `side` is `buy`/`sell` and `order_type` is\
-        \ `gtc`, `ioc`, or `fok` (cap: 15 on Polymarket; token-budget on Kalshi)."
+      description: 'Submit multiple orders in one round-trip. Each request shares the
+
+        same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
+
+        Kalshi.'
       operationId: create_orders_batch
       requestBody:
         required: true
@@ -676,12 +663,12 @@ paths:
             schema:
               type: object
               properties:
-                orders:
+                reqs:
                   type: array
                   items:
-                    $ref: '#/components/schemas/NewOrder'
+                    $ref: '#/components/schemas/CreateOrderRequest'
               required:
-              - orders
+              - reqs
       responses:
         '200':
           description: Success.
@@ -816,6 +803,48 @@ components:
       - size
       - source_channel
       title: ActivityTrade
+      type: object
+    CreateOrderRequest:
+      description: "Lean input shape for `Exchange::create_order`. All cross-venue and per-venue knobs are deliberately absent\
+        \ \u2014 `post_only`, `expiration_ts`, `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and subaccounts\
+        \ are not exposed. Anything an exchange requires that is not modelled here is generated internally (e.g. Kalshi V2's\
+        \ required `client_order_id` is filled with a per-call UUID)."
+      properties:
+        asset_id:
+          description: "Per-outcome asset identifier \u2014 Kalshi market ticker, Polymarket CTF token id. Same convention\
+            \ as `Exchange::fetch_orderbook` \u2014 the value identifies the orderable thing (a Kalshi market is orderable\
+            \ as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must\
+            \ resolve the token id themselves via `fetch_market` before submitting."
+          type: string
+        order_type:
+          allOf:
+          - $ref: '#/components/schemas/OrderType'
+          default: gtc
+          description: Time-in-force / execution type.
+        outcome:
+          allOf:
+          - $ref: '#/components/schemas/OrderOutcome'
+          description: "On Kalshi, drives YES-frame bid/ask side selection \u2014 required. On Polymarket, response-label\
+            \ hint only (the actual outcome is encoded in `asset_id`)."
+        price:
+          description: Limit price as YES probability in `(0.0, 1.0)`.
+          format: double
+          type: number
+        side:
+          allOf:
+          - $ref: '#/components/schemas/OrderSide'
+          description: Buy or sell.
+        size:
+          description: Order size in contracts.
+          format: double
+          type: number
+      required:
+      - asset_id
+      - outcome
+      - price
+      - side
+      - size
+      title: CreateOrderRequest
       type: object
     CryptoPrice:
       properties:
@@ -1055,14 +1084,6 @@ components:
           description: Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All`
             to fetch markets of any status.
       title: FetchMarketsParams
-      type: object
-    FetchOrdersParams:
-      properties:
-        market_ticker:
-          type:
-          - string
-          - 'null'
-      title: FetchOrdersParams
       type: object
     Fill:
       description: A single fill (trade execution) from a user's order.
@@ -1410,58 +1431,20 @@ components:
           - 'null'
       title: MaxGap
       type: object
-    NewOrder:
-      description: 'One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).'
-      properties:
-        client_order_id:
-          description: Kalshi-specific idempotency key.
-          type:
-          - string
-          - 'null'
-        expiration_ts:
-          description: Unix seconds. Required for `OrderType::Gtc` orders that should expire.
-          format: int64
-          type:
-          - integer
-          - 'null'
-        market_ticker:
-          type: string
-        order_type:
-          $ref: '#/components/schemas/OrderType'
-        outcome:
-          type: string
-        post_only:
-          description: 'Polymarket: pin maker-only. Ignored on Kalshi.'
-          type:
-          - boolean
-          - 'null'
-        price:
-          format: double
-          type: number
-        reduce_only:
-          description: 'Kalshi: only allow size reductions. Maps to `reduce_only=true`.'
-          type:
-          - boolean
-          - 'null'
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        size:
-          format: double
-          type: number
-      required:
-      - market_ticker
-      - order_type
-      - outcome
-      - price
-      - side
-      - size
-      title: NewOrder
-      type: object
     Order:
       properties:
         created_at:
           format: date-time
           type: string
+        fee:
+          default: null
+          description: Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars.
+            Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement,
+            so this stays `None` on initial create response.
+          format: double
+          type:
+          - number
+          - 'null'
         filled:
           format: double
           type: number
@@ -1499,6 +1482,29 @@ components:
       - status
       title: Order
       type: object
+    OrderOutcome:
+      description: "Which outcome an order targets.\n\nOn Kalshi the value is load-bearing \u2014 `Yes` / `No` drives YES-frame\
+        \ bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\
+        \nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so\
+        \ this field is a response-label hint only \u2014 it shows up on `Order.outcome` but does not route the trade."
+      oneOf:
+      - description: Binary YES outcome.
+        enum:
+        - 'yes'
+        type: string
+      - description: Binary NO outcome.
+        enum:
+        - 'no'
+        type: string
+      - additionalProperties: false
+        description: Multi-outcome categorical label (Polymarket only; Kalshi rejects).
+        properties:
+          label:
+            type: string
+        required:
+        - label
+        type: object
+      title: OrderOutcome
     OrderSide:
       enum:
       - buy

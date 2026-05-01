@@ -4,4 +4,5 @@ sidebarTitle: "Fetch order"
 openapi: /openpx.openapi.yaml GET /v1/orders/fetch_order
 ---
 
-Fetch a single order by ID, optionally scoped to a market.
+Fetch a single order by ID. As with `cancel_order`, the order_id
+is globally unique on both exchanges.

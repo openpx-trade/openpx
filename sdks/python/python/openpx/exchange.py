@@ -93,38 +93,55 @@ class Exchange:
 
     def create_order(
         self,
-        market_ticker: str,
+        asset_id: str,
         outcome: str,
         side: str,
         price: float,
         size: float,
-        **params: str,
+        order_type: str = "gtc",
     ) -> Any:
-        raw = self._native.create_order(market_ticker, outcome, side, price, size, params or None)
+        """Submit a new order on the exchange.
+
+        ``asset_id`` is the per-outcome identifier — Kalshi market ticker or
+        Polymarket CTF token id (same convention as ``fetch_orderbook``).
+        Polymarket callers who only have a market slug + outcome label must
+        resolve the token id first via ``fetch_market``.
+
+        ``outcome`` is ``"yes"`` / ``"no"`` on Kalshi (drives YES-frame
+        bid/ask side selection at the wire). On Polymarket the outcome is
+        already encoded in ``asset_id``; this argument is just a label hint
+        used for the response ``Order.outcome`` field.
+
+        ``order_type`` is ``"gtc"`` (default), ``"ioc"``, or ``"fok"``.
+        """
+        raw = self._native.create_order(asset_id, outcome, side, price, size, order_type)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def cancel_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
-        raw = self._native.cancel_order(order_id, market_ticker)
+    def cancel_order(self, order_id: str) -> Any:
+        raw = self._native.cancel_order(order_id)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
-        raw = self._native.fetch_order(order_id, market_ticker)
+    def fetch_order(self, order_id: str) -> Any:
+        raw = self._native.fetch_order(order_id)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_open_orders(self, market_ticker: Optional[str] = None) -> list[Any]:
-        raw = self._native.fetch_open_orders(market_ticker)
+    def fetch_open_orders(self, asset_id: Optional[str] = None) -> list[Any]:
+        """Fetch open orders, optionally filtered by ``asset_id`` (Kalshi
+        market ticker | Polymarket CTF token id — same convention as
+        ``fetch_orderbook`` and ``create_order``)."""
+        raw = self._native.fetch_open_orders(asset_id)
         try:
             from openpx._models import Order
             return [Order(**o) for o in raw]
@@ -141,6 +158,22 @@ class Exchange:
 
     def fetch_balance(self) -> dict[str, float]:
         return self._native.fetch_balance()
+
+    def refresh_balance(self) -> None:
+        """Refresh cached balance/allowance state from the exchange.
+
+        Polymarket: pulls latest collateral allowance via the CLOB
+        ``GET /balance-allowance/update``. Kalshi: no-op (no allowance model).
+        """
+        self._native.refresh_balance()
+
+    def fetch_server_time(self) -> str:
+        """Return the exchange's current wall-clock time as RFC3339 UTC.
+
+        Polymarket: dedicated ``GET /time`` (Unix seconds). Kalshi: HTTP
+        ``Date`` header from a public ``GET /exchange/status`` response.
+        """
+        return self._native.fetch_server_time()
 
     def fetch_orderbook(
         self,
