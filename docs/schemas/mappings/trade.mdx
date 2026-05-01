@@ -1,0 +1,39 @@
+---
+title: "MarketTrade mapping"
+description: "How each upstream exchange schema maps to OpenPX MarketTrade."
+---
+
+_Normalized public market trade, suitable for "tape" UIs._
+
+## Coverage
+
+| Exchange | Sourced | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 7 | 2 | 1 |
+| polymarket | 6 | 4 | 0 |
+
+**Sourced** — value copied or transformed from a documented upstream field.  
+**Synthetic** — computed by OpenPX, not present upstream.  
+**Omitted** — upstream does not expose this concept.  
+
+## Field crosswalk
+
+| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
+|---|---|---|---|---|---|
+| `id` | string | `Trade.trade_id` (string) | `Trade.transactionHash` (string) | direct | **kalshi:** Kalshi-issued unique trade id, stable across replays. Required on the unified surface; rows missing this field are dropped at parse time rather than synthesized. **polymarket:** On-chain transaction hash. Doubles as the unified `id` because Polymarket's public tape has no separate trade id — every executed trade lands in exactly one Polygon tx. Rows without a tx hash are dropped (the Data API only emits null `transactionHash` for unsettled trades, which we exclude from the tape view). |
+| `price` | number (double) | `Trade.yes_price_dollars` (FixedPointDollars), fallback `Trade.no_price_dollars` | `Trade.price` (number) | fixed_point_dollars / direct | **kalshi:** Yes-anchored: unified `price` is always the Yes-side execution price. Kalshi emits both yes_price_dollars and no_price_dollars on every row (Oct 9, 2025 changelog). Cents-form legacy values (e.g. `99.0`) are normalized by dividing by 100. Rows that fail to parse a Yes price are dropped. **polymarket:** Polymarket already returns price as a decimal probability in [0,1]; copied as-is. On binary markets the unified row's `price` is the executed price of the specific outcome token (use `outcome` to know whether it's Yes-side or No-side). |
+| `size` | number (double) | `Trade.count_fp` (FixedPointCount) | `Trade.size` (number) | fixed_point_count / direct | **kalshi:** Number of contracts at fixed-point precision (e.g. `"10.00"` → `10.0`). The legacy integer `count` field is no longer mapped — `count_fp` is required on every trade per the spec. **polymarket:** Already a `number` in the spec. Copied as-is. |
+| `aggressor_side` | string? | `Trade.taker_side` (string) | _computed_ — `{Trade.side, Trade.outcome} → buy\|sell, Yes-anchored` | kalshi_taker_to_buy_sell / synthetic | **kalshi:** Yes-anchored: `taker_side=yes` (taker bought Yes) → `"buy"`; `taker_side=no` (taker bought No, equivalent to selling Yes) → `"sell"`. Encodes whether the trade pushed Yes price up or down. **polymarket:** Polymarket's top-level `side` is the proxyWallet's BUY/SELL on the specific outcome token. With `takerOnly=true` (the unified tape default) the proxyWallet is the taker. We anchor to the Yes side: `BUY` of Yes or `SELL` of No → `"buy"`; `SELL` of Yes or `BUY` of No → `"sell"`. Non-binary markets fall through to the raw side string. |
+| `outcome` | string? | _computed_ — `Trade.taker_side ∈ {yes, no} → {"Yes", "No"}` | `Trade.outcome` (string) | synthetic / direct | **kalshi:** Kalshi binary markets only address Yes/No; the row's `outcome` mirrors which side the taker took. Synthetic rather than sourced because no top-level `outcome` field exists on the upstream Trade — we re-canonicalize the enum. **polymarket:** Free-form outcome label as published by Polymarket (typically `"Yes"`/`"No"` on binary markets, but categorical markets emit the outcome string as-is, e.g. `"Trump"`). |
+| `yes_price` | number? (double) | `Trade.yes_price_dollars` (FixedPointDollars) | _computed_ — Trade.price when Trade.outcome == "Yes"; else null | fixed_point_dollars / synthetic | **kalshi:** Same source as the canonical `price`; restated here so consumers can read the Yes reference without inspecting `outcome`. **polymarket:** Polymarket trades are per-outcome-token, so only one of `yes_price` / `no_price` can be filled per row. Set when the row's outcome is `"Yes"`; otherwise None. Do NOT derive from `1 - no_price` — the spreads are not mirror-image-tight. |
+| `no_price` | number? (double) | `Trade.no_price_dollars` (FixedPointDollars) | _computed_ — Trade.price when Trade.outcome == "No"; else null | fixed_point_dollars / synthetic | **kalshi:** Direct No-side reference; available on every Kalshi trade alongside `yes_price_dollars`. Do NOT derive as `1 - yes_price` — the mirror identity holds at top-of-book but not on every executed trade (Kalshi's matching engine can fill both sides at non-mirrored prices on subpenny ticks). **polymarket:** Symmetric counterpart of `yes_price` for the No-side outcome token. None when the row is a Yes-token trade. |
+| `taker_address` | string? | _not exposed_ | `Trade.proxyWallet` (Address) | direct | **kalshi:** Kalshi public trades expose no wallet/account identifiers — the tape is fully anonymous beyond `taker_side`. Always None. **polymarket:** On-chain proxy wallet address of the taker. We hardcode `takerOnly=true` on the underlying Data API call, so this is unambiguously the taker. Polymarket's public tape exposes no maker-side identifier (Jun 3, 2025 changelog mentioned a MakerOrder.side nested object that does not appear in the current spec). |
+| `exchange_ts` | string (date-time) | `Trade.created_time` (string (date-time)) | `Trade.timestamp` (integer (int64)) | parse_datetime / unix_seconds_to_utc | **kalshi:** RFC3339 string from the upstream; parsed to UTC. **polymarket:** Polymarket emits trade timestamps as `int64` unix seconds (NOT milliseconds — the orderbook surface uses ms strings, but the tape uses second-precision integers). Parsed via `chrono::DateTime::\<Utc\>::from_timestamp`. |
+| `openpx_ts` | string (date-time) | _computed_ — wall-clock UTC stamped at response-serialization time | _computed_ — wall-clock UTC stamped at response-serialization time | synthetic | Stamped once per `fetch_trades` call (not per row) so a single page shares one `openpx_ts`. Lets consumers compute end-to-end latency against `exchange_ts` and de-duplicate retries that produce identical payloads. |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket-data.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-data.openapi.yaml)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.
