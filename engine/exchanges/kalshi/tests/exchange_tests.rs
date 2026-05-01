@@ -628,7 +628,7 @@ async fn test_fetch_order_requires_auth() {
     let exchange = Kalshi::new(config).unwrap();
 
     // #when
-    let result = exchange.fetch_order("ord1", None).await;
+    let result = exchange.fetch_order("ord1").await;
 
     // #then
     assert!(result.is_err());

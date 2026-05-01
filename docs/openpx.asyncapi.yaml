@@ -866,14 +866,6 @@ components:
             to fetch markets of any status.
       title: FetchMarketsParams
       type: object
-    FetchOrdersParams:
-      properties:
-        market_ticker:
-          type:
-          - string
-          - 'null'
-      title: FetchOrdersParams
-      type: object
     Fill:
       description: A fill on one of the authenticated user's orders.
       properties:

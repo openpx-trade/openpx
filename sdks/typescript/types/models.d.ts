@@ -395,14 +395,6 @@ export interface FetchMarketsParams {
   [k: string]: unknown;
 }
 /**
- * This interface was referenced by `OpenPX`'s JSON-Schema
- * via the `definition` "FetchOrdersParams".
- */
-export interface FetchOrdersParams {
-  market_ticker?: string | null;
-  [k: string]: unknown;
-}
-/**
  * A single fill (trade execution) from a user's order.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema

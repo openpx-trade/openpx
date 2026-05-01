@@ -6,10 +6,10 @@ use tokio::sync::Mutex;
 
 use px_core::{
     manifests::KALSHI_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
-    OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome,
-    Position, PriceLevel, RateLimiter, Series, SettlementSource, TradesRequest,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, Fill, Market, MarketLineage, MarketStatus,
+    MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderOutcome, OrderSide,
+    OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceLevel,
+    RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -1520,7 +1520,7 @@ impl Exchange for Kalshi {
 
     async fn cancel_all_orders(
         &self,
-        market_ticker: Option<&str>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
@@ -1528,6 +1528,8 @@ impl Exchange for Kalshi {
         // (1) GET /portfolio/orders?status=resting[&ticker=…] — collect order IDs.
         //     V1 only — there is no V2 GET endpoint for listing orders.
         // (2) DELETE /portfolio/events/orders/batched (V2 batch cancel).
+        // On Kalshi, `asset_id` IS the market ticker (V2 single-book is
+        // per-market), so it maps directly to the V1 `?ticker=` filter.
         #[derive(serde::Deserialize)]
         struct OrdersResp {
             #[serde(default)]
@@ -1539,7 +1541,7 @@ impl Exchange for Kalshi {
         let mut cursor: Option<String> = None;
         loop {
             let mut path = String::from("/portfolio/orders?status=resting&limit=1000");
-            if let Some(t) = market_ticker {
+            if let Some(t) = asset_id {
                 path.push_str(&format!("&ticker={t}"));
             }
             if let Some(c) = cursor.as_deref() {
@@ -1603,7 +1605,7 @@ impl Exchange for Kalshi {
                     .unwrap_or(0.0);
                 Order {
                     id: e.order_id,
-                    market_ticker: market_ticker.unwrap_or("").to_string(),
+                    market_ticker: asset_id.unwrap_or("").to_string(),
                     outcome: String::new(),
                     side: OrderSide::Buy,
                     price: 0.0,
@@ -1896,11 +1898,7 @@ impl Exchange for Kalshi {
         })
     }
 
-    async fn cancel_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         // V2 response is `{ order_id, client_order_id?, reduced_by }` —
@@ -1937,11 +1935,7 @@ impl Exchange for Kalshi {
         })
     }
 
-    async fn fetch_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         #[derive(serde::Deserialize)]
@@ -1957,7 +1951,7 @@ impl Exchange for Kalshi {
 
     async fn fetch_open_orders(
         &self,
-        _params: Option<FetchOrdersParams>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
@@ -1966,8 +1960,14 @@ impl Exchange for Kalshi {
             orders: Vec<serde_json::Value>,
         }
 
-        let path = "/portfolio/orders?status=resting";
-        let resp: OrdersResponse = self.get(path).await.map_err(to_openpx)?;
+        // V1 GET — there is no V2 GET endpoint for listing orders. On
+        // Kalshi `asset_id` is the market ticker, mapping directly to the
+        // `ticker=` query filter.
+        let mut path = String::from("/portfolio/orders?status=resting");
+        if let Some(t) = asset_id {
+            path.push_str(&format!("&ticker={t}"));
+        }
+        let resp: OrdersResponse = self.get(&path).await.map_err(to_openpx)?;
 
         Ok(resp.orders.iter().map(|o| self.parse_order(o)).collect())
     }

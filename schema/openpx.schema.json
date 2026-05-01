@@ -525,18 +525,6 @@
       "title": "FetchMarketsParams",
       "type": "object"
     },
-    "FetchOrdersParams": {
-      "properties": {
-        "market_ticker": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "title": "FetchOrdersParams",
-      "type": "object"
-    },
     "Fill": {
       "description": "A single fill (trade execution) from a user's order.",
       "properties": {

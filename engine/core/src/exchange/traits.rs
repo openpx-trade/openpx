@@ -8,7 +8,7 @@ use crate::models::{
     OrderbookImpact, OrderbookMicrostructure, OrderbookStats, Position,
 };
 
-use super::config::{FetchMarketsParams, FetchOrdersParams};
+use super::config::FetchMarketsParams;
 use super::manifest::ExchangeManifest;
 
 #[allow(async_fn_in_trait)]
@@ -32,24 +32,20 @@ pub trait Exchange: Send + Sync {
     /// `self_trade_prevention_type`) internally.
     async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError>;
 
-    /// Cancel an existing order by ID, optionally scoped to a market.
-    async fn cancel_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError>;
+    /// Cancel an existing order by ID. The order_id is globally unique on
+    /// both exchanges, so no scope qualifier is required.
+    async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch a single order by ID, optionally scoped to a market.
-    async fn fetch_order(
-        &self,
-        order_id: &str,
-        market_ticker: Option<&str>,
-    ) -> Result<Order, OpenPxError>;
+    /// Fetch a single order by ID. As with `cancel_order`, the order_id
+    /// is globally unique on both exchanges.
+    async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch the caller's currently open orders, optionally filtered by market.
+    /// Fetch the caller's currently open orders, optionally filtered by
+    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
+    /// convention as `fetch_orderbook` and `create_order`).
     async fn fetch_open_orders(
         &self,
-        params: Option<FetchOrdersParams>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError>;
 
     /// Fetch the caller's open positions, optionally filtered by market.
@@ -167,12 +163,13 @@ pub trait Exchange: Send + Sync {
         Ok(crate::models::orderbook_microstructure(&book))
     }
 
-    /// Cancel all of the caller's open orders, optionally scoped to a market.
+    /// Cancel all of the caller's open orders, optionally scoped to one
+    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id).
     async fn cancel_all_orders(
         &self,
-        market_ticker: Option<&str>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
-        let _ = market_ticker;
+        let _ = asset_id;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),
         ))

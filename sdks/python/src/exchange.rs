@@ -129,54 +129,44 @@ impl NativeExchange {
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_ticker=None))]
+    #[pyo3(signature = (order_id))]
     fn cancel_order<'py>(
         &self,
         py: Python<'py>,
         order_id: &str,
-        market_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_ticker.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.cancel_order(&order_id)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_ticker=None))]
+    #[pyo3(signature = (order_id))]
     fn fetch_order<'py>(
         &self,
         py: Python<'py>,
         order_id: &str,
-        market_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_ticker.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_order(&order_id)));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker=None))]
+    #[pyo3(signature = (asset_id=None))]
     fn fetch_open_orders<'py>(
         &self,
         py: Python<'py>,
-        market_ticker: Option<String>,
+        asset_id: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result = py.detach(|| {
-            let params = market_ticker.map(|mid| px_core::FetchOrdersParams {
-                market_ticker: Some(mid),
-            });
-            rt.block_on(inner.fetch_open_orders(params))
-        });
+        let result =
+            py.detach(|| rt.block_on(inner.fetch_open_orders(asset_id.as_deref())));
         let orders = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &orders).map_err(|e| to_py_err(e.to_string()))
     }

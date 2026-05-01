@@ -6,7 +6,7 @@ use openpx::{ExchangeInner, WebSocketInner};
 use px_core::models::CryptoPriceSource;
 use px_core::websocket::OrderBookWebSocket;
 use px_core::MarketStatusFilter;
-use px_core::{FetchMarketsParams, FetchOrdersParams, TradesRequest};
+use px_core::{FetchMarketsParams, TradesRequest};
 use px_crypto::CryptoPriceWebSocket;
 use px_sports::SportsWebSocket;
 
@@ -100,17 +100,13 @@ enum Command {
         #[arg(long)]
         market_ticker: Option<String>,
     },
-    /// Fetch open orders
+    /// Fetch open orders, optionally filtered by `--asset-id`
     FetchOpenOrders {
         #[arg(long)]
-        market_ticker: Option<String>,
+        asset_id: Option<String>,
     },
     /// Fetch a single order by ID
-    FetchOrder {
-        order_id: String,
-        #[arg(long)]
-        market_ticker: Option<String>,
-    },
+    FetchOrder { order_id: String },
     /// Fetch fill history
     FetchFills {
         #[arg(long)]
@@ -304,20 +300,12 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let positions = exchange.fetch_positions(market_ticker.as_deref()).await?;
                 print_json(&positions);
             }
-            Command::FetchOpenOrders { market_ticker } => {
-                let params = market_ticker.map(|id| FetchOrdersParams {
-                    market_ticker: Some(id),
-                });
-                let orders = exchange.fetch_open_orders(params).await?;
+            Command::FetchOpenOrders { asset_id } => {
+                let orders = exchange.fetch_open_orders(asset_id.as_deref()).await?;
                 print_json(&orders);
             }
-            Command::FetchOrder {
-                order_id,
-                market_ticker,
-            } => {
-                let order = exchange
-                    .fetch_order(&order_id, market_ticker.as_deref())
-                    .await?;
+            Command::FetchOrder { order_id } => {
+                let order = exchange.fetch_order(&order_id).await?;
                 print_json(&order);
             }
             Command::FetchFills {

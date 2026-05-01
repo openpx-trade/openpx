@@ -150,7 +150,9 @@ paths:
       tags:
       - Orders
       summary: Cancel order
-      description: Cancel an existing order by ID, optionally scoped to a market.
+      description: 'Cancel an existing order by ID. The order_id is globally unique on
+
+        both exchanges, so no scope qualifier is required.'
       operationId: cancel_order
       requestBody:
         required: true
@@ -161,10 +163,6 @@ paths:
               properties:
                 order_id:
                   type: string
-                market_ticker:
-                  type:
-                  - string
-                  - 'null'
               required:
               - order_id
       responses:
@@ -185,17 +183,14 @@ paths:
       tags:
       - Orders
       summary: Fetch order
-      description: Fetch a single order by ID, optionally scoped to a market.
+      description: 'Fetch a single order by ID. As with `cancel_order`, the order_id
+
+        is globally unique on both exchanges.'
       operationId: fetch_order
       parameters:
       - name: order_id
         in: query
         required: true
-        schema:
-          type: string
-      - name: market_ticker
-        in: query
-        required: false
         schema:
           type: string
       responses:
@@ -216,16 +211,18 @@ paths:
       tags:
       - Orders
       summary: Fetch open orders
-      description: Fetch the caller's currently open orders, optionally filtered by market.
+      description: 'Fetch the caller''s currently open orders, optionally filtered by
+
+        `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
+
+        convention as `fetch_orderbook` and `create_order`).'
       operationId: fetch_open_orders
       parameters:
-      - name: market_ticker
+      - name: asset_id
         in: query
         required: false
         schema:
-          type:
-          - string
-          - 'null'
+          type: string
       responses:
         '200':
           description: Success.
@@ -618,7 +615,9 @@ paths:
       tags:
       - Orders
       summary: Cancel all orders
-      description: Cancel all of the caller's open orders, optionally scoped to a market.
+      description: 'Cancel all of the caller''s open orders, optionally scoped to one
+
+        `asset_id` (Kalshi market ticker | Polymarket CTF token id).'
       operationId: cancel_all_orders
       requestBody:
         required: true
@@ -627,7 +626,7 @@ paths:
             schema:
               type: object
               properties:
-                market_ticker:
+                asset_id:
                   type:
                   - string
                   - 'null'
@@ -1085,14 +1084,6 @@ components:
           description: Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All`
             to fetch markets of any status.
       title: FetchMarketsParams
-      type: object
-    FetchOrdersParams:
-      properties:
-        market_ticker:
-          type:
-          - string
-          - 'null'
-      title: FetchOrdersParams
       type: object
     Fill:
       description: A single fill (trade execution) from a user's order.

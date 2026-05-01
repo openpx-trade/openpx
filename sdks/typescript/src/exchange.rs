@@ -157,19 +157,11 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn cancel_order(
-        &self,
-        order_id: String,
-        market_ticker: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn cancel_order(&self, order_id: String) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move {
-                inner
-                    .cancel_order(&order_id, market_ticker.as_deref())
-                    .await
-            })
+            .spawn(async move { inner.cancel_order(&order_id).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -177,15 +169,11 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_order(
-        &self,
-        order_id: String,
-        market_ticker: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn fetch_order(&self, order_id: String) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move { inner.fetch_order(&order_id, market_ticker.as_deref()).await })
+            .spawn(async move { inner.fetch_order(&order_id).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
@@ -195,17 +183,12 @@ impl Exchange {
     #[napi]
     pub async fn fetch_open_orders(
         &self,
-        market_ticker: Option<String>,
+        asset_id: Option<String>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
-            .spawn(async move {
-                let params = market_ticker.map(|mid| px_core::FetchOrdersParams {
-                    market_ticker: Some(mid),
-                });
-                inner.fetch_open_orders(params).await
-            })
+            .spawn(async move { inner.fetch_open_orders(asset_id.as_deref()).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

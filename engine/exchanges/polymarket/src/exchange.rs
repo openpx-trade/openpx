@@ -18,10 +18,10 @@ use tracing::info;
 
 use px_core::{
     manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, CreateOrderRequest, Event, Exchange,
-    ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order,
-    OrderOutcome, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome,
-    Position, PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
+    ExchangeInfo, ExchangeManifest, FetchMarketsParams, Fill, Market, MarketLineage, MarketStatus,
+    MarketStatusFilter, MarketTrade, MarketType, OpenPxError, Order, OrderOutcome, OrderSide,
+    OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceLevel,
+    PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -1810,11 +1810,7 @@ impl Exchange for Polymarket {
         })
     }
 
-    async fn cancel_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -1864,11 +1860,7 @@ impl Exchange for Polymarket {
         Ok(order)
     }
 
-    async fn fetch_order(
-        &self,
-        order_id: &str,
-        _market_id: Option<&str>,
-    ) -> Result<Order, OpenPxError> {
+    async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -1898,7 +1890,7 @@ impl Exchange for Polymarket {
 
     async fn fetch_open_orders(
         &self,
-        _params: Option<FetchOrdersParams>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
@@ -1908,7 +1900,17 @@ impl Exchange for Polymarket {
         let guard = sdk_state.client.read().await;
 
         let send_start = Instant::now();
-        let request = OrdersRequest::default();
+        // Polymarket's `OrdersRequest.asset_id` filters by token id (the
+        // per-outcome identifier). Same convention as `fetch_orderbook` and
+        // `create_order`.
+        let mut request = OrdersRequest::default();
+        if let Some(t) = asset_id {
+            request.asset_id = Some(U256::from_str(t).map_err(|e| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "invalid asset_id (expected CTF token id): {e}"
+                )))
+            })?);
+        }
         let page = sdk_dispatch!(
             &*guard,
             orders(&request, None).await.map_err(|e| {
@@ -2213,21 +2215,18 @@ impl Exchange for Polymarket {
 
     async fn cancel_all_orders(
         &self,
-        market_ticker: Option<&str>,
+        asset_id: Option<&str>,
     ) -> Result<Vec<Order>, OpenPxError> {
         // Sequential loop over the caller's open orders. The Polymarket
-        // CLOB has native `DELETE /cancel-all` and `DELETE /cancel-market-orders`
-        // endpoints that are O(1). TODO(batch5-v2): swap to those once the
-        // V2 SDK lands and exposes them. For now this works against both V1
-        // and V2 SDKs and matches the trait contract.
-        let params = FetchOrdersParams {
-            market_ticker: market_ticker.map(String::from),
-        };
-        let open = self.fetch_open_orders(Some(params)).await?;
+        // CLOB has native `DELETE /cancel-all` and per-market cancel
+        // endpoints that are O(1); switching to those is a future
+        // optimization. For now this matches the trait contract and
+        // honours the asset_id filter via fetch_open_orders.
+        let open = self.fetch_open_orders(asset_id).await?;
 
         let mut cancelled = Vec::with_capacity(open.len());
         for order in open {
-            match self.cancel_order(&order.id, market_ticker).await {
+            match self.cancel_order(&order.id).await {
                 Ok(o) => cancelled.push(o),
                 Err(e) => tracing::warn!(
                     order_id = %order.id,

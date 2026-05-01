@@ -100,10 +100,6 @@ class ExchangeInfo(BaseModel):
     name: str
 
 
-class FetchOrdersParams(BaseModel):
-    market_ticker: str | None = None
-
-
 class InvalidationReason1(Enum):
     Reconnect = "Reconnect"
     Lag = "Lag"

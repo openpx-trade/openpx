@@ -47,7 +47,6 @@ fn main() {
         // Exchange config params
         schema_for!(px_core::MarketStatusFilter),
         schema_for!(px_core::FetchMarketsParams),
-        schema_for!(px_core::FetchOrdersParams),
         // Exchange trait request types
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::MarketLineage),

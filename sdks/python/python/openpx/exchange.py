@@ -121,24 +121,27 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
-    def cancel_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
-        raw = self._native.cancel_order(order_id, market_ticker)
+    def cancel_order(self, order_id: str) -> Any:
+        raw = self._native.cancel_order(order_id)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_order(self, order_id: str, market_ticker: Optional[str] = None) -> Any:
-        raw = self._native.fetch_order(order_id, market_ticker)
+    def fetch_order(self, order_id: str) -> Any:
+        raw = self._native.fetch_order(order_id)
         try:
             from openpx._models import Order
             return Order(**raw)
         except (ImportError, Exception):
             return raw
 
-    def fetch_open_orders(self, market_ticker: Optional[str] = None) -> list[Any]:
-        raw = self._native.fetch_open_orders(market_ticker)
+    def fetch_open_orders(self, asset_id: Optional[str] = None) -> list[Any]:
+        """Fetch open orders, optionally filtered by ``asset_id`` (Kalshi
+        market ticker | Polymarket CTF token id — same convention as
+        ``fetch_orderbook`` and ``create_order``)."""
+        raw = self._native.fetch_open_orders(asset_id)
         try:
             from openpx._models import Order
             return [Order(**o) for o in raw]
