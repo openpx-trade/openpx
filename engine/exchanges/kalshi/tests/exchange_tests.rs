@@ -237,7 +237,7 @@ fn sample_trades_response_with_no_price() -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn fetch_trades_no_outcome_uses_real_no_price() {
+async fn fetch_trades_yes_anchored_emits_both_sides() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/markets/trades"))
@@ -252,125 +252,40 @@ async fn fetch_trades_no_outcome_uses_real_no_price() {
         .with_verbose(false);
     let exchange = Kalshi::new(config).unwrap();
 
-    // Query with outcome=No
     let req = TradesRequest {
-        market_ticker: "TEST-TICKER".into(),
-        market_ref: None,
-        outcome: Some("No".into()),
-        token_id: None,
-        start_ts: None,
-        end_ts: None,
+        asset_id: "TEST-TICKER".into(),
         limit: Some(100),
-        cursor: None,
+        ..Default::default()
     };
 
     let (trades, _cursor) = exchange.fetch_trades(req).await.unwrap();
 
-    // t2 has null no_price → should be SKIPPED
-    // t1/t3/t4 have valid no_price (t4 is cents-like 99.0) → should be included
-    assert_eq!(
-        trades.len(),
-        3,
-        "trade with null no_price should be excluded"
-    );
+    // All 4 trades come back: price is always yes_price; no_price may be None.
+    assert_eq!(trades.len(), 4);
 
-    // t1: no_price=0.42 (NOT 1.0 - 0.60 = 0.40)
-    let t1 = trades
-        .iter()
-        .find(|t| t.id.as_deref() == Some("t1"))
-        .unwrap();
-    assert!(
-        (t1.price - 0.42).abs() < 1e-8,
-        "price should be real no_price (0.42), not 1-yes_price (0.40); got {}",
-        t1.price
-    );
-    // aggressor_side should be flipped: taker_side=yes → "sell" for No perspective
-    assert_eq!(t1.aggressor_side.as_deref(), Some("sell"));
-    // yes_price and no_price are reference fields, NOT swapped
+    // t1: yes-side taker → buy + Yes outcome; both prices populated.
+    let t1 = trades.iter().find(|t| t.id == "t1").unwrap();
+    assert!((t1.price - 0.60).abs() < 1e-8);
+    assert_eq!(t1.aggressor_side.as_deref(), Some("buy"));
+    assert_eq!(t1.outcome.as_deref(), Some("Yes"));
     assert_eq!(t1.yes_price, Some(0.60));
     assert_eq!(t1.no_price, Some(0.42));
 
-    // t3: no_price=0.31 (NOT 1.0 - 0.70 = 0.30)
-    let t3 = trades
-        .iter()
-        .find(|t| t.id.as_deref() == Some("t3"))
-        .unwrap();
-    assert!(
-        (t3.price - 0.31).abs() < 1e-8,
-        "price should be real no_price (0.31), not 1-yes_price (0.30); got {}",
-        t3.price
-    );
+    // t2: no_price is null → no_price=None, but trade still emitted with yes_price.
+    let t2 = trades.iter().find(|t| t.id == "t2").unwrap();
+    assert!((t2.price - 0.55).abs() < 1e-8);
+    assert_eq!(t2.aggressor_side.as_deref(), Some("sell"));
+    assert_eq!(t2.outcome.as_deref(), Some("No"));
+    assert_eq!(t2.yes_price, Some(0.55));
+    assert_eq!(t2.no_price, None);
 
-    // t4: no_price=99.0 (cents-like) should normalize to 0.99
-    let t4 = trades
-        .iter()
-        .find(|t| t.id.as_deref() == Some("t4"))
-        .unwrap();
-    assert!(
-        (t4.price - 0.99).abs() < 1e-8,
-        "price should normalize no_price cents (99.0 -> 0.99); got {}",
-        t4.price
-    );
-    assert_eq!(t4.yes_price, Some(0.01));
-    assert_eq!(t4.no_price, Some(0.99));
-    assert_eq!(t4.outcome.as_deref(), Some("No"));
-}
-
-#[tokio::test]
-async fn fetch_trades_yes_outcome_uses_yes_price() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/markets/trades"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_trades_response_with_no_price()),
-        )
-        .mount(&mock_server)
-        .await;
-
-    let config = KalshiConfig::new()
-        .with_api_url(mock_server.uri())
-        .with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-
-    // Query with outcome=Yes (default)
-    let req = TradesRequest {
-        market_ticker: "TEST-TICKER".into(),
-        market_ref: None,
-        outcome: Some("Yes".into()),
-        token_id: None,
-        start_ts: None,
-        end_ts: None,
-        limit: Some(100),
-        cursor: None,
-    };
-
-    let (trades, _cursor) = exchange.fetch_trades(req).await.unwrap();
-
-    // All 4 trades should be included for Yes perspective (no null filtering)
-    assert_eq!(
-        trades.len(),
-        4,
-        "all trades should be included for Yes perspective"
-    );
-
-    // t1: price should be yes_price=0.60
-    let t1 = trades
-        .iter()
-        .find(|t| t.id.as_deref() == Some("t1"))
-        .unwrap();
-    assert!((t1.price - 0.60).abs() < 1e-8);
-    // aggressor_side: taker_side=yes → "buy" for Yes perspective
-    assert_eq!(t1.aggressor_side.as_deref(), Some("buy"));
-    assert_eq!(t1.outcome.as_deref(), Some("Yes"));
-
-    // t4 yes_price=1.0 (cents-like) should normalize to 0.01 in yes perspective too
-    let t4 = trades
-        .iter()
-        .find(|t| t.id.as_deref() == Some("t4"))
-        .unwrap();
+    // t4: cents-like normalization (1.0 → 0.01, 99.0 → 0.99).
+    let t4 = trades.iter().find(|t| t.id == "t4").unwrap();
     assert!((t4.price - 0.01).abs() < 1e-8);
     assert_eq!(t4.yes_price, Some(0.01));
     assert_eq!(t4.no_price, Some(0.99));
+    assert_eq!(t4.aggressor_side.as_deref(), Some("sell"));
+    assert_eq!(t4.outcome.as_deref(), Some("No"));
 }
 
 // ---------------------------------------------------------------------------
@@ -995,7 +910,7 @@ async fn test_fetch_trades_empty_response() {
 
     // #when
     let req = TradesRequest {
-        market_ticker: "EMPTY-MKT".into(),
+        asset_id: "EMPTY-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1036,7 +951,7 @@ async fn test_fetch_trades_returns_cursor() {
 
     // #when
     let req = TradesRequest {
-        market_ticker: "TEST-MKT".into(),
+        asset_id: "TEST-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1087,15 +1002,14 @@ async fn test_fetch_trades_filters_zero_size() {
 
     // #when
     let req = TradesRequest {
-        market_ticker: "TEST-MKT".into(),
-        outcome: Some("Yes".into()),
+        asset_id: "TEST-MKT".into(),
         ..Default::default()
     };
     let (trades, _) = exchange.fetch_trades(req).await.unwrap();
 
     // #then - zero-size trade should be filtered out
     assert_eq!(trades.len(), 1);
-    assert_eq!(trades[0].id.as_deref(), Some("t-valid"));
+    assert_eq!(trades[0].id, "t-valid");
 }
 
 // ---------------------------------------------------------------------------

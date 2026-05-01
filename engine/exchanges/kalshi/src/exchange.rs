@@ -1,5 +1,4 @@
-use metrics::{counter, histogram};
-use std::borrow::Cow;
+use metrics::histogram;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -1354,7 +1353,6 @@ impl Exchange for Kalshi {
         struct Trade {
             trade_id: Option<String>,
             created_time: chrono::DateTime<chrono::Utc>,
-            /// Kalshi returns this as the YES price (0.0-1.0), even when taker_side=no.
             price: Option<f64>,
             yes_price_dollars: Option<String>,
             no_price: Option<f64>,
@@ -1364,35 +1362,28 @@ impl Exchange for Kalshi {
             taker_side: Option<String>,
         }
 
-        let wants_no = req
-            .outcome
-            .as_deref()
-            .is_some_and(|o| o.eq_ignore_ascii_case("no"));
-
-        let ticker = req
-            .token_id
-            .as_deref()
-            .or(req.market_ref.as_deref())
-            .unwrap_or(&req.market_ticker);
         let limit = req.limit.unwrap_or(200).clamp(1, 1000);
-        let mut path = format!("/markets/trades?ticker={}&limit={}", ticker, limit);
+        let mut path = format!("/markets/trades?ticker={}&limit={}", req.asset_id, limit);
         if let Some(start_ts) = req.start_ts {
-            path.push_str(&format!("&min_ts={}", start_ts));
+            path.push_str(&format!("&min_ts={start_ts}"));
         }
         if let Some(end_ts) = req.end_ts {
-            path.push_str(&format!("&max_ts={}", end_ts));
+            path.push_str(&format!("&max_ts={end_ts}"));
         }
         if let Some(cursor) = &req.cursor {
-            path.push_str(&format!("&cursor={}", cursor));
+            path.push_str(&format!("&cursor={cursor}"));
         }
 
         let resp: TradesResponse = self.get(&path).await.map_err(to_openpx)?;
         let next_cursor = resp.cursor.filter(|c| !c.is_empty());
+        let openpx_ts = chrono::Utc::now();
 
         let trades = resp
             .trades
             .into_iter()
             .filter_map(|t| {
+                let id = t.trade_id?;
+
                 let price_yes = if let Some(price) = t.price {
                     normalize_kalshi_trade_price(price)
                 } else {
@@ -1402,7 +1393,6 @@ impl Exchange for Kalshi {
                         .and_then(normalize_kalshi_trade_price)
                 }?;
 
-                // Parse no_price from exchange data; do NOT derive as 1-yes_price.
                 let price_no = if let Some(np) = t.no_price {
                     normalize_kalshi_trade_price(np)
                 } else {
@@ -1412,63 +1402,33 @@ impl Exchange for Kalshi {
                         .and_then(normalize_kalshi_trade_price)
                 };
 
-                let size =
-                    if let Some(size) = t.count_fp.as_deref().and_then(|s| s.parse::<f64>().ok()) {
-                        size
-                    } else {
-                        t.count?
-                    };
-
+                let size = t
+                    .count_fp
+                    .as_deref()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .or(t.count)?;
                 if size <= 0.0 {
                     return None;
                 }
 
-                let price = if wants_no {
-                    match price_no {
-                        Some(p) if p > 0.0 && p < 1.0 => p,
-                        _ => {
-                            counter!(
-                                "openpx.kalshi.trade_no_price_null",
-                                "operation" => "fetch_trades"
-                            )
-                            .increment(1);
-                            return None; // skip trade when no_price unavailable
-                        }
+                let (aggressor_side, outcome) = match t.taker_side.as_deref() {
+                    Some(s) if s.eq_ignore_ascii_case("yes") => {
+                        (Some("buy".to_string()), Some("Yes".to_string()))
                     }
-                } else {
-                    price_yes
+                    Some(s) if s.eq_ignore_ascii_case("no") => {
+                        (Some("sell".to_string()), Some("No".to_string()))
+                    }
+                    _ => (None, None),
                 };
-                if price <= 0.0 || price >= 1.0 {
-                    // Defensive: avoid emitting invalid normalized prices.
-                    return None;
-                }
-
-                let aggressor_side = t
-                    .taker_side
-                    .as_deref()
-                    .and_then(|s| match s.to_ascii_lowercase().as_str() {
-                        "yes" => Some(if wants_no { "sell" } else { "buy" }),
-                        "no" => Some(if wants_no { "buy" } else { "sell" }),
-                        _ => None,
-                    })
-                    .map(str::to_string);
 
                 Some(MarketTrade {
-                    id: t.trade_id,
-                    price,
+                    id,
+                    price: price_yes,
                     size,
-                    side: None,
                     aggressor_side,
-                    timestamp: t.created_time,
-                    source_channel: Cow::Borrowed("kalshi_rest_trade"),
-                    tx_hash: None,
-                    outcome: t.taker_side.as_deref().and_then(|s| {
-                        match s.to_ascii_lowercase().as_str() {
-                            "yes" => Some("Yes".to_string()),
-                            "no" => Some("No".to_string()),
-                            _ => None,
-                        }
-                    }),
+                    exchange_ts: t.created_time,
+                    openpx_ts,
+                    outcome,
                     yes_price: Some(price_yes),
                     no_price: price_no,
                     taker_address: None,

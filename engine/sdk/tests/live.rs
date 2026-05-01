@@ -526,7 +526,7 @@ macro_rules! exchange_tests {
                 };
                 match ex
                     .fetch_trades(TradesRequest {
-                        market_ticker: markets[0].ticker.clone(),
+                        asset_id: markets[0].ticker.clone(),
                         limit: Some(10),
                         ..Default::default()
                     })
@@ -536,13 +536,8 @@ macro_rules! exchange_tests {
                         for t in &trades {
                             assert!(t.price >= 0.0 && t.price <= 1.0, "price should be 0..1");
                             assert!(t.size > 0.0, "size should be positive");
+                            assert!(!t.id.is_empty(), "id required");
                         }
-                    }
-                    Err(e) if format!("{e:?}").contains("token_id") => {
-                        eprintln!(
-                            "SKIP {}/fetch_trades: requires token_id",
-                            stringify!($exchange_id)
-                        );
                     }
                     Err(e) => panic!("fetch_trades failed: {e:?}"),
                 }
@@ -563,7 +558,7 @@ macro_rules! exchange_tests {
                 let limit = 5;
                 match ex
                     .fetch_trades(TradesRequest {
-                        market_ticker: markets[0].ticker.clone(),
+                        asset_id: markets[0].ticker.clone(),
                         limit: Some(limit),
                         ..Default::default()
                     })
@@ -595,7 +590,7 @@ macro_rules! exchange_tests {
                 // Fetch first page
                 let (page1, cursor) = match ex
                     .fetch_trades(TradesRequest {
-                        market_ticker: markets[0].ticker.clone(),
+                        asset_id: markets[0].ticker.clone(),
                         limit: Some(5),
                         ..Default::default()
                     })
@@ -613,7 +608,7 @@ macro_rules! exchange_tests {
                 if let Some(cursor) = cursor {
                     match ex
                         .fetch_trades(TradesRequest {
-                            market_ticker: markets[0].ticker.clone(),
+                            asset_id: markets[0].ticker.clone(),
                             limit: Some(5),
                             cursor: Some(cursor),
                             ..Default::default()
@@ -621,8 +616,7 @@ macro_rules! exchange_tests {
                         .await
                     {
                         Ok((page2, _)) => {
-                            // Pages should not overlap (if both non-empty)
-                            if !page2.is_empty() && page1[0].id.is_some() && page2[0].id.is_some() {
+                            if !page2.is_empty() {
                                 assert_ne!(
                                     page1[0].id, page2[0].id,
                                     "pagination returned same first trade"

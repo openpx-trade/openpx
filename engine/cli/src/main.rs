@@ -80,13 +80,13 @@ enum Command {
     FetchMarketLineage { market_ticker: String },
     /// Fetch full-depth L2 orderbook (bids + asks) for an asset_id (Kalshi market ticker or Polymarket token id)
     FetchOrderbook { asset_id: String },
-    /// Fetch recent trades
+    /// Fetch recent trades — `asset_id` is the Kalshi ticker or Polymarket slug
     FetchTrades {
-        market_ticker: String,
+        asset_id: String,
         #[arg(long)]
-        outcome: Option<String>,
+        start_ts: Option<i64>,
         #[arg(long)]
-        token_id: Option<String>,
+        end_ts: Option<i64>,
         #[arg(long)]
         limit: Option<usize>,
         #[arg(long)]
@@ -276,19 +276,16 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 print_json(&ob);
             }
             Command::FetchTrades {
-                market_ticker,
-                outcome,
-                token_id,
+                asset_id,
+                start_ts,
+                end_ts,
                 limit,
                 cursor,
             } => {
                 let req = TradesRequest {
-                    market_ticker,
-                    market_ref: None,
-                    outcome,
-                    token_id,
-                    start_ts: None,
-                    end_ts: None,
+                    asset_id,
+                    start_ts,
+                    end_ts,
                     limit,
                     cursor,
                 };

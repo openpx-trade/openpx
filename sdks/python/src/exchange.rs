@@ -263,15 +263,11 @@ impl NativeExchange {
         pythonize(py, &fills).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_ticker, market_ref=None, outcome=None, token_id=None, start_ts=None, end_ts=None, limit=None, cursor=None))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (asset_id, start_ts=None, end_ts=None, limit=None, cursor=None))]
     fn fetch_trades<'py>(
         &self,
         py: Python<'py>,
-        market_ticker: &str,
-        market_ref: Option<String>,
-        outcome: Option<String>,
-        token_id: Option<String>,
+        asset_id: &str,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
         limit: Option<usize>,
@@ -279,10 +275,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let req = px_core::TradesRequest {
-            market_ticker: market_ticker.to_string(),
-            market_ref,
-            outcome,
-            token_id,
+            asset_id: asset_id.to_string(),
             start_ts,
             end_ts,
             limit,

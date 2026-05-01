@@ -9,7 +9,6 @@ use polymarket_client_sdk_v2::clob::{Client as SdkClient, Config as SdkConfig};
 use polymarket_client_sdk_v2::contract_config;
 use polymarket_client_sdk_v2::types::{Decimal, U256};
 use polymarket_client_sdk_v2::POLYGON;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -721,7 +720,9 @@ impl Polymarket {
         self.rate_limit().await;
 
         let data_api_url = &self.config.data_api_url;
+        // Data API runtime caps (changelog 2025-08-26): limit ≤ 500, offset ≤ 1000.
         const PAGE_SIZE: usize = 500;
+        const OFFSET_CAP: usize = 1000;
 
         let total_limit = limit.unwrap_or(100);
         let initial_offset = offset.unwrap_or(0);
@@ -731,7 +732,13 @@ impl Polymarket {
         let mut current_offset = initial_offset;
 
         loop {
-            let page_limit = PAGE_SIZE.min(total_limit - all_trades.len());
+            if current_offset >= OFFSET_CAP {
+                break;
+            }
+            let remaining_offset = OFFSET_CAP - current_offset;
+            let page_limit = PAGE_SIZE
+                .min(total_limit - all_trades.len())
+                .min(remaining_offset);
             if page_limit == 0 {
                 break;
             }
@@ -1486,9 +1493,8 @@ impl Exchange for Polymarket {
         &self,
         req: TradesRequest,
     ) -> Result<(Vec<MarketTrade>, Option<String>), OpenPxError> {
-        let token_id = req.token_id.clone().ok_or_else(|| {
-            OpenPxError::InvalidInput("token_id required for polymarket trades".into())
-        })?;
+        // Data API caps `limit` at 500 and `offset` at 1000 (changelog 2025-08-26).
+        const POLY_OFFSET_CAP: usize = 1000;
 
         let desired = req.limit.unwrap_or(200).clamp(1, 500);
         let offset: usize = req
@@ -1496,22 +1502,24 @@ impl Exchange for Polymarket {
             .as_deref()
             .and_then(|c| c.parse().ok())
             .unwrap_or(0);
-        // Trades are returned for the whole condition; over-fetch and filter by outcome token.
-        let overfetch = (desired.saturating_mul(5)).clamp(desired, 2000);
+        if offset >= POLY_OFFSET_CAP {
+            return Ok((Vec::new(), None));
+        }
+        // Cap fetch within the remaining offset budget so we never exceed the cap.
+        let fetchable = desired.min(POLY_OFFSET_CAP - offset);
 
-        // Need Polymarket conditionId (data-api "market" param), not the Gamma market id.
-        let condition_id =
-            if let Some(condition_id) = req.market_ref.clone().filter(|s| !s.trim().is_empty()) {
-                condition_id
-            } else {
-                let market = self.fetch_market(&req.market_ticker).await?;
-                market.condition_id.clone().unwrap_or_default()
-            };
+        // Slug → conditionId via Gamma. Cached upstream by `fetch_market`.
+        let market = self.fetch_market(&req.asset_id).await?;
+        let condition_id = market.condition_id.clone().ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(
+                "market missing condition_id".into(),
+            ))
+        })?;
 
         let raw = self
             .fetch_public_trades(
                 Some(&condition_id),
-                Some(overfetch),
+                Some(fetchable),
                 Some(offset),
                 None,
                 None,
@@ -1528,51 +1536,48 @@ impl Exchange for Polymarket {
             .and_then(|s| chrono::DateTime::<chrono::Utc>::from_timestamp(s, 0));
 
         let raw_count = raw.len();
+        let openpx_ts = chrono::Utc::now();
 
-        let mut trades: Vec<MarketTrade> = raw
+        let trades: Vec<MarketTrade> = raw
             .into_iter()
-            .filter(|t| t.asset == token_id)
             .filter(|t| {
-                if let Some(start) = start_ts {
-                    if t.timestamp < start {
-                        return false;
-                    }
-                }
-                if let Some(end) = end_ts {
-                    if t.timestamp > end {
-                        return false;
-                    }
-                }
-                true
+                start_ts.is_none_or(|s| t.timestamp >= s) && end_ts.is_none_or(|e| t.timestamp <= e)
             })
-            .map(|t| {
-                let side_str = t.side.trim().to_string();
+            .filter_map(|t| {
+                let id = t.transaction_hash.clone()?;
                 let outcome_str = t.outcome.as_deref().unwrap_or("").trim();
                 let is_yes = outcome_str.eq_ignore_ascii_case("Yes");
                 let is_no = outcome_str.eq_ignore_ascii_case("No");
-                MarketTrade {
-                    id: t.transaction_hash.clone(),
+
+                // Yes-anchored aggressor on binary markets: a "buy" of No is a
+                // "sell" relative to Yes-side pressure, and vice versa.
+                let side_lower = t.side.trim().to_ascii_lowercase();
+                let aggressor_side = match (side_lower.as_str(), is_yes, is_no) {
+                    ("buy", true, _) | ("sell", _, true) => Some("buy".to_string()),
+                    ("sell", true, _) | ("buy", _, true) => Some("sell".to_string()),
+                    (s, _, _) if !s.is_empty() => Some(s.to_string()),
+                    _ => None,
+                };
+
+                Some(MarketTrade {
+                    id,
                     price: t.price,
                     size: t.size,
-                    side: (!side_str.is_empty()).then(|| side_str.clone()),
-                    aggressor_side: (!side_str.is_empty()).then_some(side_str),
-                    timestamp: t.timestamp,
-                    source_channel: Cow::Borrowed("polymarket_rest_trade"),
-                    tx_hash: t.transaction_hash.clone(),
+                    aggressor_side,
+                    exchange_ts: t.timestamp,
+                    openpx_ts,
                     outcome: t.outcome.clone(),
                     yes_price: if is_yes { Some(t.price) } else { None },
                     no_price: if is_no { Some(t.price) } else { None },
                     taker_address: Some(t.proxy_wallet.clone()),
-                }
+                })
             })
             .collect();
 
-        // data-api returns newest-first. Keep it that way for tape UIs.
-        trades.truncate(desired);
-
-        // Provide next_cursor if we got a full page of raw results (more data likely available).
-        let next_cursor = if raw_count >= overfetch {
-            Some((offset + overfetch).to_string())
+        // Emit a cursor only if more data is reachable within the offset cap.
+        let next_offset = offset + raw_count;
+        let next_cursor = if raw_count >= fetchable && next_offset < POLY_OFFSET_CAP {
+            Some(next_offset.to_string())
         } else {
             None
         };
