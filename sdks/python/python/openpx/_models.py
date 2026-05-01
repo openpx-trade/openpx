@@ -42,41 +42,72 @@ class CryptoPriceSource(Enum):
 
 
 class DepthBuckets(BaseModel):
-    ask_within_100bps: float
-    ask_within_10bps: float
-    ask_within_50bps: float
-    bid_within_100bps: float
-    bid_within_10bps: float
-    bid_within_50bps: float
+    ask_within_100bps: float = Field(
+        ..., description="Cumulative ask size within 100 bps of mid (contracts)."
+    )
+    ask_within_10bps: float = Field(
+        ..., description="Cumulative ask size within 10 bps of mid (contracts)."
+    )
+    ask_within_50bps: float = Field(
+        ..., description="Cumulative ask size within 50 bps of mid (contracts)."
+    )
+    bid_within_100bps: float = Field(
+        ..., description="Cumulative bid size within 100 bps of mid (contracts)."
+    )
+    bid_within_10bps: float = Field(
+        ..., description="Cumulative bid size within 10 bps of mid (contracts)."
+    )
+    bid_within_50bps: float = Field(
+        ..., description="Cumulative bid size within 50 bps of mid (contracts)."
+    )
 
 
 class Event(BaseModel):
-    category: str | None = None
-    description: str | None = None
-    end_ts: AwareDatetime | None = None
-    last_updated_ts: AwareDatetime | None = None
+    category: str | None = Field(
+        None,
+        description='Topical category (e.g. `"Politics"`); `null` when upstream omits it.',
+    )
+    description: str | None = Field(
+        None, description="Long-form event description; `null` when upstream omits it."
+    )
+    end_ts: AwareDatetime | None = Field(None, description="Event end time in UTC.")
+    last_updated_ts: AwareDatetime | None = Field(
+        None, description="Last upstream update time in UTC."
+    )
     market_tickers: list[str] | None = Field(
         [],
-        description="Sibling market market_tickers under this event — unified `Market.ticker` values (Kalshi market market_tickers; Polymarket slugs).",
+        description='Tickers of markets under this event (e.g. `["KXBTCD-25APR1517"]`).',
     )
-    mutually_exclusive: bool | None = None
+    mutually_exclusive: bool | None = Field(
+        None, description="`true` if exactly one child market resolves YES."
+    )
     numeric_id: str | None = Field(
         None,
-        description='Polymarket\'s numeric REST id for the event (e.g. `"12585"`). None on Kalshi (no separate numeric event surface).',
+        description='Polymarket numeric event id (e.g. `"12585"`); `null` on Kalshi.',
     )
-    open_interest: float | None = None
+    open_interest: float | None = Field(
+        None, description="Open interest in USD (e.g. `5000.0`)."
+    )
     series_ticker: str | None = Field(
         None,
-        description="Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series's `ticker` (or `slug` if `ticker` is null).",
+        description='Parent series ticker (e.g. `"KXPRES"`); `null` when the event has no parent series.',
     )
-    start_ts: AwareDatetime | None = None
-    status: str | None = None
+    start_ts: AwareDatetime | None = Field(None, description="Event start time in UTC.")
+    status: str | None = Field(
+        None,
+        description='Upstream lifecycle string (e.g. `"open"`); `null` when upstream omits it.',
+    )
     ticker: str = Field(
         ...,
-        description='Native event identifier. Kalshi: `event_ticker` (e.g. `"KXPRES-2028"`). Polymarket: the event slug (e.g. `"presidential-election-winner-2024"`).',
+        description='Native event identifier — Kalshi event ticker or Polymarket event slug (e.g. `"KXPRES-2028"`).',
     )
-    title: str
-    volume: float | None = None
+    title: str = Field(
+        ...,
+        description='Human-readable event title (e.g. `"2028 US Presidential Election"`).',
+    )
+    volume: float | None = Field(
+        None, description="Lifetime trading volume in USD (e.g. `12345.67`)."
+    )
 
 
 class ExchangeInfo(BaseModel):
@@ -126,8 +157,8 @@ class InvalidationReason(RootModel[InvalidationReason1 | InvalidationReason2]):
 
 
 class LevelCount(BaseModel):
-    asks: conint(ge=0)
-    bids: conint(ge=0)
+    asks: conint(ge=0) = Field(..., description="Number of ask levels (e.g. `12`).")
+    bids: conint(ge=0) = Field(..., description="Number of bid levels (e.g. `12`).")
 
 
 class LiquidityRole(Enum):
@@ -149,16 +180,37 @@ class MarketStatusFilter(Enum):
 
 
 class MarketTrade(BaseModel):
-    aggressor_side: str | None = None
-    exchange_ts: AwareDatetime
-    id: str
-    no_price: float | None = None
-    openpx_ts: AwareDatetime
-    outcome: str | None = None
-    price: float
-    size: float
-    taker_address: str | None = None
-    yes_price: float | None = None
+    aggressor_side: str | None = Field(
+        None,
+        description="Direction of the taker relative to YES. Options: `buy`, `sell`; `null` when unknown.",
+    )
+    exchange_ts: AwareDatetime = Field(
+        ..., description='Upstream trade time in UTC (e.g. `"2026-04-25T12:00:00Z"`).'
+    )
+    id: str = Field(
+        ..., description='Globally-unique exchange trade id (e.g. `"t-9c2..."`).'
+    )
+    no_price: float | None = Field(
+        None, description="NO-side reference price for binary markets (e.g. `0.38`)."
+    )
+    openpx_ts: AwareDatetime = Field(
+        ..., description="Wall-clock time OpenPX served the trade (UTC)."
+    )
+    outcome: str | None = Field(
+        None,
+        description='Outcome label (e.g. `"Yes"`, `"No"`); `null` when not exposed.',
+    )
+    price: float = Field(
+        ..., description="Trade price as YES probability in `[0, 1]` (e.g. `0.62`)."
+    )
+    size: float = Field(..., description="Filled size in contracts (e.g. `25.0`).")
+    taker_address: str | None = Field(
+        None,
+        description='Polymarket taker wallet address (e.g. `"0x..."`); `null` on Kalshi.',
+    )
+    yes_price: float | None = Field(
+        None, description="YES-side reference price for binary markets (e.g. `0.62`)."
+    )
 
 
 class MarketType(Enum):
@@ -168,29 +220,30 @@ class MarketType(Enum):
 
 
 class MaxGap(BaseModel):
-    ask_gap_bps: float | None = None
-    bid_gap_bps: float | None = None
+    ask_gap_bps: float | None = Field(
+        None, description="Max ask-side gap in basis points (e.g. `25.0`)."
+    )
+    bid_gap_bps: float | None = Field(
+        None, description="Max bid-side gap in basis points (e.g. `25.0`)."
+    )
 
 
 class OrderOutcome1(Enum):
     yes = "yes"
-
-
-class OrderOutcome2(Enum):
     no = "no"
 
 
-class OrderOutcome3(BaseModel):
+class OrderOutcome2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     label: str
 
 
-class OrderOutcome(RootModel[OrderOutcome1 | OrderOutcome2 | OrderOutcome3]):
-    root: OrderOutcome1 | OrderOutcome2 | OrderOutcome3 = Field(
+class OrderOutcome(RootModel[OrderOutcome1 | OrderOutcome2]):
+    root: OrderOutcome1 | OrderOutcome2 = Field(
         ...,
-        description="Which outcome an order targets.\n\nOn Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so this field is a response-label hint only — it shows up on `Order.outcome` but does not route the trade.",
+        description='Outcome targeted by an order. Options: `yes`, `no`, or `label: "<name>"` for categorical Polymarket markets.',
         title="OrderOutcome",
     )
 
@@ -216,65 +269,139 @@ class OrderType(Enum):
 
 
 class OrderbookImpact(BaseModel):
-    asset_id: str
-    buy_avg_price: float | None = None
-    buy_fill_pct: float
-    buy_slippage_bps: float | None = None
-    exchange_ts: AwareDatetime | None = None
-    mid: float | None = None
-    openpx_ts: AwareDatetime
-    sell_avg_price: float | None = None
-    sell_fill_pct: float
-    sell_slippage_bps: float | None = None
-    size: float
+    asset_id: str = Field(
+        ..., description='Orderable asset id (e.g. `"KXBTCD-25APR1517"`).'
+    )
+    buy_avg_price: float | None = Field(
+        None, description="Average fill price hitting asks (e.g. `0.625`)."
+    )
+    buy_fill_pct: float = Field(
+        ..., description="Buy-side fill percentage in `[0, 100]` (e.g. `100.0`)."
+    )
+    buy_slippage_bps: float | None = Field(
+        None, description="Buy-side slippage vs mid in basis points (e.g. `80.0`)."
+    )
+    exchange_ts: AwareDatetime | None = Field(
+        None, description="Upstream snapshot time in UTC; `null` when not provided."
+    )
+    mid: float | None = Field(
+        None, description="Mid price as YES probability (e.g. `0.62`)."
+    )
+    openpx_ts: AwareDatetime = Field(
+        ..., description="Wall-clock time OpenPX served the response (UTC)."
+    )
+    sell_avg_price: float | None = Field(
+        None, description="Average fill price hitting bids (e.g. `0.615`)."
+    )
+    sell_fill_pct: float = Field(
+        ..., description="Sell-side fill percentage in `[0, 100]` (e.g. `100.0`)."
+    )
+    sell_slippage_bps: float | None = Field(
+        None, description="Sell-side slippage vs mid in basis points (e.g. `80.0`)."
+    )
+    size: float = Field(
+        ..., description="Requested order size in contracts (e.g. `100.0`)."
+    )
 
 
 class OrderbookMicrostructure(BaseModel):
-    ask_slope: float | None = None
-    asset_id: str
-    bid_slope: float | None = None
-    depth_buckets: DepthBuckets
-    exchange_ts: AwareDatetime | None = None
-    level_count: LevelCount
-    max_gap: MaxGap
-    openpx_ts: AwareDatetime
+    ask_slope: float | None = Field(
+        None,
+        description="OLS slope of cumulative ask size vs distance-from-mid (e.g. `12.5`).",
+    )
+    asset_id: str = Field(
+        ..., description='Orderable asset id (e.g. `"KXBTCD-25APR1517"`).'
+    )
+    bid_slope: float | None = Field(
+        None,
+        description="OLS slope of cumulative bid size vs distance-from-mid (e.g. `12.5`).",
+    )
+    depth_buckets: DepthBuckets = Field(
+        ..., description="Cumulative depth at 10/50/100 bps from mid."
+    )
+    exchange_ts: AwareDatetime | None = Field(
+        None, description="Upstream snapshot time in UTC; `null` when not provided."
+    )
+    level_count: LevelCount = Field(..., description="Number of levels per side.")
+    max_gap: MaxGap = Field(
+        ...,
+        description="Largest consecutive-level price gap on each side, in basis points.",
+    )
+    openpx_ts: AwareDatetime = Field(
+        ..., description="Wall-clock time OpenPX served the response (UTC)."
+    )
 
 
 class OrderbookStats(BaseModel):
-    ask_depth: float
-    asset_id: str
-    best_ask: float | None = None
-    best_bid: float | None = None
-    bid_depth: float
-    exchange_ts: AwareDatetime | None = None
-    imbalance: float | None = None
-    mid: float | None = None
-    openpx_ts: AwareDatetime
-    spread_bps: float | None = None
-    weighted_mid: float | None = None
+    ask_depth: float = Field(
+        ..., description="Total resting ask size in contracts (e.g. `1000.0`)."
+    )
+    asset_id: str = Field(
+        ..., description='Orderable asset id (e.g. `"KXBTCD-25APR1517"`).'
+    )
+    best_ask: float | None = Field(
+        None, description="Best ask as YES probability (e.g. `0.63`)."
+    )
+    best_bid: float | None = Field(
+        None, description="Best bid as YES probability (e.g. `0.61`)."
+    )
+    bid_depth: float = Field(
+        ..., description="Total resting bid size in contracts (e.g. `1000.0`)."
+    )
+    exchange_ts: AwareDatetime | None = Field(
+        None, description="Upstream snapshot time in UTC; `null` when not provided."
+    )
+    imbalance: float | None = Field(
+        None,
+        description="Top-10 imbalance in `[-1, 1]` (positive = bid-heavy) (e.g. `0.12`).",
+    )
+    mid: float | None = Field(
+        None, description="Mid price as YES probability (e.g. `0.62`)."
+    )
+    openpx_ts: AwareDatetime = Field(
+        ..., description="Wall-clock time OpenPX served the response (UTC)."
+    )
+    spread_bps: float | None = Field(
+        None, description="Spread in basis points relative to mid (e.g. `400.0`)."
+    )
+    weighted_mid: float | None = Field(
+        None, description="Size-weighted mid using the top-10 levels (e.g. `0.62`)."
+    )
 
 
 class Outcome(BaseModel):
     label: str = Field(
         ...,
-        description='Outcome label (e.g. "Yes", "No", or a categorical option name).',
+        description='Outcome label (e.g. `"Yes"`, `"No"`, or a categorical option name).',
     )
     price: float | None = Field(
         None,
-        description="Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi markets pre-fill, or Polymarket categorical markets without a price).",
+        description="Current price as YES probability in `[0, 1]` (e.g. `0.62`); `null` when not yet quoted.",
     )
     token_id: str | None = Field(
         None,
-        description="CTF token id (Polymarket only). Used to subscribe to per-outcome orderbook streams. None on Kalshi.",
+        description="Polymarket CTF token id used for per-outcome orderbook subscriptions; `null` on Kalshi.",
     )
 
 
 class Position(BaseModel):
-    average_price: float
-    current_price: float
-    market_ticker: str
-    outcome: str
-    size: float
+    average_price: float = Field(
+        ...,
+        description="Volume-weighted average entry price as YES probability in `[0, 1]` (e.g. `0.55`).",
+    )
+    current_price: float = Field(
+        ...,
+        description="Current mark price as YES probability in `[0, 1]` (e.g. `0.62`).",
+    )
+    market_ticker: str = Field(
+        ...,
+        description='Unified market ticker the position is held on (e.g. `"KXBTCD-25APR1517"`).',
+    )
+    outcome: str = Field(
+        ...,
+        description='Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).',
+    )
+    size: float = Field(..., description="Number of contracts held (e.g. `100.0`).")
 
 
 class PriceLevelSide(Enum):
@@ -344,8 +471,13 @@ class SessionEvent(
 
 
 class SettlementSource(BaseModel):
-    name: str | None = None
-    url: str | None = None
+    name: str | None = Field(
+        None,
+        description='Display name of the source (e.g. `"Bureau of Labor Statistics"`).',
+    )
+    url: str | None = Field(
+        None, description='Source URL (e.g. `"https://www.bls.gov/cpi/"`).'
+    )
 
 
 class SportResult(BaseModel):
@@ -365,17 +497,23 @@ class SportResult(BaseModel):
 
 
 class TradesRequest(BaseModel):
-    asset_id: str
-    cursor: str | None = Field(None, description="Opaque cursor from a prior response.")
+    asset_id: str = Field(
+        ...,
+        description='Market identifier — Kalshi market ticker or Polymarket Gamma slug (e.g. `"KXBTCD-25APR1517"`).',
+    )
+    cursor: str | None = Field(
+        None,
+        description='Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).',
+    )
     end_ts: int | None = Field(
-        None, description="Unix seconds (inclusive upper bound)."
+        None, description="Inclusive upper bound, unix seconds (e.g. `1714608000`)."
     )
     limit: conint(ge=0) | None = Field(
         None,
-        description="Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).",
+        description="Max trades to return; capped at 1000 (Kalshi) / 500 (Polymarket) (e.g. `100`).",
     )
     start_ts: int | None = Field(
-        None, description="Unix seconds (inclusive lower bound)."
+        None, description="Inclusive lower bound, unix seconds (e.g. `1714521600`)."
     )
 
 
@@ -443,20 +581,21 @@ class ActivityFill(BaseModel):
 class CreateOrderRequest(BaseModel):
     asset_id: str = Field(
         ...,
-        description="Per-outcome asset identifier — Kalshi market ticker, Polymarket CTF token id. Same convention as `Exchange::fetch_orderbook` — the value identifies the orderable thing (a Kalshi market is orderable as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must resolve the token id themselves via `fetch_market` before submitting.",
+        description='The orderable asset — Kalshi market ticker or Polymarket CTF token id (e.g. `"KXBTCD-25APR1517"`).',
     )
     order_type: OrderType | None = Field(
-        "gtc", description="Time-in-force / execution type."
+        "gtc",
+        description="Time-in-force; defaults to `gtc` (options: `gtc`, `ioc`, `fok`).",
     )
     outcome: OrderOutcome = Field(
         ...,
-        description="On Kalshi, drives YES-frame bid/ask side selection — required. On Polymarket, response-label hint only (the actual outcome is encoded in `asset_id`).",
+        description='Outcome to trade. Options: `yes`, `no`, or `label: "<name>"` (Polymarket categorical markets only).',
     )
     price: float = Field(
-        ..., description="Limit price as YES probability in `(0.0, 1.0)`."
+        ..., description="Limit price as YES probability in `(0, 1)` (e.g. `0.62`)."
     )
-    side: OrderSide = Field(..., description="Buy or sell.")
-    size: float = Field(..., description="Order size in contracts.")
+    side: OrderSide = Field(..., description="Order direction. Options: `buy`, `sell`.")
+    size: float = Field(..., description="Order size in contracts (e.g. `100.0`).")
 
 
 class CryptoPrice(BaseModel):
@@ -469,149 +608,243 @@ class CryptoPrice(BaseModel):
 class FetchMarketsParams(BaseModel):
     cursor: str | None = Field(
         None,
-        description="Exchange-specific cursor (offset, page number, or cursor string)",
+        description='Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).',
     )
     event_ticker: str | None = Field(
         None,
-        description='Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a Polymarket event slug (e.g., `"will-trump-win-2024"`). Polymarket numeric event IDs are not accepted — they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not paginated). `status` filtering is still applied client-side.',
+        description='Fetch all markets in this event — Kalshi event ticker or Polymarket event slug (e.g. `"KXBTC-25MAR14"`).',
     )
     limit: conint(ge=0) | None = Field(
         None,
-        description="Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at ~500. Values above the cap are silently clamped to the cap.",
+        description="Page size; clamped to per-exchange caps (Kalshi 1000, Polymarket 500) (e.g. `100`).",
     )
     market_tickers: list[str] | None = Field(
         [],
-        description='Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g., `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`, and `series_ticker` are ignored.',
+        description='Fetch only these market tickers — Kalshi tickers or Polymarket slugs (e.g. `["KXBTCD-25APR1517"]`).',
     )
     series_ticker: str | None = Field(
         None,
-        description='Filter by series ticker. Pass a Kalshi series ticker (e.g., `"KXBTC"`) to fetch only markets in that series. Polymarket support arrives once `series_numeric_id` is added to this struct — until then, this field is ignored on Polymarket.',
+        description='Fetch only markets in this Kalshi series ticker (e.g. `"KXBTC"`); ignored on Polymarket today.',
     )
     status: MarketStatusFilter | None = Field(
         None,
-        description="Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All` to fetch markets of any status.",
+        description="Status filter; defaults to `active` (options: `active`, `closed`, `resolved`, `all`).",
     )
 
 
 class Fill(BaseModel):
-    created_at: AwareDatetime
-    fee: float
-    fill_id: str
-    is_taker: bool
-    market_ticker: str
-    order_id: str
-    outcome: str
-    price: float
-    side: OrderSide
-    size: float
+    created_at: AwareDatetime = Field(
+        ..., description='Fill execution time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).'
+    )
+    fee: float = Field(..., description="Fee paid in quote dollars (e.g. `0.07`).")
+    fill_id: str = Field(
+        ..., description='Globally-unique fill id (e.g. `"f-9c2..."`).'
+    )
+    is_taker: bool = Field(
+        ..., description="`true` if the caller took liquidity, `false` if they made it."
+    )
+    market_ticker: str = Field(
+        ...,
+        description='Unified market ticker the fill belongs to (e.g. `"KXBTCD-25APR1517"`).',
+    )
+    order_id: str = Field(..., description='Parent order id (e.g. `"a1b2c3d4-..."`).')
+    outcome: str = Field(
+        ...,
+        description='Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).',
+    )
+    price: float = Field(
+        ..., description="Fill price as YES probability in `(0, 1)` (e.g. `0.62`)."
+    )
+    side: OrderSide = Field(..., description="Order direction. Options: `buy`, `sell`.")
+    size: float = Field(..., description="Filled size in contracts (e.g. `25.0`).")
 
 
 class Market(BaseModel):
-    best_ask: float | None = Field(None, description="Best ask price (normalized 0-1)")
-    best_bid: float | None = Field(None, description="Best bid price (normalized 0-1)")
-    close_time: AwareDatetime | None = Field(None, description="Market close time")
-    condition_id: str | None = Field(None, description="Polymarket CTF condition id")
-    created_at: AwareDatetime | None = Field(None, description="Market creation time")
+    best_ask: float | None = Field(
+        None, description="Best ask as YES probability in `[0, 1]` (e.g. `0.63`)."
+    )
+    best_bid: float | None = Field(
+        None, description="Best bid as YES probability in `[0, 1]` (e.g. `0.61`)."
+    )
+    close_time: AwareDatetime | None = Field(
+        None, description='Market close time in UTC (e.g. `"2026-04-25T20:00:00Z"`).'
+    )
+    condition_id: str | None = Field(
+        None,
+        description='Polymarket CTF condition id (e.g. `"0xabc..."`); `null` on Kalshi.',
+    )
+    created_at: AwareDatetime | None = Field(
+        None, description="Market creation time in UTC."
+    )
     event_ticker: str | None = Field(
         None,
-        description="Native event identifier this market belongs to. Kalshi: upstream `event_ticker`. Polymarket: the parent event's `slug`.",
+        description='Parent event ticker — Kalshi event_ticker or Polymarket event slug (e.g. `"KXBTC-25MAR14"`).',
     )
-    exchange: str = Field(..., description="Exchange identifier (kalshi, polymarket)")
+    exchange: str = Field(
+        ..., description="Source exchange. Options: `kalshi`, `polymarket`."
+    )
     last_trade_price: float | None = Field(
-        None, description="Last trade price (normalized 0-1)"
-    )
-    market_type: MarketType = Field(..., description="Market type classification")
-    min_order_size: float | None = Field(
         None,
-        description="Minimum order size (contracts). Kalshi: synthesized — 1.0, or 0.01 when fractional_trading_enabled. Polymarket: read directly from `orderMinSize`.",
+        description="Last trade price as YES probability in `[0, 1]` (e.g. `0.62`).",
     )
-    neg_risk: bool | None = Field(None, description="Polymarket: neg-risk flag")
+    market_type: MarketType = Field(
+        ..., description="Outcome shape. Options: `binary`, `categorical`, `scalar`."
+    )
+    min_order_size: float | None = Field(
+        None, description="Minimum order size in contracts (e.g. `1.0`)."
+    )
+    neg_risk: bool | None = Field(
+        None, description="Polymarket neg-risk flag; `null` on Kalshi."
+    )
     neg_risk_market_id: str | None = Field(
-        None, description="Polymarket: neg-risk market ID"
+        None, description="Polymarket neg-risk market id; `null` on Kalshi."
     )
     numeric_id: str | None = Field(
         None,
-        description="Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription.",
+        description='Polymarket numeric DB id used for REST deep-links (e.g. `"1031769"`); `null` on Kalshi.',
     )
-    open_time: AwareDatetime | None = Field(None, description="Market open time")
-    openpx_id: str = Field(..., description="Primary key: {exchange}:{ticker}")
+    open_time: AwareDatetime | None = Field(
+        None, description="Market open time in UTC."
+    )
+    openpx_id: str = Field(
+        ...,
+        description='OpenPX primary key in `<exchange>:<ticker>` form (e.g. `"kalshi:KXBTCD-25APR1517"`).',
+    )
     outcomes: list[Outcome] | None = Field(
         [],
-        description='Ordered list of outcomes. Each entry carries label, price, and (if exposed) token id. Polymarket categorical markets have N entries; Kalshi binary markets always have 2 ("Yes" / "No").',
+        description='Ordered outcomes; binary markets have two (`"Yes"`, `"No"`), categorical have N.',
         validate_default=True,
     )
     result: str | None = Field(
         None,
-        description="Resolution result. Kalshi: enum string from upstream. Polymarket: derived winning-outcome label (the `outcomes[i]` whose `outcomePrices[i]` is 1.0 after settlement). None for unresolved markets.",
+        description='Winning outcome label after settlement (e.g. `"Yes"`); `null` until resolved.',
     )
     rules: str | None = Field(
         None,
-        description="Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`. Polymarket: `description`.",
+        description="Resolution rules in plain text; `null` when upstream omits them.",
     )
     settlement_time: AwareDatetime | None = Field(
         None,
-        description="Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket: `closedTime` (populated only after on-chain settlement).",
+        description="Settlement time in UTC; `null` until the market resolves on-chain.",
     )
     status: MarketStatus = Field(
-        ..., description="Normalized status: Active, Closed, Resolved"
+        ..., description="Lifecycle state. Options: `active`, `closed`, `resolved`."
     )
     tick_size: float | None = Field(
-        None,
-        description="Minimum price increment in dollars. Polymarket: `orderPriceMinTickSize` directly. Kalshi: the smallest `step` across the tiered `price_ranges` array (the finest precision the market accepts anywhere on its price curve — orders in coarser tiers must still round to that tier's step).",
+        None, description="Minimum price increment in dollars (e.g. `0.01`)."
     )
     ticker: str = Field(
-        ..., description="Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`."
+        ...,
+        description='Native ticker — Kalshi market ticker or Polymarket slug (e.g. `"KXBTCD-25APR1517"`).',
     )
-    title: str = Field(..., description="Market title")
-    volume: float = Field(..., description="Total volume (USD)")
-    volume_24h: float | None = Field(None, description="24-hour trading volume (USD)")
+    title: str = Field(
+        ...,
+        description='Human-readable market title (e.g. `"Will BTC close above $100k on Apr 15?"`).',
+    )
+    volume: float = Field(
+        ..., description="Lifetime trading volume in USD (e.g. `12345.67`)."
+    )
+    volume_24h: float | None = Field(
+        None,
+        description="24-hour trading volume in USD; `null` when upstream omits it.",
+    )
 
 
 class Order(BaseModel):
-    created_at: AwareDatetime
+    created_at: AwareDatetime = Field(
+        ..., description='Order creation time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).'
+    )
     fee: float | None = Field(
         None,
-        description="Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars. Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement, so this stays `None` on initial create response.",
+        description="Volume-weighted per-contract fee in quote dollars; `null` on Polymarket and on unfilled orders.",
     )
-    filled: float
-    id: str
-    market_ticker: str
-    outcome: str
-    price: float
-    side: OrderSide
-    size: float
-    status: OrderStatus
-    updated_at: AwareDatetime | None = None
+    filled: float = Field(
+        ..., description="Cumulative filled size in contracts (e.g. `25.0`)."
+    )
+    id: str = Field(
+        ..., description='Globally-unique exchange order id (e.g. `"a1b2c3d4-..."`).'
+    )
+    market_ticker: str = Field(
+        ...,
+        description='Unified market ticker the order belongs to (e.g. `"KXBTCD-25APR1517"`).',
+    )
+    outcome: str = Field(
+        ...,
+        description='Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`, or a categorical label).',
+    )
+    price: float = Field(
+        ..., description="Limit price as YES probability in `(0, 1)` (e.g. `0.62`)."
+    )
+    side: OrderSide = Field(..., description="Order direction. Options: `buy`, `sell`.")
+    size: float = Field(..., description="Order size in contracts (e.g. `100.0`).")
+    status: OrderStatus = Field(
+        ...,
+        description="Order lifecycle state. Options: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`.",
+    )
+    updated_at: AwareDatetime | None = Field(
+        None, description="Last update time (UTC); `null` if untouched since creation."
+    )
 
 
 class PriceLevel(BaseModel):
-    price: Number
-    size: float
+    price: Number = Field(
+        ..., description="Price as YES probability in `[0, 1]` (e.g. `0.62`)."
+    )
+    size: float = Field(
+        ..., description="Resting size at this price in contracts (e.g. `100.0`)."
+    )
 
 
 class PriceLevelChange(BaseModel):
-    price: Number
-    side: PriceLevelSide
-    size: float
+    price: Number = Field(
+        ..., description="Price as YES probability in `[0, 1]` (e.g. `0.62`)."
+    )
+    side: PriceLevelSide = Field(..., description="Which side. Options: `bid`, `ask`.")
+    size: float = Field(
+        ..., description="New size at this price in contracts; `0` removes the level."
+    )
 
 
 class Series(BaseModel):
-    category: str | None = None
-    fee_type: str | None = None
-    frequency: str | None = None
-    last_updated_ts: AwareDatetime | None = None
+    category: str | None = Field(
+        None,
+        description='Topical category (e.g. `"Politics"`); `null` when upstream omits it.',
+    )
+    fee_type: str | None = Field(
+        None,
+        description='Fee schedule label (e.g. `"flat"`); `null` when upstream omits it.',
+    )
+    frequency: str | None = Field(
+        None,
+        description='Cadence string (e.g. `"weekly"`); `null` when upstream omits it.',
+    )
+    last_updated_ts: AwareDatetime | None = Field(
+        None, description="Last upstream update time in UTC."
+    )
     numeric_id: str | None = Field(
         None,
-        description='Polymarket\'s numeric REST id for the series (e.g. `"10345"`). None on Kalshi (no separate numeric series surface).',
+        description='Polymarket numeric series id (e.g. `"10345"`); `null` on Kalshi.',
     )
-    settlement_sources: list[SettlementSource] | None = Field([], validate_default=True)
-    tags: list[str] | None = []
+    settlement_sources: list[SettlementSource] | None = Field(
+        [],
+        description='Resolution sources used by the exchange (e.g. `[{"name": "BLS", "url": "..."}]`).',
+        validate_default=True,
+    )
+    tags: list[str] | None = Field(
+        [], description='Free-form tags (e.g. `["macro", "fed"]`).'
+    )
     ticker: str = Field(
         ...,
-        description='Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`). Polymarket: the series\'s `ticker` field, falling back to `slug` when `ticker` is null upstream.',
+        description='Native series identifier — Kalshi series ticker or Polymarket series ticker/slug (e.g. `"KXPRES"`).',
     )
-    title: str
-    volume: float | None = None
+    title: str = Field(
+        ...,
+        description='Human-readable series title (e.g. `"US Presidential Election"`).',
+    )
+    volume: float | None = Field(
+        None,
+        description="Lifetime trading volume in USD across the series (e.g. `123456.78`).",
+    )
 
 
 class WsUpdate2(BaseModel):
@@ -631,21 +864,40 @@ class WsUpdate5(BaseModel):
 
 
 class MarketLineage(BaseModel):
-    event: Event | None = None
-    market: Market
-    series: Series | None = None
+    event: Event | None = Field(
+        None,
+        description="Parent event; `null` if the market is standalone or the parent is missing upstream.",
+    )
+    market: Market = Field(..., description="The market itself.")
+    series: Series | None = Field(
+        None,
+        description="Parent series; `null` if the event is standalone or the parent is missing upstream.",
+    )
 
 
 class Orderbook(BaseModel):
-    asks: list[PriceLevel]
-    asset_id: str
-    bids: list[PriceLevel]
+    asks: list[PriceLevel] = Field(
+        ..., description="Ask levels, sorted ascending by price."
+    )
+    asset_id: str = Field(
+        ...,
+        description='The orderable asset — Kalshi market ticker or Polymarket CTF token id (e.g. `"KXBTCD-25APR1517"`).',
+    )
+    bids: list[PriceLevel] = Field(
+        ..., description="Bid levels, sorted descending by price."
+    )
     hash: str | None = Field(
         None,
-        description="Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book` snapshot events.",
+        description="Polymarket book-state hash for replay integrity; `null` on Kalshi.",
     )
-    last_update_id: conint(ge=0) | None = None
-    timestamp: AwareDatetime | None = None
+    last_update_id: conint(ge=0) | None = Field(
+        None,
+        description="Monotonic sequence id from upstream; `null` when not provided.",
+    )
+    timestamp: AwareDatetime | None = Field(
+        None,
+        description='Upstream snapshot time in UTC (e.g. `"2026-04-25T12:00:00Z"`).',
+    )
 
 
 class WsUpdate1(BaseModel):

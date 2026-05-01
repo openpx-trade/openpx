@@ -4,6 +4,4 @@ sidebarTitle: "Fetch markets"
 openapi: /openpx.openapi.yaml GET /v1/markets/fetch_markets
 ---
 
-Fetch markets — `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).
-Single-market and multi-market lookups both go through this surface: pass a single ticker via
-`params.market_tickers` to fetch one market, or omit it to page through the full catalog.
+List markets, optionally filtered by status, ticker, event, or series.

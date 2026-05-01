@@ -3,30 +3,30 @@ title: "Position mapping"
 description: "How each upstream exchange schema maps to OpenPX Position."
 ---
 
+_An open position held by the caller._
+
+Every field is one of three entry types — **direct** (taken from upstream), **synthetic** (computed by OpenPX), or **omitted** (not exposed upstream).
+
 ## Coverage
 
-| Exchange | Sourced | Synthetic | Omitted |
+| Exchange | Direct | Synthetic | Omitted |
 |---|---|---|---|
 | kalshi | 2 | 3 | 0 |
 | polymarket | 5 | 0 | 0 |
 
-**Sourced** — value copied or transformed from a documented upstream field.  
-**Synthetic** — computed by OpenPX, not present upstream.  
-**Omitted** — upstream does not expose this concept.  
-
 ## Field crosswalk
 
-| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
-|---|---|---|---|---|---|
-| `market_ticker` | string | `MarketPosition.ticker` (string) | `Position.slug` (string) | direct | **kalshi:** Kalshi market ticker (e.g. `KXPRESPARTYWIN-26-D`). Same string callers pass to `fetch_markets`. **polymarket:** Market slug — matches the unified `Market.ticker` semantics on Polymarket. The on-chain `conditionId` is reachable but is the internal lookup id, not the user-facing identifier; we anchor on `slug` so callers can round-trip the value through `fetch_markets`. |
-| `outcome` | string | _computed_ — `sign(MarketPosition.position_fp) → {"Yes" if ≥0, else "No"}` | `Position.outcome` (string) | synthetic / direct | **kalshi:** Kalshi positions are signed: positive `position_fp` is YES contracts, negative is NO. The unified `outcome` is the re-canonicalized title-case label. **polymarket:** Free-form outcome label as published by Polymarket — typically `"Yes"`/`"No"` on binary markets, raw category labels on categorical/neg-risk markets. |
-| `size` | number (double) | `MarketPosition.position_fp` (FixedPointCount) | `Position.size` (number) | abs_value / direct | **kalshi:** Absolute value of the signed `position_fp` (FixedPointCount string). Sign is consumed by the `outcome` mapping above; the unified `size` is always non-negative. **polymarket:** Already a non-negative `number`. Copied as-is. |
-| `average_price` | number (double) | _computed_ — MarketPosition.total_traded_dollars / \|position_fp\| | `Position.avgPrice` (number) | synthetic / direct | **kalshi:** Cost basis per contract. `total_traded_dollars` is the cumulative dollars spent on the position; dividing by the absolute size gives the realized average entry price in dollars (probability units, 0–1 for binary markets). **polymarket:** Polymarket emits `avgPrice` as a decimal probability (0–1). Copied as-is. |
-| `current_price` | number (double) | _computed_ — MarketPosition.market_exposure_dollars / \|position_fp\| | `Position.curPrice` (number) | synthetic / direct | **kalshi:** Mark-to-market price per contract derived from the upstream `market_exposure_dollars`, which represents the aggregate position value at the current mark. Dividing by absolute size yields the per-contract current price. **polymarket:** Polymarket emits `curPrice` as a decimal probability (0–1). Copied as-is. |
+| Unified field | Type | kalshi source | polymarket source | Notes |
+|---|---|---|---|---|
+| `market_ticker` | string | `MarketPosition.ticker` | `Position.slug` | **kalshi:** Kalshi market ticker; round-trips through `fetch_markets`. **polymarket:** Polymarket market slug; matches `Market.ticker`. |
+| `outcome` | string | _synthetic_ | `Position.outcome` | **kalshi:** Title-cased from the sign of `position_fp` (positive → `Yes`, negative → `No`). **polymarket:** Outcome label as published by Polymarket. |
+| `size` | number (double) | `MarketPosition.position_fp` | `Position.size` | **kalshi:** Absolute value of the signed `position_fp` FixedPointCount string. **polymarket:** Non-negative size in contracts. |
+| `average_price` | number (double) | _synthetic_ | `Position.avgPrice` | **kalshi:** `total_traded_dollars / \|position_fp\|` — cost basis per contract. **polymarket:** Decimal probability in [0, 1]. |
+| `current_price` | number (double) | _synthetic_ | `Position.curPrice` | **kalshi:** `market_exposure_dollars / \|position_fp\|` — mark per contract. **polymarket:** Decimal probability in [0, 1]. |
 
 ## Source specs
 
 - **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
 - **polymarket** &middot; [`schema/upstream/polymarket-data.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-data.openapi.yaml)
 
-> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream spec; the daily upstream-refresh PR surfaces drift here.

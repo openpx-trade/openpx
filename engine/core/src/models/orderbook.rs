@@ -111,7 +111,7 @@ impl schemars::JsonSchema for FixedPrice {
 // Orderbook types
 // ---------------------------------------------------------------------------
 
-/// Bid or ask side. Serializes as "bid"/"ask" on the wire.
+/// Side of an orderbook level. Options: `bid`, `ask`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -120,13 +120,15 @@ pub enum PriceLevelSide {
     Ask,
 }
 
-/// A single price level change. Absolute replacement semantics:
-/// size > 0 = set level to this size, size == 0 = remove level.
+/// One price-level update; `size > 0` sets the level, `size == 0` removes it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevelChange {
+    /// Which side. Options: `bid`, `ask`.
     pub side: PriceLevelSide,
+    /// Price as YES probability in `[0, 1]` (e.g. `0.62`).
     pub price: FixedPrice,
+    /// New size at this price in contracts; `0` removes the level.
     pub size: f64,
 }
 
@@ -134,10 +136,13 @@ pub struct PriceLevelChange {
 /// Falls back to heap only if > 4 changes in a single update (rare).
 pub type ChangeVec = SmallVec<[PriceLevelChange; 4]>;
 
+/// A single resting orderbook level.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PriceLevel {
+    /// Price as YES probability in `[0, 1]` (e.g. `0.62`).
     pub price: FixedPrice,
+    /// Resting size at this price in contracts (e.g. `100.0`).
     pub size: f64,
 }
 
@@ -156,18 +161,23 @@ impl PriceLevel {
     }
 }
 
+/// Full-depth L2 orderbook for one asset.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Orderbook {
+    /// The orderable asset — Kalshi market ticker or Polymarket CTF token id (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
+    /// Bid levels, sorted descending by price.
     pub bids: Vec<PriceLevel>,
+    /// Ask levels, sorted ascending by price.
     pub asks: Vec<PriceLevel>,
+    /// Monotonic sequence id from upstream; `null` when not provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_update_id: Option<u64>,
+    /// Upstream snapshot time in UTC (e.g. `"2026-04-25T12:00:00Z"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<DateTime<Utc>>,
-    /// Exchange-provided hash for verifying book state integrity during replay.
-    /// Polymarket: present on `book` snapshot events.
+    /// Polymarket book-state hash for replay integrity; `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
 }

@@ -1,213 +1,115 @@
-# MarketTrade field mapping: how each upstream public-tape schema maps to
-# OpenPX MarketTrade.
-#
-# Coordinate-only: every $ref points at a resolvable path in
-# schema/upstream/<exchange>.openapi.yaml. Type info, nullability, and
-# descriptions are derived at validation/render time. Do not duplicate them
-# here.
-#
-# The hand-written normalizers — `fetch_trades` in
-# engine/exchanges/kalshi/src/exchange.rs and
-# engine/exchanges/polymarket/src/exchange.rs (the latter delegates to
-# `fetch_public_trades` and `parse_public_trade`) — are the implementation.
-# This file is the *contract* the implementation conforms to.
+# Schema mapping for the unified `MarketTrade`.
+# Each field declares, per exchange, exactly one of three entry types:
+#   type: direct     — value is taken from upstream at the given $ref.
+#   type: synthetic  — value is computed by OpenPX, not present upstream.
+#   type: omitted    — upstream does not expose this concept.
 unified_type: MarketTrade
 unified_schema: schema/openpx.schema.json#/definitions/MarketTrade
-
-# Kalshi: GET /markets/trades returns GetTradesResponse { trades: [Trade], cursor }.
-# Polymarket: GET /trades on the Data API returns a flat array of Trade objects.
-# Both surfaces are REST-only on the unified `fetch_trades`. WebSocket trade
-# events flow through a separate `ActivityTrade` type, not MarketTrade — see
-# engine/core/src/websocket/traits.rs.
 upstream_specs:
   kalshi: schema/upstream/kalshi.openapi.yaml
   polymarket: schema/upstream/polymarket-data.openapi.yaml
 
-# Transform vocabulary:
-#   direct                  — copy value as-is, types compatible
-#   fixed_point_dollars     — Kalshi $-string (FixedPointDollars) → decimal
-#                             probability [0,1]; cents-form values (>=1.0)
-#                             are divided by 100, then rounded to 6 decimals
-#                             and validated to be in (0,1)
-#   fixed_point_count       — Kalshi count-string (FixedPointCount) → f64
-#   parse_datetime          — RFC3339 string → DateTime<Utc>
-#   unix_seconds_to_utc     — Polymarket integer unix-seconds → DateTime<Utc>
-#   kalshi_taker_to_buy_sell — Kalshi taker_side enum (yes|no) → unified
-#                              aggressor_side ("buy" if yes, "sell" if no);
-#                              encodes Yes-anchored pressure
-#   poly_side_outcome_to_buy_sell — Polymarket {side: BUY|SELL, outcome: Yes|No}
-#                                   → unified aggressor_side, Yes-anchored:
-#                                   buys of Yes (or sells of No) → "buy";
-#                                   sells of Yes (or buys of No) → "sell".
-#                                   Non-binary outcomes pass side through.
-#   kalshi_taker_to_outcome — Kalshi taker_side (yes|no) → "Yes" / "No"
 fields:
-  # ---- Identity ----
   - name: id
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/trade_id"
-        transform: direct
-        notes: |
-          Kalshi-issued unique trade id, stable across replays. Required on
-          the unified surface; rows missing this field are dropped at parse
-          time rather than synthesized.
+        note: "Kalshi-issued unique trade id; rows missing this are dropped at parse time."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/transactionHash"
-        transform: direct
-        notes: |
-          On-chain transaction hash. Doubles as the unified `id` because
-          Polymarket's public tape has no separate trade id — every executed
-          trade lands in exactly one Polygon tx. Rows without a tx hash are
-          dropped (the Data API only emits null `transactionHash` for
-          unsettled trades, which we exclude from the tape view).
+        note: "Polygon transaction hash; doubles as trade id since one trade lands per tx."
 
-  # ---- Price ----
   - name: price
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/yes_price_dollars"
         fallback_ref: "#/components/schemas/Trade/properties/no_price_dollars"
-        transform: fixed_point_dollars
-        notes: |
-          Yes-anchored: unified `price` is always the Yes-side execution
-          price. Kalshi emits both yes_price_dollars and no_price_dollars on
-          every row (Oct 9, 2025 changelog). Cents-form legacy values
-          (e.g. `99.0`) are normalized by dividing by 100. Rows that fail to
-          parse a Yes price are dropped.
+        note: "Yes-anchored: parsed from `yes_price_dollars` and normalized to a probability in [0, 1]."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/price"
-        transform: direct
-        notes: |
-          Polymarket already returns price as a decimal probability in
-          [0,1]; copied as-is. On binary markets the unified row's `price`
-          is the executed price of the specific outcome token (use
-          `outcome` to know whether it's Yes-side or No-side).
+        note: "Decimal probability for the row's outcome token in [0, 1]."
 
   - name: size
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/count_fp"
-        transform: fixed_point_count
-        notes: |
-          Number of contracts at fixed-point precision (e.g. `"10.00"` →
-          `10.0`). The legacy integer `count` field is no longer mapped —
-          `count_fp` is required on every trade per the spec.
+        note: "FixedPointCount string parsed to f64."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/size"
-        transform: direct
-        notes: Already a `number` in the spec. Copied as-is.
+        note: "Non-negative size in contracts."
 
-  # ---- Direction ----
   - name: aggressor_side
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/taker_side"
-        transform: kalshi_taker_to_buy_sell
-        notes: |
-          Yes-anchored: `taker_side=yes` (taker bought Yes) → `"buy"`;
-          `taker_side=no` (taker bought No, equivalent to selling Yes) →
-          `"sell"`. Encodes whether the trade pushed Yes price up or down.
+        note: "Yes-anchored: `taker_side=yes` → buy, `taker_side=no` → sell."
       polymarket:
-        synthetic: "{Trade.side, Trade.outcome} → buy|sell, Yes-anchored"
-        notes: |
-          Polymarket's top-level `side` is the proxyWallet's BUY/SELL on
-          the specific outcome token. With `takerOnly=true` (the unified
-          tape default) the proxyWallet is the taker. We anchor to the
-          Yes side: `BUY` of Yes or `SELL` of No → `"buy"`; `SELL` of Yes
-          or `BUY` of No → `"sell"`. Non-binary markets fall through to
-          the raw side string.
+        type: synthetic
+        note: "Yes-anchored from {Trade.side, Trade.outcome} — BUY of Yes or SELL of No → buy."
 
   - name: outcome
     sources:
       kalshi:
-        synthetic: "Trade.taker_side ∈ {yes, no} → {\"Yes\", \"No\"}"
-        notes: |
-          Kalshi binary markets only address Yes/No; the row's `outcome`
-          mirrors which side the taker took. Synthetic rather than sourced
-          because no top-level `outcome` field exists on the upstream
-          Trade — we re-canonicalize the enum.
+        type: synthetic
+        note: "Title-cased from `taker_side` (the upstream Trade has no top-level `outcome`)."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/outcome"
-        transform: direct
-        notes: |
-          Free-form outcome label as published by Polymarket (typically
-          `"Yes"`/`"No"` on binary markets, but categorical markets emit
-          the outcome string as-is, e.g. `"Trump"`).
+        note: "Outcome label as published by Polymarket."
 
-  # ---- Two-sided price reference ----
   - name: yes_price
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/yes_price_dollars"
-        transform: fixed_point_dollars
-        notes: |
-          Same source as the canonical `price`; restated here so consumers
-          can read the Yes reference without inspecting `outcome`.
+        note: "Direct Yes-side reference; equal to canonical `price`."
       polymarket:
-        synthetic: "Trade.price when Trade.outcome == \"Yes\"; else null"
-        notes: |
-          Polymarket trades are per-outcome-token, so only one of
-          `yes_price` / `no_price` can be filled per row. Set when the
-          row's outcome is `"Yes"`; otherwise None. Do NOT derive from
-          `1 - no_price` — the spreads are not mirror-image-tight.
+        type: synthetic
+        note: "Set to `Trade.price` when the row's outcome is `Yes`; null otherwise."
 
   - name: no_price
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/no_price_dollars"
-        transform: fixed_point_dollars
-        notes: |
-          Direct No-side reference; available on every Kalshi trade
-          alongside `yes_price_dollars`. Do NOT derive as `1 - yes_price`
-          — the mirror identity holds at top-of-book but not on every
-          executed trade (Kalshi's matching engine can fill both sides
-          at non-mirrored prices on subpenny ticks).
+        note: "Direct No-side reference; do not derive as `1 - yes_price` (mirror identity does not hold per trade)."
       polymarket:
-        synthetic: "Trade.price when Trade.outcome == \"No\"; else null"
-        notes: |
-          Symmetric counterpart of `yes_price` for the No-side outcome
-          token. None when the row is a Yes-token trade.
+        type: synthetic
+        note: "Set to `Trade.price` when the row's outcome is `No`; null otherwise."
 
-  # ---- Counterparty ----
   - name: taker_address
     sources:
       kalshi:
-        omitted: true
-        notes: |
-          Kalshi public trades expose no wallet/account identifiers — the
-          tape is fully anonymous beyond `taker_side`. Always None.
+        type: omitted
+        note: "Kalshi public tape exposes no wallet identifiers."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/proxyWallet"
-        transform: direct
-        notes: |
-          On-chain proxy wallet address of the taker. We hardcode
-          `takerOnly=true` on the underlying Data API call, so this is
-          unambiguously the taker. Polymarket's public tape exposes no
-          maker-side identifier (Jun 3, 2025 changelog mentioned a
-          MakerOrder.side nested object that does not appear in the
-          current spec).
+        note: "On-chain proxy wallet of the taker (`takerOnly=true` is hardcoded on the underlying call)."
 
-  # ---- Timestamps ----
   - name: exchange_ts
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Trade/properties/created_time"
-        transform: parse_datetime
-        notes: RFC3339 string from the upstream; parsed to UTC.
+        note: "RFC3339 string parsed to UTC."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/timestamp"
-        transform: unix_seconds_to_utc
-        notes: |
-          Polymarket emits trade timestamps as `int64` unix seconds (NOT
-          milliseconds — the orderbook surface uses ms strings, but the
-          tape uses second-precision integers). Parsed via
-          `chrono::DateTime::<Utc>::from_timestamp`.
+        note: "Unix seconds (not milliseconds) parsed to UTC."
 
   - name: openpx_ts
-    synthetic: "wall-clock UTC stamped at response-serialization time"
-    notes: |
-      Stamped once per `fetch_trades` call (not per row) so a single page
-      shares one `openpx_ts`. Lets consumers compute end-to-end latency
-      against `exchange_ts` and de-duplicate retries that produce identical
-      payloads.
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Wall-clock UTC stamped once per page at response serialization."
+      polymarket:
+        type: synthetic
+        note: "Wall-clock UTC stamped once per page at response serialization."

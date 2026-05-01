@@ -16,51 +16,39 @@ pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
 
-    /// Fetch markets — `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).
-    /// Single-market and multi-market lookups both go through this surface: pass a single ticker via
-    /// `params.market_tickers` to fetch one market, or omit it to page through the full catalog.
+    /// List markets, optionally filtered by status, ticker, event, or series.
     async fn fetch_markets(
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
 
-    /// Submit a new order. The unified surface exposes only the six fields on
-    /// `CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
-    /// expiration, idempotency keys, neg-risk overrides, builder/metadata,
-    /// subaccounts) are not modelled. Each adapter generates whatever its
-    /// upstream requires (e.g. Kalshi V2's required `client_order_id` and
-    /// `self_trade_prevention_type`) internally.
+    /// Submit a new order.
     async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError>;
 
-    /// Cancel an existing order by ID. The order_id is globally unique on
-    /// both exchanges, so no scope qualifier is required.
+    /// Cancel one open order by its globally-unique `order_id`.
     async fn cancel_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch a single order by ID. As with `cancel_order`, the order_id
-    /// is globally unique on both exchanges.
+    /// Fetch one order by its globally-unique `order_id`.
     async fn fetch_order(&self, order_id: &str) -> Result<Order, OpenPxError>;
 
-    /// Fetch the caller's currently open orders, optionally filtered by
-    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
-    /// convention as `fetch_orderbook` and `create_order`).
+    /// List the caller's open orders, optionally scoped to one `asset_id`.
     async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError>;
 
-    /// Fetch the caller's open positions, optionally filtered by market.
+    /// List the caller's open positions, optionally scoped to one `market_ticker`.
     async fn fetch_positions(
         &self,
         market_ticker: Option<&str>,
     ) -> Result<Vec<Position>, OpenPxError>;
 
-    /// Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).
+    /// Fetch the caller's account balance, keyed by currency code (`USD` on Kalshi, `USDC` on Polymarket).
     async fn fetch_balance(&self) -> Result<HashMap<String, f64>, OpenPxError>;
 
-    /// Refresh cached balance and allowance state from the exchange.
+    /// Refresh cached balance and on-chain allowance state from the exchange.
     async fn refresh_balance(&self) -> Result<(), OpenPxError> {
         Ok(())
     }
 
-    /// Fetch the full-depth L2 orderbook (bids + asks) for a single asset.
-    /// `asset_id` is the per-outcome identifier — Kalshi market ticker or Polymarket token id.
+    /// Fetch the full-depth L2 orderbook (bids + asks) for one `asset_id`.
     async fn fetch_orderbook(&self, asset_id: &str) -> Result<Orderbook, OpenPxError> {
         let _ = asset_id;
         Err(OpenPxError::Exchange(
@@ -68,9 +56,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a paginated tape of recent public trades for a market.
-    /// Both Yes and No outcomes' trades are returned interleaved; consumers
-    /// distinguish via `MarketTrade.outcome`.
+    /// Fetch a paginated tape of recent public trades for one market.
     async fn fetch_trades(
         &self,
         req: TradesRequest,
@@ -81,7 +67,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the caller's fill (trade execution) history, optionally filtered by market.
+    /// List the caller's fill (trade execution) history, optionally scoped to one `market_ticker`.
     async fn fetch_fills(
         &self,
         market_ticker: Option<&str>,
@@ -93,17 +79,14 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch the exchange's current wall-clock time (UTC).
+    /// Fetch the exchange's current wall-clock time in UTC.
     async fn fetch_server_time(&self) -> Result<DateTime<Utc>, OpenPxError> {
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("fetch_server_time".into()),
         ))
     }
 
-    /// Fetch a market plus its parent event and series in one call. The
-    /// `event` and `series` fields are `Option` — a dangling parent reference
-    /// returns `None` rather than failing the whole call. `market_ticker` is
-    /// the unified `Market.ticker` (Kalshi market ticker or Polymarket slug).
+    /// Fetch one market plus its parent event and series in a single round-trip.
     async fn fetch_market_lineage(
         &self,
         market_ticker: &str,
@@ -125,18 +108,13 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Snapshot stats: top-of-book bid/ask, mid, spread (bps), size-weighted
-    /// mid, top-10 imbalance, and total bid/ask depth — pure functions of the
-    /// full-depth orderbook. `exchange_ts` carries the upstream snapshot time;
-    /// `openpx_ts` is set to wall-clock when OpenPX served the response.
+    /// Snapshot stats: top-of-book, mid, spread (bps), size-weighted mid, top-10 imbalance, and total depth.
     async fn fetch_orderbook_stats(&self, asset_id: &str) -> Result<OrderbookStats, OpenPxError> {
         let book = self.fetch_orderbook(asset_id).await?;
         Ok(crate::models::orderbook_stats(&book))
     }
 
-    /// Slippage curve at a single requested size. Walks the book consuming
-    /// levels until `size` is filled or the side exhausts; returns partial
-    /// fills with `fill_pct < 100.0`. `size` must be > 0.
+    /// Average fill price and slippage (bps) for a market order of `size` contracts on each side.
     async fn fetch_orderbook_impact(
         &self,
         asset_id: &str,
@@ -149,9 +127,7 @@ pub trait Exchange: Send + Sync {
         Ok(crate::models::orderbook_impact(&book, size))
     }
 
-    /// Microstructure signals: cumulative depth within 10/50/100 bps tiers,
-    /// linear-regression slope of cumulative size vs distance-from-mid (bps),
-    /// largest consecutive-level price gap, and per-side level counts.
+    /// Microstructure signals: depth within 10/50/100 bps, slope, max gap, and per-side level counts.
     async fn fetch_orderbook_microstructure(
         &self,
         asset_id: &str,
@@ -160,8 +136,7 @@ pub trait Exchange: Send + Sync {
         Ok(crate::models::orderbook_microstructure(&book))
     }
 
-    /// Cancel all of the caller's open orders, optionally scoped to one
-    /// `asset_id` (Kalshi market ticker | Polymarket CTF token id).
+    /// Cancel all of the caller's open orders, optionally scoped to one `asset_id`.
     async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let _ = asset_id;
         Err(OpenPxError::Exchange(
@@ -169,9 +144,7 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Submit multiple orders in one round-trip. Each request shares the
-    /// same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
-    /// Kalshi.
+    /// Submit multiple orders in one round-trip (max 15 on Polymarket; token-budget on Kalshi).
     async fn create_orders_batch(
         &self,
         reqs: Vec<CreateOrderRequest>,
@@ -232,21 +205,18 @@ pub struct ExchangeInfo {
     pub has_create_orders_batch: bool,
 }
 
-/// Request for fetching recent public trades ("tape") for a market.
-///
-/// `asset_id` is the market identifier — Kalshi market ticker or Polymarket
-/// Gamma slug. Both Yes and No outcomes' trades are returned interleaved;
-/// use `MarketTrade.outcome` to distinguish.
+/// Request for `fetch_trades` — recent public trades ("tape") for one market.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TradesRequest {
+    /// Market identifier — Kalshi market ticker or Polymarket Gamma slug (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
-    /// Unix seconds (inclusive lower bound).
+    /// Inclusive lower bound, unix seconds (e.g. `1714521600`).
     pub start_ts: Option<i64>,
-    /// Unix seconds (inclusive upper bound).
+    /// Inclusive upper bound, unix seconds (e.g. `1714608000`).
     pub end_ts: Option<i64>,
-    /// Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
+    /// Max trades to return; capped at 1000 (Kalshi) / 500 (Polymarket) (e.g. `100`).
     pub limit: Option<usize>,
-    /// Opaque cursor from a prior response.
+    /// Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
     pub cursor: Option<String>,
 }

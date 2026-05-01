@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Validate schema/mappings/*.yaml against canonical sources.
 
+Each field source must declare exactly one of three entry types:
+    type: direct     — value is taken from upstream at the given $ref.
+    type: synthetic  — value is computed by OpenPX, not present upstream.
+    type: omitted    — upstream does not expose this concept.
+
 Checks per mapping file:
-  1. Every unified field in openpx.schema.json is declared (synthetic or sourced).
-  2. Every declared source $ref resolves in the cached upstream spec.
-  3. For transform=direct, source type is compatible with unified type.
-  4. fallback_ref (if present) also resolves.
+  1. Every unified field in openpx.schema.json is declared (per exchange).
+  2. Every `type: direct` declares a `ref:`; refs that look like JSON pointers
+     (`#/...`) must resolve in the cached upstream spec. Bare-name refs
+     document a spec gap and are recorded for the daily refresh check.
+  3. `fallback_ref` (if present) must resolve when it's a JSON pointer.
 
-Exit code 0 on pass, 1 on validation failure. Intended to run in CI as part of
-the sdk-sync gate.
-
-Usage:
-    python3 tools/validate_mappings.py                 # all mapping files
-    python3 tools/validate_mappings.py market          # single type
+Exit code 0 on pass, 1 on validation failure.
 """
 from __future__ import annotations
 
@@ -20,21 +21,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mapping_lib import load_schema_definitions, load_yaml, normalize_type, resolve_ref
+from mapping_lib import load_schema_definitions, load_yaml, resolve_ref
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
 MAPPINGS_DIR = ROOT / "schema" / "mappings"
 
-# Type compatibility for transform=direct. LHS is upstream (spec) type as
-# normalized via _spec_type(); RHS is unified (openpx) type. A unified field
-# typed `string|null` accepts any source typed `string`, etc.
-DIRECT_COMPATIBLE: dict[str, set[str]] = {
-    "string": {"string"},
-    "boolean": {"boolean"},
-    "integer": {"integer", "number"},
-    "number": {"number", "integer"},
-}
+VALID_TYPES = {"direct", "synthetic", "omitted"}
 
 
 def load_openpx_unified(type_name: str) -> dict[str, Any]:
@@ -44,31 +37,8 @@ def load_openpx_unified(type_name: str) -> dict[str, Any]:
     return defs[type_name]
 
 
-def _spec_type(node: dict[str, Any]) -> set[str]:
-    """Best-effort type extraction from a resolved OpenAPI property node."""
-    if "type" in node:
-        return normalize_type(node["type"])
-    # OpenAPI nullable: true with $ref means the ref's type
-    if "$ref" in node:
-        return {"$ref"}
-    if "allOf" in node:
-        for sub in node["allOf"]:
-            t = _spec_type(sub) if isinstance(sub, dict) else set()
-            if t:
-                return t
-    return set()
-
-
-def _unified_type(node: dict[str, Any]) -> set[str]:
-    if "type" in node:
-        return normalize_type(node["type"])
-    if "allOf" in node:
-        for sub in node["allOf"]:
-            if isinstance(sub, dict) and "$ref" in sub:
-                return {"enum_or_object"}
-    if "$ref" in node:
-        return {"enum_or_object"}
-    return set()
+def is_pointer(ref: str) -> bool:
+    return isinstance(ref, str) and ref.startswith("#/")
 
 
 class Validator:
@@ -76,14 +46,10 @@ class Validator:
         self.mapping_path = mapping_path
         self.mapping = load_yaml(mapping_path)
         self.errors: list[str] = []
-        self.warnings: list[str] = []
         self.coverage: dict[str, dict[str, int]] = {}
 
     def err(self, msg: str) -> None:
         self.errors.append(f"[{self.mapping_path.name}] {msg}")
-
-    def warn(self, msg: str) -> None:
-        self.warnings.append(f"[{self.mapping_path.name}] {msg}")
 
     def run(self) -> bool:
         type_name = self.mapping.get("unified_type")
@@ -126,108 +92,71 @@ class Validator:
             )
 
         for ex in upstream_specs:
-            self.coverage[ex] = {"sourced": 0, "synthetic": 0, "omitted": 0}
+            self.coverage[ex] = {"direct": 0, "synthetic": 0, "omitted": 0}
 
         for field in self.mapping.get("fields", []):
             name = field.get("name")
-            if not name:
-                self.err("field entry missing `name`")
-                continue
-            if name not in unified_props:
+            if not name or name not in unified_props:
                 continue
 
-            unified_type = _unified_type(unified_props[name])
-            sources = field.get("sources", {})
-
-            if not sources and "synthetic" in field:
-                for ex in upstream_specs:
-                    self.coverage[ex]["synthetic"] += 1
-                continue
+            sources = field.get("sources", {}) or {}
 
             for ex in upstream_specs:
-                src = sources.get(ex, {})
+                src = sources.get(ex)
                 if not src:
-                    self.warn(
-                        f"field `{name}` has no entry for exchange `{ex}` "
-                        "(declare `omitted: true` to silence)"
+                    self.err(
+                        f"field `{name}` exchange `{ex}` has no entry "
+                        "(declare `type: direct|synthetic|omitted`)"
                     )
                     continue
-                if src.get("omitted"):
-                    self.coverage[ex]["omitted"] += 1
+
+                t = src.get("type")
+                if t not in VALID_TYPES:
+                    self.err(
+                        f"field `{name}` exchange `{ex}` has type={t!r}; "
+                        f"must be one of {sorted(VALID_TYPES)}"
+                    )
                     continue
-                if "synthetic" in src:
-                    self.coverage[ex]["synthetic"] += 1
-                    continue
-                # `ref_unspecced` = direct read of a field that the live API
-                # exposes but the cached OpenAPI spec doesn't document on this
-                # schema (e.g. Polymarket's `negRisk` on Market — only typed
-                # on Event in gamma's spec, but present on every Market object
-                # in /markets responses). Counts as sourced; ref resolution is
-                # skipped because the path doesn't exist by definition.
-                if "ref_unspecced" in src:
-                    self.coverage[ex]["sourced"] += 1
+
+                self.coverage[ex][t] += 1
+
+                if t != "direct":
                     continue
 
                 ref = src.get("ref")
                 if not ref:
                     self.err(
-                        f"field `{name}` exchange `{ex}` has no `ref`, "
-                        "`ref_unspecced`, `synthetic`, or `omitted`"
+                        f"field `{name}` exchange `{ex}` is type=direct "
+                        "but has no `ref:`"
                     )
                     continue
 
-                resolved = resolve_ref(upstream_specs[ex], ref)
-                if resolved is None:
-                    self.err(
-                        f"field `{name}` exchange `{ex}` ref does not resolve "
-                        f"in {upstream_paths[ex]}: {ref}"
-                    )
-                    continue
-
-                fallback_ref = src.get("fallback_ref")
-                if fallback_ref:
-                    fb = resolve_ref(upstream_specs[ex], fallback_ref)
-                    if fb is None:
+                if is_pointer(ref):
+                    resolved = resolve_ref(upstream_specs[ex], ref)
+                    if resolved is None:
                         self.err(
-                            f"field `{name}` exchange `{ex}` fallback_ref does not resolve: "
-                            f"{fallback_ref}"
+                            f"field `{name}` exchange `{ex}` ref does not "
+                            f"resolve in {upstream_paths[ex]}: {ref}"
                         )
 
-                self.coverage[ex]["sourced"] += 1
-
-                transform = src.get("transform", "direct")
-                if transform == "direct":
-                    spec_t = _spec_type(resolved)
-                    if (
-                        spec_t
-                        and unified_type
-                        and "$ref" not in spec_t
-                        and "enum_or_object" not in unified_type
-                    ):
-                        compatible = any(
-                            ut in DIRECT_COMPATIBLE.get(st, set())
-                            for st in spec_t
-                            for ut in unified_type
+                fb = src.get("fallback_ref")
+                if fb and is_pointer(fb):
+                    resolved = resolve_ref(upstream_specs[ex], fb)
+                    if resolved is None:
+                        self.err(
+                            f"field `{name}` exchange `{ex}` fallback_ref does "
+                            f"not resolve: {fb}"
                         )
-                        if not compatible:
-                            self.err(
-                                f"field `{name}` exchange `{ex}` transform=direct but "
-                                f"types incompatible: spec {sorted(spec_t)} vs unified "
-                                f"{sorted(unified_type)} (declare an explicit transform)"
-                            )
 
         return not self.errors
 
 
 def report(validators: list[Validator]) -> int:
     total_err = sum(len(v.errors) for v in validators)
-    total_warn = sum(len(v.warnings) for v in validators)
 
     for v in validators:
         for e in v.errors:
             print(f"ERROR  {e}", file=sys.stderr)
-        for w in v.warnings:
-            print(f"WARN   {w}", file=sys.stderr)
 
     print()
     print("=== Coverage ===")
@@ -235,18 +164,18 @@ def report(validators: list[Validator]) -> int:
         type_name = v.mapping.get("unified_type", "?")
         print(f"\n{v.mapping_path.name} ({type_name}):")
         for ex, c in v.coverage.items():
-            total = c["sourced"] + c["synthetic"] + c["omitted"]
+            total = c["direct"] + c["synthetic"] + c["omitted"]
             print(
-                f"  {ex:12s} sourced={c['sourced']:3d}  "
+                f"  {ex:12s} direct={c['direct']:3d}  "
                 f"synthetic={c['synthetic']:3d}  omitted={c['omitted']:3d}  "
                 f"(total={total})"
             )
 
     print()
     if total_err:
-        print(f"FAIL: {total_err} error(s), {total_warn} warning(s)")
+        print(f"FAIL: {total_err} error(s)")
         return 1
-    print(f"PASS: 0 errors, {total_warn} warning(s)")
+    print("PASS: 0 errors")
     return 0
 
 

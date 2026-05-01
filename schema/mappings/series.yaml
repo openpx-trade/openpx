@@ -1,161 +1,117 @@
-# Series field mapping: how each upstream exchange schema maps to OpenPX Series.
-#
-# This file is the single declarative source of truth for the Databento-style
-# field crosswalk. It is deliberately *coordinate-only*: every $ref points at a
-# resolvable path in schema/upstream/<exchange>.openapi.yaml — type info,
-# nullability, and descriptions are derived from the spec at validation/render
-# time. Do not duplicate that metadata here.
-#
-# The hand-written normalizers in engine/exchanges/<name>/src/exchange.rs
-# (`parse_kalshi_series`, `parse_polymarket_series`) are the implementation.
-# This file is the *contract* the implementation conforms to. CI runs
-# tools/validate_mappings.py to assert every $ref resolves; render_mappings.py
-# auto-generates docs/schemas/mappings/series.mdx from this file.
+# Schema mapping for the unified `Series`.
+# Each field declares, per exchange, exactly one of three entry types:
+#   type: direct     — value is taken from upstream at the given $ref.
+#   type: synthetic  — value is computed by OpenPX, not present upstream.
+#   type: omitted    — upstream does not expose this concept.
 unified_type: Series
 unified_schema: schema/openpx.schema.json#/definitions/Series
-
 upstream_specs:
   kalshi: schema/upstream/kalshi.openapi.yaml
   polymarket: schema/upstream/polymarket-gamma.openapi.yaml
 
-# Transform vocabulary:
-#   direct                  — copy value as-is, types compatible (primitives)
-#   passthrough_array       — copy structurally identical array as-is (the
-#                              upstream item shape and unified item shape match
-#                              field-for-field, so no normalization is needed)
-#   parse_datetime          — string → DateTime<Utc>
-#   string_to_f64           — Polymarket numeric-string → f64
-#   fixed_point_count       — Kalshi count-string → f64
 fields:
-  # ---- Identity ----
   - name: ticker
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/ticker"
-        transform: direct
-        notes: Kalshi's primary series identifier (e.g. `KXPRES`, `KXBTC`).
+        note: "Native Kalshi series ticker (e.g. `KXPRES`)."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/ticker"
-        transform: direct
-        notes: |
-          Polymarket Series exposes both `ticker` and `slug` (both nullable).
-          The parser prefers `ticker` and falls back to `slug` when ticker is
-          null/empty. Series rows with neither field set are skipped.
+        note: "Polymarket series ticker; falls back to `slug` when null."
 
   - name: numeric_id
     sources:
       kalshi:
-        omitted: true
-        notes: Kalshi has no separate numeric series surface.
+        type: omitted
+        note: "Kalshi has no separate numeric series id."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/id"
-        transform: direct
+        note: "Polymarket numeric series id."
 
-  # ---- Display ----
   - name: title
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/title"
-        transform: direct
+        note: "Kalshi series title."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/title"
-        transform: direct
+        note: "Polymarket series title."
 
   - name: category
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/category"
-        transform: direct
+        note: "Kalshi series category."
       polymarket:
-        ref_unspecced: category
-        transform: direct
-        notes: |
-          Spec gap: the gamma OpenAPI Series schema doesn't declare a
-          `category` field, but live `/series` responses include it for
-          most series. The parser reads it directly. Re-check on each daily
-          upstream refresh — when Polymarket adds it to the spec, promote to
-          a regular `ref:`.
+        type: direct
+        ref: category
+        note: "Spec gap: live `/series` rows return `category` but the gamma OpenAPI omits it."
 
   - name: frequency
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/frequency"
-        transform: direct
-        notes: |
-          Free-form string from Kalshi (e.g. "weekly", "daily", "one-off").
+        note: "Free-form cadence string (e.g. `weekly`)."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/recurrence"
-        transform: direct
-        notes: |
-          Polymarket calls the recurrence cadence `recurrence` rather than
-          `frequency`. The parser also accepts a top-level `frequency` field
-          if upstream ever surfaces one, but `recurrence` is canonical today.
+        note: "Polymarket calls the cadence `recurrence`."
 
   - name: tags
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/tags"
-        transform: passthrough_array
+        note: "Free-form tag strings copied as-is."
       polymarket:
-        omitted: true
-        notes: |
-          Polymarket's Series schema has no `tags` field. Tag relationships
-          live on Events and Markets via separate /events/{id}/tags and
-          /markets/{id}/tags endpoints. Left empty on the unified shape.
+        type: omitted
+        note: "Polymarket Series has no `tags`; tag relationships live on Events/Markets endpoints."
 
-  # ---- Settlement ----
   - name: settlement_sources
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/settlement_sources"
-        transform: passthrough_array
-        notes: |
-          Each entry is `{ name, url }` describing an official settlement
-          source — the rulebook authority Kalshi uses to determine market
-          resolution.
+        note: "Array of `{name, url}` rulebook authorities, copied as-is."
       polymarket:
-        omitted: true
-        notes: |
-          Polymarket resolves via UMA optimistic oracle; structured per-series
-          settlement source feeds are not exposed in the gamma API. Left as
-          an empty array on the unified shape.
+        type: omitted
+        note: "Polymarket resolves via UMA optimistic oracle; no per-series feed is exposed."
 
   - name: fee_type
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/fee_type"
-        transform: direct
-        notes: |
-          Enum: `quadratic`, `quadratic_with_maker_fees`, `flat`. See
-          https://kalshi.com/docs/kalshi-fee-schedule.pdf for the formulas.
+        note: "Kalshi fee schedule enum (e.g. `quadratic`, `flat`)."
       polymarket:
-        omitted: true
-        notes: |
-          Polymarket fees are configured at the CLOB-exchange level, not
-          per-series. Left None on the unified shape.
+        type: omitted
+        note: "Polymarket fees are configured at the CLOB level, not per-series."
 
-  # ---- Aggregates ----
   - name: volume
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/volume_fp"
-        transform: fixed_point_count
-        notes: |
-          Populated only when the caller passes `include_volume=true` to
-          /series/{series_ticker}. Total volume across all events in the
-          series, parsed from Kalshi's fixed-point string format.
+        note: "FixedPointCount string parsed to f64; populated only with `include_volume=true`."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/volume"
-        transform: direct
-        notes: |
-          Polymarket exposes both `volume` (cumulative) and `volume24hr`;
-          the unified `Series.volume` carries the cumulative figure.
+        note: "Cumulative series volume in USD."
 
   - name: last_updated_ts
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Series/properties/last_updated_ts"
-        transform: parse_datetime
+        note: "RFC3339 string parsed to UTC."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Series/properties/updatedAt"
-        transform: parse_datetime
+        note: "ISO 8601 string parsed to UTC."

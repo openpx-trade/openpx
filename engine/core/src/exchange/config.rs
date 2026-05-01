@@ -1,9 +1,6 @@
 use std::time::Duration;
 
-/// Filter for market status in fetch queries.
-///
-/// Unlike `MarketStatus` (which represents a market's actual status), this enum
-/// includes an `All` variant for fetching markets regardless of status.
+/// Market status filter for `fetch_markets`. Options: `active`, `closed`, `resolved`, `all`.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -97,38 +94,25 @@ impl ExchangeConfig {
     }
 }
 
+/// Filters for `fetch_markets`. All fields are optional.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchMarketsParams {
-    /// Per-page limit. Each exchange applies its own server-side cap:
-    /// Kalshi tops out at 1000, Polymarket at ~500. Values above the cap
-    /// are silently clamped to the cap.
+    /// Page size; clamped to per-exchange caps (Kalshi 1000, Polymarket 500) (e.g. `100`).
     pub limit: Option<usize>,
-    /// Exchange-specific cursor (offset, page number, or cursor string)
+    /// Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
     #[serde(default)]
     pub cursor: Option<String>,
-    /// Filter by market status. Defaults to Active at the exchange level when None.
-    /// Use `MarketStatusFilter::All` to fetch markets of any status.
+    /// Status filter; defaults to `active` (options: `active`, `closed`, `resolved`, `all`).
     #[serde(default)]
     pub status: Option<MarketStatusFilter>,
-    /// Fetch a specific set of markets by their unified ticker. Each entry is a
-    /// Kalshi market ticker (e.g., `"KXBTCD-25APR1517"`) or a Polymarket market
-    /// slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`,
-    /// `event_ticker`, and `series_ticker` are ignored.
+    /// Fetch only these market tickers — Kalshi tickers or Polymarket slugs (e.g. `["KXBTCD-25APR1517"]`).
     #[serde(default)]
     pub market_tickers: Vec<String>,
-    /// Filter by series ticker. Pass a Kalshi series ticker (e.g., `"KXBTC"`)
-    /// to fetch only markets in that series. Polymarket support arrives once
-    /// `series_numeric_id` is added to this struct — until then, this field is
-    /// ignored on Polymarket.
+    /// Fetch only markets in this Kalshi series ticker (e.g. `"KXBTC"`); ignored on Polymarket today.
     #[serde(default)]
     pub series_ticker: Option<String>,
-    /// Fetch all markets within a specific event. Pass a Kalshi event ticker
-    /// (e.g., `"KXBTC-25MAR14"`) or a Polymarket event slug
-    /// (e.g., `"will-trump-win-2024"`). Polymarket numeric event IDs are not
-    /// accepted — they will be supported via a future `event_numeric_id` field.
-    /// When set, `cursor` and `limit` are ignored (not paginated).
-    /// `status` filtering is still applied client-side.
+    /// Fetch all markets in this event — Kalshi event ticker or Polymarket event slug (e.g. `"KXBTC-25MAR14"`).
     #[serde(default)]
     pub event_ticker: Option<String>,
 }

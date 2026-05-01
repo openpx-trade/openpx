@@ -1,212 +1,120 @@
-# Fill field mapping: how each upstream fill/trade schema maps to the
-# unified OpenPX `Fill` model.
-#
-# Coordinate-only: every $ref points at a resolvable path in
-# schema/upstream/<exchange>.openapi.yaml. Type info, nullability, and
-# descriptions are derived at validation/render time. Do not duplicate them
-# here.
-#
-# The hand-written normalizers — `parse_fill` in
-# engine/exchanges/kalshi/src/exchange.rs and `parse_poly_fill` in
-# engine/exchanges/polymarket/src/exchange.rs — are the implementation.
-# This file is the *contract* the implementation conforms to.
+# Schema mapping for the unified `Fill`.
+# Each field declares, per exchange, exactly one of three entry types:
+#   type: direct     — value is taken from upstream at the given $ref.
+#   type: synthetic  — value is computed by OpenPX, not present upstream.
+#   type: omitted    — upstream does not expose this concept.
 unified_type: Fill
 unified_schema: schema/openpx.schema.json#/definitions/Fill
-
-# Kalshi: GET /portfolio/fills returns GetFillsResponse { fills: [Fill],
-# cursor }. Each Fill row carries the order id, market ticker, taker/maker
-# flag, fee in fixed-point dollars, and Yes/No price columns. Filter is at
-# market level via `ticker` (and per-order via `order_id`); time bounds via
-# `min_ts`/`max_ts`.
-# Polymarket: the unified adapter sources fills from the Data API
-# `GET /trades` endpoint with `takerOnly=false`. Trade rows are at
-# per-outcome-token granularity and are correlated with the caller's wallet
-# via `user`.  Filter is at market level via `market` (condition_id array).
-# Per-fill order id and maker/taker flag are not exposed on the public tape;
-# the WebSocket user channel carries them via `liquidity_role`.
 upstream_specs:
   kalshi: schema/upstream/kalshi.openapi.yaml
   polymarket: schema/upstream/polymarket-data.openapi.yaml
 
-# Transform vocabulary:
-#   direct                  — copy value as-is, types compatible
-#   fixed_point_dollars     — Kalshi $-string (FixedPointDollars) → f64;
-#                             cents-form legacy values (>=1.0) divided by
-#                             100 for backward compatibility
-#   fixed_point_count       — Kalshi count-string (FixedPointCount) → f64
-#   parse_datetime          — RFC3339 string → DateTime<Utc>
-#   unix_seconds_to_utc     — integer unix-seconds → DateTime<Utc>
-#   kalshi_outcome_to_label — Kalshi `side` enum (yes|no) → "Yes" / "No"
-#   kalshi_action_to_side   — Kalshi `action` enum (buy|sell) → unified
-#                             OrderSide enum
-#   kalshi_outcome_aware_price — Selects yes_price_dollars when
-#                                Fill.side == "yes", no_price_dollars when
-#                                "no". FixedPointDollars string → f64.
-#   poly_side_to_order_side — Polymarket public-tape `side` enum
-#                             (BUY|SELL) → unified OrderSide enum.
 fields:
-  # ---- Identity ----
   - name: fill_id
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/fill_id"
-        transform: direct
-        notes: |
-          Kalshi-issued unique fill id, stable across replays. The
-          `trade_id` field on the same upstream object is a legacy alias
-          — `fill_id` is the canonical identifier.
+        note: "Kalshi-issued unique fill id."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/transactionHash"
-        transform: direct
-        notes: |
-          Polymarket's Data API has no separate fill id — every executed
-          trade lands in exactly one Polygon transaction. The on-chain
-          tx hash doubles as the unified `fill_id`.
+        note: "Polygon transaction hash; doubles as fill id since one trade lands per tx."
 
   - name: order_id
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/order_id"
-        transform: direct
-        notes: |
-          Kalshi-issued order id that produced this fill. Always present
-          on V1 Fill rows.
+        note: "Kalshi-issued order id that produced this fill."
       polymarket:
-        omitted: true
-        notes: |
-          The Data API's public-tape `Trade` object does not expose the
-          maker/taker order ids. Always empty on Polymarket fills sourced
-          from REST; the WebSocket user channel carries `order_id` via
-          `liquidity_role`-aware events.
+        type: omitted
+        note: "Public-tape `Trade` does not expose order ids; live WebSocket events do via `liquidity_role`."
 
   - name: market_ticker
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/ticker"
         fallback_ref: "#/components/schemas/Fill/properties/market_ticker"
-        transform: direct
-        notes: |
-          Kalshi market ticker. The upstream emits both `ticker`
-          (canonical) and `market_ticker` (legacy alias) — the adapter
-          prefers `ticker` and falls back to the alias.
+        note: "Prefers canonical `ticker`, falls back to legacy alias `market_ticker`."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/conditionId"
-        transform: direct
-        notes: |
-          Public-tape `Trade.conditionId` is the on-chain market id.
-          Polymarket fills currently anchor on `conditionId` because the
-          Data /trades response does not echo a `slug` — this is the only
-          coordinate where unified `Position.market_ticker` (slug) and
-          unified `Fill.market_ticker` (conditionId) intentionally diverge.
+        note: "On-chain condition id; `Position.market_ticker` (slug) intentionally diverges from this surface."
 
-  # ---- Outcome / direction ----
   - name: outcome
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/side"
-        transform: kalshi_outcome_to_label
-        notes: |
-          Kalshi's Fill `side` field is the YES/NO outcome (orthogonal to
-          buy/sell which lives on `action`). The adapter re-canonicalizes
-          `yes`/`no` → `"Yes"`/`"No"`.
+        note: "Title-cased from the YES/NO `side` field (buy/sell lives on `action`)."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/outcome"
-        transform: direct
-        notes: |
-          Free-form outcome label as published by Polymarket (`"Yes"`/`"No"`
-          on binary markets, categorical labels on neg-risk markets).
+        note: "Outcome label as published by Polymarket."
 
   - name: side
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/action"
-        transform: kalshi_action_to_side
-        notes: |
-          Kalshi's Fill `action` carries Buy/Sell (`side` carries Yes/No).
-          The unified `side` is sourced from `action`, not from `side`.
+        note: "Buy/Sell sourced from `action` (the YES/NO `side` field is unrelated)."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/side"
-        transform: poly_side_to_order_side
-        notes: BUY/SELL enum, 1:1 with unified `OrderSide`.
+        note: "BUY/SELL enum, 1:1 with unified `OrderSide`."
 
-  # ---- Quantitative ----
   - name: price
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/yes_price_dollars"
         fallback_ref: "#/components/schemas/Fill/properties/no_price_dollars"
-        transform: kalshi_outcome_aware_price
-        notes: |
-          Outcome-aware: when Fill.side == "yes" use `yes_price_dollars`,
-          otherwise use `no_price_dollars`. Both fields are
-          FixedPointDollars strings (e.g. `"0.65"`) and are present on
-          every fill per the Mar 10, 2026 changelog. The legacy cents-int
-          `yes_price` field is no longer the canonical source.
+        note: "Outcome-aware: uses `yes_price_dollars` on YES fills and `no_price_dollars` on NO fills."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/price"
-        transform: direct
-        notes: |
-          Already a decimal probability in [0,1]; copied as-is. The price
-          is for the row's specific outcome token (use `outcome` to know
-          whether this is the Yes-side or No-side execution price).
+        note: "Decimal probability for the row's outcome token in [0, 1]."
 
   - name: size
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/count_fp"
-        transform: fixed_point_count
-        notes: |
-          Number of contracts at fixed-point precision. The legacy
-          integer `count` field is no longer mapped — `count_fp` is the
-          canonical source.
+        note: "FixedPointCount string parsed to f64."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/size"
-        transform: direct
-        notes: Already a `number` in the spec. Copied as-is.
+        note: "Non-negative size in contracts."
 
   - name: is_taker
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/is_taker"
-        transform: direct
-        notes: |
-          Boolean directly from upstream. `true` means the fill removed
-          liquidity; `false` means it added.
+        note: "Boolean: `true` if the fill removed liquidity, `false` if it added."
       polymarket:
-        omitted: true
-        notes: |
-          The Data API public tape lacks a per-fill maker/taker flag —
-          it only exposes the *aggressor* side via `takerOnly`. The unified
-          `is_taker` is set to `false` on Polymarket REST fills; the
-          WebSocket user channel carries `liquidity_role` for live fills.
+        type: omitted
+        note: "Public tape lacks per-fill maker/taker flag; the WebSocket user channel carries `liquidity_role`."
 
   - name: fee
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/fee_cost"
-        transform: fixed_point_dollars
-        notes: |
-          Per-fill fee in FixedPointDollars. Available on the Fills API
-          per the Jan 27, 2026 changelog.
+        note: "Per-fill fee in FixedPointDollars."
       polymarket:
-        omitted: true
-        notes: |
-          Polymarket does not expose a per-fill fee on the Data API.
-          Fees apply at settlement on neg-risk and reward markets; the
-          unified `Fill.fee` is `0.0` for Polymarket REST fills.
+        type: omitted
+        note: "Polymarket does not expose a per-fill fee on the Data API; defaults to 0.0."
 
-  # ---- Timestamp ----
   - name: created_at
     sources:
       kalshi:
+        type: direct
         ref: "#/components/schemas/Fill/properties/created_time"
-        transform: parse_datetime
-        notes: |
-          RFC3339 string from the upstream. The integer `ts` field on the
-          same row is a legacy alias and is ignored.
+        note: "RFC3339 string parsed to UTC."
       polymarket:
+        type: direct
         ref: "#/components/schemas/Trade/properties/timestamp"
-        transform: unix_seconds_to_utc
-        notes: |
-          Polymarket emits trade timestamps as int64 unix seconds (NOT
-          milliseconds). Parsed via `chrono::DateTime::<Utc>::from_timestamp`.
+        note: "Unix seconds (not milliseconds) parsed to UTC."

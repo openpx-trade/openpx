@@ -4,6 +4,4 @@ sidebarTitle: "Create orders batch"
 openapi: /openpx.openapi.yaml POST /v1/orders/create_orders_batch
 ---
 
-Submit multiple orders in one round-trip. Each request shares the
-same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
-Kalshi.
+Submit multiple orders in one round-trip (max 15 on Polymarket; token-budget on Kalshi).

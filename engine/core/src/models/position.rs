@@ -1,12 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+/// An open position held by the caller.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Position {
+    /// Unified market ticker the position is held on (e.g. `"KXBTCD-25APR1517"`).
     pub market_ticker: String,
+    /// Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).
     pub outcome: String,
+    /// Number of contracts held (e.g. `100.0`).
     pub size: f64,
+    /// Volume-weighted average entry price as YES probability in `[0, 1]` (e.g. `0.55`).
     pub average_price: f64,
+    /// Current mark price as YES probability in `[0, 1]` (e.g. `0.62`).
     pub current_price: f64,
 }
 

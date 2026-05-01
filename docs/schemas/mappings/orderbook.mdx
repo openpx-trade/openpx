@@ -3,31 +3,31 @@ title: "Orderbook mapping"
 description: "How each upstream exchange schema maps to OpenPX Orderbook."
 ---
 
+_Full-depth L2 orderbook for one asset._
+
+Every field is one of three entry types — **direct** (taken from upstream), **synthetic** (computed by OpenPX), or **omitted** (not exposed upstream).
+
 ## Coverage
 
-| Exchange | Sourced | Synthetic | Omitted |
+| Exchange | Direct | Synthetic | Omitted |
 |---|---|---|---|
-| kalshi | 3 | 2 | 1 |
+| kalshi | 2 | 3 | 1 |
 | polymarket | 5 | 0 | 1 |
-
-**Sourced** — value copied or transformed from a documented upstream field.  
-**Synthetic** — computed by OpenPX, not present upstream.  
-**Omitted** — upstream does not expose this concept.  
 
 ## Field crosswalk
 
-| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
-|---|---|---|---|---|---|
-| `asset_id` | string | `MarketOrderbookFp.ticker` (string) | `OrderBookSummary.asset_id` (string) | direct | **kalshi:** Kalshi binary markets carry exactly one orderbook per market, so the unified `asset_id` is the Kalshi market_ticker. Two REST surfaces source it: the batch endpoint (`GET /markets/orderbooks`) echoes `ticker` on each `MarketOrderbookFp` entry — that's the ref above. The single endpoint (`GET /markets/\{ticker\}/orderbook`) doesn't echo the ticker at all (caller already has it from the URL path), so the parser stamps the path parameter onto the unified Orderbook. The WS surface uses `orderbookSnapshotPayload.msg.market_ticker` / `orderbookDeltaPayload.msg.market_ticker` (same string). **polymarket:** Polymarket's CLOB orderbook is keyed by `asset_id` (the on-chain ERC-1155 token id of one outcome). The parent market is recoverable via the sibling `market` field (condition_id) on the same response but is not surfaced on the unified Orderbook — the relationship is recoverable from `Market.outcomes[i].token_id == Orderbook.asset_id`. |
-| `bids` | array | `OrderbookCountFp.yes_dollars` (array) | `OrderBookSummary.bids` (array) | kalshi_yes_levels / polymarket_levels | **kalshi:** Kalshi exposes only YES bids and NO bids on the wire (no asks); the unified `bids` are the YES bids directly. Each upstream level is `[price_in_dollars_string, contract_count_fp_string]` (e.g. `["0.1500", "100.00"]`). The parser converts price → f64 in [0,1], size → f64 from the fixed-point count, drops levels with non-positive price/size, and sorts descending. The WS surface (`orderbookSnapshotPayload.msg.yes_dollars_fp`) uses the identical [price_$, count_fp] tuple format. **polymarket:** Each entry is `OrderSummary \{ price: string, size: string \}`. Parser converts both to f64, drops non-positive, sorts descending. Spec asserts the response is already sorted by price descending; we re- sort defensively. WS surface (`BookEvent.bids` / `PriceChangeEvent.price_changes[].side == "BUY"`) uses the same `OrderSummary` element shape. |
-| `asks` | array | `OrderbookCountFp.no_dollars` (array) | `OrderBookSummary.asks` (array) | kalshi_no_levels_to_asks / polymarket_levels | **kalshi:** Kalshi has no native ask side; we synthesize the YES asks from the NO bids via the binary-market identity: a NO bid at price p is equivalent to a YES ask at price (1 − p) with the same contract count. Element format matches `yes_dollars` (`[price_$_string, count_fp_string]`). The parser inverts price, converts size from fixed-point, drops non-positive, and sorts ascending. WS delta (`orderbookDeltaPayload.msg`) carries `side` (yes/no) explicitly; the same inversion applies on the NO side. **polymarket:** Same `OrderSummary` element shape as `bids`; sorted ascending. WS surface (`BookEvent.asks` / `PriceChangeEvent.price_changes[]` with `side == "SELL"`) carries the same shape. |
-| `last_update_id` | integer? (uint64) | _computed_ — WS `seq` (sequenceNumber) on orderbook_snapshot / orderbook_delta | _not exposed_ | synthetic | **kalshi:** Kalshi's REST `/markets/\{ticker\}/orderbook` does NOT carry a sequence number — `last_update_id` is None on REST-fetched books. On the WS stream we read the top-level `seq` (kalshi.asyncapi.yaml#/components/schemas/orderbookSnapshotPayload/ properties/seq, same on `orderbookDeltaPayload`) which is a per-subscription monotonic u64 — usable for gap detection. See `engine/exchanges/kalshi/src/websocket.rs::handle_snapshot`. **polymarket:** Polymarket emits no per-message sequence; book integrity is verified via the `hash` field instead (see below). |
-| `timestamp` | string? (date-time) | _computed_ — WS `ts_ms` on orderbook_delta; REST stamps local Utc::now() at receive | `OrderBookSummary.timestamp` (string) | synthetic / parse_unix_ms_string | **kalshi:** Kalshi REST has no timestamp on the orderbook response — the fetcher stamps it with local `Utc::now()` at receive time so downstream consumers always see a non-None value. WS deltas carry `ts_ms` (kalshi.asyncapi.yaml#/components/schemas/orderbookDeltaPayload/ properties/msg/properties/ts_ms, integer unix millis); the deprecated `ts` RFC3339 string is ignored. The snapshot message has no timestamp so we again fall back to local time. **polymarket:** Spec types this as `string` with example `"1234567890"`; in practice it's a unix-millis integer encoded as a string. Parser accepts both numeric and string-numeric inputs and rejects anything that doesn't parse to i64. WS `BookEvent.timestamp` and `PriceChangeEvent.timestamp` use the same encoding. |
-| `hash` | string? | _not exposed_ | `OrderBookSummary.hash` (string) | direct | **kalshi:** Kalshi exposes no orderbook hash on REST or WS. **polymarket:** Exchange-provided hash of the canonical book contents — used to verify integrity during replay and to detect divergence between the streamed delta state and a fresh REST snapshot. WS `BookEvent.hash` carries the same value at snapshot boundaries. `PriceChangeMessage.hash` is per-level (the order hash that caused the delta) and is NOT mapped here — that's a different surface and intentionally not surfaced on the unified Orderbook. |
+| Unified field | Type | kalshi source | polymarket source | Notes |
+|---|---|---|---|---|
+| `asset_id` | string | `MarketOrderbookFp.ticker` | `OrderBookSummary.asset_id` | **kalshi:** Kalshi market ticker; the single-market REST endpoint stamps the path parameter. **polymarket:** Polymarket CTF token id of one outcome. |
+| `bids` | array | `OrderbookCountFp.yes_dollars` | `OrderBookSummary.bids` | **kalshi:** YES bids parsed from `[price_$, count_fp]` tuples and sorted descending. **polymarket:** `OrderSummary \{ price, size \}` strings parsed to f64 and sorted descending. |
+| `asks` | array | _synthetic_ | `OrderBookSummary.asks` | **kalshi:** Synthesized from `no_dollars` via the binary identity: NO bid at p == YES ask at (1 − p). **polymarket:** `OrderSummary \{ price, size \}` strings parsed to f64 and sorted ascending. |
+| `last_update_id` | integer? (uint64) | _synthetic_ | _omitted_ | **kalshi:** WS `seq` on snapshot/delta messages; null on REST since the endpoint omits it. **polymarket:** Polymarket emits no per-message sequence — book integrity is verified via `hash`. |
+| `timestamp` | string? (date-time) | _synthetic_ | `OrderBookSummary.timestamp` | **kalshi:** WS `ts_ms` on delta messages; REST stamps `Utc::now()` at receive time. **polymarket:** Unix millis encoded as a string. |
+| `hash` | string? | _omitted_ | `OrderBookSummary.hash` | **kalshi:** Kalshi exposes no orderbook hash on REST or WS. **polymarket:** Exchange-provided book-state hash for replay integrity. |
 
 ## Source specs
 
 - **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
 - **polymarket** &middot; [`schema/upstream/polymarket-clob.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-clob.openapi.yaml)
 
-> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream spec; the daily upstream-refresh PR surfaces drift here.

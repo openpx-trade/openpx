@@ -3,12 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Order time-in-force / execution type.
-///
-/// Normalized across all exchanges:
-/// - `Gtc` (good-til-cancelled) — rests on the book until filled or cancelled.
-/// - `Ioc` (immediate-or-cancel) — fills what it can immediately, cancels the rest.
-/// - `Fok` (fill-or-kill) — must fill entirely in one shot or is cancelled.
+/// Time-in-force. Options: `gtc` (rests on book), `ioc` (fill-now-or-cancel-rest), `fok` (all-or-nothing).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -44,6 +39,7 @@ impl fmt::Display for OrderType {
     }
 }
 
+/// Order direction. Options: `buy`, `sell`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -52,27 +48,17 @@ pub enum OrderSide {
     Sell,
 }
 
-/// Which outcome an order targets.
-///
-/// On Kalshi the value is load-bearing — `Yes` / `No` drives YES-frame
-/// bid/ask side selection and price mirroring at the V2 wire. Anything
-/// other than `Yes` / `No` is rejected with `InvalidInput`.
-///
-/// On Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id`
-/// (the per-outcome CTF token id), so this field is a response-label hint
-/// only — it shows up on `Order.outcome` but does not route the trade.
+/// Outcome targeted by an order. Options: `yes`, `no`, or `label: "<name>"` for categorical Polymarket markets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum OrderOutcome {
-    /// Binary YES outcome.
     Yes,
-    /// Binary NO outcome.
     No,
-    /// Multi-outcome categorical label (Polymarket only; Kalshi rejects).
     Label(String),
 }
 
+/// Whether a fill provided liquidity (`maker`) or took it (`taker`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -81,6 +67,7 @@ pub enum LiquidityRole {
     Taker,
 }
 
+/// Order lifecycle state. Options: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -93,55 +80,51 @@ pub enum OrderStatus {
     Rejected,
 }
 
-/// Lean input shape for `Exchange::create_order`. All cross-venue and
-/// per-venue knobs are deliberately absent — `post_only`, `expiration_ts`,
-/// `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and
-/// subaccounts are not exposed. Anything an exchange requires that is not
-/// modelled here is generated internally (e.g. Kalshi V2's required
-/// `client_order_id` is filled with a per-call UUID).
+/// Input for `create_order`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CreateOrderRequest {
-    /// Per-outcome asset identifier — Kalshi market ticker, Polymarket
-    /// CTF token id. Same convention as `Exchange::fetch_orderbook` —
-    /// the value identifies the orderable thing (a Kalshi market is
-    /// orderable as a whole; a Polymarket order targets one CTF token).
-    /// Polymarket callers who hold a slug + outcome label must resolve
-    /// the token id themselves via `fetch_market` before submitting.
+    /// The orderable asset — Kalshi market ticker or Polymarket CTF token id (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
-    /// On Kalshi, drives YES-frame bid/ask side selection — required.
-    /// On Polymarket, response-label hint only (the actual outcome is
-    /// encoded in `asset_id`).
+    /// Outcome to trade. Options: `yes`, `no`, or `label: "<name>"` (Polymarket categorical markets only).
     pub outcome: OrderOutcome,
-    /// Buy or sell.
+    /// Order direction. Options: `buy`, `sell`.
     pub side: OrderSide,
-    /// Limit price as YES probability in `(0.0, 1.0)`.
+    /// Limit price as YES probability in `(0, 1)` (e.g. `0.62`).
     pub price: f64,
-    /// Order size in contracts.
+    /// Order size in contracts (e.g. `100.0`).
     pub size: f64,
-    /// Time-in-force / execution type.
+    /// Time-in-force; defaults to `gtc` (options: `gtc`, `ioc`, `fok`).
     #[serde(default)]
     pub order_type: OrderType,
 }
 
+/// An order on the unified surface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Order {
+    /// Globally-unique exchange order id (e.g. `"a1b2c3d4-..."`).
     pub id: String,
+    /// Unified market ticker the order belongs to (e.g. `"KXBTCD-25APR1517"`).
     pub market_ticker: String,
+    /// Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`, or a categorical label).
     pub outcome: String,
+    /// Order direction. Options: `buy`, `sell`.
     pub side: OrderSide,
+    /// Limit price as YES probability in `(0, 1)` (e.g. `0.62`).
     pub price: f64,
+    /// Order size in contracts (e.g. `100.0`).
     pub size: f64,
+    /// Cumulative filled size in contracts (e.g. `25.0`).
     pub filled: f64,
-    /// Volume-weighted per-contract fee paid for fills resulting from this
-    /// order, in quote-currency dollars. Kalshi reports it on `create_order`
-    /// when fills occur immediately; Polymarket charges fees at trade
-    /// settlement, so this stays `None` on initial create response.
+    /// Volume-weighted per-contract fee in quote dollars; `null` on Polymarket and on unfilled orders.
     #[serde(default)]
     pub fee: Option<f64>,
+    /// Order lifecycle state. Options: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`.
     pub status: OrderStatus,
+    /// Order creation time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).
     pub created_at: DateTime<Utc>,
+    /// Last update time (UTC); `null` if untouched since creation.
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -170,19 +153,29 @@ impl Order {
     }
 }
 
-/// A single fill (trade execution) from a user's order.
+/// A single fill (trade execution) from one of the caller's orders.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Fill {
+    /// Globally-unique fill id (e.g. `"f-9c2..."`).
     pub fill_id: String,
+    /// Parent order id (e.g. `"a1b2c3d4-..."`).
     pub order_id: String,
+    /// Unified market ticker the fill belongs to (e.g. `"KXBTCD-25APR1517"`).
     pub market_ticker: String,
+    /// Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).
     pub outcome: String,
+    /// Order direction. Options: `buy`, `sell`.
     pub side: OrderSide,
+    /// Fill price as YES probability in `(0, 1)` (e.g. `0.62`).
     pub price: f64,
+    /// Filled size in contracts (e.g. `25.0`).
     pub size: f64,
+    /// `true` if the caller took liquidity, `false` if they made it.
     pub is_taker: bool,
+    /// Fee paid in quote dollars (e.g. `0.07`).
     pub fee: f64,
+    /// Fill execution time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).
     pub created_at: DateTime<Utc>,
 }
 

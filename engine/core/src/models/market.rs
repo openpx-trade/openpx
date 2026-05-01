@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Market type classification.
+/// Shape of a market's outcomes. Options: `binary`, `categorical`, `scalar`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -21,7 +21,7 @@ impl std::fmt::Display for MarketType {
     }
 }
 
-/// Normalized market status across all exchanges.
+/// Market lifecycle state. Options: `active`, `closed`, `resolved`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -55,142 +55,100 @@ impl std::str::FromStr for MarketStatus {
     }
 }
 
-/// One outcome of a prediction market — label, current price, and (where the
-/// exchange exposes one) the on-chain token id needed to subscribe to its
-/// orderbook stream. Replaces the previous trio of `outcome_prices` map +
-/// `outcome_tokens` vec + binary-only `token_id_yes`/`token_id_no` with a
-/// single ordered list keyed by index.
+/// One outcome of a prediction market.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Outcome {
-    /// Outcome label (e.g. "Yes", "No", or a categorical option name).
+    /// Outcome label (e.g. `"Yes"`, `"No"`, or a categorical option name).
     pub label: String,
-    /// Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi
-    /// markets pre-fill, or Polymarket categorical markets without a price).
+    /// Current price as YES probability in `[0, 1]` (e.g. `0.62`); `null` when not yet quoted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price: Option<f64>,
-    /// CTF token id (Polymarket only). Used to subscribe to per-outcome
-    /// orderbook streams. None on Kalshi.
+    /// Polymarket CTF token id used for per-outcome orderbook subscriptions; `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_id: Option<String>,
 }
 
-/// Unified prediction market model.
-///
-/// All exchanges produce this single type directly — no intermediate conversion.
-///
-/// # Price Format
-///
-/// All prices are normalized to decimal format (0.0 to 1.0).
-/// Exchange-specific conversions are handled during parsing:
-///
-/// - **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration).
-/// - **Polymarket**: Native prices already in decimal (0.0-1.0).
+/// A prediction market on the unified surface. Prices are YES probabilities in `[0, 1]`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Market {
-    // ── Identity ──────────────────────────────────────────────────────────
-    /// Primary key: {exchange}:{ticker}
+    /// OpenPX primary key in `<exchange>:<ticker>` form (e.g. `"kalshi:KXBTCD-25APR1517"`).
     pub openpx_id: String,
-    /// Exchange identifier (kalshi, polymarket)
+    /// Source exchange. Options: `kalshi`, `polymarket`.
     pub exchange: String,
-    /// Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`.
+    /// Native ticker — Kalshi market ticker or Polymarket slug (e.g. `"KXBTCD-25APR1517"`).
     pub ticker: String,
-    /// Native event identifier this market belongs to. Kalshi: upstream
-    /// `event_ticker`. Polymarket: the parent event's `slug`.
+    /// Parent event ticker — Kalshi event_ticker or Polymarket event slug (e.g. `"KXBTC-25MAR14"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_ticker: Option<String>,
-    /// Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that
-    /// need to build UI deep-links or cross-reference Polymarket's REST-only
-    /// numeric surface. Not used for trading or subscription.
+    /// Polymarket numeric DB id used for REST deep-links (e.g. `"1031769"`); `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub numeric_id: Option<String>,
 
-    // ── Display ───────────────────────────────────────────────────────────
-    /// Market title
+    /// Human-readable market title (e.g. `"Will BTC close above $100k on Apr 15?"`).
     pub title: String,
-    /// Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`.
-    /// Polymarket: `description`.
+    /// Resolution rules in plain text; `null` when upstream omits them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rules: Option<String>,
 
-    // ── Status ─────────────────────────────────────────────────────────────
-    /// Normalized status: Active, Closed, Resolved
+    /// Lifecycle state. Options: `active`, `closed`, `resolved`.
     pub status: MarketStatus,
-    /// Market type classification
+    /// Outcome shape. Options: `binary`, `categorical`, `scalar`.
     pub market_type: MarketType,
 
-    // ── Outcomes ───────────────────────────────────────────────────────────
-    /// Ordered list of outcomes. Each entry carries label, price, and (if
-    /// exposed) token id. Polymarket categorical markets have N entries;
-    /// Kalshi binary markets always have 2 ("Yes" / "No").
+    /// Ordered outcomes; binary markets have two (`"Yes"`, `"No"`), categorical have N.
     #[serde(default)]
     pub outcomes: Vec<Outcome>,
 
-    // ── CTF ───────────────────────────────────────────────────────────────
-    /// Polymarket CTF condition id
+    /// Polymarket CTF condition id (e.g. `"0xabc..."`); `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_id: Option<String>,
 
-    // ── Volume ─────────────────────────────────────────────────────────────
-    /// Total volume (USD)
+    /// Lifetime trading volume in USD (e.g. `12345.67`).
     pub volume: f64,
-    /// 24-hour trading volume (USD)
+    /// 24-hour trading volume in USD; `null` when upstream omits it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume_24h: Option<f64>,
 
-    // ── Pricing ────────────────────────────────────────────────────────────
-    /// Last trade price (normalized 0-1)
+    /// Last trade price as YES probability in `[0, 1]` (e.g. `0.62`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_trade_price: Option<f64>,
-    /// Best bid price (normalized 0-1)
+    /// Best bid as YES probability in `[0, 1]` (e.g. `0.61`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_bid: Option<f64>,
-    /// Best ask price (normalized 0-1)
+    /// Best ask as YES probability in `[0, 1]` (e.g. `0.63`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_ask: Option<f64>,
 
-    // ── Trading Params ─────────────────────────────────────────────────────
-    /// Minimum price increment in dollars. Polymarket:
-    /// `orderPriceMinTickSize` directly. Kalshi: the smallest `step` across
-    /// the tiered `price_ranges` array (the finest precision the market
-    /// accepts anywhere on its price curve — orders in coarser tiers must
-    /// still round to that tier's step).
+    /// Minimum price increment in dollars (e.g. `0.01`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tick_size: Option<f64>,
-    /// Minimum order size (contracts).
-    /// Kalshi: synthesized — 1.0, or 0.01 when fractional_trading_enabled.
-    /// Polymarket: read directly from `orderMinSize`.
+    /// Minimum order size in contracts (e.g. `1.0`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_order_size: Option<f64>,
 
-    // ── Time ───────────────────────────────────────────────────────────────
-    /// Market close time
+    /// Market close time in UTC (e.g. `"2026-04-25T20:00:00Z"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub close_time: Option<DateTime<Utc>>,
-    /// Market open time
+    /// Market open time in UTC.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_time: Option<DateTime<Utc>>,
-    /// Market creation time
+    /// Market creation time in UTC.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
-    /// Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket:
-    /// `closedTime` (populated only after on-chain settlement).
+    /// Settlement time in UTC; `null` until the market resolves on-chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settlement_time: Option<DateTime<Utc>>,
 
-    // ── Polymarket-Specific ────────────────────────────────────────────────
-    /// Polymarket: neg-risk flag
+    /// Polymarket neg-risk flag; `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub neg_risk: Option<bool>,
-    /// Polymarket: neg-risk market ID
+    /// Polymarket neg-risk market id; `null` on Kalshi.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub neg_risk_market_id: Option<String>,
 
-    // ── Resolution ─────────────────────────────────────────────────────────
-    /// Resolution result. Kalshi: enum string from upstream. Polymarket:
-    /// derived winning-outcome label (the `outcomes[i]` whose `outcomePrices[i]`
-    /// is 1.0 after settlement). None for unresolved markets.
+    /// Winning outcome label after settlement (e.g. `"Yes"`); `null` until resolved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
 }
