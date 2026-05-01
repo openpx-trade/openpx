@@ -22,15 +22,6 @@
         "tab": "API",
         "groups": [
           {
-            "group": "Schema Mappings",
-            "pages": [
-              "api/mappings/market",
-              "api/mappings/event",
-              "api/mappings/series",
-              "api/mappings/orderbook"
-            ]
-          },
-          {
             "group": "Reference Data",
             "pages": [
               {
@@ -131,6 +122,20 @@
         ]
       },
       {
+        "tab": "Schemas",
+        "groups": [
+          {
+            "group": "Mappings",
+            "pages": [
+              "schemas/mappings/market",
+              "schemas/mappings/event",
+              "schemas/mappings/series",
+              "schemas/mappings/orderbook"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Changelog",
         "groups": [
           {
@@ -146,8 +151,18 @@
   "navbar": {
     "links": [
       {
-        "label": "GitHub",
+        "type": "github",
         "href": "https://github.com/openpx-trade/openpx"
+      },
+      {
+        "icon": "desktop",
+        "label": "",
+        "href": "https://openpx.trade"
+      },
+      {
+        "type": "discord",
+        "label": "Need help?",
+        "href": "https://discord.gg/acWpZpVnBj"
       }
     ]
   },

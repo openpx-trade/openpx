@@ -2,7 +2,7 @@
 """Render Databento-style mapping tables from schema/mappings/*.yaml.
 
 For each mapping file, produces a Mintlify-compatible MDX page at
-docs/api/mappings/<type>.mdx with a per-field crosswalk table:
+docs/schemas/mappings/<type>.mdx with a per-field crosswalk table:
 
 | Unified field | Type | Kalshi source | Polymarket source | Transform | Notes |
 
@@ -20,7 +20,7 @@ from mapping_lib import load_schema_definitions, load_yaml, resolve_ref
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
 MAPPINGS_DIR = ROOT / "schema" / "mappings"
-OUTPUT_DIR = ROOT / "docs" / "api" / "mappings"
+OUTPUT_DIR = ROOT / "docs" / "schemas" / "mappings"
 
 
 def short_ref(ref: str) -> str:

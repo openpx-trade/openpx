@@ -10,7 +10,7 @@
 # (`parse_kalshi_series`, `parse_polymarket_series`) are the implementation.
 # This file is the *contract* the implementation conforms to. CI runs
 # tools/validate_mappings.py to assert every $ref resolves; render_mappings.py
-# auto-generates docs/api/mappings/series.mdx from this file.
+# auto-generates docs/schemas/mappings/series.mdx from this file.
 unified_type: Series
 unified_schema: schema/openpx.schema.json#/definitions/Series
 

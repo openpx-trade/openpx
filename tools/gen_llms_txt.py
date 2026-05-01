@@ -100,6 +100,12 @@ def render(
             f"- [WebSocket streams]({tree}/docs/websockets): real-time orderbook "
             "snapshots, deltas, trades, fills, and session events"
         )
+    if "Schemas" in tabs:
+        lines.append(
+            f"- [Schema mappings]({tree}/docs/schemas/mappings): per-field "
+            "crosswalk between unified OpenPX types and Kalshi/Polymarket "
+            "upstream sources, auto-generated from `schema/mappings/*.yaml`"
+        )
     if "Changelog" in tabs:
         lines.append(
             f"- [Changelog]({blob}/docs/changelog.mdx): release history with "

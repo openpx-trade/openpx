@@ -61,7 +61,7 @@ fetch-upstream-specs:
 check-mappings:
     python3 tools/validate_mappings.py
 
-# Render schema/mappings/*.yaml into docs/api/mappings/*.mdx (Databento-style
+# Render schema/mappings/*.yaml into docs/schemas/mappings/*.mdx (Databento-style
 # crosswalk tables). CI fails if the committed MDX drifts.
 render-mappings:
     python3 tools/render_mappings.py
