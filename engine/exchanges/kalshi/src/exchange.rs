@@ -1537,7 +1537,8 @@ impl Exchange for Kalshi {
 
         // Kalshi has no single "cancel all" verb. Two-step flow:
         // (1) GET /portfolio/orders?status=resting[&ticker=…] — collect order IDs.
-        // (2) DELETE /portfolio/orders/batched with the order IDs.
+        //     V1 only — there is no V2 GET endpoint for listing orders.
+        // (2) DELETE /portfolio/events/orders/batched (V2 batch cancel).
         #[derive(serde::Deserialize)]
         struct OrdersResp {
             #[serde(default)]
@@ -1584,13 +1585,16 @@ impl Exchange for Kalshi {
         }
         #[derive(serde::Deserialize)]
         struct BatchCancelEntry {
-            order_id: Option<String>,
+            order_id: String,
+            #[serde(default)]
+            reduced_by: Option<String>,
+            #[serde(default)]
             error: Option<serde_json::Value>,
         }
         let resp: BatchCancelResp = self
             .request(
                 reqwest::Method::DELETE,
-                "/portfolio/orders/batched",
+                "/portfolio/events/orders/batched",
                 Some(&body),
                 Some("cancel_all_orders"),
             )
@@ -1602,20 +1606,25 @@ impl Exchange for Kalshi {
             .orders
             .into_iter()
             .filter(|e| e.error.is_none())
-            .filter_map(|e| {
-                e.order_id.map(|id| Order {
-                    id,
+            .map(|e| {
+                let cancelled_size = e
+                    .reduced_by
+                    .as_deref()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                Order {
+                    id: e.order_id,
                     market_ticker: market_ticker.unwrap_or("").to_string(),
                     outcome: String::new(),
                     side: OrderSide::Buy,
                     price: 0.0,
-                    size: 0.0,
+                    size: cancelled_size,
                     filled: 0.0,
                     fee: None,
                     status: OrderStatus::Cancelled,
                     created_at: now,
                     updated_at: Some(now),
-                })
+                }
             })
             .collect();
         Ok(cancelled)
@@ -1877,15 +1886,38 @@ impl Exchange for Kalshi {
     ) -> Result<Order, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
+        // V2 response is `{ order_id, client_order_id?, reduced_by }` —
+        // strictly thinner than V1's full Order object. Synthesize a sparse
+        // unified `Order` describing what was cancelled; callers needing
+        // pre-cancel state should `fetch_order` first.
         #[derive(serde::Deserialize)]
-        struct CancelResponse {
-            order: serde_json::Value,
+        struct V2Response {
+            order_id: String,
+            #[serde(default)]
+            #[allow(dead_code)]
+            client_order_id: Option<String>,
+            reduced_by: String,
         }
 
-        let path = format!("/portfolio/orders/{order_id}");
-        let resp: CancelResponse = self.delete(&path).await.map_err(to_openpx)?;
+        let path = format!("/portfolio/events/orders/{order_id}");
+        let resp: V2Response = self.delete(&path).await.map_err(to_openpx)?;
 
-        Ok(self.parse_order(&resp.order))
+        let cancelled_size: f64 = resp.reduced_by.parse().unwrap_or(0.0);
+        let now = chrono::Utc::now();
+
+        Ok(Order {
+            id: resp.order_id,
+            market_ticker: String::new(),
+            outcome: String::new(),
+            side: OrderSide::Buy,
+            price: 0.0,
+            size: cancelled_size,
+            filled: 0.0,
+            fee: None,
+            status: OrderStatus::Cancelled,
+            created_at: now,
+            updated_at: Some(now),
+        })
     }
 
     async fn fetch_order(
