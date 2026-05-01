@@ -151,13 +151,14 @@
   "navbar": {
     "links": [
       {
-        "type": "github",
+        "icon": { "name": "github", "library": "fontawesome", "style": "brands" },
+        "label": "",
         "href": "https://github.com/openpx-trade/openpx"
       },
       {
         "icon": "desktop",
         "label": "",
-        "href": "https://openpx.trade"
+        "href": "https://www.openpx.trade"
       },
       {
         "type": "discord",
