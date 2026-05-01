@@ -169,19 +169,14 @@ class Exchange:
 
     def fetch_trades(
         self,
-        market_ticker: str,
+        asset_id: str,
         *,
-        market_ref: Optional[str] = None,
-        outcome: Optional[str] = None,
-        token_id: Optional[str] = None,
         start_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
         limit: Optional[int] = None,
         cursor: Optional[str] = None,
     ) -> dict[str, Any]:
-        raw = self._native.fetch_trades(
-            market_ticker, market_ref, outcome, token_id, start_ts, end_ts, limit, cursor
-        )
+        raw = self._native.fetch_trades(asset_id, start_ts, end_ts, limit, cursor)
         try:
             from openpx._models import MarketTrade
             return {

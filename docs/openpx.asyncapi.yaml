@@ -1086,25 +1086,28 @@ components:
       - all
       type: string
     MarketTrade:
-      description: 'Normalized public market trade, suitable for "tape" UIs.
-
-
-        - `price` is normalized to [0.0, 1.0] across all exchanges. - `timestamp` is the exchange-provided trade timestamp
-        (UTC).'
+      description: "Normalized public market trade, suitable for \"tape\" UIs.\n\n- `price` is normalized to [0.0, 1.0]; anchored\
+        \ to the Yes side on binary markets \u2014 use `no_price` for the No-side reference. - `aggressor_side` is \"buy\"\
+        \ / \"sell\" relative to the Yes side on binary markets \u2014 \"buy\" means upward pressure on Yes, \"sell\" downward.\
+        \ - `exchange_ts` is the upstream-provided trade timestamp. - `openpx_ts` is wall-clock when OpenPX served the response."
       properties:
         aggressor_side:
           type:
           - string
           - 'null'
+        exchange_ts:
+          format: date-time
+          type: string
         id:
-          type:
-          - string
-          - 'null'
+          type: string
         no_price:
           format: double
           type:
           - number
           - 'null'
+        openpx_ts:
+          format: date-time
+          type: string
         outcome:
           type:
           - string
@@ -1112,23 +1115,10 @@ components:
         price:
           format: double
           type: number
-        side:
-          type:
-          - string
-          - 'null'
         size:
           format: double
           type: number
-        source_channel:
-          type: string
         taker_address:
-          type:
-          - string
-          - 'null'
-        timestamp:
-          format: date-time
-          type: string
-        tx_hash:
           type:
           - string
           - 'null'
@@ -1138,10 +1128,11 @@ components:
           - number
           - 'null'
       required:
+      - exchange_ts
+      - id
+      - openpx_ts
       - price
       - size
-      - source_channel
-      - timestamp
       title: MarketTrade
       type: object
     MarketType:
@@ -1737,51 +1728,38 @@ components:
       title: SportResult
       type: object
     TradesRequest:
-      description: Request for fetching recent public trades ("tape") for a market outcome.
+      description: "Request for fetching recent public trades (\"tape\") for a market.\n\n`asset_id` is the market identifier\
+        \ \u2014 Kalshi market ticker or Polymarket Gamma slug. Both Yes and No outcomes' trades are returned interleaved;\
+        \ use `MarketTrade.outcome` to distinguish."
       properties:
+        asset_id:
+          type: string
         cursor:
-          description: Opaque pagination cursor from a previous response.
+          description: Opaque cursor from a prior response.
           type:
           - string
           - 'null'
         end_ts:
-          description: Unix seconds (inclusive)
+          description: Unix seconds (inclusive upper bound).
           format: int64
           type:
           - integer
           - 'null'
         limit:
-          description: Max number of trades to return (exchange-specific caps may apply).
+          description: Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
           format: uint
           minimum: 0.0
           type:
           - integer
           - 'null'
-        market_ref:
-          description: Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided,
-            exchanges should prefer this over `market_ticker`.
-          type:
-          - string
-          - 'null'
-        market_ticker:
-          description: Exchange-native market identifier.
-          type: string
-        outcome:
-          type:
-          - string
-          - 'null'
         start_ts:
-          description: Unix seconds (inclusive)
+          description: Unix seconds (inclusive lower bound).
           format: int64
           type:
           - integer
           - 'null'
-        token_id:
-          type:
-          - string
-          - 'null'
       required:
-      - market_ticker
+      - asset_id
       title: TradesRequest
       type: object
     WsUpdate:

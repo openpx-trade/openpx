@@ -154,16 +154,14 @@ class MarketStatusFilter(Enum):
 
 class MarketTrade(BaseModel):
     aggressor_side: str | None = None
-    id: str | None = None
+    exchange_ts: AwareDatetime
+    id: str
     no_price: float | None = None
+    openpx_ts: AwareDatetime
     outcome: str | None = None
     price: float
-    side: str | None = None
     size: float
-    source_channel: str
     taker_address: str | None = None
-    timestamp: AwareDatetime
-    tx_hash: str | None = None
     yes_price: float | None = None
 
 
@@ -348,22 +346,18 @@ class SportResult(BaseModel):
 
 
 class TradesRequest(BaseModel):
-    cursor: str | None = Field(
-        None, description="Opaque pagination cursor from a previous response."
+    asset_id: str
+    cursor: str | None = Field(None, description="Opaque cursor from a prior response.")
+    end_ts: int | None = Field(
+        None, description="Unix seconds (inclusive upper bound)."
     )
-    end_ts: int | None = Field(None, description="Unix seconds (inclusive)")
     limit: conint(ge=0) | None = Field(
         None,
-        description="Max number of trades to return (exchange-specific caps may apply).",
+        description="Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).",
     )
-    market_ref: str | None = Field(
-        None,
-        description="Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_ticker`.",
+    start_ts: int | None = Field(
+        None, description="Unix seconds (inclusive lower bound)."
     )
-    market_ticker: str = Field(..., description="Exchange-native market identifier.")
-    outcome: str | None = None
-    start_ts: int | None = Field(None, description="Unix seconds (inclusive)")
-    token_id: str | None = None
 
 
 class Kind5(Enum):

@@ -106,7 +106,8 @@
               "schemas/mappings/market",
               "schemas/mappings/event",
               "schemas/mappings/series",
-              "schemas/mappings/orderbook"
+              "schemas/mappings/orderbook",
+              "schemas/mappings/trade"
             ]
           }
         ]

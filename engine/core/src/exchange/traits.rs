@@ -78,7 +78,9 @@ pub trait Exchange: Send + Sync {
         ))
     }
 
-    /// Fetch a paginated tape of recent public trades for a market outcome.
+    /// Fetch a paginated tape of recent public trades for a market.
+    /// Both Yes and No outcomes' trades are returned interleaved; consumers
+    /// distinguish via `MarketTrade.outcome`.
     async fn fetch_trades(
         &self,
         req: TradesRequest,
@@ -237,24 +239,22 @@ pub struct ExchangeInfo {
     pub has_create_orders_batch: bool,
 }
 
-/// Request for fetching recent public trades ("tape") for a market outcome.
+/// Request for fetching recent public trades ("tape") for a market.
+///
+/// `asset_id` is the market identifier — Kalshi market ticker or Polymarket
+/// Gamma slug. Both Yes and No outcomes' trades are returned interleaved;
+/// use `MarketTrade.outcome` to distinguish.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TradesRequest {
-    /// Exchange-native market identifier.
-    pub market_ticker: String,
-    /// Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId).
-    /// When provided, exchanges should prefer this over `market_ticker`.
-    pub market_ref: Option<String>,
-    pub outcome: Option<String>,
-    pub token_id: Option<String>,
-    /// Unix seconds (inclusive)
+    pub asset_id: String,
+    /// Unix seconds (inclusive lower bound).
     pub start_ts: Option<i64>,
-    /// Unix seconds (inclusive)
+    /// Unix seconds (inclusive upper bound).
     pub end_ts: Option<i64>,
-    /// Max number of trades to return (exchange-specific caps may apply).
+    /// Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
     pub limit: Option<usize>,
-    /// Opaque pagination cursor from a previous response.
+    /// Opaque cursor from a prior response.
     pub cursor: Option<String>,
 }
 

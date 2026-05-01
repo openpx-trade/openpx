@@ -570,23 +570,21 @@ export interface SettlementSource {
 /**
  * Normalized public market trade, suitable for "tape" UIs.
  *
- * - `price` is normalized to [0.0, 1.0] across all exchanges. - `timestamp` is the exchange-provided trade timestamp (UTC).
+ * - `price` is normalized to [0.0, 1.0]; anchored to the Yes side on binary markets — use `no_price` for the No-side reference. - `aggressor_side` is "buy" / "sell" relative to the Yes side on binary markets — "buy" means upward pressure on Yes, "sell" downward. - `exchange_ts` is the upstream-provided trade timestamp. - `openpx_ts` is wall-clock when OpenPX served the response.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "MarketTrade".
  */
 export interface MarketTrade {
   aggressor_side?: string | null;
-  id?: string | null;
+  exchange_ts: string;
+  id: string;
   no_price?: number | null;
+  openpx_ts: string;
   outcome?: string | null;
   price: number;
-  side?: string | null;
   size: number;
-  source_channel: string;
   taker_address?: string | null;
-  timestamp: string;
-  tx_hash?: string | null;
   yes_price?: number | null;
   [k: string]: unknown;
 }
@@ -770,37 +768,30 @@ export interface SportResult {
   [k: string]: unknown;
 }
 /**
- * Request for fetching recent public trades ("tape") for a market outcome.
+ * Request for fetching recent public trades ("tape") for a market.
+ *
+ * `asset_id` is the market identifier — Kalshi market ticker or Polymarket Gamma slug. Both Yes and No outcomes' trades are returned interleaved; use `MarketTrade.outcome` to distinguish.
  *
  * This interface was referenced by `OpenPX`'s JSON-Schema
  * via the `definition` "TradesRequest".
  */
 export interface TradesRequest {
+  asset_id: string;
   /**
-   * Opaque pagination cursor from a previous response.
+   * Opaque cursor from a prior response.
    */
   cursor?: string | null;
   /**
-   * Unix seconds (inclusive)
+   * Unix seconds (inclusive upper bound).
    */
   end_ts?: number | null;
   /**
-   * Max number of trades to return (exchange-specific caps may apply).
+   * Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
    */
   limit?: number | null;
   /**
-   * Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided, exchanges should prefer this over `market_ticker`.
-   */
-  market_ref?: string | null;
-  /**
-   * Exchange-native market identifier.
-   */
-  market_ticker: string;
-  outcome?: string | null;
-  /**
-   * Unix seconds (inclusive)
+   * Unix seconds (inclusive lower bound).
    */
   start_ts?: number | null;
-  token_id?: string | null;
   [k: string]: unknown;
 }

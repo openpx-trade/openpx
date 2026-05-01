@@ -294,13 +294,9 @@ impl Exchange {
     }
 
     #[napi]
-    #[allow(clippy::too_many_arguments)]
     pub async fn fetch_trades(
         &self,
-        market_ticker: String,
-        market_ref: Option<String>,
-        outcome: Option<String>,
-        token_id: Option<String>,
+        asset_id: String,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
         limit: Option<u32>,
@@ -308,10 +304,7 @@ impl Exchange {
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let req = px_core::TradesRequest {
-            market_ticker,
-            market_ref,
-            outcome,
-            token_id,
+            asset_id,
             start_ts,
             end_ts,
             limit: limit.map(|l| l as usize),
