@@ -31,7 +31,7 @@ struct CanonicalEventEntry {
 // TODO(openpx-market-aliases): `event_id` is event-level only. To power
 // cross-exchange "same market" UX (logo stack with clickable jump + live price),
 // add a second curated mapping layer for market-level equivalence within an event:
-//   (canonical event_id, exchange, market_id|group_item) <-> canonical market key.
+//   (canonical event_id, exchange, market_ticker|group_item) <-> canonical market key.
 const CANONICAL_EVENT_REGISTRY: &[CanonicalEventEntry] = &[CanonicalEventEntry {
     canonical_event_id: "ev:us-pres-election-winner-2028",
     aliases: &[EventAlias {

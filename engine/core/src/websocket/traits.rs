@@ -189,8 +189,8 @@ pub struct ActivityFill {
 pub trait OrderBookWebSocket: Send + Sync {
     async fn connect(&mut self) -> Result<(), WebSocketError>;
     async fn disconnect(&mut self) -> Result<(), WebSocketError>;
-    async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
-    async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError>;
+    async fn subscribe(&mut self, market_ticker: &str) -> Result<(), WebSocketError>;
+    async fn unsubscribe(&mut self, market_ticker: &str) -> Result<(), WebSocketError>;
     fn state(&self) -> WebSocketState;
     /// Take ownership of the multiplexed update stream. Returns `None` if
     /// already taken.

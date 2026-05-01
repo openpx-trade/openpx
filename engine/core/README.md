@@ -35,8 +35,10 @@ pub trait Exchange: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
 
-    async fn fetch_markets(&self) -> Result<Vec<Market>, OpenPxError>;
-    async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError>;
+    async fn fetch_markets(
+        &self,
+        params: &FetchMarketsParams,
+    ) -> Result<(Vec<Market>, Option<String>), OpenPxError>;
     async fn create_order(&self, ...) -> Result<Order, OpenPxError>;
     // ... more methods
 }

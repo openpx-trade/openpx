@@ -23,8 +23,6 @@ tags:
 - name: Orderbook History
 - name: Fills
 - name: Server
-- name: Events
-- name: Series
 - name: Pricing
 - name: Tags
 paths:
@@ -33,8 +31,9 @@ paths:
       tags:
       - Markets
       summary: Fetch markets
-      description: "Fetch a paginated list of markets \u2014 `status` filter accepts `active`, `closed`, `resolved`, or `all`\
-        \ (defaults to `active`)."
+      description: "Fetch markets \u2014 `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).\n\
+        Single-market and multi-market lookups both go through this surface: pass a single ticker via\n`params.market_tickers`\
+        \ to fetch one market, or omit it to page through the full catalog."
       operationId: fetch_markets
       parameters:
       - name: cursor
@@ -46,7 +45,7 @@ paths:
           - string
           - 'null'
         description: Exchange-specific cursor (offset, page number, or cursor string)
-      - name: event_id
+      - name: event_ticker
         in: query
         required: false
         schema:
@@ -54,9 +53,10 @@ paths:
           type:
           - string
           - 'null'
-        description: Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or a
-          Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`,
-          `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+        description: "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`) or\
+          \ a Polymarket event slug (e.g., `\"will-trump-win-2024\"`). Polymarket numeric event IDs are not accepted \u2014\
+          \ they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not\
+          \ paginated). `status` filtering is still applied client-side."
       - name: limit
         in: query
         required: false
@@ -68,7 +68,18 @@ paths:
           - 'null'
         description: 'Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at
           ~500. Values above the cap are silently clamped to the cap.'
-      - name: series_id
+      - name: market_tickers
+        in: query
+        required: false
+        schema:
+          default: []
+          items:
+            type: string
+          type: array
+        description: Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g.,
+          `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`,
+          and `series_ticker` are ignored.
+      - name: series_ticker
         in: query
         required: false
         schema:
@@ -76,9 +87,9 @@ paths:
           type:
           - string
           - 'null'
-        description: "Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series \u2192 Events \u2192\
-          \ Markets. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) or a Polymarket series ID (e.g., `\"10345\"`) to fetch\
-          \ only markets in that series."
+        description: "Filter by series ticker. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) to fetch only markets in that\
+          \ series. Polymarket support arrives once `series_numeric_id` is added to this struct \u2014 until then, this field\
+          \ is ignored on Polymarket."
       - name: status
         in: query
         required: false
@@ -102,32 +113,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/markets/fetch_market:
-    get:
-      tags:
-      - Markets
-      summary: Fetch market
-      description: Fetch a single market by ID (Kalshi ticker or Polymarket condition_id).
-      operationId: fetch_market
-      parameters:
-      - name: market_id
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Market'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
   /v1/orders/create_order:
     post:
       tags:
@@ -143,7 +128,7 @@ paths:
             schema:
               type: object
               properties:
-                market_id:
+                market_ticker:
                   type: string
                 outcome:
                   type: string
@@ -160,7 +145,7 @@ paths:
                   additionalProperties:
                     type: string
               required:
-              - market_id
+              - market_ticker
               - outcome
               - side
               - price
@@ -195,7 +180,7 @@ paths:
               properties:
                 order_id:
                   type: string
-                market_id:
+                market_ticker:
                   type:
                   - string
                   - 'null'
@@ -227,7 +212,7 @@ paths:
         required: true
         schema:
           type: string
-      - name: market_id
+      - name: market_ticker
         in: query
         required: false
         schema:
@@ -253,7 +238,7 @@ paths:
       description: Fetch the caller's currently open orders, optionally filtered by market.
       operationId: fetch_open_orders
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: false
         schema:
@@ -283,7 +268,7 @@ paths:
       description: Fetch the caller's open positions, optionally filtered by market.
       operationId: fetch_positions
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: false
         schema:
@@ -355,7 +340,7 @@ paths:
       description: Fetch the L2 orderbook (bids + asks) for a single market outcome.
       operationId: fetch_orderbook
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -417,7 +402,7 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/PriceHistoryInterval'
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -495,12 +480,6 @@ paths:
           - integer
           - 'null'
         description: Max number of trades to return (exchange-specific caps may apply).
-      - name: market_id
-        in: query
-        required: true
-        schema:
-          type: string
-        description: Exchange-native market identifier.
       - name: market_ref
         in: query
         required: false
@@ -509,7 +488,13 @@ paths:
           - string
           - 'null'
         description: Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided,
-          exchanges should prefer this over `market_id`.
+          exchanges should prefer this over `market_ticker`.
+      - name: market_ticker
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Exchange-native market identifier.
       - name: outcome
         in: query
         required: false
@@ -578,7 +563,7 @@ paths:
           type:
           - integer
           - 'null'
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -673,7 +658,7 @@ paths:
       description: Fetch the caller's fill (trade execution) history, optionally filtered by market.
       operationId: fetch_fills
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: false
         schema:
@@ -720,95 +705,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/events/fetch_events:
+  /v1/markets/fetch_market_lineage:
     get:
       tags:
-      - Events
-      summary: Fetch events
-      description: Fetch a paginated list of events (groups of related markets).
-      operationId: fetch_events
+      - Markets
+      summary: Fetch market lineage
+      description: "Fetch a market plus its parent event and series in one call. The\n`event` and `series` fields are `Option`\
+        \ \u2014 a dangling parent reference\nreturns `None` rather than failing the whole call. `market_ticker` is\nthe unified\
+        \ `Market.ticker` (Kalshi market ticker or Polymarket slug)."
+      operationId: fetch_market_lineage
       parameters:
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: limit
-        in: query
-        required: false
-        schema:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      - name: min_close_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: "Unix seconds \u2014 only events closing at or after this timestamp."
-      - name: min_updated_ts
-        in: query
-        required: false
-        schema:
-          format: int64
-          type:
-          - integer
-          - 'null'
-        description: "Unix seconds \u2014 only events updated at or after this timestamp."
-      - name: series_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-        description: Filter by series ID / ticker.
-      - name: status
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-        description: "Filter by lifecycle status \u2014 venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi;\
-          \ `closed=true/false` on Polymarket)."
-      - name: with_nested_markets
-        in: query
-        required: false
-        schema:
-          type:
-          - boolean
-          - 'null'
-        description: Include the events' nested `Market` objects when supported.
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventsPage'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/events/fetch_event:
-    get:
-      tags:
-      - Events
-      summary: Fetch event
-      description: Fetch a single event by ID or slug.
-      operationId: fetch_event
-      parameters:
-      - name: id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -819,7 +726,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
+                $ref: '#/components/schemas/MarketLineage'
         default:
           description: Unified error response.
           content:
@@ -834,7 +741,7 @@ paths:
       description: Fetch L2 orderbooks for multiple markets in one round-trip.
       operationId: fetch_orderbooks_batch
       parameters:
-      - name: market_ids
+      - name: market_tickers
         in: query
         required: true
         schema:
@@ -856,85 +763,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/series/fetch_series:
-    get:
-      tags:
-      - Series
-      summary: Fetch series
-      description: Fetch a paginated list of series (recurring families of events).
-      operationId: fetch_series
-      parameters:
-      - name: category
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-        description: Filter by category (e.g. `Politics`, `Sports`).
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: include_volume
-        in: query
-        required: false
-        schema:
-          type:
-          - boolean
-          - 'null'
-        description: Include traded volume in the response when the venue supports it.
-      - name: limit
-        in: query
-        required: false
-        schema:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SeriesPage'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/series/fetch_series_one:
-    get:
-      tags:
-      - Series
-      summary: Fetch series one
-      description: Fetch a single series by ID or ticker.
-      operationId: fetch_series_one
-      parameters:
-      - name: id
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Series'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
   /v1/pricing/fetch_midpoint:
     get:
       tags:
@@ -943,7 +771,7 @@ paths:
       description: Fetch the midpoint price for a single market outcome.
       operationId: fetch_midpoint
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -984,7 +812,7 @@ paths:
       description: Fetch midpoint prices for multiple market outcomes in one round-trip.
       operationId: fetch_midpoints_batch
       parameters:
-      - name: market_ids
+      - name: market_tickers
         in: query
         required: true
         schema:
@@ -1015,7 +843,7 @@ paths:
       description: "Fetch the top-of-book spread (best bid, best ask, ask \u2212 bid) for a market outcome."
       operationId: fetch_spread
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -1055,7 +883,7 @@ paths:
       description: Fetch the most recent public trade for a market outcome.
       operationId: fetch_last_trade_price
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -1095,7 +923,7 @@ paths:
       description: Fetch the open interest (total outstanding contracts) for a market.
       operationId: fetch_open_interest
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -1147,7 +975,7 @@ paths:
           type:
           - integer
           - 'null'
-      - name: market_id
+      - name: market_ticker
         in: query
         required: false
         schema:
@@ -1200,7 +1028,7 @@ paths:
       description: Fetch the tag set associated with a market (or its parent event).
       operationId: fetch_market_tags
       parameters:
-      - name: market_id
+      - name: market_ticker
         in: query
         required: true
         schema:
@@ -1234,7 +1062,7 @@ paths:
             schema:
               type: object
               properties:
-                market_id:
+                market_ticker:
                   type:
                   - string
                   - 'null'
@@ -1492,15 +1320,15 @@ components:
           type:
           - string
           - 'null'
-        id:
-          type: string
         last_updated_ts:
           format: date-time
           type:
           - string
           - 'null'
-        market_ids:
+        market_tickers:
           default: []
+          description: "Sibling market market_tickers under this event \u2014 unified `Market.ticker` values (Kalshi market\
+            \ market_tickers; Polymarket slugs)."
           items:
             type: string
           type: array
@@ -1508,16 +1336,20 @@ components:
           type:
           - boolean
           - 'null'
+        numeric_id:
+          description: Polymarket's numeric REST id for the event (e.g. `"12585"`). None on Kalshi (no separate numeric event
+            surface).
+          type:
+          - string
+          - 'null'
         open_interest:
           format: double
           type:
           - number
           - 'null'
-        series_id:
-          type:
-          - string
-          - 'null'
-        slug:
+        series_ticker:
+          description: 'Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series''s `ticker`
+            (or `slug` if `ticker` is null).'
           type:
           - string
           - 'null'
@@ -1530,6 +1362,10 @@ components:
           type:
           - string
           - 'null'
+        ticker:
+          description: 'Native event identifier. Kalshi: `event_ticker` (e.g. `"KXPRES-2028"`). Polymarket: the event slug
+            (e.g. `"presidential-election-winner-2024"`).'
+          type: string
         title:
           type: string
         volume:
@@ -1538,52 +1374,8 @@ components:
           - number
           - 'null'
       required:
-      - id
+      - ticker
       - title
-      title: Event
-      type: object
-    EventsRequest:
-      description: Request for fetching events.
-      properties:
-        cursor:
-          type:
-          - string
-          - 'null'
-        limit:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-        min_close_ts:
-          description: "Unix seconds \u2014 only events closing at or after this timestamp."
-          format: int64
-          type:
-          - integer
-          - 'null'
-        min_updated_ts:
-          description: "Unix seconds \u2014 only events updated at or after this timestamp."
-          format: int64
-          type:
-          - integer
-          - 'null'
-        series_id:
-          description: Filter by series ID / ticker.
-          type:
-          - string
-          - 'null'
-        status:
-          description: "Filter by lifecycle status \u2014 venue-specific values (e.g. `open`, `closed`, `settled` on Kalshi;\
-            \ `closed=true/false` on Polymarket)."
-          type:
-          - string
-          - 'null'
-        with_nested_markets:
-          description: Include the events' nested `Market` objects when supported.
-          type:
-          - boolean
-          - 'null'
-      title: EventsRequest
       type: object
     ExchangeInfo:
       properties:
@@ -1599,13 +1391,11 @@ components:
           type: boolean
         has_fetch_balance:
           type: boolean
-        has_fetch_event:
-          type: boolean
-        has_fetch_events:
-          type: boolean
         has_fetch_fills:
           type: boolean
         has_fetch_last_trade_price:
+          type: boolean
+        has_fetch_market_lineage:
           type: boolean
         has_fetch_market_tags:
           type: boolean
@@ -1626,10 +1416,6 @@ components:
         has_fetch_positions:
           type: boolean
         has_fetch_price_history:
-          type: boolean
-        has_fetch_series:
-          type: boolean
-        has_fetch_series_one:
           type: boolean
         has_fetch_server_time:
           type: boolean
@@ -1656,10 +1442,9 @@ components:
       - has_create_order
       - has_create_orders_batch
       - has_fetch_balance
-      - has_fetch_event
-      - has_fetch_events
       - has_fetch_fills
       - has_fetch_last_trade_price
+      - has_fetch_market_lineage
       - has_fetch_market_tags
       - has_fetch_markets
       - has_fetch_midpoint
@@ -1670,8 +1455,6 @@ components:
       - has_fetch_orderbooks_batch
       - has_fetch_positions
       - has_fetch_price_history
-      - has_fetch_series
-      - has_fetch_series_one
       - has_fetch_server_time
       - has_fetch_spread
       - has_fetch_trades
@@ -1691,11 +1474,12 @@ components:
           type:
           - string
           - 'null'
-        event_id:
+        event_ticker:
           default: null
-          description: Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `"KXBTC-25MAR14"`) or
-            a Polymarket event ID or slug (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets. When set, `series_id`,
-            `cursor`, and `limit` are ignored (not paginated). `status` filtering is still applied client-side.
+          description: "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`)\
+            \ or a Polymarket event slug (e.g., `\"will-trump-win-2024\"`). Polymarket numeric event IDs are not accepted\
+            \ \u2014 they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored\
+            \ (not paginated). `status` filtering is still applied client-side."
           type:
           - string
           - 'null'
@@ -1707,11 +1491,19 @@ components:
           type:
           - integer
           - 'null'
-        series_id:
+        market_tickers:
+          default: []
+          description: Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g.,
+            `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`,
+            and `series_ticker` are ignored.
+          items:
+            type: string
+          type: array
+        series_ticker:
           default: null
-          description: "Filter by series (Kalshi and Polymarket). Both exchanges organize markets as Series \u2192 Events\
-            \ \u2192 Markets. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) or a Polymarket series ID (e.g., `\"10345\"\
-            `) to fetch only markets in that series."
+          description: "Filter by series ticker. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) to fetch only markets in\
+            \ that series. Polymarket support arrives once `series_numeric_id` is added to this struct \u2014 until then,\
+            \ this field is ignored on Polymarket."
           type:
           - string
           - 'null'
@@ -1726,7 +1518,7 @@ components:
       type: object
     FetchOrdersParams:
       properties:
-        market_id:
+        market_ticker:
           type:
           - string
           - 'null'
@@ -1759,7 +1551,7 @@ components:
           type: string
         is_taker:
           type: boolean
-        market_id:
+        market_ticker:
           type: string
         order_id:
           type: string
@@ -1778,7 +1570,7 @@ components:
       - fee
       - fill_id
       - is_taker
-      - market_id
+      - market_ticker
       - order_id
       - outcome
       - price
@@ -1847,10 +1639,6 @@ components:
         \ are handled during parsing:\n\n- **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration).\
         \ - **Polymarket**: Native prices already in decimal (0.0-1.0)."
       properties:
-        accepting_orders:
-          default: false
-          description: Whether the market is currently accepting orders
-          type: boolean
         best_ask:
           description: Best ask price (normalized 0-1)
           format: double
@@ -1863,16 +1651,6 @@ components:
           type:
           - number
           - 'null'
-        can_close_early:
-          description: 'Kalshi: can close early'
-          type:
-          - boolean
-          - 'null'
-        chain_id:
-          description: Chain ID for on-chain markets
-          type:
-          - string
-          - 'null'
         close_time:
           description: Market close time
           format: date-time
@@ -1880,7 +1658,7 @@ components:
           - string
           - 'null'
         condition_id:
-          description: Condition ID for CTF
+          description: Polymarket CTF condition id
           type:
           - string
           - 'null'
@@ -1890,54 +1668,17 @@ components:
           type:
           - string
           - 'null'
-        denomination_token:
-          description: Denomination token (e.g. USDC address)
-          type:
-          - string
-          - 'null'
-        description:
-          description: Full description
-          type: string
-        event_id:
-          description: Canonical OpenPX event ID for cross-exchange event grouping.
+        event_ticker:
+          description: 'Native event identifier this market belongs to. Kalshi: upstream `event_ticker`. Polymarket: the parent
+            event''s `slug`.'
           type:
           - string
           - 'null'
         exchange:
           description: Exchange identifier (kalshi, polymarket)
           type: string
-        group_id:
-          description: Source-native event/group ID from the exchange.
-          type:
-          - string
-          - 'null'
-        icon_url:
-          description: Market icon URL
-          type:
-          - string
-          - 'null'
-        id:
-          description: Native exchange market ID
-          type: string
-        image_url:
-          description: Market image URL
-          type:
-          - string
-          - 'null'
         last_trade_price:
           description: Last trade price (normalized 0-1)
-          format: double
-          type:
-          - number
-          - 'null'
-        liquidity:
-          description: Current liquidity
-          format: double
-          type:
-          - number
-          - 'null'
-        maker_fee_bps:
-          description: Maker fee rate (basis points)
           format: double
           type:
           - number
@@ -1947,17 +1688,11 @@ components:
           - $ref: '#/components/schemas/MarketType'
           description: Market type classification
         min_order_size:
-          description: Minimum order size (contracts)
+          description: "Minimum order size (contracts). Kalshi: synthesized \u2014 1.0, or 0.01 when fractional_trading_enabled.\
+            \ Polymarket: read directly from `orderMinSize`."
           format: double
           type:
           - number
-          - 'null'
-        native_numeric_id:
-          description: "Polymarket's numeric DB id (e.g. \"1031769\"). Exposed for callers that need to build UI deep-links\
-            \ or cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription \u2014 `id`\
-            \ (the condition_id on Polymarket) is the canonical identifier."
-          type:
-          - string
           - 'null'
         neg_risk:
           description: 'Polymarket: neg-risk flag'
@@ -1969,17 +1704,11 @@ components:
           type:
           - string
           - 'null'
-        notional_value:
-          description: Notional value per contract (Kalshi)
-          format: double
+        numeric_id:
+          description: Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or
+            cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription.
           type:
-          - number
-          - 'null'
-        open_interest:
-          description: Current open interest
-          format: double
-          type:
-          - number
+          - string
           - 'null'
         open_time:
           description: Market open time
@@ -1988,149 +1717,55 @@ components:
           - string
           - 'null'
         openpx_id:
-          description: 'Primary key: {exchange}:{native_id}'
+          description: 'Primary key: {exchange}:{ticker}'
           type: string
-        outcome_prices:
-          additionalProperties:
-            format: double
-            type: number
-          description: 'Outcome prices from the REST API (e.g., {"Yes": 0.65, "No": 0.35})'
-          type: object
-        outcome_tokens:
-          default: []
-          description: Outcome-to-token mapping for orderbook subscriptions
-          items:
-            $ref: '#/components/schemas/OutcomeToken'
-          type: array
         outcomes:
           default: []
-          description: Outcome labels (e.g., ["Yes", "No"] for binary markets)
+          description: Ordered list of outcomes. Each entry carries label, price, and (if exposed) token id. Polymarket categorical
+            markets have N entries; Kalshi binary markets always have 2 ("Yes" / "No").
           items:
-            type: string
+            $ref: '#/components/schemas/Outcome'
           type: array
-        previous_price:
-          description: 'Kalshi: previous price'
-          format: double
-          type:
-          - number
-          - 'null'
-        price_change_1d:
-          description: 24-hour YES price change (decimal, e.g. 0.05 = +5%)
-          format: double
-          type:
-          - number
-          - 'null'
-        price_change_1h:
-          description: 1-hour YES price change
-          format: double
-          type:
-          - number
-          - 'null'
-        price_change_1mo:
-          description: 30-day YES price change
-          format: double
-          type:
-          - number
-          - 'null'
-        price_change_1wk:
-          description: 7-day YES price change
-          format: double
-          type:
-          - number
-          - 'null'
-        price_level_structure:
-          description: Kalshi sub-penny pricing structure
-          type:
-          - string
-          - 'null'
-        question:
-          description: Market question (may differ from title)
-          type:
-          - string
-          - 'null'
-        question_id:
-          description: Question ID (Polymarket)
-          type:
-          - string
-          - 'null'
         result:
-          description: Resolution result
+          description: 'Resolution result. Kalshi: enum string from upstream. Polymarket: derived winning-outcome label (the
+            `outcomes[i]` whose `outcomePrices[i]` is 1.0 after settlement). None for unresolved markets.'
           type:
           - string
           - 'null'
         rules:
-          description: Resolution rules
+          description: 'Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`. Polymarket: `description`.'
           type:
           - string
           - 'null'
         settlement_time:
-          description: Settlement / resolution time
+          description: 'Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket: `closedTime` (populated only after
+            on-chain settlement).'
           format: date-time
           type:
           - string
-          - 'null'
-        settlement_value:
-          description: 'Kalshi: settlement value'
-          format: double
-          type:
-          - number
-          - 'null'
-        slug:
-          description: URL-friendly identifier
-          type:
-          - string
-          - 'null'
-        spread:
-          description: Bid-ask spread (decimal)
-          format: double
-          type:
-          - number
           - 'null'
         status:
           allOf:
           - $ref: '#/components/schemas/MarketStatus'
           description: 'Normalized status: Active, Closed, Resolved'
-        taker_fee_bps:
-          description: Taker fee rate (basis points)
-          format: double
-          type:
-          - number
-          - 'null'
         tick_size:
-          description: Tick size (minimum price increment, normalized decimal e.g. 0.01)
+          description: "Minimum price increment in dollars. Polymarket: `orderPriceMinTickSize` directly. Kalshi: the smallest\
+            \ `step` across the tiered `price_ranges` array (the finest precision the market accepts anywhere on its price\
+            \ curve \u2014 orders in coarser tiers must still round to that tier's step)."
           format: double
           type:
           - number
           - 'null'
+        ticker:
+          description: 'Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`.'
+          type: string
         title:
           description: Market title
           type: string
-        token_id_no:
-          description: No outcome token ID
-          type:
-          - string
-          - 'null'
-        token_id_yes:
-          description: Yes outcome token ID
-          type:
-          - string
-          - 'null'
         volume:
           description: Total volume (USD)
           format: double
           type: number
-        volume_1mo:
-          description: 30-day rolling trading volume (USD)
-          format: double
-          type:
-          - number
-          - 'null'
-        volume_1wk:
-          description: 7-day rolling trading volume (USD)
-          format: double
-          type:
-          - number
-          - 'null'
         volume_24h:
           description: 24-hour trading volume (USD)
           format: double
@@ -2138,15 +1773,33 @@ components:
           - number
           - 'null'
       required:
-      - description
       - exchange
-      - id
       - market_type
       - openpx_id
       - status
+      - ticker
       - title
       - volume
-      title: Market
+      type: object
+    MarketLineage:
+      description: "A market plus the parent event and series that contextualize it.\n\n`event` and `series` are `Option`\
+        \ because: - some markets have no parent event surface (Kalshi standalone markets); - the upstream lookup for the\
+        \ parent may legitimately 404 on a dangling reference. A dangling parent should not fail the whole call \u2014 the\
+        \ caller still gets the `Market`."
+      properties:
+        event:
+          anyOf:
+          - $ref: '#/components/schemas/Event'
+          - type: 'null'
+        market:
+          $ref: '#/components/schemas/Market'
+        series:
+          anyOf:
+          - $ref: '#/components/schemas/Series'
+          - type: 'null'
+      required:
+      - market
+      title: MarketLineage
       type: object
     MarketStatus:
       description: Normalized market status across all exchanges.
@@ -2154,7 +1807,6 @@ components:
       - active
       - closed
       - resolved
-      title: MarketStatus
       type: string
     MarketStatusFilter:
       description: 'Filter for market status in fetch queries.
@@ -2233,13 +1885,12 @@ components:
       - binary
       - categorical
       - scalar
-      title: MarketType
       type: string
     MidpointRequest:
       description: Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since
         they target the same outcome and accept the same identifier inputs.
       properties:
-        market_id:
+        market_ticker:
           type: string
         outcome:
           type:
@@ -2250,7 +1901,7 @@ components:
           - string
           - 'null'
       required:
-      - market_id
+      - market_ticker
       title: MidpointRequest
       type: object
     NewOrder:
@@ -2267,7 +1918,7 @@ components:
           type:
           - integer
           - 'null'
-        market_id:
+        market_ticker:
           type: string
         order_type:
           $ref: '#/components/schemas/OrderType'
@@ -2292,7 +1943,7 @@ components:
           format: double
           type: number
       required:
-      - market_id
+      - market_ticker
       - order_type
       - outcome
       - price
@@ -2310,7 +1961,7 @@ components:
           type: number
         id:
           type: string
-        market_id:
+        market_ticker:
           type: string
         outcome:
           type: string
@@ -2334,7 +1985,7 @@ components:
       - created_at
       - filled
       - id
-      - market_id
+      - market_ticker
       - outcome
       - price
       - side
@@ -2390,7 +2041,7 @@ components:
           type:
           - integer
           - 'null'
-        market_id:
+        market_ticker:
           type: string
         timestamp:
           format: date-time
@@ -2401,7 +2052,7 @@ components:
       - asks
       - asset_id
       - bids
-      - market_id
+      - market_ticker
       type: object
     OrderbookHistoryRequest:
       properties:
@@ -2420,7 +2071,7 @@ components:
           type:
           - integer
           - 'null'
-        market_id:
+        market_ticker:
           type: string
         start_ts:
           format: int64
@@ -2432,13 +2083,13 @@ components:
           - string
           - 'null'
       required:
-      - market_id
+      - market_ticker
       title: OrderbookHistoryRequest
       type: object
     OrderbookRequest:
       description: Request for fetching an L2 orderbook.
       properties:
-        market_id:
+        market_ticker:
           type: string
         outcome:
           type:
@@ -2449,7 +2100,7 @@ components:
           - string
           - 'null'
       required:
-      - market_id
+      - market_ticker
       title: OrderbookRequest
       type: object
     OrderbookSnapshot:
@@ -2481,16 +2132,28 @@ components:
       - timestamp
       title: OrderbookSnapshot
       type: object
-    OutcomeToken:
+    Outcome:
+      description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
+        \ on-chain token id needed to subscribe to its orderbook stream. Replaces the previous trio of `outcome_prices` map\
+        \ + `outcome_tokens` vec + binary-only `token_id_yes`/`token_id_no` with a single ordered list keyed by index."
       properties:
-        outcome:
+        label:
+          description: Outcome label (e.g. "Yes", "No", or a categorical option name).
           type: string
+        price:
+          description: Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi markets pre-fill, or Polymarket
+            categorical markets without a price).
+          format: double
+          type:
+          - number
+          - 'null'
         token_id:
-          type: string
+          description: CTF token id (Polymarket only). Used to subscribe to per-outcome orderbook streams. None on Kalshi.
+          type:
+          - string
+          - 'null'
       required:
-      - outcome
-      - token_id
-      title: OutcomeToken
+      - label
       type: object
     Position:
       properties:
@@ -2500,7 +2163,7 @@ components:
         current_price:
           format: double
           type: number
-        market_id:
+        market_ticker:
           type: string
         outcome:
           type: string
@@ -2510,7 +2173,7 @@ components:
       required:
       - average_price
       - current_price
-      - market_id
+      - market_ticker
       - outcome
       - size
       title: Position
@@ -2540,7 +2203,7 @@ components:
           - 'null'
         interval:
           $ref: '#/components/schemas/PriceHistoryInterval'
-        market_id:
+        market_ticker:
           type: string
         outcome:
           type:
@@ -2558,7 +2221,7 @@ components:
           - 'null'
       required:
       - interval
-      - market_id
+      - market_ticker
       title: PriceHistoryRequest
       type: object
     PriceLevel:
@@ -2611,10 +2274,14 @@ components:
           type:
           - string
           - 'null'
-        id:
-          type: string
         last_updated_ts:
           format: date-time
+          type:
+          - string
+          - 'null'
+        numeric_id:
+          description: Polymarket's numeric REST id for the series (e.g. `"10345"`). None on Kalshi (no separate numeric series
+            surface).
           type:
           - string
           - 'null'
@@ -2628,6 +2295,10 @@ components:
           items:
             type: string
           type: array
+        ticker:
+          description: 'Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`). Polymarket: the series''s `ticker` field,
+            falling back to `slug` when `ticker` is null upstream.'
+          type: string
         title:
           type: string
         volume:
@@ -2636,34 +2307,8 @@ components:
           - number
           - 'null'
       required:
-      - id
+      - ticker
       - title
-      title: Series
-      type: object
-    SeriesRequest:
-      description: Request for fetching series.
-      properties:
-        category:
-          description: Filter by category (e.g. `Politics`, `Sports`).
-          type:
-          - string
-          - 'null'
-        cursor:
-          type:
-          - string
-          - 'null'
-        include_volume:
-          description: Include traded volume in the response when the venue supports it.
-          type:
-          - boolean
-          - 'null'
-        limit:
-          format: uint
-          minimum: 0.0
-          type:
-          - integer
-          - 'null'
-      title: SeriesRequest
       type: object
     SessionEvent:
       description: Connection-level events, emitted on a channel separate from `WsUpdate` so a reconnect is observable as
@@ -2757,7 +2402,6 @@ components:
           type:
           - string
           - 'null'
-      title: SettlementSource
       type: object
     SportResult:
       description: Real-time sports score/state from the Polymarket Sports WebSocket. Serializes as snake_case for end-users;
@@ -2875,15 +2519,15 @@ components:
           type:
           - integer
           - 'null'
-        market_id:
-          description: Exchange-native market identifier.
-          type: string
         market_ref:
           description: Optional alternate market identifier for trade endpoints (e.g., Polymarket conditionId). When provided,
-            exchanges should prefer this over `market_id`.
+            exchanges should prefer this over `market_ticker`.
           type:
           - string
           - 'null'
+        market_ticker:
+          description: Exchange-native market identifier.
+          type: string
         outcome:
           type:
           - string
@@ -2899,7 +2543,7 @@ components:
           - string
           - 'null'
       required:
-      - market_id
+      - market_ticker
       title: TradesRequest
       type: object
     UserTrade:
@@ -2922,7 +2566,7 @@ components:
           - 'null'
         id:
           type: string
-        market_id:
+        market_ticker:
           type: string
         owner:
           type:
@@ -2954,7 +2598,7 @@ components:
           - 'null'
       required:
       - id
-      - market_id
+      - market_ticker
       - price
       - side
       - size
@@ -2980,7 +2624,7 @@ components:
           type:
           - integer
           - 'null'
-        market_id:
+        market_ticker:
           type:
           - string
           - 'null'
@@ -3206,36 +2850,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrderbookSnapshot'
-        cursor:
-          type:
-          - string
-          - 'null'
-    EventsPage:
-      type: object
-      description: One page of `Event` results. `cursor` is `null` on the last page; otherwise pass it back in the next request
-        to continue.
-      required:
-      - events
-      properties:
-        events:
-          type: array
-          items:
-            $ref: '#/components/schemas/Event'
-        cursor:
-          type:
-          - string
-          - 'null'
-    SeriesPage:
-      type: object
-      description: One page of `Series` results. `cursor` is `null` on the last page; otherwise pass it back in the next request
-        to continue.
-      required:
-      - series
-      properties:
-        series:
-          type: array
-          items:
-            $ref: '#/components/schemas/Series'
         cursor:
           type:
           - string

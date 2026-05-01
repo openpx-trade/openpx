@@ -9,8 +9,8 @@ _Unified prediction market model._
 
 | Exchange | Sourced | Synthetic | Omitted |
 |---|---|---|---|
-| kalshi | 22 | 8 | 25 |
-| polymarket | 32 | 13 | 10 |
+| kalshi | 15 | 6 | 4 |
+| polymarket | 19 | 6 | 0 |
 
 **Sourced** — value copied or transformed from a documented upstream field.  
 **Synthetic** — computed by OpenPX, not present upstream.  
@@ -20,61 +20,31 @@ _Unified prediction market model._
 
 | Unified field | Type | kalshi source | polymarket source | Transform | Notes |
 |---|---|---|---|---|---|
-| `id` | string | `Market.ticker` (string) | `Market.conditionId` (string) | direct | **polymarket:** Polymarket also exposes a numeric `id`; `conditionId` is the on-chain identifier and is what trades reference. Numeric `id` is mapped to `native_numeric_id` for callers that need REST-only deep links. |
-| `openpx_id` | string | _computed_ — `{exchange}:{id}` | _computed_ — `{exchange}:{id}` | synthetic | Composite primary key, never sourced from upstream. |
+| `ticker` | string | `Market.ticker` (string) | `Market.slug` (string) | direct | **polymarket:** Polymarket exposes both a slug and a numeric `id`; we use slug as the unified ticker because it's stable and human-readable. The on-chain `conditionId` lives in `condition_id`; the numeric id lives in `numeric_id` for REST-only deep links. |
+| `openpx_id` | string | _computed_ — `{exchange}:{ticker}` | _computed_ — `{exchange}:{ticker}` | synthetic | Composite primary key, never sourced from upstream. |
 | `exchange` | string | _computed_ — literal exchange identifier ("kalshi" or "polymarket") | _computed_ — literal exchange identifier ("kalshi" or "polymarket") | synthetic |  |
-| `native_numeric_id` | string? | _not exposed_ | `Market.id` (string) | direct | **kalshi:** Kalshi has no separate numeric id surface. |
-| `group_id` | string? | `Market.event_ticker` (string) | _not exposed_ | direct | **polymarket:** Derived from the embedded `events` relation in the gamma response, not a flat field. |
-| `event_id` | string? | _computed_ — canonical OpenPX event grouping computed at parse time | _computed_ — canonical OpenPX event grouping computed at parse time | synthetic |  |
+| `numeric_id` | string? | _not exposed_ | `Market.id` (string) | direct | **kalshi:** Kalshi has no separate numeric id surface. |
+| `event_ticker` | string? | `Market.event_ticker` (string) | _computed_ — events[0].slug from the embedded events relation | direct / synthetic | **kalshi:** Kalshi exposes the parent event identifier as `event_ticker`. **polymarket:** Polymarket's parent event is embedded under `events[]` on each market object; we read `events[0].slug` (the human-readable identifier matching the unified `event_ticker` semantics). Falls back to `events[0].id` only when `slug` is missing on the upstream payload. |
 | `title` | string | _computed_ — `{yes_sub_title} \| {no_sub_title}` | `Market.question` (string) | synthetic / direct | **kalshi:** Composed from the spec-canonical short titles for each side of the binary contract. The deprecated `title` field is ignored. |
-| `question` | string? | _not exposed_ | `Market.question` (string) | direct | **kalshi:** Kalshi does not expose a question form distinct from title. |
-| `description` | string | `Market.rules_primary` (string) | `Market.description` (string) | direct |  |
-| `rules` | string? | `Market.rules_secondary` (string) | _not exposed_ | direct |  |
-| `slug` | string? | _not exposed_ | `Market.slug` (string) | direct |  |
-| `image_url` | string? | _not exposed_ | `Market.image` (string) | direct |  |
-| `icon_url` | string? | _not exposed_ | `Market.icon` (string) | direct |  |
+| `rules` | string? | _computed_ — `{rules_primary} \| {rules_secondary}` | `Market.description` (string) | synthetic / direct | **kalshi:** Concatenation of the two upstream prose fields with " \| " separator. Sources: rules_primary, rules_secondary. |
 | `status` | MarketStatus | `Market.status` (string) | `Market.active` (boolean) | enum_remap | **kalshi:** Kalshi values: initialized, inactive, active, closed, determined, disputed, amended, finalized → unified MarketStatus. **polymarket:** Polymarket exposes `active`, `closed`, `archived` as booleans; combined into unified MarketStatus enum. |
-| `market_type` | MarketType | `Market.market_type` (string) | `Market.marketType` (string) | enum_remap | **kalshi:** binary \| scalar → MarketType::Binary / MarketType::Scalar |
-| `accepting_orders` | boolean | _computed_ — derived from status (accepts orders only when status is "active") | `Market.acceptingOrders` (boolean) | synthetic / direct |  |
-| `can_close_early` | boolean? | `Market.can_close_early` (boolean) | _not exposed_ | direct |  |
-| `result` | string? | `Market.result` (string) | _not exposed_ | direct | **polymarket:** Polymarket markets settle on-chain; resolution surface is different. |
-| `open_time` | string? (date-time) | `Market.open_time` (string (date-time)) | `Market.startDate` (string (date-time)), fallback `Market.startDateIso` | parse_datetime / first_non_null |  |
-| `close_time` | string? (date-time) | `Market.close_time` (string (date-time)) | `Market.endDate` (string (date-time)), fallback `Market.endDateIso` | parse_datetime / first_non_null |  |
+| `market_type` | MarketType | `Market.market_type` (string) | _computed_ — derived from outcomes.len() (binary if 2, else categorical) | enum_remap / synthetic | **kalshi:** binary \| scalar → MarketType::Binary / MarketType::Scalar |
+| `result` | string? | `Market.result` (string) | _computed_ — outcomes[i] where outcomePrices[i] == 1.0 (resolved markets only) | direct / synthetic | **polymarket:** Polymarket has no single result field; the winning outcome is derived from outcomePrices after settlement. None for unresolved markets. Sources: outcomes, outcomePrices. |
+| `open_time` | string? (date-time) | `Market.open_time` (string (date-time)) | `Market.startDate` (string (date-time)) | parse_datetime |  |
+| `close_time` | string? (date-time) | `Market.close_time` (string (date-time)) | `Market.endDate` (string (date-time)) | parse_datetime |  |
 | `created_at` | string? (date-time) | `Market.created_time` (string (date-time)) | `Market.createdAt` (string (date-time)) | parse_datetime |  |
-| `settlement_time` | string? (date-time) | `Market.settlement_ts` (string (date-time)) | _not exposed_ | parse_datetime |  |
+| `settlement_time` | string? (date-time) | `Market.settlement_ts` (string (date-time)) | `Market.closedTime` (string) | parse_datetime | **polymarket:** closedTime is the actual on-chain settlement timestamp (distinct from endDate, which is the scheduled close). Populated only after settlement. |
 | `best_bid` | number? (double) | `Market.yes_bid_dollars` (FixedPointDollars) | `Market.bestBid` (number) | fixed_point_dollars / direct | **polymarket:** Polymarket already in [0,1] decimal. |
 | `best_ask` | number? (double) | `Market.yes_ask_dollars` (FixedPointDollars) | `Market.bestAsk` (number) | fixed_point_dollars / direct |  |
 | `last_trade_price` | number? (double) | `Market.last_price_dollars` (FixedPointDollars) | `Market.lastTradePrice` (number) | fixed_point_dollars / direct |  |
-| `previous_price` | number? (double) | `Market.previous_price_dollars` (FixedPointDollars) | _not exposed_ | fixed_point_dollars |  |
-| `spread` | number? (double) | _computed_ — best_ask - best_bid (computed) | `Market.spread` (number) | synthetic / direct |  |
-| `price_change_1h` | number? (double) | _not exposed_ | `Market.oneHourPriceChange` (number) | direct |  |
-| `price_change_1d` | number? (double) | _not exposed_ | `Market.oneDayPriceChange` (number) | direct |  |
-| `price_change_1wk` | number? (double) | _not exposed_ | `Market.oneWeekPriceChange` (number) | direct |  |
-| `price_change_1mo` | number? (double) | _not exposed_ | `Market.oneMonthPriceChange` (number) | direct |  |
-| `tick_size` | number? (double) | _not exposed_ | `Market.orderPriceMinTickSize` (number) | direct | **kalshi:** Kalshi `tick_size` field is deprecated; tick info is in `price_level_structure`. |
-| `min_order_size` | number? (double) | _not exposed_ | `Market.orderMinSize` (number) | direct |  |
-| `price_level_structure` | string? | `Market.price_level_structure` (string) | _not exposed_ | direct |  |
+| `tick_size` | number? (double) | `Market.price_ranges` (array) | `Market.orderPriceMinTickSize` (number) | tick_size / direct | **kalshi:** Kalshi exposes a tiered structure (PriceRange array, each with start/end/step strings); the unified value is the smallest step across all tiers — the finest precision the market accepts anywhere on its price curve. Coarser tiers still require their own step, but the single-number unified surface answers "what's the tightest tick I can ever quote?". The deprecated scalar `tick_size` integer is ignored. **polymarket:** Polymarket publishes a single scalar. |
+| `min_order_size` | number? (double) | _computed_ — 1.0 (or 0.01 when fractional_trading_enabled) | `Market.orderMinSize` (number) | synthetic / direct | **kalshi:** Kalshi has no upstream min_order_size field. Synthesized from `fractional_trading_enabled`. Source: fractional_trading_enabled. |
 | `volume` | number (double) | `Market.volume_fp` (FixedPointCount) | `Market.volumeNum` (number) | fixed_point_count / direct |  |
 | `volume_24h` | number? (double) | `Market.volume_24h_fp` (FixedPointCount) | `Market.volume24hr` (number) | fixed_point_count / direct |  |
-| `volume_1wk` | number? (double) | _not exposed_ | `Market.volume1wk` (number) | direct |  |
-| `volume_1mo` | number? (double) | _not exposed_ | `Market.volume1mo` (number) | direct |  |
-| `liquidity` | number? (double) | _not exposed_ | `Market.liquidityNum` (number) | direct | **kalshi:** Kalshi's `liquidity_dollars` field is deprecated and always returns "0.0000". |
-| `open_interest` | number? (double) | `Market.open_interest_fp` (FixedPointCount) | _not exposed_ | fixed_point_count |  |
-| `notional_value` | number? (double) | `Market.notional_value_dollars` (FixedPointDollars) | _not exposed_ | fixed_point_dollars |  |
-| `settlement_value` | number? (double) | `Market.settlement_value_dollars` (FixedPointDollars) | _not exposed_ | fixed_point_dollars |  |
-| `outcomes` | array | _computed_ — derived from market_type — Binary → ["Yes","No"], Scalar derived from strike fields. | _computed_ — derived from market_type — Binary → ["Yes","No"], Scalar derived from strike fields. | synthetic |  |
-| `outcome_prices` | object | _computed_ — `{outcome → price} map computed from best_bid/best_ask` | _computed_ — `{outcome → price} map computed from best_bid/best_ask` | synthetic |  |
-| `outcome_tokens` | array | _not exposed_ | _computed_ — parsed from `clobTokenIds` JSON-encoded string | synthetic |  |
-| `token_id_yes` | string? | _not exposed_ | _computed_ — first element of parsed clobTokenIds | synthetic |  |
-| `token_id_no` | string? | _not exposed_ | _computed_ — second element of parsed clobTokenIds | synthetic |  |
+| `outcomes` | array | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | synthetic | Kalshi binary: two entries with labels "Yes" and "No"; price computed from yes_ask_dollars/last_price_dollars (No price = 1 - Yes); token_id always None (no per-outcome token surface). Polymarket: zipped element-wise from the stringified-JSON arrays `outcomes`, `outcomePrices`, and `clobTokenIds`. Replaces the previous trio of outcome_prices map + outcome_tokens vec + binary-only token_id_yes/token_id_no. |
 | `condition_id` | string? | _not exposed_ | `Market.conditionId` (string) | direct |  |
-| `question_id` | string? | _not exposed_ | `Market.questionID` (string) | direct |  |
-| `neg_risk` | boolean? | _not exposed_ | _computed_ — read from gamma `/markets` response field `negRisk` | synthetic | **polymarket:** Spec gap (2026-04-29): the gamma OpenAPI defines `negRisk` only on `Event`, but the live `/markets` response includes it on each market object. Normalizer reads it directly. Re-check upstream spec on each daily refresh — when Polymarket adds it to `Market` properties, replace `synthetic` with a `ref:` here. |
-| `neg_risk_market_id` | string? | _not exposed_ | _computed_ — read from gamma `/markets` response field `negRiskMarketID` | synthetic | **polymarket:** Spec gap (2026-04-29): same pattern as `neg_risk`. Live API includes this field on Market; spec does not yet. |
-| `chain_id` | string? | _not exposed_ | _computed_ — hardcoded "137" (Polygon mainnet) | synthetic |  |
-| `denomination_token` | string? | _not exposed_ | `Market.denominationToken` (string) | direct |  |
-| `maker_fee_bps` | number? (double) | _not exposed_ | _computed_ — parsed from feeSchedule.rate (replaces deprecated makerBaseFee) | synthetic |  |
-| `taker_fee_bps` | number? (double) | _not exposed_ | _computed_ — parsed from feeSchedule.rate (replaces deprecated takerBaseFee) | synthetic |  |
+| `neg_risk` | boolean? | _not exposed_ | `negRisk` — _spec gap_ | direct | **polymarket:** Spec gap: the gamma OpenAPI defines `negRisk` on `Event` and `Template`, not on `Market`, but live `/markets` and `/markets/keyset` responses include it on each market object. The parser reads it directly. Re-check on each daily upstream refresh — when Polymarket adds it to `Market` properties, promote to a regular `ref:` here. |
+| `neg_risk_market_id` | string? | _not exposed_ | `negRiskMarketID` — _spec gap_ | direct | **polymarket:** Spec gap (same pattern as `neg_risk`). |
 
 ## Source specs
 

@@ -24,7 +24,9 @@
           {
             "group": "Schema Mappings",
             "pages": [
-              "api/mappings/market"
+              "api/mappings/market",
+              "api/mappings/event",
+              "api/mappings/series"
             ]
           },
           {
@@ -34,21 +36,7 @@
                 "group": "Markets",
                 "pages": [
                   "api/markets/fetch-markets",
-                  "api/markets/fetch-market"
-                ]
-              },
-              {
-                "group": "Events",
-                "pages": [
-                  "api/events/fetch-events",
-                  "api/events/fetch-event"
-                ]
-              },
-              {
-                "group": "Series",
-                "pages": [
-                  "api/series/fetch-series",
-                  "api/series/fetch-series-one"
+                  "api/markets/fetch-market-lineage"
                 ]
               },
               {

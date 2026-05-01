@@ -38,11 +38,7 @@ OUTPUT_DIR = ROOT / "docs" / "api"
 # badge — but we pick semantically: reads are GET, writes are POST.
 METHOD_META: dict[str, tuple[str, str]] = {
     "fetch_markets": ("Markets", "GET"),
-    "fetch_market": ("Markets", "GET"),
-    "fetch_events": ("Events", "GET"),
-    "fetch_event": ("Events", "GET"),
-    "fetch_series": ("Series", "GET"),
-    "fetch_series_one": ("Series", "GET"),
+    "fetch_market_lineage": ("Markets", "GET"),
     "fetch_market_tags": ("Tags", "GET"),
     "fetch_orderbook": ("Orderbook", "GET"),
     "fetch_orderbooks_batch": ("Orderbook", "GET"),

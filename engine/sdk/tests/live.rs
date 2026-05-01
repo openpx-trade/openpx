@@ -202,8 +202,8 @@ macro_rules! exchange_tests {
                 );
                 for m in markets.iter().take(3) {
                     eprintln!(
-                        "  {} | {:50} | status={:?} | group={:?} | vol={:.0}",
-                        m.id, m.title, m.status, m.group_id, m.volume
+                        "  {} | {:50} | status={:?} | event={:?} | vol={:.0}",
+                        m.ticker, m.title, m.status, m.event_ticker, m.volume
                     );
                 }
                 if markets.len() > 3 {
@@ -211,7 +211,7 @@ macro_rules! exchange_tests {
                 }
                 assert!(!markets.is_empty(), "expected at least 1 market");
                 for m in &markets {
-                    assert!(!m.id.is_empty(), "market id should not be empty");
+                    assert!(!m.ticker.is_empty(), "market ticker should not be empty");
                     assert!(!m.title.is_empty(), "market title should not be empty");
                     assert!(!m.outcomes.is_empty(), "market should have outcomes");
                 }
@@ -226,12 +226,12 @@ macro_rules! exchange_tests {
                 };
 
                 for m in &markets {
-                    // openpx_id must be {exchange}:{native_id}
-                    let expected_openpx = format!("{}:{}", stringify!($exchange_id), m.id);
+                    // openpx_id must be {exchange}:{ticker}
+                    let expected_openpx = format!("{}:{}", stringify!($exchange_id), m.ticker);
                     assert_eq!(
                         m.openpx_id, expected_openpx,
                         "openpx_id format mismatch for market {}",
-                        m.id
+                        m.ticker
                     );
 
                     // exchange field must match
@@ -239,14 +239,14 @@ macro_rules! exchange_tests {
                         m.exchange,
                         stringify!($exchange_id),
                         "exchange field mismatch for market {}",
-                        m.id
+                        m.ticker
                     );
 
                     // outcomes should be non-empty
                     assert!(
                         !m.outcomes.is_empty(),
                         "market {} should have outcomes",
-                        m.id
+                        m.ticker
                     );
 
                     // binary markets should have exactly 2 outcomes
@@ -258,35 +258,37 @@ macro_rules! exchange_tests {
                     assert!(
                         m.volume >= 0.0,
                         "market {} volume should be non-negative, got {}",
-                        m.id,
+                        m.ticker,
                         m.volume
                     );
 
-                    // outcome_prices values should be in [0, 1] range
-                    for (outcome, price) in &m.outcome_prices {
-                        assert!(
-                            *price >= 0.0 && *price <= 1.0,
-                            "market {} outcome '{}' price {} out of [0,1] range",
-                            m.id,
-                            outcome,
-                            price
-                        );
+                    // outcome prices should be in [0, 1] range when present
+                    for o in &m.outcomes {
+                        if let Some(p) = o.price {
+                            assert!(
+                                (0.0..=1.0).contains(&p),
+                                "market {} outcome '{}' price {} out of [0,1] range",
+                                m.ticker,
+                                o.label,
+                                p
+                            );
+                        }
                     }
 
-                    // tick_size, if present, should be positive and small
-                    if let Some(tick) = m.tick_size {
+                    // tick_size, if present, should be a positive small step
+                    if let Some(step) = m.tick_size {
                         assert!(
-                            tick > 0.0 && tick <= 0.1,
-                            "market {} tick_size {} out of expected range",
-                            m.id,
-                            tick
+                            step > 0.0 && step <= 0.1,
+                            "market {} tick step {} out of expected range",
+                            m.ticker,
+                            step
                         );
                     }
                 }
             }
 
             #[tokio::test]
-            async fn fetch_market_single() {
+            async fn fetch_markets_by_ticker() {
                 let Some(ex) = get_exchange() else { return };
                 let markets = match ex.fetch_markets(&Default::default()).await {
                     Ok((m, _)) => m,
@@ -295,36 +297,53 @@ macro_rules! exchange_tests {
                 if markets.is_empty() {
                     return;
                 }
-                match ex.fetch_market(&markets[0].id).await {
-                    Ok(single) => {
-                        assert_eq!(single.id, markets[0].id);
+                let target_ticker = markets[0].ticker.clone();
+                let params = px_core::FetchMarketsParams {
+                    market_tickers: vec![target_ticker.clone()],
+                    status: Some(px_core::MarketStatusFilter::All),
+                    ..Default::default()
+                };
+                match ex.fetch_markets(&params).await {
+                    Ok((singletons, _)) if !singletons.is_empty() => {
+                        assert!(singletons.iter().any(|m| m.ticker == target_ticker));
                     }
+                    Ok(_) => panic!(
+                        "fetch_markets with explicit ticker returned empty for {target_ticker}"
+                    ),
                     Err(e) if is_rate_limited(&e) => {
                         eprintln!(
-                            "SKIP {}/fetch_market_single: rate limited",
+                            "SKIP {}/fetch_markets_by_ticker: rate limited",
                             stringify!($exchange_id)
                         );
                     }
-                    Err(e) => panic!("fetch_market failed: {e:?}"),
+                    Err(e) => panic!("fetch_markets-by-ticker failed: {e:?}"),
                 }
             }
 
             #[tokio::test]
-            async fn fetch_market_consistency() {
+            async fn fetch_markets_by_ticker_consistency() {
                 let Some(ex) = get_exchange() else { return };
                 let markets = match ex.fetch_markets(&Default::default()).await {
                     Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
-                // Pick a market from the list and fetch individually
+                // Pick a market from the list and fetch individually via market_tickers param
                 let target = &markets[0];
-                let single = match ex.fetch_market(&target.id).await {
-                    Ok(m) => m,
+                let params = px_core::FetchMarketsParams {
+                    market_tickers: vec![target.ticker.clone()],
+                    status: Some(px_core::MarketStatusFilter::All),
+                    ..Default::default()
+                };
+                let singletons = match ex.fetch_markets(&params).await {
+                    Ok((m, _)) => m,
                     Err(_) => return,
+                };
+                let Some(single) = singletons.iter().find(|m| m.ticker == target.ticker) else {
+                    return;
                 };
 
                 // Core identity fields must match
-                assert_eq!(single.id, target.id, "id mismatch");
+                assert_eq!(single.ticker, target.ticker, "ticker mismatch");
                 assert_eq!(single.openpx_id, target.openpx_id, "openpx_id mismatch");
                 assert_eq!(single.exchange, target.exchange, "exchange mismatch");
                 assert_eq!(single.title, target.title, "title mismatch");
@@ -336,14 +355,22 @@ macro_rules! exchange_tests {
             }
 
             #[tokio::test]
-            async fn fetch_market_invalid_id() {
+            async fn fetch_markets_invalid_ticker() {
                 let Some(ex) = get_exchange() else { return };
-                let result = ex.fetch_market("__nonexistent_market_id_12345__").await;
-                // Should return an error, not panic
-                assert!(
-                    result.is_err(),
-                    "fetch_market with invalid id should return error"
-                );
+                let params = px_core::FetchMarketsParams {
+                    market_tickers: vec!["__nonexistent_market_id_12345__".to_string()],
+                    status: Some(px_core::MarketStatusFilter::All),
+                    ..Default::default()
+                };
+                // Either an empty result or an error is acceptable — the API
+                // must not panic and must not surface a false-positive market.
+                if let Ok((markets, _)) = ex.fetch_markets(&params).await {
+                    assert!(
+                        markets.is_empty(),
+                        "fetch_markets with invalid ticker should return empty, got {}",
+                        markets.len()
+                    );
+                }
             }
 
             // ==================================================================
@@ -363,16 +390,20 @@ macro_rules! exchange_tests {
 
                 // Prefer a binary market (no outcome required); fall back to first market
                 // with an explicit outcome for non-binary markets.
-                let (market_id, outcome) = if let Some(m) = markets.iter().find(|m| m.is_binary()) {
-                    (m.id.clone(), None)
-                } else {
-                    let m = &markets[0];
-                    (m.id.clone(), m.outcomes.first().cloned())
-                };
+                let (market_ticker, outcome) =
+                    if let Some(m) = markets.iter().find(|m| m.is_binary()) {
+                        (m.ticker.clone(), None)
+                    } else {
+                        let m = &markets[0];
+                        (
+                            m.ticker.clone(),
+                            m.outcomes.first().map(|o| o.label.clone()),
+                        )
+                    };
 
                 match ex
                     .fetch_orderbook(OrderbookRequest {
-                        market_id,
+                        market_ticker,
                         outcome,
                         token_id: None,
                     })
@@ -422,7 +453,7 @@ macro_rules! exchange_tests {
                 for market in markets.iter().take(5) {
                     let book = match ex
                         .fetch_orderbook(OrderbookRequest {
-                            market_id: market.id.clone(),
+                            market_ticker: market.ticker.clone(),
                             outcome: None,
                             token_id: None,
                         })
@@ -524,7 +555,7 @@ macro_rules! exchange_tests {
                 for market in &markets {
                     match ex
                         .fetch_price_history(PriceHistoryRequest {
-                            market_id: market.id.clone(),
+                            market_ticker: market.ticker.clone(),
                             interval: PriceHistoryInterval::OneDay,
                             outcome: None,
                             token_id: None,
@@ -575,7 +606,7 @@ macro_rules! exchange_tests {
                 for market in markets.iter().take(10) {
                     let candles = match ex
                         .fetch_price_history(PriceHistoryRequest {
-                            market_id: market.id.clone(),
+                            market_ticker: market.ticker.clone(),
                             interval: PriceHistoryInterval::OneDay,
                             outcome: None,
                             token_id: None,
@@ -658,7 +689,7 @@ macro_rules! exchange_tests {
                 };
                 match ex
                     .fetch_trades(TradesRequest {
-                        market_id: markets[0].id.clone(),
+                        market_ticker: markets[0].ticker.clone(),
                         limit: Some(10),
                         ..Default::default()
                     })
@@ -695,7 +726,7 @@ macro_rules! exchange_tests {
                 let limit = 5;
                 match ex
                     .fetch_trades(TradesRequest {
-                        market_id: markets[0].id.clone(),
+                        market_ticker: markets[0].ticker.clone(),
                         limit: Some(limit),
                         ..Default::default()
                     })
@@ -727,7 +758,7 @@ macro_rules! exchange_tests {
                 // Fetch first page
                 let (page1, cursor) = match ex
                     .fetch_trades(TradesRequest {
-                        market_id: markets[0].id.clone(),
+                        market_ticker: markets[0].ticker.clone(),
                         limit: Some(5),
                         ..Default::default()
                     })
@@ -745,7 +776,7 @@ macro_rules! exchange_tests {
                 if let Some(cursor) = cursor {
                     match ex
                         .fetch_trades(TradesRequest {
-                            market_id: markets[0].id.clone(),
+                            market_ticker: markets[0].ticker.clone(),
                             limit: Some(5),
                             cursor: Some(cursor),
                             ..Default::default()
@@ -884,8 +915,8 @@ macro_rules! exchange_tests {
                     .expect("fetch_positions failed");
                 for p in &positions {
                     assert!(
-                        !p.market_id.is_empty(),
-                        "position market_id should not be empty"
+                        !p.market_ticker.is_empty(),
+                        "position market_ticker should not be empty"
                     );
                     assert!(
                         !p.outcome.is_empty(),
@@ -952,8 +983,8 @@ macro_rules! exchange_tests {
                         for o in &orders {
                             assert!(!o.id.is_empty(), "order id should not be empty");
                             assert!(
-                                !o.market_id.is_empty(),
-                                "order market_id should not be empty"
+                                !o.market_ticker.is_empty(),
+                                "order market_ticker should not be empty"
                             );
                             assert!(
                                 o.price >= 0.0 && o.price <= 1.0,
@@ -1004,8 +1035,8 @@ macro_rules! exchange_tests {
                     assert!(f.fee >= 0.0, "fill fee should be non-negative");
                     assert!(!f.order_id.is_empty(), "fill order_id should not be empty");
                     assert!(
-                        !f.market_id.is_empty(),
-                        "fill market_id should not be empty"
+                        !f.market_ticker.is_empty(),
+                        "fill market_ticker should not be empty"
                     );
                     assert!(!f.outcome.is_empty(), "fill outcome should not be empty");
                 }
@@ -1100,7 +1131,7 @@ macro_rules! exchange_tests {
                     Ok((m, _)) if !m.is_empty() => m,
                     _ => return,
                 };
-                let market_id = &markets[0].id;
+                let market_ticker = &markets[0].ticker;
 
                 use px_core::OrderBookWebSocket;
 
@@ -1117,7 +1148,7 @@ macro_rules! exchange_tests {
                 };
 
                 let updates = ws.updates().expect("updates() taken twice");
-                let target = market_id.clone();
+                let target = market_ticker.clone();
 
                 if let Err(e) = ws.connect().await {
                     eprintln!(
@@ -1126,7 +1157,9 @@ macro_rules! exchange_tests {
                     );
                     return;
                 }
-                ws.subscribe(market_id).await.expect("ws subscribe failed");
+                ws.subscribe(market_ticker)
+                    .await
+                    .expect("ws subscribe failed");
 
                 // Wait up to 15s for the next snapshot/delta on the requested market.
                 let deadline = std::time::Instant::now() + Duration::from_secs(15);
@@ -1166,7 +1199,7 @@ macro_rules! exchange_tests {
                     eprintln!(
                         "WARN: no orderbook update within 15s for {} market {}",
                         stringify!($exchange_id),
-                        market_id
+                        market_ticker
                     );
                 }
             }

@@ -111,24 +111,32 @@ pub struct FetchMarketsParams {
     /// Use `MarketStatusFilter::All` to fetch markets of any status.
     #[serde(default)]
     pub status: Option<MarketStatusFilter>,
-    /// Filter by series (Kalshi and Polymarket). Both exchanges organize markets
-    /// as Series → Events → Markets. Pass a Kalshi series ticker (e.g., `"KXBTC"`)
-    /// or a Polymarket series ID (e.g., `"10345"`) to fetch only markets in that series.
+    /// Fetch a specific set of markets by their unified ticker. Each entry is a
+    /// Kalshi market ticker (e.g., `"KXBTCD-25APR1517"`) or a Polymarket market
+    /// slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`,
+    /// `event_ticker`, and `series_ticker` are ignored.
     #[serde(default)]
-    pub series_id: Option<String>,
+    pub market_tickers: Vec<String>,
+    /// Filter by series ticker. Pass a Kalshi series ticker (e.g., `"KXBTC"`)
+    /// to fetch only markets in that series. Polymarket support arrives once
+    /// `series_numeric_id` is added to this struct — until then, this field is
+    /// ignored on Polymarket.
+    #[serde(default)]
+    pub series_ticker: Option<String>,
     /// Fetch all markets within a specific event. Pass a Kalshi event ticker
-    /// (e.g., `"KXBTC-25MAR14"`) or a Polymarket event ID or slug
-    /// (e.g., `"903"` or `"will-trump-win-2024"`) to get its child markets.
-    /// When set, `series_id`, `cursor`, and `limit` are ignored (not paginated).
+    /// (e.g., `"KXBTC-25MAR14"`) or a Polymarket event slug
+    /// (e.g., `"will-trump-win-2024"`). Polymarket numeric event IDs are not
+    /// accepted — they will be supported via a future `event_numeric_id` field.
+    /// When set, `cursor` and `limit` are ignored (not paginated).
     /// `status` filtering is still applied client-side.
     #[serde(default)]
-    pub event_id: Option<String>,
+    pub event_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct FetchOrdersParams {
-    pub market_id: Option<String>,
+    pub market_ticker: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

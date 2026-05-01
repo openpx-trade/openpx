@@ -58,12 +58,12 @@ impl OrderBookWebSocket for WebSocketInner {
         ws_dispatch_async!(self, disconnect)
     }
 
-    async fn subscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        ws_dispatch_async!(self, subscribe, market_id)
+    async fn subscribe(&mut self, market_ticker: &str) -> Result<(), WebSocketError> {
+        ws_dispatch_async!(self, subscribe, market_ticker)
     }
 
-    async fn unsubscribe(&mut self, market_id: &str) -> Result<(), WebSocketError> {
-        ws_dispatch_async!(self, unsubscribe, market_id)
+    async fn unsubscribe(&mut self, market_ticker: &str) -> Result<(), WebSocketError> {
+        ws_dispatch_async!(self, unsubscribe, market_ticker)
     }
 
     fn state(&self) -> WebSocketState {

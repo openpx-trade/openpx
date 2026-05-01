@@ -42,14 +42,15 @@ impl NativeExchange {
         pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (status=None, cursor=None, series_id=None, event_id=None))]
+    #[pyo3(signature = (status=None, cursor=None, market_tickers=None, series_ticker=None, event_ticker=None))]
     fn fetch_markets<'py>(
         &self,
         py: Python<'py>,
         status: Option<&str>,
         cursor: Option<&str>,
-        series_id: Option<&str>,
-        event_id: Option<&str>,
+        market_tickers: Option<Vec<String>>,
+        series_ticker: Option<&str>,
+        event_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -59,8 +60,9 @@ impl NativeExchange {
                 .transpose()
                 .map_err(to_py_err)?,
             cursor: cursor.map(String::from),
-            series_id: series_id.map(String::from),
-            event_id: event_id.map(String::from),
+            market_tickers: market_tickers.unwrap_or_default(),
+            series_ticker: series_ticker.map(String::from),
+            event_ticker: event_ticker.map(String::from),
             ..Default::default()
         };
         let result = py.detach(|| rt.block_on(inner.fetch_markets(&fetch_params)));
@@ -69,21 +71,25 @@ impl NativeExchange {
         pythonize(py, &val).map_err(|e| to_py_err(e.to_string()))
     }
 
-    fn fetch_market<'py>(&self, py: Python<'py>, market_id: &str) -> PyResult<Bound<'py, PyAny>> {
+    fn fetch_market_lineage<'py>(
+        &self,
+        py: Python<'py>,
+        market_ticker: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_id = market_id.to_string();
+        let market_ticker = market_ticker.to_string();
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_market(&market_id)));
-        let market = result.map_err(|e| to_py_err(e.to_string()))?;
-        pythonize(py, &market).map_err(|e| to_py_err(e.to_string()))
+        let result = py.detach(|| rt.block_on(inner.fetch_market_lineage(&market_ticker)));
+        let lineage = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &lineage).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id, outcome, side, price, size, params=None))]
+    #[pyo3(signature = (market_ticker, outcome, side, price, size, params=None))]
     #[allow(clippy::too_many_arguments)]
     fn create_order<'py>(
         &self,
         py: Python<'py>,
-        market_id: &str,
+        market_ticker: &str,
         outcome: &str,
         side: &str,
         price: f64,
@@ -91,7 +97,7 @@ impl NativeExchange {
         params: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_id = market_id.to_string();
+        let market_ticker = market_ticker.to_string();
         let outcome = outcome.to_string();
         let order_side: px_core::OrderSide =
             serde_json::from_value(serde_json::Value::String(side.to_string()))
@@ -102,55 +108,64 @@ impl NativeExchange {
         };
         let rt = get_runtime();
         let result = py.detach(|| {
-            rt.block_on(inner.create_order(&market_id, &outcome, order_side, price, size, extra))
+            rt.block_on(inner.create_order(
+                &market_ticker,
+                &outcome,
+                order_side,
+                price,
+                size,
+                extra,
+            ))
         });
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_id=None))]
+    #[pyo3(signature = (order_id, market_ticker=None))]
     fn cancel_order<'py>(
         &self,
         py: Python<'py>,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_id = market_id.map(String::from);
+        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_id.as_deref())));
+        let result =
+            py.detach(|| rt.block_on(inner.cancel_order(&order_id, market_ticker.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (order_id, market_id=None))]
+    #[pyo3(signature = (order_id, market_ticker=None))]
     fn fetch_order<'py>(
         &self,
         py: Python<'py>,
         order_id: &str,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
-        let market_id = market_id.map(String::from);
+        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_id.as_deref())));
+        let result =
+            py.detach(|| rt.block_on(inner.fetch_order(&order_id, market_ticker.as_deref())));
         let order = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id=None))]
+    #[pyo3(signature = (market_ticker=None))]
     fn fetch_open_orders<'py>(
         &self,
         py: Python<'py>,
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = py.detach(|| {
-            let params = market_id.map(|mid| px_core::FetchOrdersParams {
-                market_id: Some(mid),
+            let params = market_ticker.map(|mid| px_core::FetchOrdersParams {
+                market_ticker: Some(mid),
             });
             rt.block_on(inner.fetch_open_orders(params))
         });
@@ -158,16 +173,16 @@ impl NativeExchange {
         pythonize(py, &orders).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id=None))]
+    #[pyo3(signature = (market_ticker=None))]
     fn fetch_positions<'py>(
         &self,
         py: Python<'py>,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_id = market_id.map(String::from);
+        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_positions(market_id.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_positions(market_ticker.as_deref())));
         let positions = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &positions).map_err(|e| to_py_err(e.to_string()))
     }
@@ -180,17 +195,17 @@ impl NativeExchange {
         pythonize(py, &balance).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id, outcome=None, token_id=None))]
+    #[pyo3(signature = (market_ticker, outcome=None, token_id=None))]
     fn fetch_orderbook<'py>(
         &self,
         py: Python<'py>,
-        market_id: &str,
+        market_ticker: &str,
         outcome: Option<String>,
         token_id: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let req = px_core::OrderbookRequest {
-            market_id: market_id.to_string(),
+            market_ticker: market_ticker.to_string(),
             outcome,
             token_id,
         };
@@ -200,27 +215,27 @@ impl NativeExchange {
         pythonize(py, &book).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id=None, limit=None))]
+    #[pyo3(signature = (market_ticker=None, limit=None))]
     fn fetch_fills<'py>(
         &self,
         py: Python<'py>,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
         limit: Option<usize>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
-        let market_id = market_id.map(String::from);
+        let market_ticker = market_ticker.map(String::from);
         let rt = get_runtime();
-        let result = py.detach(|| rt.block_on(inner.fetch_fills(market_id.as_deref(), limit)));
+        let result = py.detach(|| rt.block_on(inner.fetch_fills(market_ticker.as_deref(), limit)));
         let fills = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &fills).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id, interval, outcome=None, token_id=None, condition_id=None, start_ts=None, end_ts=None))]
+    #[pyo3(signature = (market_ticker, interval, outcome=None, token_id=None, condition_id=None, start_ts=None, end_ts=None))]
     #[allow(clippy::too_many_arguments)]
     fn fetch_price_history<'py>(
         &self,
         py: Python<'py>,
-        market_id: &str,
+        market_ticker: &str,
         interval: &str,
         outcome: Option<String>,
         token_id: Option<String>,
@@ -232,7 +247,7 @@ impl NativeExchange {
         let parsed_interval: px_core::PriceHistoryInterval =
             interval.parse().map_err(|e: String| to_py_err(e))?;
         let req = px_core::PriceHistoryRequest {
-            market_id: market_id.to_string(),
+            market_ticker: market_ticker.to_string(),
             outcome,
             token_id,
             condition_id,
@@ -246,12 +261,12 @@ impl NativeExchange {
         pythonize(py, &candles).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id, market_ref=None, outcome=None, token_id=None, start_ts=None, end_ts=None, limit=None, cursor=None))]
+    #[pyo3(signature = (market_ticker, market_ref=None, outcome=None, token_id=None, start_ts=None, end_ts=None, limit=None, cursor=None))]
     #[allow(clippy::too_many_arguments)]
     fn fetch_trades<'py>(
         &self,
         py: Python<'py>,
-        market_id: &str,
+        market_ticker: &str,
         market_ref: Option<String>,
         outcome: Option<String>,
         token_id: Option<String>,
@@ -262,7 +277,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let req = px_core::TradesRequest {
-            market_id: market_id.to_string(),
+            market_ticker: market_ticker.to_string(),
             market_ref,
             outcome,
             token_id,
@@ -278,12 +293,12 @@ impl NativeExchange {
         pythonize(py, &val).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (market_id, token_id=None, start_ts=None, end_ts=None, limit=None, cursor=None))]
+    #[pyo3(signature = (market_ticker, token_id=None, start_ts=None, end_ts=None, limit=None, cursor=None))]
     #[allow(clippy::too_many_arguments)]
     fn fetch_orderbook_history<'py>(
         &self,
         py: Python<'py>,
-        market_id: &str,
+        market_ticker: &str,
         token_id: Option<String>,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
@@ -292,7 +307,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let req = px_core::OrderbookHistoryRequest {
-            market_id: market_id.to_string(),
+            market_ticker: market_ticker.to_string(),
             token_id,
             start_ts,
             end_ts,

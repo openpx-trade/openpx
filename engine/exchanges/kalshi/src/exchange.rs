@@ -6,13 +6,13 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use px_core::{
-    canonical_event_id, manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event,
-    EventsRequest, Exchange, ExchangeInfo, ExchangeManifest, FetchMarketsParams, FetchOrdersParams,
-    Fill, LastTrade, LiquidityRole, Market, MarketStatus, MarketStatusFilter, MarketTrade,
-    MarketType, MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
-    OrderType as UnifiedOrderType, Orderbook, OutcomeToken, Position, PriceHistoryInterval,
-    PriceHistoryRequest, PriceLevel, RateLimiter, Series, SeriesRequest, SettlementSource, Spread,
-    Tag, TradesRequest, UserTrade, UserTradesRequest,
+    manifests::KALSHI_MANIFEST, sort_asks, sort_bids, Candlestick, Event, Exchange, ExchangeInfo,
+    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, LiquidityRole,
+    Market, MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType,
+    MidpointRequest, NewOrder, OpenPxError, Order, OrderSide, OrderStatus,
+    OrderType as UnifiedOrderType, Orderbook, Outcome, Position, PriceHistoryInterval,
+    PriceHistoryRequest, PriceLevel, RateLimiter, Series, SettlementSource, Spread, Tag,
+    TradesRequest, UserTrade, UserTradesRequest,
 };
 
 use crate::auth::KalshiAuth;
@@ -80,7 +80,7 @@ fn parse_iso_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 
 fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
     let obj = value.as_object()?;
-    let id = obj
+    let ticker = obj
         .get("event_ticker")
         .and_then(|v| v.as_str())?
         .to_string();
@@ -97,7 +97,7 @@ fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
         .filter(|s| !s.is_empty())
         .map(String::from);
 
-    let series_id = obj
+    let series_ticker = obj
         .get("series_ticker")
         .and_then(|v| v.as_str())
         .map(String::from);
@@ -115,7 +115,7 @@ fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
         .and_then(|v| v.as_str())
         .and_then(parse_iso_datetime);
 
-    let market_ids = obj
+    let market_tickers = obj
         .get("markets")
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -126,14 +126,14 @@ fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
         .unwrap_or_default();
 
     Some(Event {
-        id,
-        slug: None,
+        ticker,
+        numeric_id: None,
         title,
         description,
         category: None,
-        series_id,
+        series_ticker,
         status: None,
-        market_ids,
+        market_tickers,
         start_ts: None,
         end_ts,
         volume: None,
@@ -145,7 +145,7 @@ fn parse_kalshi_event(value: &serde_json::Value) -> Option<Event> {
 
 fn parse_kalshi_series(value: &serde_json::Value) -> Option<Series> {
     let obj = value.as_object()?;
-    let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
+    let ticker = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
 
     let title = obj
         .get("title")
@@ -200,7 +200,8 @@ fn parse_kalshi_series(value: &serde_json::Value) -> Option<Series> {
         .and_then(parse_iso_datetime);
 
     Some(Series {
-        id,
+        ticker,
+        numeric_id: None,
         title,
         category,
         frequency,
@@ -235,7 +236,7 @@ fn parse_kalshi_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
         .or_else(|| obj.get("fill_id"))
         .and_then(|v| v.as_str())?
         .to_string();
-    let market_id = obj
+    let market_ticker = obj
         .get("ticker")
         .or_else(|| obj.get("market_ticker"))
         .and_then(|v| v.as_str())?
@@ -282,7 +283,7 @@ fn parse_kalshi_user_trade(value: &serde_json::Value) -> Option<UserTrade> {
 
     Some(UserTrade {
         id,
-        market_id,
+        market_ticker,
         condition_id: None,
         asset_id: None,
         side,
@@ -546,7 +547,7 @@ impl Kalshi {
         let obj = data.as_object()?;
 
         // Kalshi uses 'ticker' as market ID
-        let id = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
+        let ticker = obj.get("ticker").and_then(|v| v.as_str())?.to_string();
 
         // Composite title from the spec-canonical short titles. The `title`
         // field on Kalshi's Market schema is marked `deprecated: true` in the
@@ -564,27 +565,24 @@ impl Kalshi {
             format!("{yes} | {no}")
         };
 
-        let description = obj
-            .get("rules_primary")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        // Resolution rules: concat of rules_primary + rules_secondary.
+        let rules = {
+            let primary = obj.get("rules_primary").and_then(|v| v.as_str());
+            let secondary = obj.get("rules_secondary").and_then(|v| v.as_str());
+            match (primary, secondary) {
+                (Some(p), Some(s)) if !p.is_empty() && !s.is_empty() => Some(format!("{p} | {s}")),
+                (Some(p), _) if !p.is_empty() => Some(p.to_string()),
+                (_, Some(s)) if !s.is_empty() => Some(s.to_string()),
+                _ => None,
+            }
+        };
 
-        let rules = obj
-            .get("rules_secondary")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Group/event ID
-        let group_id = obj
+        // Native event ticker passed through verbatim.
+        let event_ticker = obj
             .get("event_ticker")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Canonical cross-exchange event ID
-        let event_id = group_id
-            .as_deref()
-            .and_then(|gid| canonical_event_id("kalshi", gid));
+            .filter(|s| !s.is_empty())
+            .map(String::from);
 
         // Status — Kalshi market objects use a granular lifecycle:
         // active, closed, determined, finalized, initialized, inactive, disputed, amended
@@ -597,15 +595,6 @@ impl Kalshi {
                 _ => MarketStatus::Closed,
             })
             .unwrap_or(MarketStatus::Active);
-
-        // accepting_orders
-        let accepting_orders = obj
-            .get("accepting_orders")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(status == MarketStatus::Active);
-
-        // Binary markets: Yes/No outcomes
-        let outcomes = vec!["Yes".to_string(), "No".to_string()];
 
         // ── Prices (new dollar-string fields first, legacy int/100 fallback) ──
 
@@ -630,11 +619,21 @@ impl Kalshi {
         let yes_price = yes_ask.or(last_price).unwrap_or(0.0);
         let no_price = 1.0 - yes_price;
 
-        let mut outcome_prices = HashMap::new();
-        outcome_prices.insert("Yes".to_string(), yes_price);
-        outcome_prices.insert("No".to_string(), no_price);
+        // Binary markets: Yes/No outcomes — Kalshi has no per-outcome token id.
+        let outcomes = vec![
+            Outcome {
+                label: "Yes".into(),
+                price: Some(yes_price),
+                token_id: None,
+            },
+            Outcome {
+                label: "No".into(),
+                price: Some(no_price),
+                token_id: None,
+            },
+        ];
 
-        // ── Volume / liquidity (fixed-point migration) ──
+        // ── Volume (fixed-point migration) ──
 
         let volume = parse_fp(obj, "volume_fp")
             .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
@@ -643,22 +642,34 @@ impl Kalshi {
         let volume_24h = parse_fp(obj, "volume_24h_fp")
             .or_else(|| obj.get("volume_24h").and_then(|v| v.as_f64()));
 
-        let open_interest = parse_fp(obj, "open_interest_fp")
-            .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()));
-
-        // ── Tick size: try price_level_structure, fallback to tick_size in cents ──
-
+        // ── Tick size: smallest step across the tiered `price_ranges` array.
+        // The unified surface exposes a single number; callers placing orders
+        // outside the finest tier still need to round to that tier's step,
+        // but the smallest step is the right "what's the finest precision
+        // anywhere on this market" answer. The legacy scalar `tick_size`
+        // integer is deprecated upstream — we read `price_ranges` exclusively.
         let tick_size = obj
-            .get("tick_size")
-            .and_then(|v| v.as_f64())
-            .filter(|&v| v > 0.0)
-            .map(|cents| cents / 100.0)
-            .or(Some(0.01));
+            .get("price_ranges")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                arr.iter()
+                    .filter_map(|r| {
+                        r.as_object()?
+                            .get("step")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<f64>().ok())
+                    })
+                    .reduce(f64::min)
+            });
 
-        let price_level_structure = obj
-            .get("price_level_structure")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        // ── Min order size: synthesized from fractional_trading_enabled. ──
+        // No upstream field exists; fractional markets accept 0.01-contract
+        // orders, otherwise the minimum is one whole contract.
+        let fractional = obj
+            .get("fractional_trading_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let min_order_size = Some(if fractional { 0.01 } else { 1.0 });
 
         // ── Time fields ──
 
@@ -692,37 +703,13 @@ impl Kalshi {
                 })
         });
 
-        // ── Kalshi-specific fields ──
-
-        let notional_value = parse_dollars(obj, "notional_value_dollars")
-            .or_else(|| obj.get("notional_value").and_then(|v| v.as_f64()));
-
-        let previous_price = parse_dollars(obj, "previous_price_dollars").or_else(|| {
-            obj.get("previous_price")
-                .and_then(|v| v.as_f64())
-                .map(|p| p / 100.0)
-        });
-
-        let settlement_value = parse_dollars(obj, "settlement_value_dollars").or_else(|| {
-            obj.get("settlement_value")
-                .and_then(|v| v.as_f64())
-                .map(|p| p / 100.0)
-        });
-
-        let can_close_early = obj.get("can_close_early").and_then(|v| v.as_bool());
-
         let result = obj
             .get("result")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
-        // Spread from bid/ask
-        let spread = match (yes_bid, yes_ask) {
-            (Some(b), Some(a)) => Some(a - b),
-            _ => None,
-        };
-
-        let openpx_id = Market::make_openpx_id("kalshi", &id);
+        let openpx_id = Market::make_openpx_id("kalshi", &ticker);
 
         let market_type = obj
             .get("market_type")
@@ -736,34 +723,24 @@ impl Kalshi {
         Some(Market {
             openpx_id,
             exchange: "kalshi".into(),
-            id,
-            group_id,
-            event_id,
+            ticker,
+            event_ticker,
             title,
-            description,
             rules,
             status,
             market_type,
-            accepting_orders,
             outcomes,
-            outcome_prices,
             volume,
             volume_24h,
-            open_interest,
             last_trade_price: last_price,
             best_bid: yes_bid,
             best_ask: yes_ask,
-            spread,
             tick_size,
+            min_order_size,
             close_time,
             open_time,
             created_at,
             settlement_time,
-            notional_value,
-            price_level_structure,
-            settlement_value,
-            previous_price,
-            can_close_early,
             result,
             ..Default::default()
         })
@@ -778,7 +755,7 @@ impl Kalshi {
             .unwrap_or("")
             .to_string();
 
-        let market_id = obj
+        let market_ticker = obj
             .and_then(|o| o.get("ticker"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -865,7 +842,7 @@ impl Kalshi {
 
         Order {
             id,
-            market_id,
+            market_ticker,
             outcome,
             side,
             price,
@@ -880,7 +857,7 @@ impl Kalshi {
     fn parse_position(&self, data: &serde_json::Value) -> Position {
         let obj = data.as_object();
 
-        let market_id = obj
+        let market_ticker = obj
             .and_then(|o| o.get("ticker"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -930,7 +907,7 @@ impl Kalshi {
         };
 
         Position {
-            market_id,
+            market_ticker,
             outcome,
             size,
             average_price,
@@ -947,7 +924,7 @@ impl Kalshi {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let market_id = obj
+        let market_ticker = obj
             .get("ticker")
             .or_else(|| obj.get("market_ticker"))
             .and_then(|v| v.as_str())?
@@ -1002,7 +979,7 @@ impl Kalshi {
         Some(Fill {
             fill_id,
             order_id,
-            market_id,
+            market_ticker,
             outcome,
             side,
             price,
@@ -1074,6 +1051,80 @@ impl Kalshi {
         Ok((yes, no))
     }
 
+    /// Fetch a single market by ticker. Falls back to `fetch_event_as_market`
+    /// when the ticker resolves to an event (multi-outcome categorical) instead.
+    /// Used internally by Kalshi's own trait methods (orderbook lookup, fills, …)
+    /// and by mapping/contract tests; not exposed on the unified `Exchange` trait —
+    /// callers use `fetch_markets` with `market_tickers: vec![ticker]` instead.
+    pub async fn fetch_market(&self, market_ticker: &str) -> Result<Market, OpenPxError> {
+        #[derive(serde::Deserialize)]
+        struct MarketResponse {
+            market: serde_json::Value,
+        }
+
+        let path = format!("/markets/{market_ticker}");
+        match self.get::<MarketResponse>(&path).await {
+            Ok(resp) => self.parse_market(&resp.market).ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_ticker.into()))
+            }),
+            Err(KalshiError::MarketNotFound(_)) => {
+                // Not a market ticker — try as event ticker
+                self.fetch_event_as_market(market_ticker).await
+            }
+            Err(e) => Err(to_openpx(e)),
+        }
+    }
+
+    /// Fetch a single Kalshi event by `event_ticker`. Used by
+    /// `fetch_market_lineage`; not exposed on the unified `Exchange` trait.
+    pub async fn fetch_event_by_ticker(&self, event_ticker: &str) -> Result<Event, OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct EventResp {
+            event: serde_json::Value,
+            #[serde(default)]
+            markets: Option<Vec<serde_json::Value>>,
+        }
+
+        let path = format!("/events/{event_ticker}?with_nested_markets=true");
+        let resp: EventResp = self.get(&path).await.map_err(to_openpx)?;
+
+        let mut event = parse_kalshi_event(&resp.event).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse event: {event_ticker}"
+            )))
+        })?;
+
+        // Top-level `markets` is sibling of `event` when `with_nested_markets=false`
+        // — fold it in if present and the event itself didn't carry it.
+        if event.market_tickers.is_empty() {
+            if let Some(markets) = resp.markets {
+                event.market_tickers = markets
+                    .iter()
+                    .filter_map(|m| m.get("ticker").and_then(|v| v.as_str()).map(String::from))
+                    .collect();
+            }
+        }
+
+        Ok(event)
+    }
+
+    /// Fetch a single Kalshi series by `series_ticker`. Used by
+    /// `fetch_market_lineage`; not exposed on the unified `Exchange` trait.
+    pub async fn fetch_series_by_ticker(&self, series_ticker: &str) -> Result<Series, OpenPxError> {
+        #[derive(Debug, serde::Deserialize)]
+        struct SeriesResp {
+            series: serde_json::Value,
+        }
+
+        let path = format!("/series/{series_ticker}?include_volume=true");
+        let resp: SeriesResp = self.get(&path).await.map_err(to_openpx)?;
+        parse_kalshi_series(&resp.series).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "could not parse series: {series_ticker}"
+            )))
+        })
+    }
+
     /// Fetch a Kalshi event and construct a multi-outcome Market from its sub-markets.
     async fn fetch_event_as_market(&self, event_ticker: &str) -> Result<Market, OpenPxError> {
         #[derive(serde::Deserialize)]
@@ -1107,18 +1158,15 @@ impl Kalshi {
             .unwrap_or("")
             .to_string();
 
-        let description = event_obj
+        let rules = event_obj
             .get("subtitle")
             .or_else(|| event_obj.get("description"))
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
 
-        let mut outcomes = Vec::with_capacity(markets.len());
-        let mut outcome_prices = HashMap::new();
-        let mut outcome_tokens = Vec::with_capacity(markets.len());
+        let mut outcomes: Vec<Outcome> = Vec::with_capacity(markets.len());
         let mut total_volume = 0.0f64;
-        let mut total_open_interest = 0.0f64;
         let mut close_time: Option<chrono::DateTime<chrono::Utc>> = None;
 
         for m in markets {
@@ -1142,21 +1190,16 @@ impl Kalshi {
                         .or_else(|| obj.get("last_price"))
                         .and_then(|v| v.as_f64())
                         .map(|p| p / 100.0)
-                })
-                .unwrap_or(0.0);
+                });
 
-            outcomes.push(outcome_name.clone());
-            outcome_prices.insert(outcome_name.clone(), yes_price);
-            outcome_tokens.push(OutcomeToken {
-                outcome: outcome_name,
-                token_id: ticker.to_string(),
+            outcomes.push(Outcome {
+                label: outcome_name,
+                price: yes_price,
+                token_id: None,
             });
 
             total_volume += parse_fp(obj, "volume_fp")
                 .or_else(|| obj.get("volume").and_then(|v| v.as_f64()))
-                .unwrap_or(0.0);
-            total_open_interest += parse_fp(obj, "open_interest_fp")
-                .or_else(|| obj.get("open_interest").and_then(|v| v.as_f64()))
                 .unwrap_or(0.0);
 
             // Use the latest close_time across sub-markets
@@ -1175,26 +1218,21 @@ impl Kalshi {
         }
 
         let openpx_id = Market::make_openpx_id("kalshi", event_ticker);
-        let event_id = canonical_event_id("kalshi", event_ticker);
 
         Some(Market {
             openpx_id,
             exchange: "kalshi".into(),
-            id: event_ticker.to_string(),
-            group_id: Some(event_ticker.to_string()),
-            event_id,
+            ticker: event_ticker.to_string(),
+            event_ticker: Some(event_ticker.to_string()),
             title,
-            description,
+            rules,
             status: MarketStatus::Active,
             market_type: MarketType::Categorical,
-            accepting_orders: true,
             outcomes,
-            outcome_tokens,
-            outcome_prices,
             volume: total_volume,
-            open_interest: Some(total_open_interest),
             close_time,
-            tick_size: Some(0.01), // event-level: default to 1 cent
+            tick_size: Some(0.01),
+            min_order_size: Some(1.0),
             ..Default::default()
         })
     }
@@ -1233,8 +1271,41 @@ impl Exchange for Kalshi {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
-        // ── event_id short-circuit: fetch a single event's nested markets ──
-        if let Some(ref event_ticker) = params.event_id {
+        #[derive(serde::Deserialize)]
+        struct MarketsResponse {
+            markets: Vec<serde_json::Value>,
+            cursor: Option<String>,
+        }
+
+        let filter_status = |markets: Vec<Market>, filter: MarketStatusFilter| -> Vec<Market> {
+            let requested_status = match filter {
+                MarketStatusFilter::Active => Some(MarketStatus::Active),
+                MarketStatusFilter::Closed => Some(MarketStatus::Closed),
+                MarketStatusFilter::Resolved => Some(MarketStatus::Resolved),
+                MarketStatusFilter::All => return markets,
+            };
+            markets
+                .into_iter()
+                .filter(|m| Some(m.status) == requested_status)
+                .collect()
+        };
+
+        // ── market_tickers short-circuit: explicit market lookup, single round-trip ──
+        if !params.market_tickers.is_empty() {
+            let joined = params.market_tickers.join(",");
+            let endpoint = format!("/markets?market_tickers={joined}");
+            let resp: MarketsResponse = self.get(&endpoint).await.map_err(to_openpx)?;
+            let parsed: Vec<Market> = resp
+                .markets
+                .iter()
+                .filter_map(|raw| self.parse_market(raw))
+                .collect();
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+            return Ok((filter_status(parsed, filter), None));
+        }
+
+        // ── event_ticker short-circuit: fetch a single event's nested markets ──
+        if let Some(ref event_ticker) = params.event_ticker {
             #[derive(serde::Deserialize)]
             struct SingleEventResponse {
                 #[allow(dead_code)]
@@ -1244,36 +1315,13 @@ impl Exchange for Kalshi {
 
             let path = format!("/events/{event_ticker}");
             let resp: SingleEventResponse = self.get(&path).await.map_err(to_openpx)?;
-
-            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
-            let requested_status = match filter {
-                MarketStatusFilter::Active => Some(MarketStatus::Active),
-                MarketStatusFilter::Closed => Some(MarketStatus::Closed),
-                MarketStatusFilter::Resolved => Some(MarketStatus::Resolved),
-                MarketStatusFilter::All => None,
-            };
-
-            let markets: Vec<Market> = resp
+            let parsed: Vec<Market> = resp
                 .markets
                 .iter()
-                .filter_map(|raw| {
-                    let market = self.parse_market(raw)?;
-                    if let Some(ref req) = requested_status {
-                        if market.status != *req {
-                            return None;
-                        }
-                    }
-                    Some(market)
-                })
+                .filter_map(|raw| self.parse_market(raw))
                 .collect();
-
-            return Ok((markets, None));
-        }
-
-        #[derive(serde::Deserialize)]
-        struct MarketsResponse {
-            markets: Vec<serde_json::Value>,
-            cursor: Option<String>,
+            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+            return Ok((filter_status(parsed, filter), None));
         }
 
         /// Compound cursor for live + historical markets. `None` on either side
@@ -1332,7 +1380,7 @@ impl Exchange for Kalshi {
             if let Some(s) = live_status {
                 ep.push_str(&format!("&status={s}"));
             }
-            if let Some(ref st) = params.series_id {
+            if let Some(ref st) = params.series_ticker {
                 ep.push_str(&format!("&series_ticker={st}"));
             }
             if !cursor.is_empty() {
@@ -1343,7 +1391,7 @@ impl Exchange for Kalshi {
 
         let historical_endpoint = state.h.as_ref().map(|cursor| {
             let mut ep = format!("/historical/markets?limit={limit}");
-            if let Some(ref st) = params.series_id {
+            if let Some(ref st) = params.series_ticker {
                 ep.push_str(&format!("&series_ticker={st}"));
             }
             if !cursor.is_empty() {
@@ -1429,31 +1477,12 @@ impl Exchange for Kalshi {
         Ok((all_markets, next_cursor))
     }
 
-    async fn fetch_market(&self, market_id: &str) -> Result<Market, OpenPxError> {
-        #[derive(serde::Deserialize)]
-        struct MarketResponse {
-            market: serde_json::Value,
-        }
-
-        let path = format!("/markets/{market_id}");
-        match self.get::<MarketResponse>(&path).await {
-            Ok(resp) => self.parse_market(&resp.market).ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::MarketNotFound(market_id.into()))
-            }),
-            Err(KalshiError::MarketNotFound(_)) => {
-                // Not a market ticker — try as event ticker
-                self.fetch_event_as_market(market_id).await
-            }
-            Err(e) => Err(to_openpx(e)),
-        }
-    }
-
     async fn fetch_orderbook(
         &self,
         req: px_core::OrderbookRequest,
     ) -> Result<Orderbook, OpenPxError> {
-        // For event tickers, token_id holds the resolved sub-market ticker.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_id);
+        // For event market_tickers, token_id holds the resolved sub-market ticker.
+        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
         let (yes, no) = self.fetch_orderbook_raw(ticker).await.map_err(to_openpx)?;
 
         let outcome = req.outcome.as_deref().unwrap_or("Yes");
@@ -1479,8 +1508,8 @@ impl Exchange for Kalshi {
         sort_asks(&mut asks);
 
         Ok(Orderbook {
-            market_id: req.market_id.clone(),
-            asset_id: req.market_id,
+            market_ticker: req.market_ticker.clone(),
+            asset_id: req.market_ticker,
             bids,
             asks,
             last_update_id: None,
@@ -1510,8 +1539,8 @@ impl Exchange for Kalshi {
         let end_ts = req.end_ts.unwrap_or(now);
 
         // Batch endpoint (no series_ticker needed).
-        // For event tickers, token_id contains the resolved sub-market ticker.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_id);
+        // For event market_tickers, token_id contains the resolved sub-market ticker.
+        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
         let path = format!(
             "/markets/candlesticks?market_tickers={}&start_ts={}&end_ts={}&period_interval={}&include_latest_before_start=true",
             ticker, start_ts, end_ts, period_interval
@@ -1591,7 +1620,7 @@ impl Exchange for Kalshi {
             .token_id
             .as_deref()
             .or(req.market_ref.as_deref())
-            .unwrap_or(&req.market_id);
+            .unwrap_or(&req.market_ticker);
         let limit = req.limit.unwrap_or(200).clamp(1, 1000);
         let mut path = format!("/markets/trades?ticker={}&limit={}", ticker, limit);
         if let Some(start_ts) = req.start_ts {
@@ -1697,123 +1726,30 @@ impl Exchange for Kalshi {
         Ok((trades, next_cursor))
     }
 
-    async fn fetch_events(
+    async fn fetch_market_lineage(
         &self,
-        req: EventsRequest,
-    ) -> Result<(Vec<Event>, Option<String>), OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        struct EventsResp {
-            #[serde(default)]
-            events: Vec<serde_json::Value>,
-            cursor: Option<String>,
-        }
-
-        let limit = req.limit.unwrap_or(200).clamp(1, 200);
-        let mut path = format!("/events?limit={limit}");
-        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
-            path.push_str(&format!("&cursor={c}"));
-        }
-        if let Some(s) = req.status.as_deref() {
-            path.push_str(&format!("&status={s}"));
-        }
-        if let Some(s) = req.series_id.as_deref() {
-            path.push_str(&format!("&series_ticker={s}"));
-        }
-        if req.with_nested_markets.unwrap_or(false) {
-            path.push_str("&with_nested_markets=true");
-        }
-        if let Some(ts) = req.min_close_ts {
-            path.push_str(&format!("&min_close_ts={ts}"));
-        }
-        if let Some(ts) = req.min_updated_ts {
-            path.push_str(&format!("&min_updated_ts={ts}"));
-        }
-
-        let resp: EventsResp = self.get(&path).await.map_err(to_openpx)?;
-        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
-        let events = resp.events.iter().filter_map(parse_kalshi_event).collect();
-        Ok((events, next_cursor))
-    }
-
-    async fn fetch_event(&self, id: &str) -> Result<Event, OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        struct EventResp {
-            event: serde_json::Value,
-            #[serde(default)]
-            markets: Option<Vec<serde_json::Value>>,
-        }
-
-        let path = format!("/events/{id}?with_nested_markets=true");
-        let resp: EventResp = self.get(&path).await.map_err(to_openpx)?;
-
-        let mut event = parse_kalshi_event(&resp.event).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "could not parse event: {id}"
-            )))
-        })?;
-
-        // Top-level `markets` is sibling of `event` when `with_nested_markets=false`
-        // — fold it in if present and the event itself didn't carry it.
-        if event.market_ids.is_empty() {
-            if let Some(markets) = resp.markets {
-                event.market_ids = markets
-                    .iter()
-                    .filter_map(|m| m.get("ticker").and_then(|v| v.as_str()).map(String::from))
-                    .collect();
-            }
-        }
-
-        Ok(event)
-    }
-
-    async fn fetch_series(
-        &self,
-        req: SeriesRequest,
-    ) -> Result<(Vec<Series>, Option<String>), OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        struct SeriesResp {
-            #[serde(default)]
-            series: Vec<serde_json::Value>,
-            cursor: Option<String>,
-        }
-
-        let limit = req.limit.unwrap_or(100).clamp(1, 200);
-        let mut path = format!("/series?limit={limit}");
-        if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
-            path.push_str(&format!("&cursor={c}"));
-        }
-        if let Some(c) = req.category.as_deref() {
-            path.push_str(&format!("&category={c}"));
-        }
-        if req.include_volume.unwrap_or(false) {
-            path.push_str("&include_volume=true");
-        }
-
-        let resp: SeriesResp = self.get(&path).await.map_err(to_openpx)?;
-        let next_cursor = resp.cursor.filter(|c| !c.is_empty());
-        let series = resp.series.iter().filter_map(parse_kalshi_series).collect();
-        Ok((series, next_cursor))
-    }
-
-    async fn fetch_series_one(&self, id: &str) -> Result<Series, OpenPxError> {
-        #[derive(Debug, serde::Deserialize)]
-        struct SeriesResp {
-            series: serde_json::Value,
-        }
-
-        let path = format!("/series/{id}?include_volume=true");
-        let resp: SeriesResp = self.get(&path).await.map_err(to_openpx)?;
-        parse_kalshi_series(&resp.series).ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "could not parse series: {id}"
-            )))
+        market_ticker: &str,
+    ) -> Result<MarketLineage, OpenPxError> {
+        let market = self.fetch_market(market_ticker).await?;
+        let event = match market.event_ticker.as_deref() {
+            Some(t) => self.fetch_event_by_ticker(t).await.ok(),
+            None => None,
+        };
+        let series = match event.as_ref().and_then(|e| e.series_ticker.as_deref()) {
+            Some(t) => self.fetch_series_by_ticker(t).await.ok(),
+            None => None,
+        };
+        Ok(MarketLineage {
+            market,
+            event,
+            series,
         })
     }
 
     async fn fetch_market_tags(&self, _market_id: &str) -> Result<Vec<Tag>, OpenPxError> {
         // Kalshi doesn't expose per-market tags; it groups tags by category at
         // the global level. Return the flattened union — same content for any
-        // market_id input.
+        // market_ticker input.
         #[derive(Debug, serde::Deserialize)]
         struct TagsResp {
             #[serde(default)]
@@ -1841,14 +1777,14 @@ impl Exchange for Kalshi {
 
     async fn fetch_orderbooks_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<Vec<Orderbook>, OpenPxError> {
-        if market_ids.is_empty() {
+        if market_tickers.is_empty() {
             return Ok(Vec::new());
         }
-        if market_ids.len() > 100 {
+        if market_tickers.len() > 100 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "fetch_orderbooks_batch: Kalshi limit is 100 tickers per request".into(),
+                "fetch_orderbooks_batch: Kalshi limit is 100 market_tickers per request".into(),
             )));
         }
 
@@ -1871,8 +1807,8 @@ impl Exchange for Kalshi {
             no_dollars: Option<Vec<[String; 2]>>,
         }
 
-        let tickers = market_ids.join(",");
-        let path = format!("/markets/orderbooks?tickers={tickers}");
+        let market_tickers = market_tickers.join(",");
+        let path = format!("/markets/orderbooks?market_tickers={market_tickers}");
         let resp: BatchResp = self.get(&path).await.map_err(to_openpx)?;
 
         let now = chrono::Utc::now();
@@ -1907,7 +1843,7 @@ impl Exchange for Kalshi {
                 sort_bids(&mut bids);
                 sort_asks(&mut asks);
                 Orderbook {
-                    market_id: entry.ticker.clone(),
+                    market_ticker: entry.ticker.clone(),
                     asset_id: entry.ticker,
                     bids,
                     asks,
@@ -1921,7 +1857,7 @@ impl Exchange for Kalshi {
     }
 
     async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_id).await?;
+        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
         let wants_no = req
             .outcome
             .as_deref()
@@ -1935,14 +1871,14 @@ impl Exchange for Kalshi {
 
     async fn fetch_midpoints_batch(
         &self,
-        market_ids: Vec<String>,
+        market_tickers: Vec<String>,
     ) -> Result<HashMap<String, f64>, OpenPxError> {
-        if market_ids.is_empty() {
+        if market_tickers.is_empty() {
             return Ok(HashMap::new());
         }
-        if market_ids.len() > 1000 {
+        if market_tickers.len() > 1000 {
             return Err(OpenPxError::Exchange(px_core::ExchangeError::InvalidOrder(
-                "fetch_midpoints_batch: Kalshi limit is 1000 tickers per page".into(),
+                "fetch_midpoints_batch: Kalshi limit is 1000 market_tickers per page".into(),
             )));
         }
 
@@ -1951,8 +1887,11 @@ impl Exchange for Kalshi {
             #[serde(default)]
             markets: Vec<serde_json::Value>,
         }
-        let tickers = market_ids.join(",");
-        let path = format!("/markets?tickers={tickers}&limit={}", market_ids.len());
+        let market_tickers = market_tickers.join(",");
+        let path = format!(
+            "/markets?market_tickers={market_tickers}&limit={}",
+            market_tickers.len()
+        );
         let resp: MarketsResp = self.get(&path).await.map_err(to_openpx)?;
 
         let mut out = HashMap::with_capacity(resp.markets.len());
@@ -1970,7 +1909,7 @@ impl Exchange for Kalshi {
     }
 
     async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_id).await?;
+        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
         let wants_no = req
             .outcome
             .as_deref()
@@ -1996,7 +1935,7 @@ impl Exchange for Kalshi {
     }
 
     async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(&req.market_id).await?;
+        let market = self.fetch_kalshi_market_raw(&req.market_ticker).await?;
         let wants_no = req
             .outcome
             .as_deref()
@@ -2024,7 +1963,7 @@ impl Exchange for Kalshi {
 
         // Kalshi doesn't carry side/size on the market summary; pull the head
         // of /markets/trades for those.
-        let ticker = req.token_id.as_deref().unwrap_or(&req.market_id);
+        let ticker = req.token_id.as_deref().unwrap_or(&req.market_ticker);
         let trade_path = format!("/markets/trades?ticker={ticker}&limit=1");
         let (side, size, ts_ms) = match self.get::<serde_json::Value>(&trade_path).await {
             Ok(v) => v
@@ -2087,7 +2026,7 @@ impl Exchange for Kalshi {
 
         let limit = req.limit.unwrap_or(100).clamp(1, 1000);
         let mut path = format!("/portfolio/fills?limit={limit}");
-        if let Some(market) = req.market_id.as_deref() {
+        if let Some(market) = req.market_ticker.as_deref() {
             path.push_str(&format!("&ticker={market}"));
         }
         if let Some(c) = req.cursor.as_deref().filter(|c| !c.is_empty()) {
@@ -2116,8 +2055,8 @@ impl Exchange for Kalshi {
         Ok((trades, next_cursor))
     }
 
-    async fn fetch_open_interest(&self, market_id: &str) -> Result<f64, OpenPxError> {
-        let market = self.fetch_kalshi_market_raw(market_id).await?;
+    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
+        let market = self.fetch_kalshi_market_raw(market_ticker).await?;
         parse_fp(&market, "open_interest_fp")
             .or_else(|| {
                 market
@@ -2131,7 +2070,10 @@ impl Exchange for Kalshi {
             })
     }
 
-    async fn cancel_all_orders(&self, market_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         // Kalshi has no single "cancel all" verb. Two-step flow:
@@ -2148,7 +2090,7 @@ impl Exchange for Kalshi {
         let mut cursor: Option<String> = None;
         loop {
             let mut path = String::from("/portfolio/orders?status=resting&limit=1000");
-            if let Some(t) = market_id {
+            if let Some(t) = market_ticker {
                 path.push_str(&format!("&ticker={t}"));
             }
             if let Some(c) = cursor.as_deref() {
@@ -2204,7 +2146,7 @@ impl Exchange for Kalshi {
             .filter_map(|e| {
                 e.order_id.map(|id| Order {
                     id,
-                    market_id: market_id.unwrap_or("").to_string(),
+                    market_ticker: market_ticker.unwrap_or("").to_string(),
                     outcome: String::new(),
                     side: OrderSide::Buy,
                     price: 0.0,
@@ -2238,7 +2180,7 @@ impl Exchange for Kalshi {
                     "yes"
                 };
                 let mut entry = serde_json::json!({
-                    "ticker": o.market_id,
+                    "ticker": o.market_ticker,
                     "side": kalshi_side,
                     "action": action,
                     // Kalshi accepts decimal-dollar fixed-point strings post the
@@ -2315,7 +2257,7 @@ impl Exchange for Kalshi {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    market_id: obj
+                    market_ticker: obj
                         .get("ticker")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
@@ -2361,7 +2303,7 @@ impl Exchange for Kalshi {
 
     async fn create_order(
         &self,
-        market_id: &str,
+        market_ticker: &str,
         outcome: &str,
         side: OrderSide,
         price: f64,
@@ -2419,7 +2361,7 @@ impl Exchange for Kalshi {
         };
 
         let request = CreateOrderRequest {
-            ticker: market_id.to_string(),
+            ticker: market_ticker.to_string(),
             action: action.to_string(),
             side: kalshi_side.clone(),
             order_type: "limit".to_string(),
@@ -2495,7 +2437,10 @@ impl Exchange for Kalshi {
         Ok(resp.orders.iter().map(|o| self.parse_order(o)).collect())
     }
 
-    async fn fetch_positions(&self, market_id: Option<&str>) -> Result<Vec<Position>, OpenPxError> {
+    async fn fetch_positions(
+        &self,
+        market_ticker: Option<&str>,
+    ) -> Result<Vec<Position>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         #[derive(serde::Deserialize)]
@@ -2504,7 +2449,7 @@ impl Exchange for Kalshi {
         }
 
         let mut path = "/portfolio/positions?count_filter=position".to_string();
-        if let Some(ticker) = market_id {
+        if let Some(ticker) = market_ticker {
             path.push_str(&format!("&ticker={ticker}"));
         }
 
@@ -2519,7 +2464,7 @@ impl Exchange for Kalshi {
 
         tracing::info!(
             exchange = "kalshi",
-            ticker = market_id.unwrap_or("all"),
+            ticker = market_ticker.unwrap_or("all"),
             count = positions.len(),
             "fetched positions"
         );
@@ -2550,7 +2495,7 @@ impl Exchange for Kalshi {
 
     async fn fetch_fills(
         &self,
-        market_id: Option<&str>,
+        market_ticker: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<Fill>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
@@ -2564,7 +2509,7 @@ impl Exchange for Kalshi {
 
         let limit = limit.unwrap_or(100).clamp(1, 200);
         let mut path = format!("/portfolio/fills?limit={limit}");
-        if let Some(ticker) = market_id {
+        if let Some(ticker) = market_ticker {
             path.push_str(&format!("&ticker={ticker}"));
         }
 
@@ -2578,7 +2523,7 @@ impl Exchange for Kalshi {
 
         tracing::info!(
             exchange = "kalshi",
-            ticker = market_id.unwrap_or("all"),
+            ticker = market_ticker.unwrap_or("all"),
             count = fills.len(),
             "fetched fills"
         );
@@ -2613,11 +2558,8 @@ impl Exchange for Kalshi {
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
             has_fetch_orderbook_history: false,
-            has_fetch_events: true,
-            has_fetch_event: true,
+            has_fetch_market_lineage: true,
             has_fetch_orderbooks_batch: true,
-            has_fetch_series: true,
-            has_fetch_series_one: true,
             has_fetch_midpoint: true,
             has_fetch_midpoints_batch: true,
             has_fetch_spread: true,
@@ -2647,14 +2589,15 @@ mod parse_event_series_tests {
             "last_updated_ts": "2026-04-26T12:34:56Z",
         });
         let e = parse_kalshi_event(&v).expect("should parse");
-        assert_eq!(e.id, "KXPRES-2028");
-        assert_eq!(e.series_id.as_deref(), Some("KXPRES"));
+        assert_eq!(e.ticker, "KXPRES-2028");
+        assert!(e.numeric_id.is_none());
+        assert_eq!(e.series_ticker.as_deref(), Some("KXPRES"));
         assert_eq!(e.title, "2028 US Presidential Election");
         assert_eq!(e.description.as_deref(), Some("Winning candidate"));
         assert_eq!(e.mutually_exclusive, Some(true));
         assert!(e.end_ts.is_some());
         assert!(e.last_updated_ts.is_some());
-        assert!(e.market_ids.is_empty());
+        assert!(e.market_tickers.is_empty());
     }
 
     #[test]
@@ -2669,7 +2612,7 @@ mod parse_event_series_tests {
             ],
         });
         let e = parse_kalshi_event(&v).expect("parse");
-        assert_eq!(e.market_ids, vec!["M-A".to_string(), "M-B".to_string()]);
+        assert_eq!(e.market_tickers, vec!["M-A".to_string(), "M-B".to_string()]);
     }
 
     #[test]
@@ -2694,7 +2637,8 @@ mod parse_event_series_tests {
             "last_updated_ts": "2026-04-27T00:00:00Z",
         });
         let s = parse_kalshi_series(&v).expect("parse");
-        assert_eq!(s.id, "KXSPX");
+        assert_eq!(s.ticker, "KXSPX");
+        assert!(s.numeric_id.is_none());
         assert_eq!(s.frequency.as_deref(), Some("daily"));
         assert_eq!(s.tags, vec!["finance".to_string(), "indices".to_string()]);
         assert_eq!(s.settlement_sources.len(), 1);

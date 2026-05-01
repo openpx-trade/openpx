@@ -58,7 +58,7 @@ enum TopCommand {
 #[derive(Subcommand)]
 enum Command {
     // -- Market Data --
-    /// Fetch a page of markets
+    /// Fetch markets — pass `--market-tickers` for an explicit lookup, otherwise pages the catalog
     FetchMarkets {
         /// Filter by status
         #[arg(long, value_enum)]
@@ -69,18 +69,21 @@ enum Command {
         /// Max markets to return
         #[arg(long)]
         limit: Option<usize>,
-        /// Filter by series (Kalshi series ticker or Polymarket series ID)
+        /// Explicit market tickers (Kalshi market ticker or Polymarket market slug). Repeat or comma-separate.
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        market_tickers: Vec<String>,
+        /// Filter by series ticker (Kalshi series ticker; Polymarket support arrives with `series_numeric_id`)
         #[arg(long)]
-        series_id: Option<String>,
-        /// Fetch all markets within an event (Kalshi event ticker or Polymarket event ID)
+        series_ticker: Option<String>,
+        /// Fetch all markets within an event (Kalshi event ticker or Polymarket event slug)
         #[arg(long)]
-        event_id: Option<String>,
+        event_ticker: Option<String>,
     },
-    /// Fetch a single market by ID
-    FetchMarket { market_id: String },
+    /// Fetch a market plus its parent event and series in one call
+    FetchMarketLineage { market_ticker: String },
     /// Fetch L2 orderbook
     FetchOrderbook {
-        market_id: String,
+        market_ticker: String,
         #[arg(long)]
         outcome: Option<String>,
         #[arg(long)]
@@ -88,7 +91,7 @@ enum Command {
     },
     /// Fetch OHLCV price history
     FetchPriceHistory {
-        market_id: String,
+        market_ticker: String,
         /// Interval: 1m, 1h, 6h, 1d, 1w, max
         #[arg(value_enum)]
         interval: IntervalArg,
@@ -105,7 +108,7 @@ enum Command {
     },
     /// Fetch recent trades
     FetchTrades {
-        market_id: String,
+        market_ticker: String,
         #[arg(long)]
         outcome: Option<String>,
         #[arg(long)]
@@ -117,7 +120,7 @@ enum Command {
     },
     /// Fetch historical orderbook snapshots
     FetchOrderbookHistory {
-        market_id: String,
+        market_ticker: String,
         #[arg(long)]
         token_id: Option<String>,
         #[arg(long)]
@@ -136,32 +139,32 @@ enum Command {
     /// Fetch open positions
     FetchPositions {
         #[arg(long)]
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     },
     /// Fetch open orders
     FetchOpenOrders {
         #[arg(long)]
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     },
     /// Fetch a single order by ID
     FetchOrder {
         order_id: String,
         #[arg(long)]
-        market_id: Option<String>,
+        market_ticker: Option<String>,
     },
     /// Fetch fill history
     FetchFills {
         #[arg(long)]
-        market_id: Option<String>,
+        market_ticker: Option<String>,
         #[arg(long)]
         limit: Option<usize>,
     },
 
     // -- WebSocket --
     /// Stream live orderbook updates (Ctrl+C to stop)
-    WsOrderbook { market_id: String },
+    WsOrderbook { market_ticker: String },
     /// Stream live trade/fill activity (Ctrl+C to stop)
-    WsActivity { market_id: String },
+    WsActivity { market_ticker: String },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -292,11 +295,11 @@ async fn run_exchange(id: &str, command: Command) {
     let config = make_exchange_config(id);
 
     match command {
-        Command::WsOrderbook { market_id } => {
-            ws_orderbook(id, config, &market_id).await;
+        Command::WsOrderbook { market_ticker } => {
+            ws_orderbook(id, config, &market_ticker).await;
         }
-        Command::WsActivity { market_id } => {
-            ws_activity(id, config, &market_id).await;
+        Command::WsActivity { market_ticker } => {
+            ws_activity(id, config, &market_ticker).await;
         }
         cmd => {
             let exchange = ExchangeInner::new(id, config).unwrap_or_else(|e| {
@@ -315,15 +318,17 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 status,
                 cursor,
                 limit,
-                series_id,
-                event_id,
+                market_tickers,
+                series_ticker,
+                event_ticker,
             } => {
                 let params = FetchMarketsParams {
                     status: status.map(Into::into),
                     cursor,
                     limit,
-                    series_id,
-                    event_id,
+                    market_tickers,
+                    series_ticker,
+                    event_ticker,
                 };
                 let (markets, next_cursor) = exchange.fetch_markets(&params).await?;
                 print_json(&serde_json::json!({
@@ -332,17 +337,17 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                     "count": markets.len(),
                 }));
             }
-            Command::FetchMarket { market_id } => {
-                let market = exchange.fetch_market(&market_id).await?;
-                print_json(&market);
+            Command::FetchMarketLineage { market_ticker } => {
+                let lineage = exchange.fetch_market_lineage(&market_ticker).await?;
+                print_json(&lineage);
             }
             Command::FetchOrderbook {
-                market_id,
+                market_ticker,
                 outcome,
                 token_id,
             } => {
                 let req = OrderbookRequest {
-                    market_id,
+                    market_ticker,
                     outcome,
                     token_id,
                 };
@@ -350,7 +355,7 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 print_json(&ob);
             }
             Command::FetchPriceHistory {
-                market_id,
+                market_ticker,
                 interval,
                 outcome,
                 token_id,
@@ -358,7 +363,7 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 end_ts,
             } => {
                 let req = PriceHistoryRequest {
-                    market_id,
+                    market_ticker,
                     interval: interval.into(),
                     outcome,
                     token_id,
@@ -370,14 +375,14 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 print_json(&candles);
             }
             Command::FetchTrades {
-                market_id,
+                market_ticker,
                 outcome,
                 token_id,
                 limit,
                 cursor,
             } => {
                 let req = TradesRequest {
-                    market_id,
+                    market_ticker,
                     market_ref: None,
                     outcome,
                     token_id,
@@ -394,7 +399,7 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 }));
             }
             Command::FetchOrderbookHistory {
-                market_id,
+                market_ticker,
                 token_id,
                 start_ts,
                 end_ts,
@@ -402,7 +407,7 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 cursor,
             } => {
                 let req = OrderbookHistoryRequest {
-                    market_id,
+                    market_ticker,
                     token_id,
                     start_ts,
                     end_ts,
@@ -420,28 +425,33 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let bal = exchange.fetch_balance().await?;
                 print_json(&bal);
             }
-            Command::FetchPositions { market_id } => {
-                let positions = exchange.fetch_positions(market_id.as_deref()).await?;
+            Command::FetchPositions { market_ticker } => {
+                let positions = exchange.fetch_positions(market_ticker.as_deref()).await?;
                 print_json(&positions);
             }
-            Command::FetchOpenOrders { market_id } => {
-                let params = market_id.map(|id| FetchOrdersParams {
-                    market_id: Some(id),
+            Command::FetchOpenOrders { market_ticker } => {
+                let params = market_ticker.map(|id| FetchOrdersParams {
+                    market_ticker: Some(id),
                 });
                 let orders = exchange.fetch_open_orders(params).await?;
                 print_json(&orders);
             }
             Command::FetchOrder {
                 order_id,
-                market_id,
+                market_ticker,
             } => {
                 let order = exchange
-                    .fetch_order(&order_id, market_id.as_deref())
+                    .fetch_order(&order_id, market_ticker.as_deref())
                     .await?;
                 print_json(&order);
             }
-            Command::FetchFills { market_id, limit } => {
-                let fills = exchange.fetch_fills(market_id.as_deref(), limit).await?;
+            Command::FetchFills {
+                market_ticker,
+                limit,
+            } => {
+                let fills = exchange
+                    .fetch_fills(market_ticker.as_deref(), limit)
+                    .await?;
                 print_json(&fills);
             }
             // WebSocket commands handled in run_exchange
@@ -508,24 +518,24 @@ async fn ws_crypto(source: CryptoPriceSource, symbols: Vec<String>) {
     }
 }
 
-async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
+async fn ws_orderbook(id: &str, config: serde_json::Value, market_ticker: &str) {
     let mut ws = WebSocketInner::new(id, config).unwrap_or_else(|e| {
         eprintln!("error: failed to create {id} websocket: {e}");
         std::process::exit(1);
     });
     let updates = ws.updates().expect("updates() taken twice");
-    let target = market_id.to_string();
+    let target = market_ticker.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
         std::process::exit(1);
     });
-    ws.subscribe(market_id).await.unwrap_or_else(|e| {
+    ws.subscribe(market_ticker).await.unwrap_or_else(|e| {
         eprintln!("error: failed to subscribe to market: {e}");
         std::process::exit(1);
     });
-    eprintln!("streaming orderbook for {market_id} (Ctrl+C to stop)...");
+    eprintln!("streaming orderbook for {market_ticker} (Ctrl+C to stop)...");
     while let Some(update) = updates.next().await {
-        // Filter to snapshots/deltas for the requested market_id.
+        // Filter to snapshots/deltas for the requested market_ticker.
         match &update {
             px_core::WsUpdate::Snapshot { market_id: m, .. }
             | px_core::WsUpdate::Delta { market_id: m, .. }
@@ -538,7 +548,7 @@ async fn ws_orderbook(id: &str, config: serde_json::Value, market_id: &str) {
     }
 }
 
-async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
+async fn ws_activity(id: &str, config: serde_json::Value, market_ticker: &str) {
     let mut ws = WebSocketInner::new(id, config.clone()).unwrap_or_else(|e| {
         eprintln!("error: failed to create {id} websocket: {e}");
         std::process::exit(1);
@@ -547,16 +557,22 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
     // Auto-register outcome tokens so activity events include "Yes"/"No".
     // Best-effort: if the REST fetch fails, we continue without outcomes.
     if let Ok(exchange) = ExchangeInner::new(id, config) {
-        match exchange.fetch_market(market_id).await {
-            Ok(market) => {
-                let tokens = market.get_outcome_tokens();
-                let yes = tokens
-                    .iter()
-                    .find(|t| t.outcome.eq_ignore_ascii_case("yes"));
-                let no = tokens.iter().find(|t| t.outcome.eq_ignore_ascii_case("no"));
+        let params = FetchMarketsParams {
+            market_tickers: vec![market_ticker.to_string()],
+            status: Some(px_core::MarketStatusFilter::All),
+            ..Default::default()
+        };
+        match exchange.fetch_markets(&params).await {
+            Ok((mut markets, _)) if !markets.is_empty() => {
+                let market = markets.remove(0);
+                let yes = market.token_id_yes();
+                let no = market.token_id_no();
                 if let (Some(y), Some(n)) = (yes, no) {
-                    ws.register_outcomes(&y.token_id, &n.token_id).await;
+                    ws.register_outcomes(y, n).await;
                 }
+            }
+            Ok(_) => {
+                eprintln!("warning: market not found for outcomes: {market_ticker}");
             }
             Err(e) => {
                 eprintln!("warning: could not fetch market metadata for outcomes: {e}");
@@ -565,16 +581,16 @@ async fn ws_activity(id: &str, config: serde_json::Value, market_id: &str) {
     }
 
     let updates = ws.updates().expect("updates() taken twice");
-    let target = market_id.to_string();
+    let target = market_ticker.to_string();
     ws.connect().await.unwrap_or_else(|e| {
         eprintln!("error: websocket connect failed: {e}");
         std::process::exit(1);
     });
-    ws.subscribe(market_id).await.unwrap_or_else(|e| {
+    ws.subscribe(market_ticker).await.unwrap_or_else(|e| {
         eprintln!("error: failed to subscribe to market: {e}");
         std::process::exit(1);
     });
-    eprintln!("streaming activity for {market_id} (Ctrl+C to stop)...");
+    eprintln!("streaming activity for {market_ticker} (Ctrl+C to stop)...");
     while let Some(update) = updates.next().await {
         match &update {
             px_core::WsUpdate::Trade { trade, .. } if trade.market_id == target => {

@@ -81,16 +81,22 @@ async fn test_fetch_markets_parses_response() {
     assert!(cursor.is_none());
 
     let first = &markets[0];
-    assert_eq!(first.id, "INXD-24DEC31-B5000");
+    assert_eq!(first.ticker, "INXD-24DEC31-B5000");
     assert_eq!(
         first.title,
         "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
     );
-    assert_eq!(first.outcomes, vec!["Yes", "No"]);
-    assert_eq!(*first.outcome_prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*first.outcome_prices.get("No").unwrap(), 0.35);
+    assert_eq!(
+        first
+            .outcomes
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Yes", "No"]
+    );
+    assert_eq!(first.outcomes[0].price, Some(0.65));
+    assert_eq!(first.outcomes[1].price, Some(0.35));
     assert_eq!(first.volume, 150000.0);
-    assert_eq!(first.open_interest, Some(25000.0));
 }
 
 #[tokio::test]
@@ -112,13 +118,13 @@ async fn test_fetch_market_by_ticker() {
     let market = exchange.fetch_market("INXD-24DEC31-B5000").await.unwrap();
 
     // #then
-    assert_eq!(market.id, "INXD-24DEC31-B5000");
+    assert_eq!(market.ticker, "INXD-24DEC31-B5000");
     assert_eq!(
         market.title,
         "S&P 500 above 5000 on Dec 31 | S&P 500 at or below 5000 on Dec 31"
     );
-    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.65);
-    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.35);
+    assert_eq!(market.outcomes[0].price, Some(0.65));
+    assert_eq!(market.outcomes[1].price, Some(0.35));
 }
 
 #[tokio::test]
@@ -251,7 +257,7 @@ async fn fetch_trades_no_outcome_uses_real_no_price() {
 
     // Query with outcome=No
     let req = TradesRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         market_ref: None,
         outcome: Some("No".into()),
         token_id: None,
@@ -331,7 +337,7 @@ async fn fetch_trades_yes_outcome_uses_yes_price() {
 
     // Query with outcome=Yes (default)
     let req = TradesRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         market_ref: None,
         outcome: Some("Yes".into()),
         token_id: None,
@@ -409,7 +415,7 @@ async fn test_fetch_price_history_parses_candlesticks() {
 
     // #when
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -493,7 +499,7 @@ async fn test_fetch_price_history_skips_null_ohlc() {
 
     // #when
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -548,7 +554,7 @@ async fn test_fetch_markets_with_pagination_cursor() {
 
     // #then
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "EVT-1-MKT1");
+    assert_eq!(markets[0].ticker, "EVT-1-MKT1");
     // Cursor is a compound JSON encoding live + historical pagination;
     // Active filter only paginates live (`r`).
     let cursor_str = cursor.unwrap();
@@ -595,7 +601,7 @@ async fn test_fetch_markets_with_cursor_passes_through() {
 
     // #then
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "EVT-2-MKT1");
+    assert_eq!(markets[0].ticker, "EVT-2-MKT1");
     assert!(cursor.is_none(), "last page should have no cursor");
 }
 
@@ -777,7 +783,7 @@ async fn test_fetch_orderbook_requires_auth() {
 
     // #when
     let req = OrderbookRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
     };
@@ -995,7 +1001,7 @@ async fn test_fetch_markets_filters_by_status() {
 
     // #then - only the "active" market should be returned
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-OPEN");
+    assert_eq!(markets[0].ticker, "MIX-OPEN");
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,7 +1016,7 @@ async fn test_fetch_price_history_unsupported_interval() {
 
     // #when - SixHours is not supported by Kalshi
     let req = PriceHistoryRequest {
-        market_id: "TEST-TICKER".into(),
+        market_ticker: "TEST-TICKER".into(),
         outcome: None,
         token_id: None,
         condition_id: None,
@@ -1103,12 +1109,19 @@ async fn test_fetch_market_minimal_response() {
     let market = exchange.fetch_market("MINIMAL-MKT").await.unwrap();
 
     // #then
-    assert_eq!(market.id, "MINIMAL-MKT");
+    assert_eq!(market.ticker, "MINIMAL-MKT");
     assert_eq!(market.title, "Yes | No");
-    assert_eq!(*market.outcome_prices.get("Yes").unwrap(), 0.50);
-    assert_eq!(*market.outcome_prices.get("No").unwrap(), 0.50);
+    assert_eq!(market.outcomes[0].price, Some(0.50));
+    assert_eq!(market.outcomes[1].price, Some(0.50));
     assert_eq!(market.volume, 0.0); // defaults to 0
-    assert_eq!(market.outcomes, vec!["Yes", "No"]);
+    assert_eq!(
+        market
+            .outcomes
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Yes", "No"]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1148,8 +1161,8 @@ async fn test_fetch_market_dollar_string_fields_preferred() {
     let market = exchange.fetch_market("DOLLAR-MKT").await.unwrap();
 
     // #then - dollar-string fields should be preferred
-    assert!((market.outcome_prices["Yes"] - 0.72).abs() < 1e-8);
-    assert!((market.outcome_prices["No"] - 0.28).abs() < 1e-8);
+    assert!((market.outcomes[0].price.unwrap() - 0.72).abs() < 1e-8);
+    assert!((market.outcomes[1].price.unwrap() - 0.28).abs() < 1e-8);
     assert_eq!(market.best_ask, Some(0.72));
     assert_eq!(market.best_bid, Some(0.68));
     assert_eq!(market.last_trade_price, Some(0.70));
@@ -1180,7 +1193,7 @@ async fn test_fetch_trades_empty_response() {
 
     // #when
     let req = TradesRequest {
-        market_id: "EMPTY-MKT".into(),
+        market_ticker: "EMPTY-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1221,7 +1234,7 @@ async fn test_fetch_trades_returns_cursor() {
 
     // #when
     let req = TradesRequest {
-        market_id: "TEST-MKT".into(),
+        market_ticker: "TEST-MKT".into(),
         ..Default::default()
     };
     let (trades, cursor) = exchange.fetch_trades(req).await.unwrap();
@@ -1272,7 +1285,7 @@ async fn test_fetch_trades_filters_zero_size() {
 
     // #when
     let req = TradesRequest {
-        market_id: "TEST-MKT".into(),
+        market_ticker: "TEST-MKT".into(),
         outcome: Some("Yes".into()),
         ..Default::default()
     };
@@ -1390,7 +1403,7 @@ async fn test_fetch_markets_status_active_filters_correctly() {
 
     // #then — only the active market
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-ACTIVE");
+    assert_eq!(markets[0].ticker, "MIX-ACTIVE");
     assert_eq!(markets[0].status, MarketStatus::Active);
 }
 
@@ -1423,7 +1436,7 @@ async fn test_fetch_markets_status_resolved_filters_correctly() {
 
     // #then — only the settled/determined market
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].ticker, "MIX-SETTLED");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
 }
 
@@ -1455,7 +1468,7 @@ async fn test_fetch_markets_with_series_id() {
 
     // #when
     let params = FetchMarketsParams {
-        series_id: Some("INXD".to_string()),
+        series_ticker: Some("INXD".to_string()),
         ..Default::default()
     };
     let (markets, _) = exchange.fetch_markets(&params).await.unwrap();
@@ -1489,7 +1502,7 @@ async fn test_fetch_markets_with_series_id_and_status() {
 
     // #when
     let params = FetchMarketsParams {
-        series_id: Some("KXBTC".to_string()),
+        series_ticker: Some("KXBTC".to_string()),
         status: Some(MarketStatusFilter::Resolved),
         ..Default::default()
     };
@@ -1497,7 +1510,7 @@ async fn test_fetch_markets_with_series_id_and_status() {
 
     // #then — both series_id and status passed; client-side filter keeps only resolved
     assert_eq!(markets.len(), 1);
-    assert_eq!(markets[0].id, "MIX-SETTLED");
+    assert_eq!(markets[0].ticker, "MIX-SETTLED");
     assert_eq!(markets[0].status, MarketStatus::Resolved);
 }
 
@@ -1556,7 +1569,7 @@ async fn test_fetch_markets_with_event_id() {
 
     // #when — default status=Active filters out the determined market
     let params = FetchMarketsParams {
-        event_id: Some("KXBTC-25MAR14".to_string()),
+        event_ticker: Some("KXBTC-25MAR14".to_string()),
         ..Default::default()
     };
     let (markets, cursor) = exchange.fetch_markets(&params).await.unwrap();
@@ -1567,8 +1580,8 @@ async fn test_fetch_markets_with_event_id() {
         cursor.is_none(),
         "event_id fetch should not return a cursor"
     );
-    assert_eq!(markets[0].id, "KXBTC-25MAR14-B85000");
-    assert_eq!(markets[1].id, "KXBTC-25MAR14-B90000");
+    assert_eq!(markets[0].ticker, "KXBTC-25MAR14-B85000");
+    assert_eq!(markets[1].ticker, "KXBTC-25MAR14-B90000");
 }
 
 #[tokio::test]
@@ -1609,7 +1622,7 @@ async fn test_fetch_markets_with_event_id_status_all() {
 
     // #when — status=All returns everything
     let params = FetchMarketsParams {
-        event_id: Some("KXBTC-25MAR14".to_string()),
+        event_ticker: Some("KXBTC-25MAR14".to_string()),
         status: Some(MarketStatusFilter::All),
         ..Default::default()
     };
@@ -1618,4 +1631,131 @@ async fn test_fetch_markets_with_event_id_status_all() {
     // #then
     assert_eq!(markets.len(), 2);
     assert!(cursor.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// fetch_market_lineage: market → event → series, sequential
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_market_lineage_full_chain() {
+    let mock_server = MockServer::start().await;
+
+    // 1) Market lookup
+    Mock::given(method("GET"))
+        .and(path("/markets/KXPRES-2028-DJT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "market": {
+                "ticker": "KXPRES-2028-DJT",
+                "event_ticker": "KXPRES-2028",
+                "title": "Donald Trump",
+                "yes_sub_title": "Yes",
+                "no_sub_title": "No",
+                "status": "active",
+                "yes_ask": 42,
+                "yes_bid": 41,
+                "last_price": 42,
+                "volume": 100000,
+                "market_type": "binary"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // 2) Event lookup
+    Mock::given(method("GET"))
+        .and(path("/events/KXPRES-2028"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "event": {
+                "event_ticker": "KXPRES-2028",
+                "title": "2028 US Presidential Election",
+                "sub_title": "Winner",
+                "series_ticker": "KXPRES",
+                "mutually_exclusive": true,
+                "markets": [
+                    { "ticker": "KXPRES-2028-DJT" },
+                    { "ticker": "KXPRES-2028-KH" }
+                ]
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // 3) Series lookup
+    Mock::given(method("GET"))
+        .and(path("/series/KXPRES"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "series": {
+                "ticker": "KXPRES",
+                "title": "US Presidential Elections",
+                "category": "Politics",
+                "frequency": "quadrennial",
+                "tags": ["politics", "elections"],
+                "settlement_sources": [{ "name": "AP", "url": "https://apnews.com" }],
+                "fee_type": "quadratic"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    let lineage = exchange
+        .fetch_market_lineage("KXPRES-2028-DJT")
+        .await
+        .unwrap();
+
+    assert_eq!(lineage.market.ticker, "KXPRES-2028-DJT");
+    let event = lineage.event.as_ref().expect("event present");
+    assert_eq!(event.ticker, "KXPRES-2028");
+    assert_eq!(event.series_ticker.as_deref(), Some("KXPRES"));
+    assert!(event.numeric_id.is_none());
+    assert_eq!(event.market_tickers.len(), 2);
+    let series = lineage.series.as_ref().expect("series present");
+    assert_eq!(series.ticker, "KXPRES");
+    assert!(series.numeric_id.is_none());
+    assert_eq!(series.frequency.as_deref(), Some("quadrennial"));
+}
+
+#[tokio::test]
+async fn test_fetch_market_lineage_returns_none_event_when_lookup_fails() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/markets/STANDALONE-MKT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "market": {
+                "ticker": "STANDALONE-MKT",
+                "event_ticker": "MISSING-EVENT",
+                "title": "Standalone",
+                "yes_sub_title": "Yes",
+                "no_sub_title": "No",
+                "status": "active",
+                "yes_ask": 50,
+                "market_type": "binary"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/events/MISSING-EVENT"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock_server)
+        .await;
+
+    let config = KalshiConfig::new()
+        .with_api_url(mock_server.uri())
+        .with_verbose(false);
+    let exchange = Kalshi::new(config).unwrap();
+
+    let lineage = exchange
+        .fetch_market_lineage("STANDALONE-MKT")
+        .await
+        .unwrap();
+
+    assert_eq!(lineage.market.ticker, "STANDALONE-MKT");
+    assert!(lineage.event.is_none());
+    assert!(lineage.series.is_none());
 }

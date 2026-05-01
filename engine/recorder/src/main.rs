@@ -36,7 +36,7 @@ struct Args {
 struct ObRow {
     timestamp_us: i64,
     exchange: String,
-    market_id: String,
+    market_ticker: String,
     asset_id: String,
     update_type: String, // "snapshot" or "delta"
     side: String,        // "bid" or "ask"
@@ -79,7 +79,7 @@ fn parquet_schema() -> Schema {
             false,
         ),
         Field::new("exchange", DataType::Utf8, false),
-        Field::new("market_id", DataType::Utf8, false),
+        Field::new("market_ticker", DataType::Utf8, false),
         Field::new("asset_id", DataType::Utf8, false),
         Field::new("update_type", DataType::Utf8, false),
         Field::new("side", DataType::Utf8, false),
@@ -93,7 +93,7 @@ fn parquet_schema() -> Schema {
 fn rows_to_batch(rows: &[ObRow], schema: &Arc<Schema>) -> RecordBatch {
     let timestamps: Vec<i64> = rows.iter().map(|r| r.timestamp_us).collect();
     let exchanges: Vec<&str> = rows.iter().map(|r| r.exchange.as_str()).collect();
-    let market_ids: Vec<&str> = rows.iter().map(|r| r.market_id.as_str()).collect();
+    let market_tickers: Vec<&str> = rows.iter().map(|r| r.market_ticker.as_str()).collect();
     let asset_ids: Vec<&str> = rows.iter().map(|r| r.asset_id.as_str()).collect();
     let update_types: Vec<&str> = rows.iter().map(|r| r.update_type.as_str()).collect();
     let sides: Vec<&str> = rows.iter().map(|r| r.side.as_str()).collect();
@@ -111,7 +111,7 @@ fn rows_to_batch(rows: &[ObRow], schema: &Arc<Schema>) -> RecordBatch {
     for s in &exchanges {
         exchange_builder.append_value(s);
     }
-    for s in &market_ids {
+    for s in &market_tickers {
         market_id_builder.append_value(s);
     }
     for s in &asset_ids {
@@ -152,19 +152,14 @@ async fn fetch_active_markets(exchange: &ExchangeInner) -> Vec<(String, Vec<Stri
             status: Some(MarketStatusFilter::Active),
             cursor: cursor.clone(),
             limit: Some(MARKET_FETCH_LIMIT),
-            series_id: None,
-            event_id: None,
+            market_tickers: Vec::new(),
+            series_ticker: None,
+            event_ticker: None,
         };
         match exchange.fetch_markets(&params).await {
             Ok((markets, next_cursor)) => {
                 for m in &markets {
-                    // Collect token IDs for markets that need them (polymarket)
-                    let token_ids: Vec<String> = m
-                        .outcome_tokens
-                        .iter()
-                        .map(|t| t.token_id.clone())
-                        .collect();
-                    all.push((m.id.clone(), token_ids));
+                    all.push((m.ticker.clone(), m.token_ids()));
                 }
                 eprintln!("  fetched {} markets (total: {})", markets.len(), all.len());
                 if next_cursor.is_none() || markets.is_empty() {
@@ -189,7 +184,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
         let now = chrono::Utc::now().timestamp_micros();
         match update {
             WsUpdate::Snapshot {
-                market_id,
+                market_id: market_ticker,
                 asset_id,
                 book,
                 exchange_ts,
@@ -202,7 +197,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
-                        market_id: market_id.clone(),
+                        market_ticker: market_ticker.clone(),
                         asset_id: asset_id.clone(),
                         update_type: "snapshot".into(),
                         side: "bid".into(),
@@ -216,7 +211,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
-                        market_id: market_id.clone(),
+                        market_ticker: market_ticker.clone(),
                         asset_id: asset_id.clone(),
                         update_type: "snapshot".into(),
                         side: "ask".into(),
@@ -228,7 +223,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                 }
             }
             WsUpdate::Delta {
-                market_id,
+                market_id: market_ticker,
                 asset_id,
                 changes,
                 exchange_ts,
@@ -241,7 +236,7 @@ async fn record_from_stream(exchange_id: &str, stream: UpdateStream, rows: Arc<M
                     buf.push(ObRow {
                         timestamp_us: ts,
                         exchange: exchange_id.to_string(),
-                        market_id: market_id.clone(),
+                        market_ticker: market_ticker.clone(),
                         asset_id: asset_id.clone(),
                         update_type: "delta".into(),
                         side: match change.side {
@@ -318,10 +313,10 @@ async fn main() {
     );
 
     let mut subscribed = 0usize;
-    for (market_id, _token_ids) in &markets {
-        match ws.subscribe(market_id).await {
+    for (market_ticker, _token_ids) in &markets {
+        match ws.subscribe(market_ticker).await {
             Ok(()) => subscribed += 1,
-            Err(e) => eprintln!("[{exchange_id}] subscribe error for {market_id}: {e}"),
+            Err(e) => eprintln!("[{exchange_id}] subscribe error for {market_ticker}: {e}"),
         }
     }
     eprintln!("[{exchange_id}] subscribed to {subscribed} markets");

@@ -93,6 +93,12 @@ def render_source_cell(
         if isinstance(synth, str):
             return f"_computed_ — {_format_synthetic(synth)}"
         return "_computed_"
+    if "ref_unspecced" in src:
+        # Direct read from a live-response field the OpenAPI spec doesn't
+        # document on this schema. Surface the field name and call out the
+        # gap so consumers know not to look for it via the spec.
+        field = str(src["ref_unspecced"])
+        return f"{_code_span(field)} — _spec gap_"
     ref = src.get("ref")
     if not ref:
         return "_invalid_"
@@ -118,12 +124,15 @@ def render_transform(src: dict[str, Any] | None) -> str:
 
 def _safe_prose(s: str) -> str:
     """Escape MDX-hazardous characters in free-text prose. Braces would otherwise
-    open JSX expressions; pipes break markdown tables; newlines collapse rows."""
+    open JSX expressions; angle brackets would open JSX tags (e.g. `Vec<X>` is
+    parsed as an element); pipes break markdown tables; newlines collapse rows."""
     return (
         s.replace("|", "\\|")
         .replace("\n", " ")
         .replace("{", "\\{")
         .replace("}", "\\}")
+        .replace("<", "\\<")
+        .replace(">", "\\>")
     )
 
 
@@ -165,7 +174,7 @@ def render_table(mapping: dict[str, Any], unified: dict[str, Any]) -> str:
                 counts[ex]["omitted"] += 1
             elif "synthetic" in s:
                 counts[ex]["synthetic"] += 1
-            elif s.get("ref"):
+            elif s.get("ref") or "ref_unspecced" in s:
                 counts[ex]["sourced"] += 1
 
     lines: list[str] = []

@@ -44,19 +44,19 @@ impl NativeWebSocket {
             .map_err(|e| to_py_err(e.to_string()))
     }
 
-    fn subscribe(&self, py: Python<'_>, market_id: &str) -> PyResult<()> {
+    fn subscribe(&self, py: Python<'_>, market_ticker: &str) -> PyResult<()> {
         let ws = self.ws.clone();
-        let market_id = market_id.to_string();
+        let market_ticker = market_ticker.to_string();
         let rt = get_runtime();
-        py.detach(|| rt.block_on(async { ws.lock().await.subscribe(&market_id).await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.subscribe(&market_ticker).await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 
-    fn unsubscribe(&self, py: Python<'_>, market_id: &str) -> PyResult<()> {
+    fn unsubscribe(&self, py: Python<'_>, market_ticker: &str) -> PyResult<()> {
         let ws = self.ws.clone();
-        let market_id = market_id.to_string();
+        let market_ticker = market_ticker.to_string();
         let rt = get_runtime();
-        py.detach(|| rt.block_on(async { ws.lock().await.unsubscribe(&market_id).await }))
+        py.detach(|| rt.block_on(async { ws.lock().await.unsubscribe(&market_ticker).await }))
             .map_err(|e| to_py_err(e.to_string()))
     }
 

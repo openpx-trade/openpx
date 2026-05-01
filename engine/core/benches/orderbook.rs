@@ -13,7 +13,7 @@ fn make_orderbook(depth: usize) -> Orderbook {
         .map(|i| PriceLevel::new(0.51 + (i as f64 * 0.01), 100.0 + i as f64))
         .collect();
     Orderbook {
-        market_id: "bench-market".into(),
+        market_ticker: "bench-market".into(),
         asset_id: "bench-asset".into(),
         bids,
         asks,

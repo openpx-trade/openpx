@@ -79,7 +79,7 @@ pub enum OrderStatus {
 // OpenPX does not charge fees; only the underlying exchange does.
 pub struct Order {
     pub id: String,
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: String,
     pub side: OrderSide,
     pub price: f64,
@@ -121,7 +121,7 @@ impl Order {
 pub struct Fill {
     pub fill_id: String,
     pub order_id: String,
-    pub market_id: String,
+    pub market_ticker: String,
     pub outcome: String,
     pub side: OrderSide,
     pub price: f64,
@@ -140,7 +140,7 @@ pub struct Fill {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct UserTrade {
     pub id: String,
-    pub market_id: String,
+    pub market_ticker: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

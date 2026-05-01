@@ -1,0 +1,39 @@
+---
+title: "Series mapping"
+description: "How each upstream exchange schema maps to OpenPX Series."
+---
+
+_A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release, a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series wraps multiple Events with shared metadata._
+
+## Coverage
+
+| Exchange | Sourced | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 9 | 0 | 1 |
+| polymarket | 7 | 0 | 3 |
+
+**Sourced** — value copied or transformed from a documented upstream field.  
+**Synthetic** — computed by OpenPX, not present upstream.  
+**Omitted** — upstream does not expose this concept.  
+
+## Field crosswalk
+
+| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
+|---|---|---|---|---|---|
+| `ticker` | string | `Series.ticker` (string) | `Series.ticker` (string) | direct | **kalshi:** Kalshi's primary series identifier (e.g. `KXPRES`, `KXBTC`). **polymarket:** Polymarket Series exposes both `ticker` and `slug` (both nullable). The parser prefers `ticker` and falls back to `slug` when ticker is null/empty. Series rows with neither field set are skipped. |
+| `numeric_id` | string? | _not exposed_ | `Series.id` (string) | direct | **kalshi:** Kalshi has no separate numeric series surface. |
+| `title` | string | `Series.title` (string) | `Series.title` (string) | direct |  |
+| `category` | string? | `Series.category` (string) | `category` — _spec gap_ | direct | **polymarket:** Spec gap: the gamma OpenAPI Series schema doesn't declare a `category` field, but live `/series` responses include it for most series. The parser reads it directly. Re-check on each daily upstream refresh — when Polymarket adds it to the spec, promote to a regular `ref:`. |
+| `frequency` | string? | `Series.frequency` (string) | `Series.recurrence` (string) | direct | **kalshi:** Free-form string from Kalshi (e.g. "weekly", "daily", "one-off"). **polymarket:** Polymarket calls the recurrence cadence `recurrence` rather than `frequency`. The parser also accepts a top-level `frequency` field if upstream ever surfaces one, but `recurrence` is canonical today. |
+| `tags` | array | `Series.tags` (array) | _not exposed_ | passthrough_array | **polymarket:** Polymarket's Series schema has no `tags` field. Tag relationships live on Events and Markets via separate /events/\{id\}/tags and /markets/\{id\}/tags endpoints. Left empty on the unified shape. |
+| `settlement_sources` | array | `Series.settlement_sources` (array) | _not exposed_ | passthrough_array | **kalshi:** Each entry is `\{ name, url \}` describing an official settlement source — the rulebook authority Kalshi uses to determine market resolution. **polymarket:** Polymarket resolves via UMA optimistic oracle; structured per-series settlement source feeds are not exposed in the gamma API. Left as an empty array on the unified shape. |
+| `fee_type` | string? | `Series.fee_type` (string) | _not exposed_ | direct | **kalshi:** Enum: `quadratic`, `quadratic_with_maker_fees`, `flat`. See https://kalshi.com/docs/kalshi-fee-schedule.pdf for the formulas. **polymarket:** Polymarket fees are configured at the CLOB-exchange level, not per-series. Left None on the unified shape. |
+| `volume` | number? (double) | `Series.volume_fp` (FixedPointCount) | `Series.volume` (number) | fixed_point_count / direct | **kalshi:** Populated only when the caller passes `include_volume=true` to /series/\{series_ticker\}. Total volume across all events in the series, parsed from Kalshi's fixed-point string format. **polymarket:** Polymarket exposes both `volume` (cumulative) and `volume24hr`; the unified `Series.volume` carries the cumulative figure. |
+| `last_updated_ts` | string? (date-time) | `Series.last_updated_ts` (string (date-time)) | `Series.updatedAt` (string (date-time)) | parse_datetime |  |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket-gamma.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-gamma.openapi.yaml)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.
