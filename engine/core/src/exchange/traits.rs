@@ -43,10 +43,7 @@ pub trait Exchange: Send + Sync {
     /// Fetch the caller's currently open orders, optionally filtered by
     /// `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
     /// convention as `fetch_orderbook` and `create_order`).
-    async fn fetch_open_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError>;
+    async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError>;
 
     /// Fetch the caller's open positions, optionally filtered by market.
     async fn fetch_positions(
@@ -165,10 +162,7 @@ pub trait Exchange: Send + Sync {
 
     /// Cancel all of the caller's open orders, optionally scoped to one
     /// `asset_id` (Kalshi market ticker | Polymarket CTF token id).
-    async fn cancel_all_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let _ = asset_id;
         Err(OpenPxError::Exchange(
             crate::error::ExchangeError::NotSupported("cancel_all_orders".into()),

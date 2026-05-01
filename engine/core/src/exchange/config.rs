@@ -133,7 +133,6 @@ pub struct FetchMarketsParams {
     pub event_ticker: Option<String>,
 }
 
-
 // ============================================================================
 // Customer Credentials (for per-customer exchange authentication)
 //

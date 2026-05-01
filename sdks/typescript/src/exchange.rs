@@ -181,10 +181,7 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn fetch_open_orders(
-        &self,
-        asset_id: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn fetch_open_orders(&self, asset_id: Option<String>) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt
@@ -220,6 +217,28 @@ impl Exchange {
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
         serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn refresh_balance(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        rt.spawn(async move { inner.refresh_balance().await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn fetch_server_time(&self) -> Result<String> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let ts = rt
+            .spawn(async move { inner.fetch_server_time().await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        Ok(ts.to_rfc3339())
     }
 
     #[napi]

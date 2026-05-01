@@ -159,6 +159,22 @@ class Exchange:
     def fetch_balance(self) -> dict[str, float]:
         return self._native.fetch_balance()
 
+    def refresh_balance(self) -> None:
+        """Refresh cached balance/allowance state from the exchange.
+
+        Polymarket: pulls latest collateral allowance via the CLOB
+        ``GET /balance-allowance/update``. Kalshi: no-op (no allowance model).
+        """
+        self._native.refresh_balance()
+
+    def fetch_server_time(self) -> str:
+        """Return the exchange's current wall-clock time as RFC3339 UTC.
+
+        Polymarket: dedicated ``GET /time`` (Unix seconds). Kalshi: HTTP
+        ``Date`` header from a public ``GET /exchange/status`` response.
+        """
+        return self._native.fetch_server_time()
+
     def fetch_orderbook(
         self,
         market_ticker: str,

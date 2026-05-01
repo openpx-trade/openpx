@@ -114,6 +114,8 @@ enum Command {
         #[arg(long)]
         limit: Option<usize>,
     },
+    /// Fetch the exchange's current wall-clock time (UTC)
+    FetchServerTime,
 
     // -- WebSocket --
     /// Stream live orderbook updates (Ctrl+C to stop)
@@ -316,6 +318,13 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                     .fetch_fills(market_ticker.as_deref(), limit)
                     .await?;
                 print_json(&fills);
+            }
+            Command::FetchServerTime => {
+                let ts = exchange.fetch_server_time().await?;
+                print_json(&serde_json::json!({
+                    "iso": ts.to_rfc3339(),
+                    "unix_seconds": ts.timestamp(),
+                }));
             }
             // WebSocket commands handled in run_exchange
             Command::WsOrderbook { .. } | Command::WsActivity { .. } => unreachable!(),

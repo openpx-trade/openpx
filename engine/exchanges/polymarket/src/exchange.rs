@@ -953,7 +953,10 @@ impl Polymarket {
             .filter_map(|item| {
                 let obj = item.as_object()?;
 
-                let market_ticker = obj.get("conditionId").and_then(|v| v.as_str())?.to_string();
+                // Use the user-facing market slug (matches unified `Market.ticker`)
+                // and not the on-chain condition_id. Slug is present on every row;
+                // skip if missing rather than leaking the hash.
+                let market_ticker = obj.get("slug").and_then(|v| v.as_str())?.to_string();
 
                 let outcome = obj
                     .get("outcome")
@@ -1888,10 +1891,7 @@ impl Exchange for Polymarket {
         Ok(self.parse_sdk_order(&order_resp))
     }
 
-    async fn fetch_open_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         let sdk_state = self
             .ensure_sdk_client()
             .await
@@ -2162,6 +2162,31 @@ impl Exchange for Polymarket {
         Ok(())
     }
 
+    async fn fetch_server_time(&self) -> Result<chrono::DateTime<chrono::Utc>, OpenPxError> {
+        // CLOB exposes a public `GET /time` endpoint returning Unix seconds
+        // (clob-openapi.yaml /time). Public, no auth.
+        let url = format!("{}/time", self.config.clob_url);
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "fetch server time failed: {status} - {text}"
+            ))));
+        }
+        let unix_seconds: i64 = response
+            .json()
+            .await
+            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
+        chrono::DateTime::<chrono::Utc>::from_timestamp(unix_seconds, 0).ok_or_else(|| {
+            OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                "invalid unix timestamp from /time: {unix_seconds}"
+            )))
+        })
+    }
+
     async fn fetch_market_lineage(
         &self,
         market_ticker: &str,
@@ -2213,10 +2238,7 @@ impl Exchange for Polymarket {
         Ok(raw.iter().filter_map(parse_polymarket_book).collect())
     }
 
-    async fn cancel_all_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         // Sequential loop over the caller's open orders. The Polymarket
         // CLOB has native `DELETE /cancel-all` and per-market cancel
         // endpoints that are O(1); switching to those is a future
@@ -2272,7 +2294,7 @@ impl Exchange for Polymarket {
             has_fetch_orderbook: true,
             has_fetch_trades: true,
             has_fetch_fills: true,
-            has_fetch_server_time: false,
+            has_fetch_server_time: true,
             has_approvals: true,
             has_refresh_balance: true,
             has_websocket: true,

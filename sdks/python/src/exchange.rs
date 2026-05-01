@@ -130,11 +130,7 @@ impl NativeExchange {
     }
 
     #[pyo3(signature = (order_id))]
-    fn cancel_order<'py>(
-        &self,
-        py: Python<'py>,
-        order_id: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn cancel_order<'py>(&self, py: Python<'py>, order_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
         let rt = get_runtime();
@@ -144,11 +140,7 @@ impl NativeExchange {
     }
 
     #[pyo3(signature = (order_id))]
-    fn fetch_order<'py>(
-        &self,
-        py: Python<'py>,
-        order_id: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn fetch_order<'py>(&self, py: Python<'py>, order_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let order_id = order_id.to_string();
         let rt = get_runtime();
@@ -165,8 +157,7 @@ impl NativeExchange {
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
-        let result =
-            py.detach(|| rt.block_on(inner.fetch_open_orders(asset_id.as_deref())));
+        let result = py.detach(|| rt.block_on(inner.fetch_open_orders(asset_id.as_deref())));
         let orders = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &orders).map_err(|e| to_py_err(e.to_string()))
     }
@@ -191,6 +182,21 @@ impl NativeExchange {
         let result = py.detach(|| rt.block_on(inner.fetch_balance()));
         let balance = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &balance).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    fn refresh_balance(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.refresh_balance()));
+        result.map_err(|e| to_py_err(e.to_string()))
+    }
+
+    fn fetch_server_time<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_server_time()));
+        let ts = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &ts.to_rfc3339()).map_err(|e| to_py_err(e.to_string()))
     }
 
     #[pyo3(signature = (asset_id))]

@@ -774,24 +774,29 @@ impl Kalshi {
             .to_string();
 
         // Kalshi: "side" = yes/no (outcome), "action" = buy/sell (order side)
-        let outcome = obj
-            .get("side")
-            .and_then(|v| v.as_str())
-            .map(|s| if s == "yes" { "Yes" } else { "No" })
-            .unwrap_or("Yes")
-            .to_string();
+        let raw_outcome = obj.get("side").and_then(|v| v.as_str()).unwrap_or("yes");
+        let outcome = if raw_outcome == "no" { "No" } else { "Yes" }.to_string();
 
         let side = match obj.get("action").and_then(|v| v.as_str()).unwrap_or("buy") {
             "sell" => OrderSide::Sell,
             _ => OrderSide::Buy,
         };
 
-        // Price in cents → normalized 0-1
-        let price = obj
-            .get("yes_price")
-            .and_then(|v| v.as_f64())
-            .or_else(|| obj.get("price").and_then(|v| v.as_f64()))
-            .map(|p| p / 100.0)
+        // Outcome-aware price: yes_price_dollars / no_price_dollars are
+        // FixedPointDollars strings (e.g. "0.65"). Falls back to legacy cents
+        // ints (`yes_price` / `price`) for older payloads.
+        let dollar_field = if raw_outcome == "no" {
+            "no_price_dollars"
+        } else {
+            "yes_price_dollars"
+        };
+        let price = parse_dollars(obj, dollar_field)
+            .or_else(|| {
+                obj.get("yes_price")
+                    .and_then(|v| v.as_f64())
+                    .map(|p| p / 100.0)
+            })
+            .or_else(|| obj.get("price").and_then(|v| v.as_f64()).map(|p| p / 100.0))
             .unwrap_or(0.0);
 
         let size = obj
@@ -1518,10 +1523,7 @@ impl Exchange for Kalshi {
         Ok(books)
     }
 
-    async fn cancel_all_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn cancel_all_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         // Kalshi has no single "cancel all" verb. Two-step flow:
@@ -1949,10 +1951,7 @@ impl Exchange for Kalshi {
         Ok(self.parse_order(&resp.order))
     }
 
-    async fn fetch_open_orders(
-        &self,
-        asset_id: Option<&str>,
-    ) -> Result<Vec<Order>, OpenPxError> {
+    async fn fetch_open_orders(&self, asset_id: Option<&str>) -> Result<Vec<Order>, OpenPxError> {
         self.ensure_auth().map_err(to_openpx)?;
 
         #[derive(serde::Deserialize)]
@@ -2028,6 +2027,35 @@ impl Exchange for Kalshi {
         Ok(result)
     }
 
+    async fn fetch_server_time(&self) -> Result<chrono::DateTime<chrono::Utc>, OpenPxError> {
+        // Kalshi has no native server-time endpoint. The HTTP `Date` header on
+        // any response carries the server's wall-clock — `/exchange/status` is
+        // public, cheap, and always returns a Date header per HTTP/1.1.
+        let url = format!("{}/exchange/status", self.config.api_url);
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+        let date_header = response
+            .headers()
+            .get(reqwest::header::DATE)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(
+                    "missing Date header on /exchange/status".into(),
+                ))
+            })?;
+        chrono::DateTime::parse_from_rfc2822(date_header)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .map_err(|e| {
+                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
+                    "invalid Date header '{date_header}': {e}"
+                )))
+            })
+    }
+
     async fn fetch_fills(
         &self,
         market_ticker: Option<&str>,
@@ -2079,7 +2107,7 @@ impl Exchange for Kalshi {
             has_fetch_orderbook: true,
             has_fetch_trades: true,
             has_fetch_fills: true,
-            has_fetch_server_time: false,
+            has_fetch_server_time: true,
             has_approvals: false,
             has_refresh_balance: false,
             has_websocket: self.auth.is_some() && !self.config.demo,
