@@ -310,8 +310,14 @@ mod tests {
     fn book(bids: Vec<(f64, f64)>, asks: Vec<(f64, f64)>) -> Orderbook {
         Orderbook {
             asset_id: "test-asset".into(),
-            bids: bids.into_iter().map(|(p, s)| PriceLevel::new(p, s)).collect(),
-            asks: asks.into_iter().map(|(p, s)| PriceLevel::new(p, s)).collect(),
+            bids: bids
+                .into_iter()
+                .map(|(p, s)| PriceLevel::new(p, s))
+                .collect(),
+            asks: asks
+                .into_iter()
+                .map(|(p, s)| PriceLevel::new(p, s))
+                .collect(),
             last_update_id: None,
             timestamp: None,
             hash: None,
@@ -385,7 +391,10 @@ mod tests {
 
     #[test]
     fn microstructure_gappy_asks() {
-        let b = book(vec![(0.49, 100.0)], vec![(0.51, 100.0), (0.55, 100.0), (0.56, 100.0)]);
+        let b = book(
+            vec![(0.49, 100.0)],
+            vec![(0.51, 100.0), (0.55, 100.0), (0.56, 100.0)],
+        );
         let m = orderbook_microstructure(&b);
         // mid = 0.50; ask gap from 0.51 -> 0.55 = 0.04; bps = 0.04/0.50 * 10_000 = 800.
         assert!((m.max_gap.ask_gap_bps.unwrap() - 800.0).abs() < 1e-6);

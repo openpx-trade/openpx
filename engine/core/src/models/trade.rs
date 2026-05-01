@@ -64,4 +64,3 @@ pub struct MarketTrade {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub taker_address: Option<String>,
 }
-
