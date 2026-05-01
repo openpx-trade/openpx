@@ -42,7 +42,8 @@ impl NativeExchange {
         pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
     }
 
-    #[pyo3(signature = (status=None, cursor=None, market_tickers=None, series_ticker=None, event_ticker=None))]
+    #[pyo3(signature = (status=None, cursor=None, market_tickers=None, series_ticker=None, event_ticker=None, limit=None))]
+    #[allow(clippy::too_many_arguments)]
     fn fetch_markets<'py>(
         &self,
         py: Python<'py>,
@@ -51,6 +52,7 @@ impl NativeExchange {
         market_tickers: Option<Vec<String>>,
         series_ticker: Option<&str>,
         event_ticker: Option<&str>,
+        limit: Option<usize>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -63,7 +65,7 @@ impl NativeExchange {
             market_tickers: market_tickers.unwrap_or_default(),
             series_ticker: series_ticker.map(String::from),
             event_ticker: event_ticker.map(String::from),
-            ..Default::default()
+            limit,
         };
         let result = py.detach(|| rt.block_on(inner.fetch_markets(&fetch_params)));
         let (markets, next_cursor) = result.map_err(|e| to_py_err(e.to_string()))?;
@@ -207,6 +209,19 @@ impl NativeExchange {
         let result = py.detach(|| rt.block_on(inner.fetch_orderbook(&asset_id)));
         let book = result.map_err(|e| to_py_err(e.to_string()))?;
         pythonize(py, &book).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    #[pyo3(signature = (asset_ids))]
+    fn fetch_orderbooks_batch<'py>(
+        &self,
+        py: Python<'py>,
+        asset_ids: Vec<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.fetch_orderbooks_batch(asset_ids)));
+        let books = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &books).map_err(|e| to_py_err(e.to_string()))
     }
 
     #[pyo3(signature = (asset_id))]

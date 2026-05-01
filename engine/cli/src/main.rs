@@ -80,6 +80,22 @@ enum Command {
     FetchMarketLineage { market_ticker: String },
     /// Fetch full-depth L2 orderbook (bids + asks) for an asset_id (Kalshi market ticker or Polymarket token id)
     FetchOrderbook { asset_id: String },
+    /// Fetch full-depth L2 orderbooks for multiple asset_ids in one round-trip
+    FetchOrderbooksBatch {
+        /// Repeat or comma-separate (Kalshi cap: 100; Polymarket: no documented cap)
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        asset_ids: Vec<String>,
+    },
+    /// Top-of-book stats: best bid/ask, mid, spread, weighted-mid, imbalance, total depth
+    FetchOrderbookStats { asset_id: String },
+    /// Slippage curve at a single requested size — buy and sell sides
+    FetchOrderbookImpact {
+        asset_id: String,
+        /// Size in contracts (must be > 0)
+        size: f64,
+    },
+    /// Microstructure signals: depth tiers, slope, max gap, level counts
+    FetchOrderbookMicrostructure { asset_id: String },
     /// Fetch recent trades — `asset_id` is the Kalshi ticker or Polymarket slug
     FetchTrades {
         asset_id: String,
@@ -272,6 +288,25 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
             Command::FetchOrderbook { asset_id } => {
                 let ob = exchange.fetch_orderbook(&asset_id).await?;
                 print_json(&ob);
+            }
+            Command::FetchOrderbooksBatch { asset_ids } => {
+                let books = exchange.fetch_orderbooks_batch(asset_ids).await?;
+                print_json(&serde_json::json!({
+                    "orderbooks": books,
+                    "count": books.len(),
+                }));
+            }
+            Command::FetchOrderbookStats { asset_id } => {
+                let stats = exchange.fetch_orderbook_stats(&asset_id).await?;
+                print_json(&stats);
+            }
+            Command::FetchOrderbookImpact { asset_id, size } => {
+                let impact = exchange.fetch_orderbook_impact(&asset_id, size).await?;
+                print_json(&impact);
+            }
+            Command::FetchOrderbookMicrostructure { asset_id } => {
+                let micro = exchange.fetch_orderbook_microstructure(&asset_id).await?;
+                print_json(&micro);
             }
             Command::FetchTrades {
                 asset_id,

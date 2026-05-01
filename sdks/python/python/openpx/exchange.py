@@ -54,6 +54,7 @@ class Exchange:
         market_tickers: Optional[list[str]] = None,
         series_ticker: Optional[str] = None,
         event_ticker: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> dict[str, Any]:
         """Fetch markets from the exchange.
 
@@ -61,7 +62,9 @@ class Exchange:
         pagination), or omit it to page through the catalog with `cursor`.
         Returns ``{"markets": [...], "cursor": "..." | None}``.
         """
-        raw = self._native.fetch_markets(status, cursor, market_tickers, series_ticker, event_ticker)
+        raw = self._native.fetch_markets(
+            status, cursor, market_tickers, series_ticker, event_ticker, limit
+        )
         try:
             from openpx._models import Market
             return {
@@ -175,16 +178,55 @@ class Exchange:
         """
         return self._native.fetch_server_time()
 
-    def fetch_orderbook(
-        self,
-        market_ticker: str,
-        outcome: Optional[str] = None,
-        token_id: Optional[str] = None,
-    ) -> Any:
-        raw = self._native.fetch_orderbook(market_ticker, outcome, token_id)
+    def fetch_orderbook(self, asset_id: str) -> Any:
+        """Fetch the full-depth L2 orderbook for an ``asset_id`` — Kalshi market
+        ticker or Polymarket CTF token id (same convention as ``create_order``)."""
+        raw = self._native.fetch_orderbook(asset_id)
         try:
             from openpx._models import Orderbook
             return Orderbook(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbooks_batch(self, asset_ids: list[str]) -> list[Any]:
+        """Fetch full-depth L2 orderbooks for multiple asset_ids in one
+        round-trip. Cap: 100 on Kalshi; no documented cap on Polymarket."""
+        raw = self._native.fetch_orderbooks_batch(asset_ids)
+        try:
+            from openpx._models import Orderbook
+            return [Orderbook(**b) for b in raw]
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_stats(self, asset_id: str) -> Any:
+        """Top-of-book stats: best bid/ask, mid, spread (bps), weighted-mid,
+        top-10 imbalance, and total bid/ask depth."""
+        raw = self._native.fetch_orderbook_stats(asset_id)
+        try:
+            from openpx._models import OrderbookStats
+            return OrderbookStats(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_impact(self, asset_id: str, size: float) -> Any:
+        """Slippage curve at a single requested ``size``. Walks the book and
+        returns partial fills with ``fill_pct < 100.0`` if the side
+        exhausts. ``size`` must be > 0."""
+        raw = self._native.fetch_orderbook_impact(asset_id, size)
+        try:
+            from openpx._models import OrderbookImpact
+            return OrderbookImpact(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_microstructure(self, asset_id: str) -> Any:
+        """Microstructure signals: cumulative depth at 10/50/100 bps tiers,
+        OLS slope of cumulative size vs distance-from-mid, largest gap, and
+        per-side level counts."""
+        raw = self._native.fetch_orderbook_microstructure(asset_id)
+        try:
+            from openpx._models import OrderbookMicrostructure
+            return OrderbookMicrostructure(**raw)
         except (ImportError, Exception):
             return raw
 

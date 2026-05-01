@@ -1289,33 +1289,65 @@ impl Exchange for Polymarket {
         &self,
         params: &FetchMarketsParams,
     ) -> Result<(Vec<Market>, Option<String>), OpenPxError> {
+        // Polymarket Gamma's `/markets` and `/events/keyset` both default to
+        // `closed=false` (since the 2026-04-09 changelog), so we always pass
+        // `closed` explicitly. To honor `MarketStatusFilter::All` we fire two
+        // parallel calls (closed=true + closed=false) and merge — Polymarket
+        // has no single "all statuses" flag.
+        let status_match = |filter: MarketStatusFilter, status: MarketStatus| -> bool {
+            match filter {
+                MarketStatusFilter::Active => status == MarketStatus::Active,
+                MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
+                    matches!(status, MarketStatus::Closed | MarketStatus::Resolved)
+                }
+                MarketStatusFilter::All => true,
+            }
+        };
+
         // ── market_tickers short-circuit: explicit slug lookup, single round-trip ──
         if !params.market_tickers.is_empty() {
-            let mut endpoint = String::from("/markets?");
-            for (i, slug) in params.market_tickers.iter().enumerate() {
-                if i > 0 {
-                    endpoint.push('&');
-                }
-                endpoint.push_str("slug=");
-                endpoint.push_str(slug);
-            }
-            match params.status {
-                Some(MarketStatusFilter::Active) | None => endpoint.push_str("&closed=false"),
-                Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => {
-                    endpoint.push_str("&closed=true")
-                }
-                Some(MarketStatusFilter::All) => {}
-            }
-            self.rate_limit().await;
-            let raw_markets: Vec<serde_json::Value> = self
-                .client
-                .get_gamma(&endpoint)
-                .await
-                .map_err(|e| OpenPxError::Exchange(e.into()))?;
-            let markets: Vec<Market> = raw_markets
-                .into_iter()
-                .filter_map(|raw| self.parse_market(raw))
+            let slugs_query: String = params
+                .market_tickers
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    if i == 0 {
+                        format!("slug={s}")
+                    } else {
+                        format!("&slug={s}")
+                    }
+                })
                 .collect();
+
+            // For All, fan out to closed=true + closed=false and merge. For the
+            // single-bucket cases, one call is enough.
+            let endpoints: Vec<String> = match params.status {
+                Some(MarketStatusFilter::All) => vec![
+                    format!("/markets?{slugs_query}&closed=false"),
+                    format!("/markets?{slugs_query}&closed=true"),
+                ],
+                Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => {
+                    vec![format!("/markets?{slugs_query}&closed=true")]
+                }
+                Some(MarketStatusFilter::Active) | None => {
+                    vec![format!("/markets?{slugs_query}&closed=false")]
+                }
+            };
+
+            let mut markets = Vec::new();
+            for ep in endpoints {
+                self.rate_limit().await;
+                let raw: Vec<serde_json::Value> = self
+                    .client
+                    .get_gamma(&ep)
+                    .await
+                    .map_err(|e| OpenPxError::Exchange(e.into()))?;
+                for r in raw {
+                    if let Some(parsed) = self.parse_market(r) {
+                        markets.push(parsed);
+                    }
+                }
+            }
             return Ok((markets, None));
         }
 
@@ -1327,11 +1359,17 @@ impl Exchange for Polymarket {
             let endpoint = format!("/events/slug/{eid}");
             self.rate_limit().await;
 
-            let event: serde_json::Value = self
-                .client
-                .get_gamma(&endpoint)
-                .await
-                .map_err(|e| OpenPxError::Exchange(e.into()))?;
+            let event: serde_json::Value = match self.client.get_gamma(&endpoint).await {
+                Ok(v) => v,
+                Err(PolymarketError::Api(msg)) if msg.starts_with("404") => {
+                    // Surface as the unified `MarketNotFound` so callers can
+                    // pattern-match cross-exchange.
+                    return Err(OpenPxError::Exchange(
+                        px_core::error::ExchangeError::MarketNotFound(eid.clone()),
+                    ));
+                }
+                Err(e) => return Err(OpenPxError::Exchange(e.into())),
+            };
 
             // Native event identifier — prefer the slug (matches the unified
             // `event_ticker` semantics); fall back to id when slug is missing.
@@ -1349,20 +1387,8 @@ impl Exchange for Polymarket {
                 for market_raw in market_array {
                     let raw = market_raw.clone();
                     if let Some(mut parsed) = self.parse_market(raw) {
-                        if filter != MarketStatusFilter::All {
-                            let status_matches = match filter {
-                                MarketStatusFilter::Active => parsed.status == MarketStatus::Active,
-                                MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
-                                    matches!(
-                                        parsed.status,
-                                        MarketStatus::Closed | MarketStatus::Resolved
-                                    )
-                                }
-                                MarketStatusFilter::All => unreachable!(),
-                            };
-                            if !status_matches {
-                                continue;
-                            }
+                        if !status_match(filter, parsed.status) {
+                            continue;
                         }
                         if parsed.event_ticker.is_none() {
                             parsed.event_ticker = Some(native_event_slug.clone());
@@ -1375,96 +1401,176 @@ impl Exchange for Polymarket {
             return Ok((markets, None));
         }
 
-        // Polymarket /events/keyset filters via the same `closed` boolean as
-        // the offset-paginated endpoint. The 2026-04-09 changelog flipped the
-        // default to `closed=false`, so we pass it explicitly to be safe.
-        let closed_param = match params.status {
-            Some(MarketStatusFilter::Active) | None => "active=true&closed=false",
-            Some(MarketStatusFilter::Closed) | Some(MarketStatusFilter::Resolved) => "closed=true",
-            Some(MarketStatusFilter::All) => "",
-        };
-
-        const PAGE_SIZE: usize = 200;
+        // ── Catalog page via /events/keyset ──
+        // Per-page limit: Polymarket caps `/events/keyset?limit` at 500. Default
+        // 200 when the caller doesn't ask. `series_ticker` is slug-semantic and
+        // not yet supported on Polymarket (numeric series ids will arrive on a
+        // future `series_numeric_id` field) — silently ignored.
+        let page_size = params.limit.unwrap_or(200).clamp(1, 500);
         let cursor_clause = match params.cursor.as_deref() {
             Some(c) if !c.is_empty() => format!("&after_cursor={c}"),
             _ => String::new(),
         };
 
-        // `series_ticker` is slug-semantic; Polymarket only filters by numeric
-        // series id, which will arrive on a future `series_numeric_id` field.
-        // Until then, we ignore `series_ticker` on Polymarket.
+        // For `All`, we fan out to closed=true + closed=false in parallel. The
+        // unified cursor is a JSON envelope carrying both bucket cursors so a
+        // follow-up page can resume each side independently — same pattern
+        // Kalshi uses for its live + historical join.
+        #[derive(serde::Serialize, serde::Deserialize, Default)]
+        struct CursorState {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            o: Option<String>, // open / closed=false
+            #[serde(skip_serializing_if = "Option::is_none")]
+            c: Option<String>, // closed=true
+        }
 
-        let endpoint = if closed_param.is_empty() {
-            format!("/events/keyset?limit={PAGE_SIZE}{cursor_clause}")
-        } else {
-            format!("/events/keyset?limit={PAGE_SIZE}&{closed_param}{cursor_clause}")
+        let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+
+        // Decode caller cursor: a non-JSON cursor (single-bucket follow-ups
+        // before this change) means "resume the current single bucket".
+        let mut state: CursorState = match params.cursor.as_deref() {
+            None => CursorState {
+                o: matches!(filter, MarketStatusFilter::Active | MarketStatusFilter::All)
+                    .then(String::new),
+                c: matches!(
+                    filter,
+                    MarketStatusFilter::Closed
+                        | MarketStatusFilter::Resolved
+                        | MarketStatusFilter::All
+                )
+                .then(String::new),
+            },
+            Some(s) => serde_json::from_str(s).unwrap_or_else(|_| {
+                // Legacy single-bucket cursor — slot into the bucket the
+                // current filter targets.
+                let cur = Some(s.to_string());
+                match filter {
+                    MarketStatusFilter::Active => CursorState { o: cur, c: None },
+                    MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
+                        CursorState { o: None, c: cur }
+                    }
+                    MarketStatusFilter::All => CursorState {
+                        o: cur,
+                        c: Some(String::new()),
+                    },
+                }
+            }),
         };
 
-        self.rate_limit().await;
+        let build_endpoint = |cursor: &str, closed: bool| -> String {
+            let mut ep = format!("/events/keyset?limit={page_size}");
+            ep.push_str(if closed {
+                "&closed=true"
+            } else {
+                "&active=true&closed=false"
+            });
+            if !cursor.is_empty() {
+                ep.push_str(&format!("&after_cursor={cursor}"));
+            }
+            ep
+        };
 
-        // /events/keyset returns an envelope: { events: [...], next_cursor }
-        let envelope: serde_json::Value = self
-            .client
-            .get_gamma(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
+        // Fire both buckets in parallel where requested.
+        let open_ep = state.o.as_ref().map(|c| build_endpoint(c, false));
+        let closed_ep = state.c.as_ref().map(|c| build_endpoint(c, true));
 
-        let events: Vec<serde_json::Value> = envelope
-            .get("events")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let next_cursor = envelope
-            .get("next_cursor")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from);
+        // Single-bucket fast path uses cursor_clause directly to avoid drift
+        // with the legacy single-cursor format (some callers persist the raw
+        // cursor string across requests). For `All`, the compound cursor
+        // envelope is required.
+        let _ = cursor_clause; // explicit: handled inside build_endpoint via state
+
+        let open_fut = async {
+            match open_ep {
+                Some(ref ep) => {
+                    self.rate_limit().await;
+                    self.client
+                        .get_gamma::<serde_json::Value>(ep)
+                        .await
+                        .map(Some)
+                }
+                None => Ok(None),
+            }
+        };
+        let closed_fut = async {
+            match closed_ep {
+                Some(ref ep) => {
+                    self.rate_limit().await;
+                    self.client
+                        .get_gamma::<serde_json::Value>(ep)
+                        .await
+                        .map(Some)
+                }
+                None => Ok(None),
+            }
+        };
+
+        let (open_res, closed_res) = tokio::join!(open_fut, closed_fut);
+        let open_envelope = open_res.map_err(|e| OpenPxError::Exchange(e.into()))?;
+        let closed_envelope = closed_res.map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+        let next_or_none = |c: Option<String>| c.filter(|s| !s.is_empty());
 
         let mut markets = Vec::new();
-
-        for event in events {
-            let native_event_slug = event
-                .get("slug")
+        let mut absorb = |envelope: serde_json::Value, bucket: &mut Option<String>| {
+            let events: Vec<serde_json::Value> = envelope
+                .get("events")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let next = envelope
+                .get("next_cursor")
                 .and_then(|v| v.as_str())
-                .or_else(|| event.get("id").and_then(|v| v.as_str()))
-                .unwrap_or_default()
-                .to_string();
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            *bucket = next_or_none(next);
 
-            let Some(market_array) = event.get("markets").and_then(|v| v.as_array()) else {
-                continue;
-            };
+            for event in events {
+                let native_event_slug = event
+                    .get("slug")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| event.get("id").and_then(|v| v.as_str()))
+                    .unwrap_or_default()
+                    .to_string();
 
-            let filter = params.status.unwrap_or(MarketStatusFilter::Active);
-
-            for market_raw in market_array {
-                let raw = market_raw.clone();
-                if let Some(mut parsed) = self.parse_market(raw) {
-                    // Events can contain markets with mixed statuses — filter to
-                    // only return markets matching the requested status.
-                    // Polymarket has no separate "closed" vs "resolved" state, so
-                    // accept Resolved for both Closed and Resolved requests.
-                    if filter != MarketStatusFilter::All {
-                        let status_matches = match filter {
-                            MarketStatusFilter::Active => parsed.status == MarketStatus::Active,
-                            MarketStatusFilter::Closed | MarketStatusFilter::Resolved => {
-                                matches!(
-                                    parsed.status,
-                                    MarketStatus::Closed | MarketStatus::Resolved
-                                )
-                            }
-                            MarketStatusFilter::All => unreachable!(),
-                        };
-                        if !status_matches {
+                let Some(market_array) = event.get("markets").and_then(|v| v.as_array()) else {
+                    continue;
+                };
+                for market_raw in market_array {
+                    let raw = market_raw.clone();
+                    if let Some(mut parsed) = self.parse_market(raw) {
+                        if !status_match(filter, parsed.status) {
                             continue;
                         }
+                        if parsed.event_ticker.is_none() {
+                            parsed.event_ticker = Some(native_event_slug.clone());
+                        }
+                        markets.push(parsed);
                     }
-                    if parsed.event_ticker.is_none() {
-                        parsed.event_ticker = Some(native_event_slug.clone());
-                    }
-                    markets.push(parsed);
                 }
             }
+        };
+
+        if let Some(envelope) = open_envelope {
+            absorb(envelope, &mut state.o);
+        } else {
+            state.o = None;
         }
+        if let Some(envelope) = closed_envelope {
+            absorb(envelope, &mut state.c);
+        } else {
+            state.c = None;
+        }
+
+        let next_cursor = match (&state.o, &state.c) {
+            (None, None) => None,
+            // Single-bucket case: emit the raw cursor (legacy-shape) so older
+            // clients that persist the string see no behavior change.
+            (Some(c), None) => Some(c.clone()),
+            (None, Some(c)) => Some(c.clone()),
+            // Both buckets active (filter=All): emit the compound envelope.
+            (Some(_), Some(_)) => Some(serde_json::to_string(&state).unwrap_or_default()),
+        };
 
         info!(total = markets.len(), "polymarket fetch_markets completed");
 

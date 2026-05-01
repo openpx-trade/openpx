@@ -71,6 +71,7 @@ impl Exchange {
         market_tickers: Option<Vec<String>>,
         series_ticker: Option<String>,
         event_ticker: Option<String>,
+        limit: Option<u32>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -83,7 +84,7 @@ impl Exchange {
             market_tickers: market_tickers.unwrap_or_default(),
             series_ticker,
             event_ticker,
-            ..Default::default()
+            limit: limit.map(|n| n as usize),
         };
         let result = rt
             .spawn(async move { inner.fetch_markets(&fetch_params).await })
@@ -247,6 +248,21 @@ impl Exchange {
         let rt = get_runtime();
         let result = rt
             .spawn(async move { inner.fetch_orderbook(&asset_id).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn fetch_orderbooks_batch(
+        &self,
+        asset_ids: Vec<String>,
+    ) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.fetch_orderbooks_batch(asset_ids).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;
