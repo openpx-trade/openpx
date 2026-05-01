@@ -611,6 +611,35 @@ components:
       - chainlink
       title: CryptoPriceSource
       type: string
+    DepthBuckets:
+      properties:
+        ask_within_100bps:
+          format: double
+          type: number
+        ask_within_10bps:
+          format: double
+          type: number
+        ask_within_50bps:
+          format: double
+          type: number
+        bid_within_100bps:
+          format: double
+          type: number
+        bid_within_10bps:
+          format: double
+          type: number
+        bid_within_50bps:
+          format: double
+          type: number
+      required:
+      - ask_within_100bps
+      - ask_within_10bps
+      - ask_within_50bps
+      - bid_within_100bps
+      - bid_within_10bps
+      - bid_within_50bps
+      title: DepthBuckets
+      type: object
     Event:
       description: A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State
         Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme
@@ -702,17 +731,9 @@ components:
           type: boolean
         has_fetch_fills:
           type: boolean
-        has_fetch_last_trade_price:
-          type: boolean
         has_fetch_market_lineage:
           type: boolean
         has_fetch_markets:
-          type: boolean
-        has_fetch_midpoint:
-          type: boolean
-        has_fetch_midpoints_batch:
-          type: boolean
-        has_fetch_open_interest:
           type: boolean
         has_fetch_orderbook:
           type: boolean
@@ -721,8 +742,6 @@ components:
         has_fetch_positions:
           type: boolean
         has_fetch_server_time:
-          type: boolean
-        has_fetch_spread:
           type: boolean
         has_fetch_trades:
           type: boolean
@@ -742,17 +761,12 @@ components:
       - has_create_orders_batch
       - has_fetch_balance
       - has_fetch_fills
-      - has_fetch_last_trade_price
       - has_fetch_market_lineage
       - has_fetch_markets
-      - has_fetch_midpoint
-      - has_fetch_midpoints_batch
-      - has_fetch_open_interest
       - has_fetch_orderbook
       - has_fetch_orderbooks_batch
       - has_fetch_positions
       - has_fetch_server_time
-      - has_fetch_spread
       - has_fetch_trades
       - has_refresh_balance
       - has_websocket
@@ -864,27 +878,20 @@ components:
         required:
         - SequenceGap
         type: object
-    LastTrade:
-      description: "Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape:\
-        \ this is just \"what just printed?\" \u2014 common UI need that doesn't require the full trade history."
+    LevelCount:
       properties:
-        price:
-          format: double
-          type: number
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        size:
-          format: double
-          type: number
-        ts_ms:
-          format: int64
+        asks:
+          format: uint32
+          minimum: 0.0
+          type: integer
+        bids:
+          format: uint32
+          minimum: 0.0
           type: integer
       required:
-      - price
-      - side
-      - size
-      - ts_ms
-      title: LastTrade
+      - asks
+      - bids
+      title: LevelCount
       type: object
     LiquidityRole:
       enum:
@@ -1144,23 +1151,19 @@ components:
       - categorical
       - scalar
       type: string
-    MidpointRequest:
-      description: Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since
-        they target the same outcome and accept the same identifier inputs.
+    MaxGap:
       properties:
-        market_ticker:
-          type: string
-        outcome:
+        ask_gap_bps:
+          format: double
           type:
-          - string
+          - number
           - 'null'
-        token_id:
+        bid_gap_bps:
+          format: double
           type:
-          - string
+          - number
           - 'null'
-      required:
-      - market_ticker
-      title: MidpointRequest
+      title: MaxGap
       type: object
     NewOrder:
       description: 'One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).'
@@ -1308,6 +1311,151 @@ components:
       - asks
       - asset_id
       - bids
+      type: object
+    OrderbookImpact:
+      properties:
+        asset_id:
+          type: string
+        buy_avg_price:
+          format: double
+          type:
+          - number
+          - 'null'
+        buy_fill_pct:
+          format: double
+          type: number
+        buy_slippage_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        mid:
+          format: double
+          type:
+          - number
+          - 'null'
+        openpx_ts:
+          format: date-time
+          type: string
+        sell_avg_price:
+          format: double
+          type:
+          - number
+          - 'null'
+        sell_fill_pct:
+          format: double
+          type: number
+        sell_slippage_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        size:
+          format: double
+          type: number
+      required:
+      - asset_id
+      - buy_fill_pct
+      - openpx_ts
+      - sell_fill_pct
+      - size
+      title: OrderbookImpact
+      type: object
+    OrderbookMicrostructure:
+      properties:
+        ask_slope:
+          format: double
+          type:
+          - number
+          - 'null'
+        asset_id:
+          type: string
+        bid_slope:
+          format: double
+          type:
+          - number
+          - 'null'
+        depth_buckets:
+          $ref: '#/components/schemas/DepthBuckets'
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        level_count:
+          $ref: '#/components/schemas/LevelCount'
+        max_gap:
+          $ref: '#/components/schemas/MaxGap'
+        openpx_ts:
+          format: date-time
+          type: string
+      required:
+      - asset_id
+      - depth_buckets
+      - level_count
+      - max_gap
+      - openpx_ts
+      title: OrderbookMicrostructure
+      type: object
+    OrderbookStats:
+      properties:
+        ask_depth:
+          format: double
+          type: number
+        asset_id:
+          type: string
+        best_ask:
+          format: double
+          type:
+          - number
+          - 'null'
+        best_bid:
+          format: double
+          type:
+          - number
+          - 'null'
+        bid_depth:
+          format: double
+          type: number
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        imbalance:
+          format: double
+          type:
+          - number
+          - 'null'
+        mid:
+          format: double
+          type:
+          - number
+          - 'null'
+        openpx_ts:
+          format: date-time
+          type: string
+        spread_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        weighted_mid:
+          format: double
+          type:
+          - number
+          - 'null'
+      required:
+      - ask_depth
+      - asset_id
+      - bid_depth
+      - openpx_ts
+      title: OrderbookStats
       type: object
     Outcome:
       description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
@@ -1587,30 +1735,6 @@ components:
       - slug
       - status
       title: SportResult
-      type: object
-    Spread:
-      description: "Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` \u2014 useful for liquidity\
-        \ scoring and PnL marks where only the best levels are needed."
-      properties:
-        ask:
-          format: double
-          type: number
-        bid:
-          format: double
-          type: number
-        spread:
-          format: double
-          type: number
-        ts_ms:
-          format: int64
-          type:
-          - integer
-          - 'null'
-      required:
-      - ask
-      - bid
-      - spread
-      title: Spread
       type: object
     TradesRequest:
       description: Request for fetching recent public trades ("tape") for a market outcome.

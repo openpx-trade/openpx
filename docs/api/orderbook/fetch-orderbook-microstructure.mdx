@@ -1,0 +1,9 @@
+---
+title: "fetch_orderbook_microstructure"
+sidebarTitle: "Fetch orderbook microstructure"
+openapi: /openpx.openapi.yaml GET /v1/orderbook/fetch_orderbook_microstructure
+---
+
+Microstructure signals: cumulative depth within 10/50/100 bps tiers,
+linear-regression slope of cumulative size vs distance-from-mid (bps),
+largest consecutive-level price gap, and per-side level counts.

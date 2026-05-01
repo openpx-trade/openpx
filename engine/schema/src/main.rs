@@ -29,13 +29,17 @@ fn main() {
         schema_for!(px_core::Position),
         // Models — orderbook
         schema_for!(px_core::Orderbook),
-        schema_for!(px_core::Spread),
         schema_for!(px_core::PriceLevel),
         schema_for!(px_core::PriceLevelChange),
         schema_for!(px_core::PriceLevelSide),
+        schema_for!(px_core::OrderbookStats),
+        schema_for!(px_core::OrderbookImpact),
+        schema_for!(px_core::OrderbookMicrostructure),
+        schema_for!(px_core::DepthBuckets),
+        schema_for!(px_core::MaxGap),
+        schema_for!(px_core::LevelCount),
         // Models — trade
         schema_for!(px_core::MarketTrade),
-        schema_for!(px_core::LastTrade),
         // Models — events / series
         schema_for!(px_core::Event),
         schema_for!(px_core::Series),
@@ -47,7 +51,6 @@ fn main() {
         // Exchange trait request types
         schema_for!(px_core::TradesRequest),
         schema_for!(px_core::MarketLineage),
-        schema_for!(px_core::MidpointRequest),
         schema_for!(px_core::NewOrder),
         schema_for!(px_core::ExchangeInfo),
         // WebSocket types

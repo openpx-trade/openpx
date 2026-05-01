@@ -21,7 +21,6 @@ tags:
 - name: Trades
 - name: Fills
 - name: Server
-- name: Pricing
 paths:
   /v1/markets/fetch_markets:
     get:
@@ -555,167 +554,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenPxError'
-  /v1/pricing/fetch_midpoint:
+  /v1/orderbook/fetch_orderbook_stats:
     get:
       tags:
-      - Pricing
-      summary: Fetch midpoint
-      description: Fetch the midpoint price for a single market outcome.
-      operationId: fetch_midpoint
+      - Orderbook
+      summary: Fetch orderbook stats
+      description: "Snapshot stats: top-of-book bid/ask, mid, spread (bps), size-weighted\nmid, top-10 imbalance, and total\
+        \ bid/ask depth \u2014 pure functions of the\nfull-depth orderbook. `exchange_ts` carries the upstream snapshot time;\n\
+        `openpx_ts` is set to wall-clock when OpenPX served the response."
+      operationId: fetch_orderbook_stats
       parameters:
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: outcome
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: number
-                format: double
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/pricing/fetch_midpoints_batch:
-    get:
-      tags:
-      - Pricing
-      summary: Fetch midpoints batch
-      description: Fetch midpoint prices for multiple market outcomes in one round-trip.
-      operationId: fetch_midpoints_batch
-      parameters:
-      - name: market_tickers
-        in: query
-        required: true
-        schema:
-          type: array
-          items:
-            type: string
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties:
-                  type: number
-                  format: double
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/pricing/fetch_spread:
-    get:
-      tags:
-      - Pricing
-      summary: Fetch spread
-      description: "Fetch the top-of-book spread (best bid, best ask, ask \u2212 bid) for a market outcome."
-      operationId: fetch_spread
-      parameters:
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: outcome
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Spread'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/pricing/fetch_last_trade_price:
-    get:
-      tags:
-      - Pricing
-      summary: Fetch last trade price
-      description: Fetch the most recent public trade for a market outcome.
-      operationId: fetch_last_trade_price
-      parameters:
-      - name: market_ticker
-        in: query
-        required: true
-        schema:
-          type: string
-      - name: outcome
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      - name: token_id
-        in: query
-        required: false
-        schema:
-          type:
-          - string
-          - 'null'
-      responses:
-        '200':
-          description: Success.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LastTrade'
-        default:
-          description: Unified error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenPxError'
-  /v1/pricing/fetch_open_interest:
-    get:
-      tags:
-      - Pricing
-      summary: Fetch open interest
-      description: Fetch the open interest (total outstanding contracts) for a market.
-      operationId: fetch_open_interest
-      parameters:
-      - name: market_ticker
+      - name: asset_id
         in: query
         required: true
         schema:
@@ -726,8 +575,73 @@ paths:
           content:
             application/json:
               schema:
-                type: number
-                format: double
+                $ref: '#/components/schemas/OrderbookStats'
+        default:
+          description: Unified error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenPxError'
+  /v1/orderbook/fetch_orderbook_impact:
+    get:
+      tags:
+      - Orderbook
+      summary: Fetch orderbook impact
+      description: 'Slippage curve at a single requested size. Walks the book consuming
+
+        levels until `size` is filled or the side exhausts; returns partial
+
+        fills with `fill_pct < 100.0`. `size` must be > 0.'
+      operationId: fetch_orderbook_impact
+      parameters:
+      - name: asset_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: size
+        in: query
+        required: true
+        schema:
+          type: number
+          format: double
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderbookImpact'
+        default:
+          description: Unified error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenPxError'
+  /v1/orderbook/fetch_orderbook_microstructure:
+    get:
+      tags:
+      - Orderbook
+      summary: Fetch orderbook microstructure
+      description: 'Microstructure signals: cumulative depth within 10/50/100 bps tiers,
+
+        linear-regression slope of cumulative size vs distance-from-mid (bps),
+
+        largest consecutive-level price gap, and per-side level counts.'
+      operationId: fetch_orderbook_microstructure
+      parameters:
+      - name: asset_id
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderbookMicrostructure'
         default:
           description: Unified error response.
           content:
@@ -949,6 +863,35 @@ components:
       - chainlink
       title: CryptoPriceSource
       type: string
+    DepthBuckets:
+      properties:
+        ask_within_100bps:
+          format: double
+          type: number
+        ask_within_10bps:
+          format: double
+          type: number
+        ask_within_50bps:
+          format: double
+          type: number
+        bid_within_100bps:
+          format: double
+          type: number
+        bid_within_10bps:
+          format: double
+          type: number
+        bid_within_50bps:
+          format: double
+          type: number
+      required:
+      - ask_within_100bps
+      - ask_within_10bps
+      - ask_within_50bps
+      - bid_within_100bps
+      - bid_within_10bps
+      - bid_within_50bps
+      title: DepthBuckets
+      type: object
     Event:
       description: A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State
         Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme
@@ -1040,17 +983,9 @@ components:
           type: boolean
         has_fetch_fills:
           type: boolean
-        has_fetch_last_trade_price:
-          type: boolean
         has_fetch_market_lineage:
           type: boolean
         has_fetch_markets:
-          type: boolean
-        has_fetch_midpoint:
-          type: boolean
-        has_fetch_midpoints_batch:
-          type: boolean
-        has_fetch_open_interest:
           type: boolean
         has_fetch_orderbook:
           type: boolean
@@ -1059,8 +994,6 @@ components:
         has_fetch_positions:
           type: boolean
         has_fetch_server_time:
-          type: boolean
-        has_fetch_spread:
           type: boolean
         has_fetch_trades:
           type: boolean
@@ -1080,17 +1013,12 @@ components:
       - has_create_orders_batch
       - has_fetch_balance
       - has_fetch_fills
-      - has_fetch_last_trade_price
       - has_fetch_market_lineage
       - has_fetch_markets
-      - has_fetch_midpoint
-      - has_fetch_midpoints_batch
-      - has_fetch_open_interest
       - has_fetch_orderbook
       - has_fetch_orderbooks_batch
       - has_fetch_positions
       - has_fetch_server_time
-      - has_fetch_spread
       - has_fetch_trades
       - has_refresh_balance
       - has_websocket
@@ -1224,27 +1152,20 @@ components:
         required:
         - SequenceGap
         type: object
-    LastTrade:
-      description: "Last public trade price + side + size for a market outcome. Distinct from the full `MarketTrade` tape:\
-        \ this is just \"what just printed?\" \u2014 common UI need that doesn't require the full trade history."
+    LevelCount:
       properties:
-        price:
-          format: double
-          type: number
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        size:
-          format: double
-          type: number
-        ts_ms:
-          format: int64
+        asks:
+          format: uint32
+          minimum: 0.0
+          type: integer
+        bids:
+          format: uint32
+          minimum: 0.0
           type: integer
       required:
-      - price
-      - side
-      - size
-      - ts_ms
-      title: LastTrade
+      - asks
+      - bids
+      title: LevelCount
       type: object
     LiquidityRole:
       enum:
@@ -1504,23 +1425,19 @@ components:
       - categorical
       - scalar
       type: string
-    MidpointRequest:
-      description: Request for midpoint / spread / last-trade-price methods. The same shape is reused for all three since
-        they target the same outcome and accept the same identifier inputs.
+    MaxGap:
       properties:
-        market_ticker:
-          type: string
-        outcome:
+        ask_gap_bps:
+          format: double
           type:
-          - string
+          - number
           - 'null'
-        token_id:
+        bid_gap_bps:
+          format: double
           type:
-          - string
+          - number
           - 'null'
-      required:
-      - market_ticker
-      title: MidpointRequest
+      title: MaxGap
       type: object
     NewOrder:
       description: 'One order in a `create_orders_batch` call. Each venue caps the batch size (Polymarket: 15; Kalshi: token-budget-dependent).'
@@ -1668,6 +1585,151 @@ components:
       - asks
       - asset_id
       - bids
+      type: object
+    OrderbookImpact:
+      properties:
+        asset_id:
+          type: string
+        buy_avg_price:
+          format: double
+          type:
+          - number
+          - 'null'
+        buy_fill_pct:
+          format: double
+          type: number
+        buy_slippage_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        mid:
+          format: double
+          type:
+          - number
+          - 'null'
+        openpx_ts:
+          format: date-time
+          type: string
+        sell_avg_price:
+          format: double
+          type:
+          - number
+          - 'null'
+        sell_fill_pct:
+          format: double
+          type: number
+        sell_slippage_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        size:
+          format: double
+          type: number
+      required:
+      - asset_id
+      - buy_fill_pct
+      - openpx_ts
+      - sell_fill_pct
+      - size
+      title: OrderbookImpact
+      type: object
+    OrderbookMicrostructure:
+      properties:
+        ask_slope:
+          format: double
+          type:
+          - number
+          - 'null'
+        asset_id:
+          type: string
+        bid_slope:
+          format: double
+          type:
+          - number
+          - 'null'
+        depth_buckets:
+          $ref: '#/components/schemas/DepthBuckets'
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        level_count:
+          $ref: '#/components/schemas/LevelCount'
+        max_gap:
+          $ref: '#/components/schemas/MaxGap'
+        openpx_ts:
+          format: date-time
+          type: string
+      required:
+      - asset_id
+      - depth_buckets
+      - level_count
+      - max_gap
+      - openpx_ts
+      title: OrderbookMicrostructure
+      type: object
+    OrderbookStats:
+      properties:
+        ask_depth:
+          format: double
+          type: number
+        asset_id:
+          type: string
+        best_ask:
+          format: double
+          type:
+          - number
+          - 'null'
+        best_bid:
+          format: double
+          type:
+          - number
+          - 'null'
+        bid_depth:
+          format: double
+          type: number
+        exchange_ts:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        imbalance:
+          format: double
+          type:
+          - number
+          - 'null'
+        mid:
+          format: double
+          type:
+          - number
+          - 'null'
+        openpx_ts:
+          format: date-time
+          type: string
+        spread_bps:
+          format: double
+          type:
+          - number
+          - 'null'
+        weighted_mid:
+          format: double
+          type:
+          - number
+          - 'null'
+      required:
+      - ask_depth
+      - asset_id
+      - bid_depth
+      - openpx_ts
+      title: OrderbookStats
       type: object
     Outcome:
       description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
@@ -1947,30 +2009,6 @@ components:
       - slug
       - status
       title: SportResult
-      type: object
-    Spread:
-      description: "Top-of-book bid/ask + spread for a market outcome. Lighter than a full `Orderbook` \u2014 useful for liquidity\
-        \ scoring and PnL marks where only the best levels are needed."
-      properties:
-        ask:
-          format: double
-          type: number
-        bid:
-          format: double
-          type: number
-        spread:
-          format: double
-          type: number
-        ts_ms:
-          format: int64
-          type:
-          - integer
-          - 'null'
-      required:
-      - ask
-      - bid
-      - spread
-      title: Spread
       type: object
     TradesRequest:
       description: Request for fetching recent public trades ("tape") for a market outcome.

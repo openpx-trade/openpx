@@ -176,30 +176,26 @@ impl ExchangeInner {
         dispatch!(self, fetch_orderbooks_batch, asset_ids)
     }
 
-    pub async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
-        dispatch!(self, fetch_midpoint, req)
-    }
-
-    pub async fn fetch_midpoints_batch(
+    pub async fn fetch_orderbook_stats(
         &self,
-        market_tickers: Vec<String>,
-    ) -> Result<HashMap<String, f64>, OpenPxError> {
-        dispatch!(self, fetch_midpoints_batch, market_tickers)
+        asset_id: &str,
+    ) -> Result<OrderbookStats, OpenPxError> {
+        dispatch!(self, fetch_orderbook_stats, asset_id)
     }
 
-    pub async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
-        dispatch!(self, fetch_spread, req)
-    }
-
-    pub async fn fetch_last_trade_price(
+    pub async fn fetch_orderbook_impact(
         &self,
-        req: MidpointRequest,
-    ) -> Result<LastTrade, OpenPxError> {
-        dispatch!(self, fetch_last_trade_price, req)
+        asset_id: &str,
+        size: f64,
+    ) -> Result<OrderbookImpact, OpenPxError> {
+        dispatch!(self, fetch_orderbook_impact, asset_id, size)
     }
 
-    pub async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
-        dispatch!(self, fetch_open_interest, market_ticker)
+    pub async fn fetch_orderbook_microstructure(
+        &self,
+        asset_id: &str,
+    ) -> Result<OrderbookMicrostructure, OpenPxError> {
+        dispatch!(self, fetch_orderbook_microstructure, asset_id)
     }
 
     pub async fn cancel_all_orders(

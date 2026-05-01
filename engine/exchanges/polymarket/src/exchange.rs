@@ -19,11 +19,10 @@ use tracing::info;
 
 use px_core::{
     manifests::POLYMARKET_MANIFEST, sort_asks, sort_bids, Event, Exchange, ExchangeInfo,
-    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, LastTrade, Market,
-    MarketLineage, MarketStatus, MarketStatusFilter, MarketTrade, MarketType, MidpointRequest,
-    NewOrder, OpenPxError, Order, OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook,
-    Outcome, Position, PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource, Spread,
-    TradesRequest,
+    ExchangeManifest, FetchMarketsParams, FetchOrdersParams, Fill, Market, MarketLineage,
+    MarketStatus, MarketStatusFilter, MarketTrade, MarketType, NewOrder, OpenPxError, Order,
+    OrderSide, OrderStatus, OrderType as UnifiedOrderType, Orderbook, Outcome, Position,
+    PriceLevel, PublicTrade, RateLimiter, Series, SettlementSource, TradesRequest,
 };
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
@@ -997,65 +996,6 @@ impl Polymarket {
         self.fetch_positions(Some(condition_id))
             .await
             .map_err(|e| PolymarketError::Api(format!("{e}")))
-    }
-
-    /// Fetch current open interest from Polymarket data-api.
-    /// Returns the OI value (USDC-denominated outstanding token pairs).
-    /// Resolve a CLOB token ID from a `MidpointRequest`. Prefers the explicit
-    /// `req.token_id`; falls back to fetching the market and picking the YES
-    /// token (or the outcome-matched one) when only `market_ticker` is provided.
-    async fn resolve_token_id_for_pricing(
-        &self,
-        req: &MidpointRequest,
-    ) -> Result<String, OpenPxError> {
-        if let Some(t) = req.token_id.as_deref().filter(|s| !s.is_empty()) {
-            return Ok(t.to_string());
-        }
-        let market = self.fetch_market(&req.market_ticker).await?;
-        if let Some(outcome) = req.outcome.as_deref() {
-            if let Some(o) = market.outcome(outcome) {
-                if let Some(t) = o.token_id.as_deref() {
-                    return Ok(t.to_string());
-                }
-            }
-        }
-        market
-            .token_id_yes()
-            .map(String::from)
-            .or_else(|| market.outcomes.iter().find_map(|o| o.token_id.clone()))
-            .ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                    "could not resolve token_id for market {}",
-                    req.market_ticker
-                )))
-            })
-    }
-
-    pub async fn fetch_open_interest(
-        &self,
-        condition_id: &str,
-    ) -> Result<Option<f64>, PolymarketError> {
-        let data_api_url = &self.config.data_api_url;
-        let url = format!("{data_api_url}/oi?market={condition_id}");
-        let response = reqwest::get(&url)
-            .await
-            .map_err(|e| PolymarketError::Network(e.to_string()))?;
-        if !response.status().is_success() {
-            return Ok(None);
-        }
-        let data: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| PolymarketError::Api(e.to_string()))?;
-        let oi = data
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|obj| obj.get("value"))
-            .and_then(|v| {
-                v.as_f64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-            });
-        Ok(oi)
     }
 
     fn parse_market(&self, data: serde_json::Value) -> Option<Market> {
@@ -2316,142 +2256,6 @@ impl Exchange for Polymarket {
         Ok(raw.iter().filter_map(parse_polymarket_book).collect())
     }
 
-    async fn fetch_midpoint(&self, req: MidpointRequest) -> Result<f64, OpenPxError> {
-        let token_id = self.resolve_token_id_for_pricing(&req).await?;
-        let endpoint = format!("/midpoint?token_id={token_id}");
-        let v: serde_json::Value = self
-            .client
-            .get_clob(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-        parse_polymarket_price_field(&v, "mid").ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(
-                "polymarket /midpoint missing `mid` field".into(),
-            ))
-        })
-    }
-
-    async fn fetch_midpoints_batch(
-        &self,
-        market_tickers: Vec<String>,
-    ) -> Result<HashMap<String, f64>, OpenPxError> {
-        if market_tickers.is_empty() {
-            return Ok(HashMap::new());
-        }
-        let body: Vec<serde_json::Value> = market_tickers
-            .iter()
-            .map(|t| serde_json::json!({ "token_id": t }))
-            .collect();
-        let url = format!("{}/midpoints", self.config.clob_url);
-        let resp = reqwest::Client::new()
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
-        if !resp.status().is_success() {
-            return Err(OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                "polymarket /midpoints HTTP {}",
-                resp.status()
-            ))));
-        }
-        let raw: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| OpenPxError::Exchange(px_core::ExchangeError::Api(e.to_string())))?;
-        let mut out = HashMap::with_capacity(market_tickers.len());
-        if let Some(map) = raw.as_object() {
-            for (k, v) in map {
-                if let Some(price) = v
-                    .as_f64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-                {
-                    out.insert(k.clone(), price);
-                }
-            }
-        }
-        Ok(out)
-    }
-
-    async fn fetch_spread(&self, req: MidpointRequest) -> Result<Spread, OpenPxError> {
-        let token_id = self.resolve_token_id_for_pricing(&req).await?;
-        let endpoint = format!("/spread?token_id={token_id}");
-        let v: serde_json::Value = self
-            .client
-            .get_clob(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-        let spread = parse_polymarket_price_field(&v, "spread").ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(
-                "polymarket /spread missing `spread` field".into(),
-            ))
-        })?;
-        // /spread doesn't return bid/ask directly; complement with the midpoint
-        // when present so callers get a full Spread shape.
-        let mid = parse_polymarket_price_field(&v, "mid")
-            .or_else(|| parse_polymarket_price_field(&v, "midpoint"));
-        let (bid, ask) = if let Some(mid) = mid {
-            (mid - spread / 2.0, mid + spread / 2.0)
-        } else {
-            (0.0, spread)
-        };
-        Ok(Spread {
-            bid,
-            ask,
-            spread,
-            ts_ms: None,
-        })
-    }
-
-    async fn fetch_last_trade_price(&self, req: MidpointRequest) -> Result<LastTrade, OpenPxError> {
-        let token_id = self.resolve_token_id_for_pricing(&req).await?;
-        let endpoint = format!("/last-trade-price?token_id={token_id}");
-        let v: serde_json::Value = self
-            .client
-            .get_clob(&endpoint)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?;
-        let price = parse_polymarket_price_field(&v, "price").ok_or_else(|| {
-            OpenPxError::Exchange(px_core::ExchangeError::Api(
-                "polymarket /last-trade-price missing `price`".into(),
-            ))
-        })?;
-        let size = parse_polymarket_price_field(&v, "size").unwrap_or(0.0);
-        let side_str = v.get("side").and_then(|s| s.as_str()).unwrap_or("BUY");
-        let side = if side_str.eq_ignore_ascii_case("sell") {
-            OrderSide::Sell
-        } else {
-            OrderSide::Buy
-        };
-        let ts_ms = v
-            .get("timestamp")
-            .and_then(|t| {
-                t.as_i64()
-                    .or_else(|| t.as_str().and_then(|s| s.parse().ok()))
-            })
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-        Ok(LastTrade {
-            price,
-            side,
-            size,
-            ts_ms,
-        })
-    }
-
-    async fn fetch_open_interest(&self, market_ticker: &str) -> Result<f64, OpenPxError> {
-        // Trait method takes a market_ticker; on Polymarket that's the conditionId.
-        // The inherent fetch_open_interest method returns Option<f64> on
-        // Data-API miss; lift to Result so missing OI is an explicit error.
-        Polymarket::fetch_open_interest(self, market_ticker)
-            .await
-            .map_err(|e| OpenPxError::Exchange(e.into()))?
-            .ok_or_else(|| {
-                OpenPxError::Exchange(px_core::ExchangeError::Api(format!(
-                    "polymarket /oi returned no value for {market_ticker}"
-                )))
-            })
-    }
-
     async fn cancel_all_orders(
         &self,
         market_ticker: Option<&str>,
@@ -2542,11 +2346,6 @@ impl Exchange for Polymarket {
             has_websocket: true,
             has_fetch_market_lineage: true,
             has_fetch_orderbooks_batch: true,
-            has_fetch_midpoint: true,
-            has_fetch_midpoints_batch: true,
-            has_fetch_spread: true,
-            has_fetch_last_trade_price: true,
-            has_fetch_open_interest: true,
             has_cancel_all_orders: authed,
             has_create_orders_batch: authed,
         }
@@ -2768,13 +2567,6 @@ fn parse_polymarket_book(v: &serde_json::Value) -> Option<Orderbook> {
     })
 }
 
-fn parse_polymarket_price_field(v: &serde_json::Value, key: &str) -> Option<f64> {
-    v.get(key).and_then(|p| {
-        p.as_f64()
-            .or_else(|| p.as_str().and_then(|s| s.parse().ok()))
-    })
-}
-
 /// Map the unified `OrderType` to a Polymarket-recognized time-in-force string
 /// (consumed by `create_order` via the params map).
 fn polymarket_unified_tif(t: UnifiedOrderType) -> Option<&'static str> {
@@ -2929,9 +2721,7 @@ mod tests {
         assert_eq!(s.numeric_id.as_deref(), Some("8"));
     }
 
-    // --- Batch 3 parser tests ---
-
-    use super::{parse_polymarket_book, parse_polymarket_price_field};
+    use super::parse_polymarket_book;
 
     #[test]
     fn parse_polymarket_book_orders_levels_and_carries_metadata() {
@@ -2959,22 +2749,6 @@ mod tests {
         assert!(b.best_ask().unwrap() <= 0.66);
         // Zero-priced level filtered out.
         assert_eq!(b.bids.len(), 2);
-    }
-
-    #[test]
-    fn parse_polymarket_price_field_handles_string_and_number() {
-        assert_eq!(
-            parse_polymarket_price_field(&serde_json::json!({"x": "0.42"}), "x"),
-            Some(0.42)
-        );
-        assert_eq!(
-            parse_polymarket_price_field(&serde_json::json!({"x": 0.42}), "x"),
-            Some(0.42)
-        );
-        assert_eq!(
-            parse_polymarket_price_field(&serde_json::json!({"y": "skip"}), "x"),
-            None
-        );
     }
 
     use super::normalize_timestamp;

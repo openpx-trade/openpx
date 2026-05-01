@@ -41,6 +41,15 @@ class CryptoPriceSource(Enum):
     chainlink = "chainlink"
 
 
+class DepthBuckets(BaseModel):
+    ask_within_100bps: float
+    ask_within_10bps: float
+    ask_within_50bps: float
+    bid_within_100bps: float
+    bid_within_10bps: float
+    bid_within_50bps: float
+
+
 class Event(BaseModel):
     category: str | None = None
     description: str | None = None
@@ -78,17 +87,12 @@ class ExchangeInfo(BaseModel):
     has_create_orders_batch: bool
     has_fetch_balance: bool
     has_fetch_fills: bool
-    has_fetch_last_trade_price: bool
     has_fetch_market_lineage: bool
     has_fetch_markets: bool
-    has_fetch_midpoint: bool
-    has_fetch_midpoints_batch: bool
-    has_fetch_open_interest: bool
     has_fetch_orderbook: bool
     has_fetch_orderbooks_batch: bool
     has_fetch_positions: bool
     has_fetch_server_time: bool
-    has_fetch_spread: bool
     has_fetch_trades: bool
     has_refresh_balance: bool
     has_websocket: bool
@@ -123,6 +127,11 @@ class InvalidationReason(RootModel[InvalidationReason1 | InvalidationReason2]):
         ...,
         description="Why a specific book was invalidated — handed to users so they can decide whether to alert, log, or handle it silently.",
     )
+
+
+class LevelCount(BaseModel):
+    asks: conint(ge=0)
+    bids: conint(ge=0)
 
 
 class LiquidityRole(Enum):
@@ -164,10 +173,9 @@ class MarketType(Enum):
     scalar = "scalar"
 
 
-class MidpointRequest(BaseModel):
-    market_ticker: str
-    outcome: str | None = None
-    token_id: str | None = None
+class MaxGap(BaseModel):
+    ask_gap_bps: float | None = None
+    bid_gap_bps: float | None = None
 
 
 class OrderSide(Enum):
@@ -188,6 +196,45 @@ class OrderType(Enum):
     gtc = "gtc"
     ioc = "ioc"
     fok = "fok"
+
+
+class OrderbookImpact(BaseModel):
+    asset_id: str
+    buy_avg_price: float | None = None
+    buy_fill_pct: float
+    buy_slippage_bps: float | None = None
+    exchange_ts: AwareDatetime | None = None
+    mid: float | None = None
+    openpx_ts: AwareDatetime
+    sell_avg_price: float | None = None
+    sell_fill_pct: float
+    sell_slippage_bps: float | None = None
+    size: float
+
+
+class OrderbookMicrostructure(BaseModel):
+    ask_slope: float | None = None
+    asset_id: str
+    bid_slope: float | None = None
+    depth_buckets: DepthBuckets
+    exchange_ts: AwareDatetime | None = None
+    level_count: LevelCount
+    max_gap: MaxGap
+    openpx_ts: AwareDatetime
+
+
+class OrderbookStats(BaseModel):
+    ask_depth: float
+    asset_id: str
+    best_ask: float | None = None
+    best_bid: float | None = None
+    bid_depth: float
+    exchange_ts: AwareDatetime | None = None
+    imbalance: float | None = None
+    mid: float | None = None
+    openpx_ts: AwareDatetime
+    spread_bps: float | None = None
+    weighted_mid: float | None = None
 
 
 class Outcome(BaseModel):
@@ -298,13 +345,6 @@ class SportResult(BaseModel):
     slug: str
     status: str
     turn: str | None = None
-
-
-class Spread(BaseModel):
-    ask: float
-    bid: float
-    spread: float
-    ts_ms: int | None = None
 
 
 class TradesRequest(BaseModel):
@@ -432,13 +472,6 @@ class Fill(BaseModel):
     price: float
     side: OrderSide
     size: float
-
-
-class LastTrade(BaseModel):
-    price: float
-    side: OrderSide
-    size: float
-    ts_ms: int
 
 
 class Market(BaseModel):
