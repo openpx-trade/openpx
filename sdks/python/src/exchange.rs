@@ -141,6 +141,41 @@ impl NativeExchange {
         pythonize(py, &order).map_err(|e| to_py_err(e.to_string()))
     }
 
+    #[pyo3(signature = (asset_id=None))]
+    fn cancel_all_orders<'py>(
+        &self,
+        py: Python<'py>,
+        asset_id: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.cancel_all_orders(asset_id.as_deref())));
+        let cancelled = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &cancelled).map_err(|e| to_py_err(e.to_string()))
+    }
+
+    #[pyo3(signature = (orders))]
+    fn create_orders_batch<'py>(
+        &self,
+        py: Python<'py>,
+        orders: Vec<Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        // Each order is a dict with the same fields as `create_order` args.
+        let mut reqs = Vec::with_capacity(orders.len());
+        for entry in orders {
+            let val: serde_json::Value =
+                pythonize::depythonize(&entry).map_err(|e| to_py_err(e.to_string()))?;
+            let req: px_core::CreateOrderRequest =
+                serde_json::from_value(val).map_err(|e| to_py_err(e.to_string()))?;
+            reqs.push(req);
+        }
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.create_orders_batch(reqs)));
+        let placed = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &placed).map_err(|e| to_py_err(e.to_string()))
+    }
+
     #[pyo3(signature = (order_id))]
     fn fetch_order<'py>(&self, py: Python<'py>, order_id: &str) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();

@@ -123,6 +123,34 @@ enum Command {
     },
     /// Fetch a single order by ID
     FetchOrder { order_id: String },
+    /// Submit a single limit order (price ∈ (0,1), size in contracts)
+    CreateOrder {
+        asset_id: String,
+        /// `yes`, `no`, or a categorical label (Polymarket only)
+        #[arg(long)]
+        outcome: String,
+        /// `buy` or `sell`
+        #[arg(long)]
+        side: String,
+        /// Limit price as YES probability in (0,1)
+        #[arg(long)]
+        price: f64,
+        /// Order size in contracts
+        #[arg(long)]
+        size: f64,
+        /// Time-in-force: `gtc`, `ioc`, or `fok` (default `gtc`)
+        #[arg(long, default_value = "gtc")]
+        order_type: String,
+    },
+    /// Cancel one open order by ID
+    CancelOrder { order_id: String },
+    /// Cancel all open orders, optionally scoped to one `--asset-id`
+    CancelAllOrders {
+        #[arg(long)]
+        asset_id: Option<String>,
+    },
+    /// Refresh cached balance + on-chain allowance (Polymarket only)
+    RefreshBalance,
     /// Fetch fill history
     FetchFills {
         #[arg(long)]
@@ -186,6 +214,7 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
         "polymarket" => &[
             ("POLYMARKET_PRIVATE_KEY", "private_key"),
             ("POLYMARKET_FUNDER", "funder"),
+            ("POLYMARKET_SIGNATURE_TYPE", "signature_type"),
             ("POLYMARKET_API_KEY", "api_key"),
             ("POLYMARKET_API_SECRET", "api_secret"),
             ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
@@ -344,6 +373,57 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
             Command::FetchOrder { order_id } => {
                 let order = exchange.fetch_order(&order_id).await?;
                 print_json(&order);
+            }
+            Command::CreateOrder {
+                asset_id,
+                outcome,
+                side,
+                price,
+                size,
+                order_type,
+            } => {
+                let order_outcome = match outcome.to_ascii_lowercase().as_str() {
+                    "yes" => px_core::OrderOutcome::Yes,
+                    "no" => px_core::OrderOutcome::No,
+                    other => px_core::OrderOutcome::Label(other.into()),
+                };
+                let order_side = match side.to_ascii_lowercase().as_str() {
+                    "buy" => px_core::OrderSide::Buy,
+                    "sell" => px_core::OrderSide::Sell,
+                    other => {
+                        return Err(px_core::error::OpenPxError::InvalidInput(format!(
+                            "side must be 'buy' or 'sell', got '{other}'"
+                        )));
+                    }
+                };
+                let order_type_enum = order_type.parse::<px_core::OrderType>().map_err(|e| {
+                    px_core::error::OpenPxError::InvalidInput(e)
+                })?;
+                let req = px_core::CreateOrderRequest {
+                    asset_id,
+                    outcome: order_outcome,
+                    side: order_side,
+                    price,
+                    size,
+                    order_type: order_type_enum,
+                };
+                let order = exchange.create_order(req).await?;
+                print_json(&order);
+            }
+            Command::CancelOrder { order_id } => {
+                let order = exchange.cancel_order(&order_id).await?;
+                print_json(&order);
+            }
+            Command::CancelAllOrders { asset_id } => {
+                let orders = exchange.cancel_all_orders(asset_id.as_deref()).await?;
+                print_json(&serde_json::json!({
+                    "cancelled": orders,
+                    "count": orders.len(),
+                }));
+            }
+            Command::RefreshBalance => {
+                exchange.refresh_balance().await?;
+                print_json(&serde_json::json!({ "ok": true }));
             }
             Command::FetchFills {
                 market_ticker,

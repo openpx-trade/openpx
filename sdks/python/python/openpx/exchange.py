@@ -22,6 +22,26 @@ class Exchange:
         markets = exchange.fetch_markets()
         for m in markets:
             print(m)  # Pydantic Market model with autocomplete
+
+    Authentication
+    --------------
+    **Kalshi** — pass ``api_key_id`` plus either ``private_key_path`` (file
+    path to the PKCS#8 PEM) or ``private_key_pem`` (inline PEM contents).
+    Public market-data calls work with no config.
+
+    **Polymarket** — pick the credential path matching your wallet:
+
+    * MetaMask EOA + Polymarket Safe → ``private_key`` (EOA) + ``funder`` (Safe).
+      ``signature_type`` is auto-detected as ``gnosis_safe``.
+    * Plain EOA (no Safe) → ``private_key`` only. ``signature_type`` defaults to ``eoa``.
+    * Pre-derived API keys (most reliable behind VPNs / Cloudflare) →
+      ``api_key`` + ``api_secret`` + ``api_passphrase`` (and ``private_key`` for
+      order signing). Skips the ``derive-api-key`` flow.
+
+    Setting ``signature_type="eoa"`` while ``funder`` is also set is invalid
+    per Polymarket's SDK; OpenPX overrides it to ``gnosis_safe`` with a
+    warning. Full credential matrix:
+    https://docs.openpx.io/setup/polymarket-credentials
     """
 
     def __init__(self, exchange_id: str, config: Optional[dict[str, Any]] = None) -> None:
@@ -129,6 +149,30 @@ class Exchange:
         try:
             from openpx._models import Order
             return Order(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def cancel_all_orders(self, asset_id: Optional[str] = None) -> list[Any]:
+        """Cancel all open orders, optionally scoped to one ``asset_id``."""
+        raw = self._native.cancel_all_orders(asset_id)
+        try:
+            from openpx._models import Order
+            return [Order(**o) for o in raw]
+        except (ImportError, Exception):
+            return raw
+
+    def create_orders_batch(self, orders: list[dict]) -> list[Any]:
+        """Submit multiple orders in one round-trip.
+
+        Each entry is a dict with the same fields as ``create_order`` —
+        ``asset_id``, ``outcome`` (``yes``/``no``/``{label: ...}``), ``side``
+        (``buy``/``sell``), ``price``, ``size``, optional ``order_type`` (default ``gtc``).
+        Polymarket caps batches at 15 orders; Kalshi enforces a token-budget cap.
+        """
+        raw = self._native.create_orders_batch(orders)
+        try:
+            from openpx._models import Order
+            return [Order(**o) for o in raw]
         except (ImportError, Exception):
             return raw
 
