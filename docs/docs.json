@@ -19,6 +19,18 @@
   "navigation": {
     "tabs": [
       {
+        "tab": "Setup",
+        "groups": [
+          {
+            "group": "Credentials",
+            "pages": [
+              "setup/polymarket-credentials",
+              "setup/kalshi-credentials"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "API",
         "groups": [
           {

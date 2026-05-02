@@ -9,8 +9,13 @@ setup:
     {{venv}}/bin/pip install datamodel-code-generator maturin pydantic
     cd sdks/typescript && npm install
 
-sync-all: python node
+sync-all: python node setup-docs
     @echo "All SDKs synced with Rust core"
+
+# Regenerate docs/setup/*-credentials.mdx from schema/setup/*.yaml.
+# CI fails if the committed MDX drifts from the YAML source of truth.
+setup-docs:
+    python3 tools/gen_setup_docs.py
 
 schema:
     mkdir -p schema
