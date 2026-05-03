@@ -16,6 +16,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -23,3 +24,38 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+  # Release-please bumps Cargo.toml workspace version but doesn't run our
+  # doc generators. tools/gen_openapi.py and tools/gen_asyncapi.py both read
+  # the version from [workspace.package], so docs/openpx.{open,async}api.yaml
+  # drift on every release PR — failing the SDK Sync Check until a human
+  # regenerates by hand. This job re-runs the generators on the release-please
+  # branch and pushes back if the version field (or anything else) drifted.
+  sync-release-pr-docs:
+    name: Sync derived docs on release PR
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release-please--branches--main--components--openpx
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Regenerate openapi + asyncapi
+        run: |
+          python3 tools/gen_openapi.py
+          python3 tools/gen_asyncapi.py
+      - name: Commit and push if drifted
+        run: |
+          if git diff --quiet docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml; then
+            echo "no drift, skipping push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml
+          git commit -m "docs: sync openapi + asyncapi version after release bump"
+          git push
