@@ -25,7 +25,7 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 regex = { workspace = true }
-polymarket_client_sdk_v2 = { version = "=0.5.1", features = ["clob", "heartbeats"] }
+polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob", "heartbeats"] }
 k256 = "0.13"
 uuid = "1"
 alloy = { version = "1.5", features = ["providers", "signers", "contract", "network", "sol-types"] }
@@ -37,3 +37,6 @@ sha2 = "0.10"
 px-core = { workspace = true, features = ["http", "simd-json", "test-support"] }
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
+dotenvy = "0.15"
+rustls = { version = "0.23", features = ["ring"] }
+anyhow = "1"
