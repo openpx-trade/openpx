@@ -1,0 +1,20 @@
+# Source of truth for docs/setup/kalshi-credentials.mdx.
+# Regenerate the MDX with `just setup-docs` after editing this file.
+# CI fails if the committed MDX drifts from this YAML.
+
+exchange_id: kalshi
+title: Kalshi
+description: Authenticate to Kalshi.
+
+sections:
+  - heading: Setup
+    intro: |
+      Generate an API key id + RSA private key at [kalshi.com/account/profile](https://kalshi.com/account/profile) → API Keys.
+
+      Put them in `.env`:
+    env:
+      KALSHI_API_KEY_ID:       "..."
+      KALSHI_PRIVATE_KEY_PATH: "./kalshi-private-key.pem"
+    code:
+      api_key_id:       KALSHI_API_KEY_ID
+      private_key_path: KALSHI_PRIVATE_KEY_PATH

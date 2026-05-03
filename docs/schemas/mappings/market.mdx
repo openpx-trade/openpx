@@ -3,52 +3,50 @@ title: "Market mapping"
 description: "How each upstream exchange schema maps to OpenPX Market."
 ---
 
-_Unified prediction market model._
+_A prediction market on the unified surface. Prices are YES probabilities in `[0, 1]`._
+
+Every field is one of three entry types — **direct** (taken from upstream), **synthetic** (computed by OpenPX), or **omitted** (not exposed upstream).
 
 ## Coverage
 
-| Exchange | Sourced | Synthetic | Omitted |
+| Exchange | Direct | Synthetic | Omitted |
 |---|---|---|---|
-| kalshi | 15 | 6 | 4 |
-| polymarket | 19 | 6 | 0 |
-
-**Sourced** — value copied or transformed from a documented upstream field.  
-**Synthetic** — computed by OpenPX, not present upstream.  
-**Omitted** — upstream does not expose this concept.  
+| kalshi | 13 | 8 | 4 |
+| polymarket | 18 | 7 | 0 |
 
 ## Field crosswalk
 
-| Unified field | Type | kalshi source | polymarket source | Transform | Notes |
-|---|---|---|---|---|---|
-| `ticker` | string | `Market.ticker` (string) | `Market.slug` (string) | direct | **polymarket:** Polymarket exposes both a slug and a numeric `id`; we use slug as the unified ticker because it's stable and human-readable. The on-chain `conditionId` lives in `condition_id`; the numeric id lives in `numeric_id` for REST-only deep links. |
-| `openpx_id` | string | _computed_ — `{exchange}:{ticker}` | _computed_ — `{exchange}:{ticker}` | synthetic | Composite primary key, never sourced from upstream. |
-| `exchange` | string | _computed_ — literal exchange identifier ("kalshi" or "polymarket") | _computed_ — literal exchange identifier ("kalshi" or "polymarket") | synthetic |  |
-| `numeric_id` | string? | _not exposed_ | `Market.id` (string) | direct | **kalshi:** Kalshi has no separate numeric id surface. |
-| `event_ticker` | string? | `Market.event_ticker` (string) | _computed_ — events[0].slug from the embedded events relation | direct / synthetic | **kalshi:** Kalshi exposes the parent event identifier as `event_ticker`. **polymarket:** Polymarket's parent event is embedded under `events[]` on each market object; we read `events[0].slug` (the human-readable identifier matching the unified `event_ticker` semantics). Falls back to `events[0].id` only when `slug` is missing on the upstream payload. |
-| `title` | string | _computed_ — `{yes_sub_title} \| {no_sub_title}` | `Market.question` (string) | synthetic / direct | **kalshi:** Composed from the spec-canonical short titles for each side of the binary contract. The deprecated `title` field is ignored. |
-| `rules` | string? | _computed_ — `{rules_primary} \| {rules_secondary}` | `Market.description` (string) | synthetic / direct | **kalshi:** Concatenation of the two upstream prose fields with " \| " separator. Sources: rules_primary, rules_secondary. |
-| `status` | MarketStatus | `Market.status` (string) | `Market.active` (boolean) | enum_remap | **kalshi:** Kalshi values: initialized, inactive, active, closed, determined, disputed, amended, finalized → unified MarketStatus. **polymarket:** Polymarket exposes `active`, `closed`, `archived` as booleans; combined into unified MarketStatus enum. |
-| `market_type` | MarketType | `Market.market_type` (string) | _computed_ — derived from outcomes.len() (binary if 2, else categorical) | enum_remap / synthetic | **kalshi:** binary \| scalar → MarketType::Binary / MarketType::Scalar |
-| `result` | string? | `Market.result` (string) | _computed_ — outcomes[i] where outcomePrices[i] == 1.0 (resolved markets only) | direct / synthetic | **polymarket:** Polymarket has no single result field; the winning outcome is derived from outcomePrices after settlement. None for unresolved markets. Sources: outcomes, outcomePrices. |
-| `open_time` | string? (date-time) | `Market.open_time` (string (date-time)) | `Market.startDate` (string (date-time)) | parse_datetime |  |
-| `close_time` | string? (date-time) | `Market.close_time` (string (date-time)) | `Market.endDate` (string (date-time)) | parse_datetime |  |
-| `created_at` | string? (date-time) | `Market.created_time` (string (date-time)) | `Market.createdAt` (string (date-time)) | parse_datetime |  |
-| `settlement_time` | string? (date-time) | `Market.settlement_ts` (string (date-time)) | `Market.closedTime` (string) | parse_datetime | **polymarket:** closedTime is the actual on-chain settlement timestamp (distinct from endDate, which is the scheduled close). Populated only after settlement. |
-| `best_bid` | number? (double) | `Market.yes_bid_dollars` (FixedPointDollars) | `Market.bestBid` (number) | fixed_point_dollars / direct | **polymarket:** Polymarket already in [0,1] decimal. |
-| `best_ask` | number? (double) | `Market.yes_ask_dollars` (FixedPointDollars) | `Market.bestAsk` (number) | fixed_point_dollars / direct |  |
-| `last_trade_price` | number? (double) | `Market.last_price_dollars` (FixedPointDollars) | `Market.lastTradePrice` (number) | fixed_point_dollars / direct |  |
-| `tick_size` | number? (double) | `Market.price_ranges` (array) | `Market.orderPriceMinTickSize` (number) | tick_size / direct | **kalshi:** Kalshi exposes a tiered structure (PriceRange array, each with start/end/step strings); the unified value is the smallest step across all tiers — the finest precision the market accepts anywhere on its price curve. Coarser tiers still require their own step, but the single-number unified surface answers "what's the tightest tick I can ever quote?". The deprecated scalar `tick_size` integer is ignored. **polymarket:** Polymarket publishes a single scalar. |
-| `min_order_size` | number? (double) | _computed_ — 1.0 (or 0.01 when fractional_trading_enabled) | `Market.orderMinSize` (number) | synthetic / direct | **kalshi:** Kalshi has no upstream min_order_size field. Synthesized from `fractional_trading_enabled`. Source: fractional_trading_enabled. |
-| `volume` | number (double) | `Market.volume_fp` (FixedPointCount) | `Market.volumeNum` (number) | fixed_point_count / direct |  |
-| `volume_24h` | number? (double) | `Market.volume_24h_fp` (FixedPointCount) | `Market.volume24hr` (number) | fixed_point_count / direct |  |
-| `outcomes` | array | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | _computed_ — `per-exchange Vec<Outcome{label, price, token_id}>` | synthetic | Kalshi binary: two entries with labels "Yes" and "No"; price computed from yes_ask_dollars/last_price_dollars (No price = 1 - Yes); token_id always None (no per-outcome token surface). Polymarket: zipped element-wise from the stringified-JSON arrays `outcomes`, `outcomePrices`, and `clobTokenIds`. Replaces the previous trio of outcome_prices map + outcome_tokens vec + binary-only token_id_yes/token_id_no. |
-| `condition_id` | string? | _not exposed_ | `Market.conditionId` (string) | direct |  |
-| `neg_risk` | boolean? | _not exposed_ | `negRisk` — _spec gap_ | direct | **polymarket:** Spec gap: the gamma OpenAPI defines `negRisk` on `Event` and `Template`, not on `Market`, but live `/markets` and `/markets/keyset` responses include it on each market object. The parser reads it directly. Re-check on each daily upstream refresh — when Polymarket adds it to `Market` properties, promote to a regular `ref:` here. |
-| `neg_risk_market_id` | string? | _not exposed_ | `negRiskMarketID` — _spec gap_ | direct | **polymarket:** Spec gap (same pattern as `neg_risk`). |
+| Unified field | Type | kalshi source | polymarket source | Notes |
+|---|---|---|---|---|
+| `openpx_id` | string | _synthetic_ | _synthetic_ | **kalshi:** Composite key `\{exchange\}:\{ticker\}`. **polymarket:** Composite key `\{exchange\}:\{ticker\}`. |
+| `exchange` | string | _synthetic_ | _synthetic_ | **kalshi:** Literal string `"kalshi"`. **polymarket:** Literal string `"polymarket"`. |
+| `ticker` | string | `Market.ticker` | `Market.slug` | **kalshi:** Native Kalshi market ticker. **polymarket:** Polymarket slug; stable, human-readable identifier (numeric id lives in `numeric_id`). |
+| `numeric_id` | string? | _omitted_ | `Market.id` | **kalshi:** Kalshi has no separate numeric id surface. **polymarket:** Polymarket numeric DB id used for REST deep-links. |
+| `event_ticker` | string? | `Market.event_ticker` | _synthetic_ | **kalshi:** Native Kalshi event ticker. **polymarket:** Read from the embedded `events[0].slug` (falls back to `events[0].id`). |
+| `title` | string | _synthetic_ | `Market.question` | **kalshi:** Composed as `\{yes_sub_title\} \| \{no_sub_title\}`. **polymarket:** Polymarket market question text. |
+| `rules` | string? | _synthetic_ | `Market.description` | **kalshi:** Composed as `\{rules_primary\} \| \{rules_secondary\}`. **polymarket:** Polymarket market description. |
+| `status` | MarketStatus | _synthetic_ | _synthetic_ | **kalshi:** Mapped from Kalshi's `status` enum (initialized/active/closed/determined/...) to unified `MarketStatus`. **polymarket:** Combined from the `active`/`closed`/`archived` booleans into unified `MarketStatus`. |
+| `market_type` | MarketType | _synthetic_ | _synthetic_ | **kalshi:** Mapped from Kalshi's `market_type` enum (binary/scalar) to unified `MarketType`. **polymarket:** Derived from `outcomes.len()` — binary if 2, otherwise categorical. |
+| `outcomes` | array | _synthetic_ | _synthetic_ | **kalshi:** Two entries (`Yes`/`No`); price computed from `yes_ask_dollars`/`last_price_dollars`. **polymarket:** Zipped element-wise from the stringified-JSON arrays `outcomes`, `outcomePrices`, `clobTokenIds`. |
+| `condition_id` | string? | _omitted_ | `Market.conditionId` | **kalshi:** Kalshi has no CTF condition id. **polymarket:** On-chain CTF condition id. |
+| `volume` | number (double) | `Market.volume_fp` | `Market.volumeNum` | **kalshi:** FixedPointCount string parsed to f64 USD. **polymarket:** Lifetime volume in USD. |
+| `volume_24h` | number? (double) | `Market.volume_24h_fp` | `Market.volume24hr` | **kalshi:** FixedPointCount string parsed to f64 USD. **polymarket:** 24-hour volume in USD. |
+| `last_trade_price` | number? (double) | `Market.last_price_dollars` | `Market.lastTradePrice` | **kalshi:** Fixed-point dollar string parsed to YES probability in [0, 1]. **polymarket:** Already a YES probability in [0, 1]. |
+| `best_bid` | number? (double) | `Market.yes_bid_dollars` | `Market.bestBid` | **kalshi:** Fixed-point dollar string parsed to YES probability in [0, 1]. **polymarket:** Already a YES probability in [0, 1]. |
+| `best_ask` | number? (double) | `Market.yes_ask_dollars` | `Market.bestAsk` | **kalshi:** Fixed-point dollar string parsed to YES probability in [0, 1]. **polymarket:** Already a YES probability in [0, 1]. |
+| `tick_size` | number? (double) | `Market.price_ranges` | `Market.orderPriceMinTickSize` | **kalshi:** Smallest `step` across all tiers in the `price_ranges` array. **polymarket:** Single scalar tick size. |
+| `min_order_size` | number? (double) | _synthetic_ | `Market.orderMinSize` | **kalshi:** 1.0 by default, 0.01 when `fractional_trading_enabled`. **polymarket:** Polymarket minimum order size in contracts. |
+| `open_time` | string? (date-time) | `Market.open_time` | `Market.startDate` | **kalshi:** RFC3339 string parsed to UTC. **polymarket:** ISO 8601 string parsed to UTC. |
+| `close_time` | string? (date-time) | `Market.close_time` | `Market.endDate` | **kalshi:** RFC3339 string parsed to UTC. **polymarket:** ISO 8601 string parsed to UTC. |
+| `created_at` | string? (date-time) | `Market.created_time` | `Market.createdAt` | **kalshi:** RFC3339 string parsed to UTC. **polymarket:** ISO 8601 string parsed to UTC. |
+| `settlement_time` | string? (date-time) | `Market.settlement_ts` | `Market.closedTime` | **kalshi:** RFC3339 string parsed to UTC. **polymarket:** On-chain settlement time, populated only after the market resolves. |
+| `neg_risk` | boolean? | _omitted_ | `negRisk` _(spec gap)_ | **kalshi:** Kalshi has no neg-risk concept. **polymarket:** Spec gap: `negRisk` is present on every live `/markets` row but undeclared on `Market` in the gamma OpenAPI. |
+| `neg_risk_market_id` | string? | _omitted_ | `negRiskMarketID` _(spec gap)_ | **kalshi:** Kalshi has no neg-risk concept. **polymarket:** Spec gap: present on every live `/markets` row but undeclared on `Market` in the gamma OpenAPI. |
+| `result` | string? | `Market.result` | _synthetic_ | **kalshi:** Native Kalshi resolution enum string. **polymarket:** Winning `outcomes[i]` where `outcomePrices[i] == 1.0` after settlement. |
 
 ## Source specs
 
 - **kalshi** &middot; [`schema/upstream/kalshi.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.openapi.yaml)
 - **polymarket** &middot; [`schema/upstream/polymarket-gamma.openapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-gamma.openapi.yaml)
 
-> Tables are auto-generated from `schema/mappings/`. CI fails on unresolved $refs and on type mismatches for `transform: direct`. Drift in upstream specs surfaces here on the daily refresh PR.
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream spec; the daily upstream-refresh PR surfaces drift here.

@@ -4,6 +4,4 @@ sidebarTitle: "Fetch open orders"
 openapi: /openpx.openapi.yaml GET /v1/orders/fetch_open_orders
 ---
 
-Fetch the caller's currently open orders, optionally filtered by
-`asset_id` (Kalshi market ticker | Polymarket CTF token id, same
-convention as `fetch_orderbook` and `create_order`).
+List the caller's open orders, optionally scoped to one `asset_id`.

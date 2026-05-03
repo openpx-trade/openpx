@@ -1,8 +1,9 @@
 //! Auto-swap native USDC → USDC.e during Polymarket onboarding.
 //!
-//! Users fund Polygon wallets with native USDC (0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359)
-//! but Polymarket and fee escrow use bridged USDC.e (0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174).
-//! This module detects native USDC and swaps it to USDC.e via Uniswap V3 before approvals.
+//! V2 collateral is pUSD; the on-ramp is two-step: users fund Polygon wallets
+//! with native USDC (0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359), this module
+//! swaps to bridged USDC.e (0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174) via
+//! Uniswap V3, and a subsequent CollateralOnramp.wrap() converts USDC.e → pUSD.
 
 use alloy::primitives::{Address, Uint, U256};
 use alloy::providers::{Provider, ProviderBuilder};

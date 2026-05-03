@@ -4,5 +4,4 @@ sidebarTitle: "Cancel order"
 openapi: /openpx.openapi.yaml POST /v1/orders/cancel_order
 ---
 
-Cancel an existing order by ID. The order_id is globally unique on
-both exchanges, so no scope qualifier is required.
+Cancel one open order by its globally-unique `order_id`.

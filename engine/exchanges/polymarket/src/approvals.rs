@@ -1,7 +1,7 @@
 //! Token approval functionality for Polymarket trading.
 //!
-//! Users must approve USDC (ERC-20) and CTF tokens (ERC-1155) for Polymarket
-//! exchange contracts before trading.
+//! Users must approve pUSD (ERC-20, V2 collateral) and CTF tokens (ERC-1155)
+//! for Polymarket exchange contracts before trading.
 //!
 //! Supports both EOA wallets (direct approval) and Gnosis Safe wallets
 //! (approval executed through Safe's execTransaction).
@@ -23,7 +23,6 @@ use crate::error::PolymarketError;
 // Contract addresses on Polygon Mainnet — refreshed for CLOB V2 + pUSD cutover (2026-04-28).
 // Source of truth: https://docs.polymarket.com/resources/contracts.
 pub const PUSD_ADDRESS: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
-pub const PUSD_IMPL_ADDRESS: &str = "0x6bBCef9f7ef3B6C592c99e0f206a0DE94Ad0925f";
 pub const CTF_ADDRESS: &str = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
 pub const CTF_EXCHANGE: &str = "0xE111180000d2663C0091e4f400237545B87B996B";
 pub const NEG_RISK_CTF_EXCHANGE: &str = "0xe2222d279d744050d28e00520010520000310F59";

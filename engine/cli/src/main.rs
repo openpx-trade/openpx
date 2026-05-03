@@ -80,6 +80,22 @@ enum Command {
     FetchMarketLineage { market_ticker: String },
     /// Fetch full-depth L2 orderbook (bids + asks) for an asset_id (Kalshi market ticker or Polymarket token id)
     FetchOrderbook { asset_id: String },
+    /// Fetch full-depth L2 orderbooks for multiple asset_ids in one round-trip
+    FetchOrderbooksBatch {
+        /// Repeat or comma-separate (Kalshi cap: 100; Polymarket: no documented cap)
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        asset_ids: Vec<String>,
+    },
+    /// Top-of-book stats: best bid/ask, mid, spread, weighted-mid, imbalance, total depth
+    FetchOrderbookStats { asset_id: String },
+    /// Slippage curve at a single requested size — buy and sell sides
+    FetchOrderbookImpact {
+        asset_id: String,
+        /// Size in contracts (must be > 0)
+        size: f64,
+    },
+    /// Microstructure signals: depth tiers, slope, max gap, level counts
+    FetchOrderbookMicrostructure { asset_id: String },
     /// Fetch recent trades — `asset_id` is the Kalshi ticker or Polymarket slug
     FetchTrades {
         asset_id: String,
@@ -107,6 +123,34 @@ enum Command {
     },
     /// Fetch a single order by ID
     FetchOrder { order_id: String },
+    /// Submit a single limit order (price ∈ (0,1), size in contracts)
+    CreateOrder {
+        asset_id: String,
+        /// `yes`, `no`, or a categorical label (Polymarket only)
+        #[arg(long)]
+        outcome: String,
+        /// `buy` or `sell`
+        #[arg(long)]
+        side: String,
+        /// Limit price as YES probability in (0,1)
+        #[arg(long)]
+        price: f64,
+        /// Order size in contracts
+        #[arg(long)]
+        size: f64,
+        /// Time-in-force: `gtc`, `ioc`, or `fok` (default `gtc`)
+        #[arg(long, default_value = "gtc")]
+        order_type: String,
+    },
+    /// Cancel one open order by ID
+    CancelOrder { order_id: String },
+    /// Cancel all open orders, optionally scoped to one `--asset-id`
+    CancelAllOrders {
+        #[arg(long)]
+        asset_id: Option<String>,
+    },
+    /// Refresh cached balance + on-chain allowance (Polymarket only)
+    RefreshBalance,
     /// Fetch fill history
     FetchFills {
         #[arg(long)]
@@ -170,6 +214,7 @@ fn make_exchange_config(id: &str) -> serde_json::Value {
         "polymarket" => &[
             ("POLYMARKET_PRIVATE_KEY", "private_key"),
             ("POLYMARKET_FUNDER", "funder"),
+            ("POLYMARKET_SIGNATURE_TYPE", "signature_type"),
             ("POLYMARKET_API_KEY", "api_key"),
             ("POLYMARKET_API_SECRET", "api_secret"),
             ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
@@ -273,6 +318,25 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                 let ob = exchange.fetch_orderbook(&asset_id).await?;
                 print_json(&ob);
             }
+            Command::FetchOrderbooksBatch { asset_ids } => {
+                let books = exchange.fetch_orderbooks_batch(asset_ids).await?;
+                print_json(&serde_json::json!({
+                    "orderbooks": books,
+                    "count": books.len(),
+                }));
+            }
+            Command::FetchOrderbookStats { asset_id } => {
+                let stats = exchange.fetch_orderbook_stats(&asset_id).await?;
+                print_json(&stats);
+            }
+            Command::FetchOrderbookImpact { asset_id, size } => {
+                let impact = exchange.fetch_orderbook_impact(&asset_id, size).await?;
+                print_json(&impact);
+            }
+            Command::FetchOrderbookMicrostructure { asset_id } => {
+                let micro = exchange.fetch_orderbook_microstructure(&asset_id).await?;
+                print_json(&micro);
+            }
             Command::FetchTrades {
                 asset_id,
                 start_ts,
@@ -309,6 +373,57 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
             Command::FetchOrder { order_id } => {
                 let order = exchange.fetch_order(&order_id).await?;
                 print_json(&order);
+            }
+            Command::CreateOrder {
+                asset_id,
+                outcome,
+                side,
+                price,
+                size,
+                order_type,
+            } => {
+                let order_outcome = match outcome.to_ascii_lowercase().as_str() {
+                    "yes" => px_core::OrderOutcome::Yes,
+                    "no" => px_core::OrderOutcome::No,
+                    other => px_core::OrderOutcome::Label(other.into()),
+                };
+                let order_side = match side.to_ascii_lowercase().as_str() {
+                    "buy" => px_core::OrderSide::Buy,
+                    "sell" => px_core::OrderSide::Sell,
+                    other => {
+                        return Err(px_core::error::OpenPxError::InvalidInput(format!(
+                            "side must be 'buy' or 'sell', got '{other}'"
+                        )));
+                    }
+                };
+                let order_type_enum = order_type
+                    .parse::<px_core::OrderType>()
+                    .map_err(px_core::error::OpenPxError::InvalidInput)?;
+                let req = px_core::CreateOrderRequest {
+                    asset_id,
+                    outcome: order_outcome,
+                    side: order_side,
+                    price,
+                    size,
+                    order_type: order_type_enum,
+                };
+                let order = exchange.create_order(req).await?;
+                print_json(&order);
+            }
+            Command::CancelOrder { order_id } => {
+                let order = exchange.cancel_order(&order_id).await?;
+                print_json(&order);
+            }
+            Command::CancelAllOrders { asset_id } => {
+                let orders = exchange.cancel_all_orders(asset_id.as_deref()).await?;
+                print_json(&serde_json::json!({
+                    "cancelled": orders,
+                    "count": orders.len(),
+                }));
+            }
+            Command::RefreshBalance => {
+                exchange.refresh_balance().await?;
+                print_json(&serde_json::json!({ "ok": true }));
             }
             Command::FetchFills {
                 market_ticker,

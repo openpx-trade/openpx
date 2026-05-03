@@ -22,6 +22,26 @@ class Exchange:
         markets = exchange.fetch_markets()
         for m in markets:
             print(m)  # Pydantic Market model with autocomplete
+
+    Authentication
+    --------------
+    **Kalshi** — pass ``api_key_id`` plus either ``private_key_path`` (file
+    path to the PKCS#8 PEM) or ``private_key_pem`` (inline PEM contents).
+    Public market-data calls work with no config.
+
+    **Polymarket** — pick the credential path matching your wallet:
+
+    * MetaMask EOA + Polymarket Safe → ``private_key`` (EOA) + ``funder`` (Safe).
+      ``signature_type`` is auto-detected as ``gnosis_safe``.
+    * Plain EOA (no Safe) → ``private_key`` only. ``signature_type`` defaults to ``eoa``.
+    * Pre-derived API keys (most reliable behind VPNs / Cloudflare) →
+      ``api_key`` + ``api_secret`` + ``api_passphrase`` (and ``private_key`` for
+      order signing). Skips the ``derive-api-key`` flow.
+
+    Setting ``signature_type="eoa"`` while ``funder`` is also set is invalid
+    per Polymarket's SDK; OpenPX overrides it to ``gnosis_safe`` with a
+    warning. Full credential matrix:
+    https://docs.openpx.io/setup/polymarket-credentials
     """
 
     def __init__(self, exchange_id: str, config: Optional[dict[str, Any]] = None) -> None:
@@ -54,6 +74,7 @@ class Exchange:
         market_tickers: Optional[list[str]] = None,
         series_ticker: Optional[str] = None,
         event_ticker: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> dict[str, Any]:
         """Fetch markets from the exchange.
 
@@ -61,7 +82,9 @@ class Exchange:
         pagination), or omit it to page through the catalog with `cursor`.
         Returns ``{"markets": [...], "cursor": "..." | None}``.
         """
-        raw = self._native.fetch_markets(status, cursor, market_tickers, series_ticker, event_ticker)
+        raw = self._native.fetch_markets(
+            status, cursor, market_tickers, series_ticker, event_ticker, limit
+        )
         try:
             from openpx._models import Market
             return {
@@ -129,6 +152,30 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
+    def cancel_all_orders(self, asset_id: Optional[str] = None) -> list[Any]:
+        """Cancel all open orders, optionally scoped to one ``asset_id``."""
+        raw = self._native.cancel_all_orders(asset_id)
+        try:
+            from openpx._models import Order
+            return [Order(**o) for o in raw]
+        except (ImportError, Exception):
+            return raw
+
+    def create_orders_batch(self, orders: list[dict]) -> list[Any]:
+        """Submit multiple orders in one round-trip.
+
+        Each entry is a dict with the same fields as ``create_order`` —
+        ``asset_id``, ``outcome`` (``yes``/``no``/``{label: ...}``), ``side``
+        (``buy``/``sell``), ``price``, ``size``, optional ``order_type`` (default ``gtc``).
+        Polymarket caps batches at 15 orders; Kalshi enforces a token-budget cap.
+        """
+        raw = self._native.create_orders_batch(orders)
+        try:
+            from openpx._models import Order
+            return [Order(**o) for o in raw]
+        except (ImportError, Exception):
+            return raw
+
     def fetch_order(self, order_id: str) -> Any:
         raw = self._native.fetch_order(order_id)
         try:
@@ -175,16 +222,55 @@ class Exchange:
         """
         return self._native.fetch_server_time()
 
-    def fetch_orderbook(
-        self,
-        market_ticker: str,
-        outcome: Optional[str] = None,
-        token_id: Optional[str] = None,
-    ) -> Any:
-        raw = self._native.fetch_orderbook(market_ticker, outcome, token_id)
+    def fetch_orderbook(self, asset_id: str) -> Any:
+        """Fetch the full-depth L2 orderbook for an ``asset_id`` — Kalshi market
+        ticker or Polymarket CTF token id (same convention as ``create_order``)."""
+        raw = self._native.fetch_orderbook(asset_id)
         try:
             from openpx._models import Orderbook
             return Orderbook(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbooks_batch(self, asset_ids: list[str]) -> list[Any]:
+        """Fetch full-depth L2 orderbooks for multiple asset_ids in one
+        round-trip. Cap: 100 on Kalshi; no documented cap on Polymarket."""
+        raw = self._native.fetch_orderbooks_batch(asset_ids)
+        try:
+            from openpx._models import Orderbook
+            return [Orderbook(**b) for b in raw]
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_stats(self, asset_id: str) -> Any:
+        """Top-of-book stats: best bid/ask, mid, spread (bps), weighted-mid,
+        top-10 imbalance, and total bid/ask depth."""
+        raw = self._native.fetch_orderbook_stats(asset_id)
+        try:
+            from openpx._models import OrderbookStats
+            return OrderbookStats(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_impact(self, asset_id: str, size: float) -> Any:
+        """Slippage curve at a single requested ``size``. Walks the book and
+        returns partial fills with ``fill_pct < 100.0`` if the side
+        exhausts. ``size`` must be > 0."""
+        raw = self._native.fetch_orderbook_impact(asset_id, size)
+        try:
+            from openpx._models import OrderbookImpact
+            return OrderbookImpact(**raw)
+        except (ImportError, Exception):
+            return raw
+
+    def fetch_orderbook_microstructure(self, asset_id: str) -> Any:
+        """Microstructure signals: cumulative depth at 10/50/100 bps tiers,
+        OLS slope of cumulative size vs distance-from-mid, largest gap, and
+        per-side level counts."""
+        raw = self._native.fetch_orderbook_microstructure(asset_id)
+        try:
+            from openpx._models import OrderbookMicrostructure
+            return OrderbookMicrostructure(**raw)
         except (ImportError, Exception):
             return raw
 

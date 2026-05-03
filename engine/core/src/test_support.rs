@@ -3,30 +3,26 @@
 //! Each exchange has a `tests/mapping_contract.rs` that loads the committed
 //! mapping YAML, fetches a market against a mocked upstream, and asserts that
 //! the parsed unified `Market` matches what the YAML's `<exchange>:` sources
-//! claim. The walk + transform vocabulary is identical across exchanges; this
-//! module is the single source of truth for both, so kalshi and polymarket
-//! cannot drift on what `parse_datetime` (or any other transform) means.
+//! claim.
 //!
-//! Enabled via the `test-support` feature, which exchanges turn on as a
-//! dev-dependency only. Not compiled into release builds.
+//! Each per-exchange source declares one of three entry types:
+//!   * `type: direct`    — value is taken from upstream at the given `ref`.
+//!     The unified value must equal the upstream value (with permissive
+//!     numeric coercion: stringified numbers parse to f64, and tiered Kalshi
+//!     `price_ranges` arrays collapse to their smallest `step`).
+//!   * `type: synthetic` — computed by OpenPX, skipped here (verified by
+//!     parser unit tests).
+//!   * `type: omitted`   — not exposed upstream, skipped here.
 //!
-//! Caveat — same as the per-exchange tests: this verifies *behavioral
-//! equivalence* against a real fixture (the unified value at field `name`
-//! equals the fixture value at the declared `$ref` after the declared
-//! transform). It does not statically prove the code reads exactly that
-//! `$ref` at runtime; sentinel values in the fixture make any source-path
-//! swap detectable in practice.
+//! Enabled via the `test-support` feature.
 
 use std::fs;
 use std::path::PathBuf;
 
 use serde_json::Value;
 
-const REF_PREFIX: &str = "#/components/schemas/Market/properties/";
+const REF_PREFIX: &str = "#/components/schemas/";
 
-/// Walk up from `test_manifest_dir` until a `schema/mappings/<name>.yaml` is
-/// found, then load and parse it. The argument is typically
-/// `env!("CARGO_MANIFEST_DIR")` from the calling test crate.
 pub fn load_mapping(test_manifest_dir: &str, mapping_name: &str) -> serde_yaml::Value {
     let start = PathBuf::from(test_manifest_dir);
     let mut cur = start.clone();
@@ -42,144 +38,97 @@ pub fn load_mapping(test_manifest_dir: &str, mapping_name: &str) -> serde_yaml::
     }
 }
 
+/// Resolve a `ref` against the fixture. Pointer-shaped refs (`#/components/...`)
+/// are walked as `Type.field` after stripping the prefix; bare names look up
+/// `fixture[name]` directly (used for spec-gap fields).
 fn lookup_in_fixture<'a>(fixture: &'a Value, reference: &str) -> Option<&'a Value> {
-    fixture.get(reference.strip_prefix(REF_PREFIX)?)
+    if let Some(rest) = reference.strip_prefix(REF_PREFIX) {
+        // The fixture is a single object whose keys are the upstream
+        // schema's property names. We strip "<Schema>/properties/" leaving
+        // just the property name.
+        let parts: Vec<&str> = rest.split('/').collect();
+        // parts: [SchemaName, "properties", field_name, ...]
+        if parts.len() >= 3 && parts[1] == "properties" {
+            return fixture.get(parts[2]);
+        }
+        return None;
+    }
+    fixture.get(reference)
 }
 
-fn check_field(
-    transform: &str,
-    source: Option<&Value>,
-    unified: Option<&Value>,
-) -> Result<(), String> {
+fn coerce_to_f64(v: &Value) -> Option<f64> {
+    if let Some(n) = v.as_f64() {
+        return Some(n);
+    }
+    if let Some(s) = v.as_str() {
+        return s.parse::<f64>().ok();
+    }
+    None
+}
+
+fn check_direct(source: Option<&Value>, unified: Option<&Value>) -> Result<(), String> {
     let source_present = source.is_some_and(|v| !v.is_null());
     let unified_present = unified.is_some_and(|v| !v.is_null());
 
-    match transform {
-        "direct" => {
-            // Treat JSON null as absent on either side.
-            if !source_present && !unified_present {
-                return Ok(());
-            }
-            if source_present != unified_present {
-                return Err(format!(
-                    "direct presence mismatch: source={source:?} unified={unified:?}"
-                ));
-            }
-            let s = source.unwrap();
-            let u = unified.unwrap();
-            if s == u {
-                return Ok(());
-            }
-            match (s.as_f64(), u.as_f64()) {
-                (Some(a), Some(b)) if (a - b).abs() < 1e-9 => Ok(()),
-                _ => Err(format!("direct mismatch: source={s:?} unified={u:?}")),
-            }
-        }
-        "fixed_point_dollars" | "fixed_point_count" | "string_to_f64" => {
-            if source_present != unified_present {
-                return Err(format!(
-                    "{transform} presence mismatch: source={source:?} unified={unified:?}"
-                ));
-            }
-            if !source_present {
-                return Ok(());
-            }
-            let parsed = source
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok())
-                .or_else(|| source.and_then(|v| v.as_f64()))
-                .ok_or_else(|| format!("{transform}: source not parseable: {source:?}"))?;
-            let actual = unified
-                .and_then(|v| v.as_f64())
-                .ok_or_else(|| format!("{transform}: unified not f64: {unified:?}"))?;
-            if (parsed - actual).abs() < 1e-9 {
-                Ok(())
-            } else {
-                Err(format!(
-                    "{transform} value mismatch: parsed_source={parsed} unified={actual}"
-                ))
-            }
-        }
-        "parse_datetime" => {
-            if source_present != unified_present {
-                return Err(format!(
-                    "parse_datetime presence mismatch: source={source:?} unified={unified:?}"
-                ));
-            }
-            if !source_present {
-                return Ok(());
-            }
-            let s = source
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("parse_datetime: source not string: {source:?}"))?;
-            let u = unified
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("parse_datetime: unified not string: {unified:?}"))?;
-            let parsed_s = chrono::DateTime::parse_from_rfc3339(s)
-                .map_err(|e| format!("parse_datetime: source not RFC3339: {e}"))?;
-            let parsed_u = chrono::DateTime::parse_from_rfc3339(u)
-                .map_err(|e| format!("parse_datetime: unified not RFC3339: {e}"))?;
-            if parsed_s.timestamp() == parsed_u.timestamp() {
-                Ok(())
-            } else {
-                Err(format!("parse_datetime mismatch: source={s} unified={u}"))
-            }
-        }
-        "enum_remap" | "first_non_null" => {
-            if source_present && !unified_present {
-                Err(format!(
-                    "{transform}: source present but unified is null: source={source:?}"
-                ))
-            } else {
-                Ok(())
-            }
-        }
-        "tick_size" => {
-            // Source is the kalshi `price_ranges` array of {start, end, step}
-            // strings. Unified is a single number — the smallest step across
-            // all tiers. Presence-only on absence; on presence, verify the
-            // unified value matches min(parsed steps).
-            let source_steps: Vec<f64> = match source {
-                Some(Value::Array(a)) => a
-                    .iter()
-                    .filter_map(|r| r.get("step")?.as_str().and_then(|s| s.parse::<f64>().ok()))
-                    .collect(),
-                _ => vec![],
-            };
-            let source_meaningful = !source_steps.is_empty();
-            if source_meaningful && !unified_present {
-                return Err(format!(
-                    "tick_size: source present but unified is null: source={source:?}"
-                ));
-            }
-            if !source_meaningful && unified_present {
-                return Err(format!(
-                    "tick_size: source absent but unified set: unified={unified:?}"
-                ));
-            }
-            if source_meaningful {
-                let expected = source_steps.iter().copied().fold(f64::INFINITY, f64::min);
-                let actual = unified
-                    .and_then(|v| v.as_f64())
-                    .ok_or_else(|| format!("tick_size: unified not f64: {unified:?}"))?;
-                if (expected - actual).abs() > 1e-9 {
-                    return Err(format!(
-                        "tick_size value mismatch: expected_min_step={expected} unified={actual}"
-                    ));
-                }
-            }
-            Ok(())
-        }
-        other => Err(format!("unknown transform `{other}`")),
+    if !source_present && !unified_present {
+        return Ok(());
     }
+
+    // Tiered Kalshi `price_ranges`: array of {start, end, step} → min step.
+    if let Some(Value::Array(rows)) = source {
+        let steps: Vec<f64> = rows
+            .iter()
+            .filter_map(|r| r.get("step")?.as_str().and_then(|s| s.parse::<f64>().ok()))
+            .collect();
+        if !steps.is_empty() {
+            let expected = steps.iter().copied().fold(f64::INFINITY, f64::min);
+            let actual = unified
+                .and_then(coerce_to_f64)
+                .ok_or_else(|| format!("price_ranges: unified not numeric: {unified:?}"))?;
+            if (expected - actual).abs() < 1e-9 {
+                return Ok(());
+            }
+            return Err(format!(
+                "price_ranges min-step mismatch: expected={expected} unified={actual}"
+            ));
+        }
+    }
+
+    if source_present != unified_present {
+        return Err(format!(
+            "presence mismatch: source={source:?} unified={unified:?}"
+        ));
+    }
+
+    let s = source.unwrap();
+    let u = unified.unwrap();
+
+    if s == u {
+        return Ok(());
+    }
+
+    // Numeric coercion: stringified numbers, integer/float, etc.
+    if let (Some(a), Some(b)) = (coerce_to_f64(s), coerce_to_f64(u)) {
+        if (a - b).abs() < 1e-9 {
+            return Ok(());
+        }
+    }
+
+    // Datetime equivalence (RFC3339 vs unix-seconds, etc.)
+    if let (Some(a), Some(b)) = (s.as_str(), u.as_str()) {
+        if let (Ok(pa), Ok(pb)) = (
+            chrono::DateTime::parse_from_rfc3339(a),
+            chrono::DateTime::parse_from_rfc3339(b),
+        ) {
+            if pa.timestamp() == pb.timestamp() {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(format!("direct mismatch: source={s:?} unified={u:?}"))
 }
 
-/// Walk a mapping YAML and verify every `<exchange_key>:`-sourced field's
-/// value in `unified` matches the value at the declared `$ref` in `fixture`,
-/// modulo the declared transform.
-///
-/// Returns `(checked, violations)`. Use [`assert_mapping_contract`] if you
-/// just want to panic on any drift.
 pub fn verify_mapping_contract(
     fixture: &Value,
     unified: &Value,
@@ -199,56 +148,35 @@ pub fn verify_mapping_contract(
             Some(n) => n,
             None => continue,
         };
-        if field.get("synthetic").is_some() && field.get("sources").is_none() {
-            continue;
-        }
         let src = match field.get("sources").and_then(|s| s.get(exchange_key)) {
             Some(s) => s,
             None => continue,
         };
-        if src.get("omitted").and_then(|v| v.as_bool()) == Some(true) {
-            continue;
+        let ty = src.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match ty {
+            "synthetic" | "omitted" => continue,
+            "direct" => {}
+            other => {
+                violations.push(format!("[{name}] {exchange_key} unknown type `{other}`"));
+                continue;
+            }
         }
-        if src.get("synthetic").is_some() {
-            continue;
-        }
-        // `ref_unspecced` = direct read of a live-response field the upstream
-        // OpenAPI doesn't document on this schema. Look up the field at the
-        // top level of the fixture and run the declared transform — same
-        // behavioral check as `ref:`, just without spec resolution.
-        let (lookup_path, source_value) =
-            if let Some(field) = src.get("ref_unspecced").and_then(|v| v.as_str()) {
-                (field.to_string(), fixture.get(field))
-            } else {
-                let reference = match src.get("ref").and_then(|v| v.as_str()) {
-                    Some(r) => r,
-                    None => {
-                        violations.push(format!(
-                            "[{name}] {exchange_key} entry has no `ref:`, \
-                             `ref_unspecced:`, `synthetic:`, or `omitted:`"
-                        ));
-                        continue;
-                    }
-                };
-                (
-                    reference
-                        .strip_prefix(REF_PREFIX)
-                        .unwrap_or(reference)
-                        .to_string(),
-                    lookup_in_fixture(fixture, reference),
-                )
-            };
-        let transform = src
-            .get("transform")
-            .and_then(|v| v.as_str())
-            .unwrap_or("direct");
 
+        let reference = match src.get("ref").and_then(|v| v.as_str()) {
+            Some(r) => r,
+            None => {
+                violations.push(format!(
+                    "[{name}] {exchange_key} type=direct but missing `ref:`"
+                ));
+                continue;
+            }
+        };
+
+        let source_value = lookup_in_fixture(fixture, reference);
         let unified_value = unified.get(name);
 
-        if let Err(reason) = check_field(transform, source_value, unified_value) {
-            violations.push(format!(
-                "[{name}] ref={lookup_path} transform={transform}: {reason}"
-            ));
+        if let Err(reason) = check_direct(source_value, unified_value) {
+            violations.push(format!("[{name}] ref={reference}: {reason}"));
         }
         checked += 1;
     }
@@ -256,9 +184,6 @@ pub fn verify_mapping_contract(
     (checked, violations)
 }
 
-/// Run [`verify_mapping_contract`] and panic with a structured error on any
-/// violation. Also panics if no fields were exercised at all (which would
-/// usually mean the fixture or mapping is wrong).
 pub fn assert_mapping_contract(
     fixture: &Value,
     unified: &Value,
@@ -268,8 +193,8 @@ pub fn assert_mapping_contract(
     let (checked, violations) = verify_mapping_contract(fixture, unified, mapping, exchange_key);
     if !violations.is_empty() {
         panic!(
-            "{} of {} sourced fields drifted between schema/mappings/market.yaml and the \
-             actual {exchange_key} parse_market — fix the YAML or fix the code:\n  {}",
+            "{} of {} direct fields drifted between schema/mappings/ and the actual \
+             {exchange_key} parser — fix the YAML or fix the code:\n  {}",
             violations.len(),
             checked,
             violations.join("\n  ")

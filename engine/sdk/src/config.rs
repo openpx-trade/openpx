@@ -81,13 +81,24 @@ pub fn parse_polymarket(config: &Value) -> Result<PolymarketConfig, OpenPxError>
                 _ => None,
             })
     });
-    let sig_type = explicit_sig_type.unwrap_or_else(|| {
-        if cfg.funder.is_some() {
+    // The Polymarket SDK rejects `funder + Eoa` at .authenticate() time with
+    // a cryptic "Cannot have a funder address with a Eoa signature type" —
+    // this combo is a common misconfiguration for MetaMask users whose
+    // funder is an auto-deployed Safe. Override silently with a warning so
+    // the user finds out at construction (visible) instead of at first
+    // create_order (where it surfaces as a confusing post-failure).
+    let sig_type = match (explicit_sig_type, cfg.funder.is_some()) {
+        (Some(PolymarketSignatureType::Eoa), true) => {
+            tracing::warn!(
+                "POLYMARKET_SIGNATURE_TYPE=eoa is invalid when POLYMARKET_FUNDER \
+                 is set (Polymarket rejects this combo); overriding to gnosis_safe"
+            );
             PolymarketSignatureType::GnosisSafe
-        } else {
-            PolymarketSignatureType::Eoa
         }
-    });
+        (Some(t), _) => t,
+        (None, true) => PolymarketSignatureType::GnosisSafe,
+        (None, false) => PolymarketSignatureType::Eoa,
+    };
     cfg = cfg.with_signature_type(sig_type);
 
     if let (Some(key), Some(secret), Some(passphrase)) = (
@@ -110,4 +121,68 @@ pub fn parse_polymarket(config: &Value) -> Result<PolymarketConfig, OpenPxError>
         cfg = cfg.with_verbose(v);
     }
     Ok(cfg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn polymarket_no_funder_no_explicit_sig_type_defaults_to_eoa() {
+        let cfg = parse_polymarket(&json!({"private_key": "0xabc"})).unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::Eoa);
+    }
+
+    #[test]
+    fn polymarket_funder_no_explicit_sig_type_defaults_to_gnosis_safe() {
+        let cfg = parse_polymarket(&json!({
+            "private_key": "0xabc",
+            "funder": "0xd0d996b2c32d147b3e6c9e140f5c10fde68afab2",
+        }))
+        .unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::GnosisSafe);
+    }
+
+    #[test]
+    fn polymarket_explicit_sig_type_honored_when_no_funder() {
+        let cfg = parse_polymarket(&json!({
+            "private_key": "0xabc",
+            "signature_type": "eoa",
+        }))
+        .unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::Eoa);
+
+        let cfg = parse_polymarket(&json!({
+            "private_key": "0xabc",
+            "signature_type": "poly_proxy",
+        }))
+        .unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::Proxy);
+    }
+
+    #[test]
+    fn polymarket_explicit_eoa_with_funder_overridden_to_gnosis_safe() {
+        // The Polymarket SDK rejects this combo at .authenticate() time
+        // with a confusing error — parse_polymarket should silently fix it.
+        let cfg = parse_polymarket(&json!({
+            "private_key": "0xabc",
+            "funder": "0xd0d996b2c32d147b3e6c9e140f5c10fde68afab2",
+            "signature_type": "eoa",
+        }))
+        .unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::GnosisSafe);
+    }
+
+    #[test]
+    fn polymarket_explicit_proxy_with_funder_honored() {
+        // Proxy + funder is valid — don't override.
+        let cfg = parse_polymarket(&json!({
+            "private_key": "0xabc",
+            "funder": "0xd0d996b2c32d147b3e6c9e140f5c10fde68afab2",
+            "signature_type": "poly_proxy",
+        }))
+        .unwrap();
+        assert_eq!(cfg.signature_type, PolymarketSignatureType::Proxy);
+    }
 }

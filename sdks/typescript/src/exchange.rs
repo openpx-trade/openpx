@@ -71,6 +71,7 @@ impl Exchange {
         market_tickers: Option<Vec<String>>,
         series_ticker: Option<String>,
         event_ticker: Option<String>,
+        limit: Option<u32>,
     ) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -83,7 +84,7 @@ impl Exchange {
             market_tickers: market_tickers.unwrap_or_default(),
             series_ticker,
             event_ticker,
-            ..Default::default()
+            limit: limit.map(|n| n as usize),
         };
         let result = rt
             .spawn(async move { inner.fetch_markets(&fetch_params).await })
@@ -169,6 +170,39 @@ impl Exchange {
     }
 
     #[napi]
+    pub async fn cancel_all_orders(&self, asset_id: Option<String>) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.cancel_all_orders(asset_id.as_deref()).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn create_orders_batch(
+        &self,
+        orders: Vec<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let mut reqs = Vec::with_capacity(orders.len());
+        for entry in orders {
+            let req: px_core::CreateOrderRequest =
+                serde_json::from_value(entry).map_err(to_napi_err)?;
+            reqs.push(req);
+        }
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.create_orders_batch(reqs).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
     pub async fn fetch_order(&self, order_id: String) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
@@ -247,6 +281,21 @@ impl Exchange {
         let rt = get_runtime();
         let result = rt
             .spawn(async move { inner.fetch_orderbook(&asset_id).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn fetch_orderbooks_batch(
+        &self,
+        asset_ids: Vec<String>,
+    ) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.fetch_orderbooks_batch(asset_ids).await })
             .await
             .map_err(to_napi_err)?
             .map_err(to_napi_err)?;

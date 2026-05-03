@@ -7,73 +7,119 @@ const TOP_N_FOR_WEIGHTED: usize = 10;
 const SLOPE_MAX_LEVELS: usize = 20;
 const SLOPE_BPS_WINDOW: f64 = 200.0;
 
+/// Top-of-book snapshot stats for one asset.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookStats {
+    /// Upstream snapshot time in UTC; `null` when not provided.
     pub exchange_ts: Option<DateTime<Utc>>,
+    /// Wall-clock time OpenPX served the response (UTC).
     pub openpx_ts: DateTime<Utc>,
+    /// Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
+    /// Best bid as YES probability (e.g. `0.61`).
     pub best_bid: Option<f64>,
+    /// Best ask as YES probability (e.g. `0.63`).
     pub best_ask: Option<f64>,
+    /// Mid price as YES probability (e.g. `0.62`).
     pub mid: Option<f64>,
+    /// Spread in basis points relative to mid (e.g. `400.0`).
     pub spread_bps: Option<f64>,
+    /// Size-weighted mid using the top-10 levels (e.g. `0.62`).
     pub weighted_mid: Option<f64>,
+    /// Top-10 imbalance in `[-1, 1]` (positive = bid-heavy) (e.g. `0.12`).
     pub imbalance: Option<f64>,
+    /// Total resting bid size in contracts (e.g. `1000.0`).
     pub bid_depth: f64,
+    /// Total resting ask size in contracts (e.g. `1000.0`).
     pub ask_depth: f64,
 }
 
+/// Slippage curve at one requested size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookImpact {
+    /// Upstream snapshot time in UTC; `null` when not provided.
     pub exchange_ts: Option<DateTime<Utc>>,
+    /// Wall-clock time OpenPX served the response (UTC).
     pub openpx_ts: DateTime<Utc>,
+    /// Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
+    /// Requested order size in contracts (e.g. `100.0`).
     pub size: f64,
+    /// Mid price as YES probability (e.g. `0.62`).
     pub mid: Option<f64>,
+    /// Average fill price hitting asks (e.g. `0.625`).
     pub buy_avg_price: Option<f64>,
+    /// Buy-side slippage vs mid in basis points (e.g. `80.0`).
     pub buy_slippage_bps: Option<f64>,
+    /// Buy-side fill percentage in `[0, 100]` (e.g. `100.0`).
     pub buy_fill_pct: f64,
+    /// Average fill price hitting bids (e.g. `0.615`).
     pub sell_avg_price: Option<f64>,
+    /// Sell-side slippage vs mid in basis points (e.g. `80.0`).
     pub sell_slippage_bps: Option<f64>,
+    /// Sell-side fill percentage in `[0, 100]` (e.g. `100.0`).
     pub sell_fill_pct: f64,
 }
 
+/// Microstructure signals for one orderbook.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OrderbookMicrostructure {
+    /// Upstream snapshot time in UTC; `null` when not provided.
     pub exchange_ts: Option<DateTime<Utc>>,
+    /// Wall-clock time OpenPX served the response (UTC).
     pub openpx_ts: DateTime<Utc>,
+    /// Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
     pub asset_id: String,
+    /// Cumulative depth at 10/50/100 bps from mid.
     pub depth_buckets: DepthBuckets,
+    /// OLS slope of cumulative bid size vs distance-from-mid (e.g. `12.5`).
     pub bid_slope: Option<f64>,
+    /// OLS slope of cumulative ask size vs distance-from-mid (e.g. `12.5`).
     pub ask_slope: Option<f64>,
+    /// Largest consecutive-level price gap on each side, in basis points.
     pub max_gap: MaxGap,
+    /// Number of levels per side.
     pub level_count: LevelCount,
 }
 
+/// Cumulative depth at 10/50/100 bps tiers from mid.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DepthBuckets {
+    /// Cumulative bid size within 10 bps of mid (contracts).
     pub bid_within_10bps: f64,
+    /// Cumulative ask size within 10 bps of mid (contracts).
     pub ask_within_10bps: f64,
+    /// Cumulative bid size within 50 bps of mid (contracts).
     pub bid_within_50bps: f64,
+    /// Cumulative ask size within 50 bps of mid (contracts).
     pub ask_within_50bps: f64,
+    /// Cumulative bid size within 100 bps of mid (contracts).
     pub bid_within_100bps: f64,
+    /// Cumulative ask size within 100 bps of mid (contracts).
     pub ask_within_100bps: f64,
 }
 
+/// Largest consecutive-level price gap per side.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MaxGap {
+    /// Max bid-side gap in basis points (e.g. `25.0`).
     pub bid_gap_bps: Option<f64>,
+    /// Max ask-side gap in basis points (e.g. `25.0`).
     pub ask_gap_bps: Option<f64>,
 }
 
+/// Per-side resting-level counts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct LevelCount {
+    /// Number of bid levels (e.g. `12`).
     pub bids: u32,
+    /// Number of ask levels (e.g. `12`).
     pub asks: u32,
 }
 

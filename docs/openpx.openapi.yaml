@@ -27,9 +27,7 @@ paths:
       tags:
       - Markets
       summary: Fetch markets
-      description: "Fetch markets \u2014 `status` filter accepts `active`, `closed`, `resolved`, or `all` (defaults to `active`).\n\
-        Single-market and multi-market lookups both go through this surface: pass a single ticker via\n`params.market_tickers`\
-        \ to fetch one market, or omit it to page through the full catalog."
+      description: List markets, optionally filtered by status, ticker, event, or series.
       operationId: fetch_markets
       parameters:
       - name: cursor
@@ -40,7 +38,7 @@ paths:
           type:
           - string
           - 'null'
-        description: Exchange-specific cursor (offset, page number, or cursor string)
+        description: Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
       - name: event_ticker
         in: query
         required: false
@@ -49,10 +47,8 @@ paths:
           type:
           - string
           - 'null'
-        description: "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`) or\
-          \ a Polymarket event slug (e.g., `\"will-trump-win-2024\"`). Polymarket numeric event IDs are not accepted \u2014\
-          \ they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored (not\
-          \ paginated). `status` filtering is still applied client-side."
+        description: "Fetch all markets in this event \u2014 Kalshi event ticker or Polymarket event slug (e.g. `\"KXBTC-25MAR14\"\
+          `)."
       - name: limit
         in: query
         required: false
@@ -62,8 +58,7 @@ paths:
           type:
           - integer
           - 'null'
-        description: 'Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket at
-          ~500. Values above the cap are silently clamped to the cap.'
+        description: Page size; clamped to per-exchange caps (Kalshi 1000, Polymarket 500) (e.g. `100`).
       - name: market_tickers
         in: query
         required: false
@@ -72,9 +67,8 @@ paths:
           items:
             type: string
           type: array
-        description: Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g.,
-          `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`,
-          and `series_ticker` are ignored.
+        description: "Fetch only these market tickers \u2014 Kalshi tickers or Polymarket slugs (e.g. `[\"KXBTCD-25APR1517\"\
+          ]`)."
       - name: series_ticker
         in: query
         required: false
@@ -83,9 +77,7 @@ paths:
           type:
           - string
           - 'null'
-        description: "Filter by series ticker. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) to fetch only markets in that\
-          \ series. Polymarket support arrives once `series_numeric_id` is added to this struct \u2014 until then, this field\
-          \ is ignored on Polymarket."
+        description: Fetch only markets in this Kalshi series ticker (e.g. `"KXBTC"`); ignored on Polymarket today.
       - name: status
         in: query
         required: false
@@ -94,8 +86,7 @@ paths:
           - $ref: '#/components/schemas/MarketStatusFilter'
           - type: 'null'
           default: null
-        description: Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All`
-          to fetch markets of any status.
+        description: 'Status filter; defaults to `active` (options: `active`, `closed`, `resolved`, `all`).'
       responses:
         '200':
           description: Success.
@@ -114,17 +105,7 @@ paths:
       tags:
       - Orders
       summary: Create order
-      description: 'Submit a new order. The unified surface exposes only the six fields on
-
-        `CreateOrderRequest`; cross-venue and per-venue knobs (post-only,
-
-        expiration, idempotency keys, neg-risk overrides, builder/metadata,
-
-        subaccounts) are not modelled. Each adapter generates whatever its
-
-        upstream requires (e.g. Kalshi V2''s required `client_order_id` and
-
-        `self_trade_prevention_type`) internally.'
+      description: Submit a new order.
       operationId: create_order
       requestBody:
         required: true
@@ -150,9 +131,7 @@ paths:
       tags:
       - Orders
       summary: Cancel order
-      description: 'Cancel an existing order by ID. The order_id is globally unique on
-
-        both exchanges, so no scope qualifier is required.'
+      description: Cancel one open order by its globally-unique `order_id`.
       operationId: cancel_order
       requestBody:
         required: true
@@ -183,9 +162,7 @@ paths:
       tags:
       - Orders
       summary: Fetch order
-      description: 'Fetch a single order by ID. As with `cancel_order`, the order_id
-
-        is globally unique on both exchanges.'
+      description: Fetch one order by its globally-unique `order_id`.
       operationId: fetch_order
       parameters:
       - name: order_id
@@ -211,11 +188,7 @@ paths:
       tags:
       - Orders
       summary: Fetch open orders
-      description: 'Fetch the caller''s currently open orders, optionally filtered by
-
-        `asset_id` (Kalshi market ticker | Polymarket CTF token id, same
-
-        convention as `fetch_orderbook` and `create_order`).'
+      description: List the caller's open orders, optionally scoped to one `asset_id`.
       operationId: fetch_open_orders
       parameters:
       - name: asset_id
@@ -243,7 +216,7 @@ paths:
       tags:
       - Positions
       summary: Fetch positions
-      description: Fetch the caller's open positions, optionally filtered by market.
+      description: List the caller's open positions, optionally scoped to one `market_ticker`.
       operationId: fetch_positions
       parameters:
       - name: market_ticker
@@ -271,7 +244,7 @@ paths:
       tags:
       - Balance
       summary: Fetch balance
-      description: Fetch the caller's account balance, keyed by currency (USD on Kalshi, USDC on Polymarket).
+      description: Fetch the caller's account balance, keyed by currency code (`USD` on Kalshi, `USDC` on Polymarket).
       operationId: fetch_balance
       responses:
         '200':
@@ -294,7 +267,7 @@ paths:
       tags:
       - Balance
       summary: Refresh balance
-      description: Refresh cached balance and allowance state from the exchange.
+      description: Refresh cached balance and on-chain allowance state from the exchange.
       operationId: refresh_balance
       responses:
         '200':
@@ -315,8 +288,7 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbook
-      description: "Fetch the full-depth L2 orderbook (bids + asks) for a single asset.\n`asset_id` is the per-outcome identifier\
-        \ \u2014 Kalshi market ticker or Polymarket token id."
+      description: Fetch the full-depth L2 orderbook (bids + asks) for one `asset_id`.
       operationId: fetch_orderbook
       parameters:
       - name: asset_id
@@ -342,11 +314,7 @@ paths:
       tags:
       - Trades
       summary: Fetch trades
-      description: 'Fetch a paginated tape of recent public trades for a market.
-
-        Both Yes and No outcomes'' trades are returned interleaved; consumers
-
-        distinguish via `MarketTrade.outcome`.'
+      description: Fetch a paginated tape of recent public trades for one market.
       operationId: fetch_trades
       parameters:
       - name: asset_id
@@ -354,6 +322,7 @@ paths:
         required: true
         schema:
           type: string
+        description: "Market identifier \u2014 Kalshi market ticker or Polymarket Gamma slug (e.g. `\"KXBTCD-25APR1517\"`)."
       - name: cursor
         in: query
         required: false
@@ -361,7 +330,7 @@ paths:
           type:
           - string
           - 'null'
-        description: Opaque cursor from a prior response.
+        description: Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
       - name: end_ts
         in: query
         required: false
@@ -370,7 +339,7 @@ paths:
           type:
           - integer
           - 'null'
-        description: Unix seconds (inclusive upper bound).
+        description: Inclusive upper bound, unix seconds (e.g. `1714608000`).
       - name: limit
         in: query
         required: false
@@ -380,7 +349,7 @@ paths:
           type:
           - integer
           - 'null'
-        description: Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
+        description: Max trades to return; capped at 1000 (Kalshi) / 500 (Polymarket) (e.g. `100`).
       - name: start_ts
         in: query
         required: false
@@ -389,7 +358,7 @@ paths:
           type:
           - integer
           - 'null'
-        description: Unix seconds (inclusive lower bound).
+        description: Inclusive lower bound, unix seconds (e.g. `1714521600`).
       responses:
         '200':
           description: Success.
@@ -408,7 +377,7 @@ paths:
       tags:
       - Fills
       summary: Fetch fills
-      description: Fetch the caller's fill (trade execution) history, optionally filtered by market.
+      description: List the caller's fill (trade execution) history, optionally scoped to one `market_ticker`.
       operationId: fetch_fills
       parameters:
       - name: market_ticker
@@ -442,7 +411,7 @@ paths:
       tags:
       - Server
       summary: Fetch server time
-      description: Fetch the exchange's current wall-clock time (UTC).
+      description: Fetch the exchange's current wall-clock time in UTC.
       operationId: fetch_server_time
       responses:
         '200':
@@ -463,9 +432,7 @@ paths:
       tags:
       - Markets
       summary: Fetch market lineage
-      description: "Fetch a market plus its parent event and series in one call. The\n`event` and `series` fields are `Option`\
-        \ \u2014 a dangling parent reference\nreturns `None` rather than failing the whole call. `market_ticker` is\nthe unified\
-        \ `Market.ticker` (Kalshi market ticker or Polymarket slug)."
+      description: Fetch one market plus its parent event and series in a single round-trip.
       operationId: fetch_market_lineage
       parameters:
       - name: market_ticker
@@ -521,9 +488,7 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbook stats
-      description: "Snapshot stats: top-of-book bid/ask, mid, spread (bps), size-weighted\nmid, top-10 imbalance, and total\
-        \ bid/ask depth \u2014 pure functions of the\nfull-depth orderbook. `exchange_ts` carries the upstream snapshot time;\n\
-        `openpx_ts` is set to wall-clock when OpenPX served the response."
+      description: 'Snapshot stats: top-of-book, mid, spread (bps), size-weighted mid, top-10 imbalance, and total depth.'
       operationId: fetch_orderbook_stats
       parameters:
       - name: asset_id
@@ -549,11 +514,7 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbook impact
-      description: 'Slippage curve at a single requested size. Walks the book consuming
-
-        levels until `size` is filled or the side exhausts; returns partial
-
-        fills with `fill_pct < 100.0`. `size` must be > 0.'
+      description: Average fill price and slippage (bps) for a market order of `size` contracts on each side.
       operationId: fetch_orderbook_impact
       parameters:
       - name: asset_id
@@ -585,11 +546,7 @@ paths:
       tags:
       - Orderbook
       summary: Fetch orderbook microstructure
-      description: 'Microstructure signals: cumulative depth within 10/50/100 bps tiers,
-
-        linear-regression slope of cumulative size vs distance-from-mid (bps),
-
-        largest consecutive-level price gap, and per-side level counts.'
+      description: 'Microstructure signals: depth within 10/50/100 bps, slope, max gap, and per-side level counts.'
       operationId: fetch_orderbook_microstructure
       parameters:
       - name: asset_id
@@ -615,9 +572,7 @@ paths:
       tags:
       - Orders
       summary: Cancel all orders
-      description: 'Cancel all of the caller''s open orders, optionally scoped to one
-
-        `asset_id` (Kalshi market ticker | Polymarket CTF token id).'
+      description: Cancel all of the caller's open orders, optionally scoped to one `asset_id`.
       operationId: cancel_all_orders
       requestBody:
         required: true
@@ -650,11 +605,7 @@ paths:
       tags:
       - Orders
       summary: Create orders batch
-      description: 'Submit multiple orders in one round-trip. Each request shares the
-
-        same shape as `create_order`. Cap: 15 on Polymarket; token-budget on
-
-        Kalshi.'
+      description: Submit multiple orders in one round-trip (max 15 on Polymarket; token-budget on Kalshi).
       operationId: create_orders_batch
       requestBody:
         required: true
@@ -805,37 +756,31 @@ components:
       title: ActivityTrade
       type: object
     CreateOrderRequest:
-      description: "Lean input shape for `Exchange::create_order`. All cross-venue and per-venue knobs are deliberately absent\
-        \ \u2014 `post_only`, `expiration_ts`, `client_order_id`, `reduce_only`, `neg_risk`, builder/metadata, and subaccounts\
-        \ are not exposed. Anything an exchange requires that is not modelled here is generated internally (e.g. Kalshi V2's\
-        \ required `client_order_id` is filled with a per-call UUID)."
+      description: Input for `create_order`.
       properties:
         asset_id:
-          description: "Per-outcome asset identifier \u2014 Kalshi market ticker, Polymarket CTF token id. Same convention\
-            \ as `Exchange::fetch_orderbook` \u2014 the value identifies the orderable thing (a Kalshi market is orderable\
-            \ as a whole; a Polymarket order targets one CTF token). Polymarket callers who hold a slug + outcome label must\
-            \ resolve the token id themselves via `fetch_market` before submitting."
+          description: "The orderable asset \u2014 Kalshi market ticker or Polymarket CTF token id (e.g. `\"KXBTCD-25APR1517\"\
+            `)."
           type: string
         order_type:
           allOf:
           - $ref: '#/components/schemas/OrderType'
           default: gtc
-          description: Time-in-force / execution type.
+          description: 'Time-in-force; defaults to `gtc` (options: `gtc`, `ioc`, `fok`).'
         outcome:
           allOf:
           - $ref: '#/components/schemas/OrderOutcome'
-          description: "On Kalshi, drives YES-frame bid/ask side selection \u2014 required. On Polymarket, response-label\
-            \ hint only (the actual outcome is encoded in `asset_id`)."
+          description: 'Outcome to trade. Options: `yes`, `no`, or `label: "<name>"` (Polymarket categorical markets only).'
         price:
-          description: Limit price as YES probability in `(0.0, 1.0)`.
+          description: Limit price as YES probability in `(0, 1)` (e.g. `0.62`).
           format: double
           type: number
         side:
           allOf:
           - $ref: '#/components/schemas/OrderSide'
-          description: Buy or sell.
+          description: 'Order direction. Options: `buy`, `sell`.'
         size:
-          description: Order size in contracts.
+          description: Order size in contracts (e.g. `100.0`).
           format: double
           type: number
       required:
@@ -873,23 +818,30 @@ components:
       title: CryptoPriceSource
       type: string
     DepthBuckets:
+      description: Cumulative depth at 10/50/100 bps tiers from mid.
       properties:
         ask_within_100bps:
+          description: Cumulative ask size within 100 bps of mid (contracts).
           format: double
           type: number
         ask_within_10bps:
+          description: Cumulative ask size within 10 bps of mid (contracts).
           format: double
           type: number
         ask_within_50bps:
+          description: Cumulative ask size within 50 bps of mid (contracts).
           format: double
           type: number
         bid_within_100bps:
+          description: Cumulative bid size within 100 bps of mid (contracts).
           format: double
           type: number
         bid_within_10bps:
+          description: Cumulative bid size within 10 bps of mid (contracts).
           format: double
           type: number
         bid_within_50bps:
+          description: Cumulative bid size within 50 bps of mid (contracts).
           format: double
           type: number
       required:
@@ -902,72 +854,77 @@ components:
       title: DepthBuckets
       type: object
     Event:
-      description: A grouping of related markets. On Kalshi, an Event is a single resolution (e.g. "Will Candidate X win State
-        Y?") with one or more contracts. On Polymarket, an Event is the parent of one or more Markets sharing a common theme
-        (e.g. "2028 US Presidential Election" with markets per candidate).
+      description: "A grouping of related markets \u2014 one Kalshi event_ticker or one Polymarket event slug."
       properties:
         category:
+          description: Topical category (e.g. `"Politics"`); `null` when upstream omits it.
           type:
           - string
           - 'null'
         description:
+          description: Long-form event description; `null` when upstream omits it.
           type:
           - string
           - 'null'
         end_ts:
+          description: Event end time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         last_updated_ts:
+          description: Last upstream update time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         market_tickers:
           default: []
-          description: "Sibling market market_tickers under this event \u2014 unified `Market.ticker` values (Kalshi market\
-            \ market_tickers; Polymarket slugs)."
+          description: Tickers of markets under this event (e.g. `["KXBTCD-25APR1517"]`).
           items:
             type: string
           type: array
         mutually_exclusive:
+          description: '`true` if exactly one child market resolves YES.'
           type:
           - boolean
           - 'null'
         numeric_id:
-          description: Polymarket's numeric REST id for the event (e.g. `"12585"`). None on Kalshi (no separate numeric event
-            surface).
+          description: Polymarket numeric event id (e.g. `"12585"`); `null` on Kalshi.
           type:
           - string
           - 'null'
         open_interest:
+          description: Open interest in USD (e.g. `5000.0`).
           format: double
           type:
           - number
           - 'null'
         series_ticker:
-          description: 'Parent series ticker. Kalshi: upstream `series_ticker`. Polymarket: the embedded series''s `ticker`
-            (or `slug` if `ticker` is null).'
+          description: Parent series ticker (e.g. `"KXPRES"`); `null` when the event has no parent series.
           type:
           - string
           - 'null'
         start_ts:
+          description: Event start time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         status:
+          description: Upstream lifecycle string (e.g. `"open"`); `null` when upstream omits it.
           type:
           - string
           - 'null'
         ticker:
-          description: 'Native event identifier. Kalshi: `event_ticker` (e.g. `"KXPRES-2028"`). Polymarket: the event slug
-            (e.g. `"presidential-election-winner-2024"`).'
+          description: "Native event identifier \u2014 Kalshi event ticker or Polymarket event slug (e.g. `\"KXPRES-2028\"\
+            `)."
           type: string
         title:
+          description: Human-readable event title (e.g. `"2028 US Presidential Election"`).
           type: string
         volume:
+          description: Lifetime trading volume in USD (e.g. `12345.67`).
           format: double
           type:
           - number
@@ -1036,25 +993,23 @@ components:
       title: ExchangeInfo
       type: object
     FetchMarketsParams:
+      description: Filters for `fetch_markets`. All fields are optional.
       properties:
         cursor:
           default: null
-          description: Exchange-specific cursor (offset, page number, or cursor string)
+          description: Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
           type:
           - string
           - 'null'
         event_ticker:
           default: null
-          description: "Fetch all markets within a specific event. Pass a Kalshi event ticker (e.g., `\"KXBTC-25MAR14\"`)\
-            \ or a Polymarket event slug (e.g., `\"will-trump-win-2024\"`). Polymarket numeric event IDs are not accepted\
-            \ \u2014 they will be supported via a future `event_numeric_id` field. When set, `cursor` and `limit` are ignored\
-            \ (not paginated). `status` filtering is still applied client-side."
+          description: "Fetch all markets in this event \u2014 Kalshi event ticker or Polymarket event slug (e.g. `\"KXBTC-25MAR14\"\
+            `)."
           type:
           - string
           - 'null'
         limit:
-          description: 'Per-page limit. Each exchange applies its own server-side cap: Kalshi tops out at 1000, Polymarket
-            at ~500. Values above the cap are silently clamped to the cap.'
+          description: Page size; clamped to per-exchange caps (Kalshi 1000, Polymarket 500) (e.g. `100`).
           format: uint
           minimum: 0.0
           type:
@@ -1062,17 +1017,14 @@ components:
           - 'null'
         market_tickers:
           default: []
-          description: Fetch a specific set of markets by their unified ticker. Each entry is a Kalshi market ticker (e.g.,
-            `"KXBTCD-25APR1517"`) or a Polymarket market slug (e.g., `"will-trump-win-2024"`). When non-empty, `cursor`, `event_ticker`,
-            and `series_ticker` are ignored.
+          description: "Fetch only these market tickers \u2014 Kalshi tickers or Polymarket slugs (e.g. `[\"KXBTCD-25APR1517\"\
+            ]`)."
           items:
             type: string
           type: array
         series_ticker:
           default: null
-          description: "Filter by series ticker. Pass a Kalshi series ticker (e.g., `\"KXBTC\"`) to fetch only markets in\
-            \ that series. Polymarket support arrives once `series_numeric_id` is added to this struct \u2014 until then,\
-            \ this field is ignored on Polymarket."
+          description: Fetch only markets in this Kalshi series ticker (e.g. `"KXBTC"`); ignored on Polymarket today.
           type:
           - string
           - 'null'
@@ -1081,35 +1033,45 @@ components:
           - $ref: '#/components/schemas/MarketStatusFilter'
           - type: 'null'
           default: null
-          description: Filter by market status. Defaults to Active at the exchange level when None. Use `MarketStatusFilter::All`
-            to fetch markets of any status.
+          description: 'Status filter; defaults to `active` (options: `active`, `closed`, `resolved`, `all`).'
       title: FetchMarketsParams
       type: object
     Fill:
-      description: A single fill (trade execution) from a user's order.
+      description: A single fill (trade execution) from one of the caller's orders.
       properties:
         created_at:
+          description: Fill execution time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).
           format: date-time
           type: string
         fee:
+          description: Fee paid in quote dollars (e.g. `0.07`).
           format: double
           type: number
         fill_id:
+          description: Globally-unique fill id (e.g. `"f-9c2..."`).
           type: string
         is_taker:
+          description: '`true` if the caller took liquidity, `false` if they made it.'
           type: boolean
         market_ticker:
+          description: Unified market ticker the fill belongs to (e.g. `"KXBTCD-25APR1517"`).
           type: string
         order_id:
+          description: Parent order id (e.g. `"a1b2c3d4-..."`).
           type: string
         outcome:
+          description: Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).
           type: string
         price:
+          description: Fill price as YES probability in `(0, 1)` (e.g. `0.62`).
           format: double
           type: number
         side:
-          $ref: '#/components/schemas/OrderSide'
+          allOf:
+          - $ref: '#/components/schemas/OrderSide'
+          description: 'Order direction. Options: `buy`, `sell`.'
         size:
+          description: Filled size in contracts (e.g. `25.0`).
           format: double
           type: number
       required:
@@ -1154,12 +1116,15 @@ components:
         - SequenceGap
         type: object
     LevelCount:
+      description: Per-side resting-level counts.
       properties:
         asks:
+          description: Number of ask levels (e.g. `12`).
           format: uint32
           minimum: 0.0
           type: integer
         bids:
+          description: Number of bid levels (e.g. `12`).
           format: uint32
           minimum: 0.0
           type: integer
@@ -1169,56 +1134,53 @@ components:
       title: LevelCount
       type: object
     LiquidityRole:
+      description: Whether a fill provided liquidity (`maker`) or took it (`taker`).
       enum:
       - maker
       - taker
       type: string
     Market:
-      description: "Unified prediction market model.\n\nAll exchanges produce this single type directly \u2014 no intermediate\
-        \ conversion.\n\n# Price Format\n\nAll prices are normalized to decimal format (0.0 to 1.0). Exchange-specific conversions\
-        \ are handled during parsing:\n\n- **Kalshi**: Fixed-point dollar strings parsed directly (post March 2026 migration).\
-        \ - **Polymarket**: Native prices already in decimal (0.0-1.0)."
+      description: A prediction market on the unified surface. Prices are YES probabilities in `[0, 1]`.
       properties:
         best_ask:
-          description: Best ask price (normalized 0-1)
+          description: Best ask as YES probability in `[0, 1]` (e.g. `0.63`).
           format: double
           type:
           - number
           - 'null'
         best_bid:
-          description: Best bid price (normalized 0-1)
+          description: Best bid as YES probability in `[0, 1]` (e.g. `0.61`).
           format: double
           type:
           - number
           - 'null'
         close_time:
-          description: Market close time
+          description: Market close time in UTC (e.g. `"2026-04-25T20:00:00Z"`).
           format: date-time
           type:
           - string
           - 'null'
         condition_id:
-          description: Polymarket CTF condition id
+          description: Polymarket CTF condition id (e.g. `"0xabc..."`); `null` on Kalshi.
           type:
           - string
           - 'null'
         created_at:
-          description: Market creation time
+          description: Market creation time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         event_ticker:
-          description: 'Native event identifier this market belongs to. Kalshi: upstream `event_ticker`. Polymarket: the parent
-            event''s `slug`.'
+          description: "Parent event ticker \u2014 Kalshi event_ticker or Polymarket event slug (e.g. `\"KXBTC-25MAR14\"`)."
           type:
           - string
           - 'null'
         exchange:
-          description: Exchange identifier (kalshi, polymarket)
+          description: 'Source exchange. Options: `kalshi`, `polymarket`.'
           type: string
         last_trade_price:
-          description: Last trade price (normalized 0-1)
+          description: Last trade price as YES probability in `[0, 1]` (e.g. `0.62`).
           format: double
           type:
           - number
@@ -1226,60 +1188,55 @@ components:
         market_type:
           allOf:
           - $ref: '#/components/schemas/MarketType'
-          description: Market type classification
+          description: 'Outcome shape. Options: `binary`, `categorical`, `scalar`.'
         min_order_size:
-          description: "Minimum order size (contracts). Kalshi: synthesized \u2014 1.0, or 0.01 when fractional_trading_enabled.\
-            \ Polymarket: read directly from `orderMinSize`."
+          description: Minimum order size in contracts (e.g. `1.0`).
           format: double
           type:
           - number
           - 'null'
         neg_risk:
-          description: 'Polymarket: neg-risk flag'
+          description: Polymarket neg-risk flag; `null` on Kalshi.
           type:
           - boolean
           - 'null'
         neg_risk_market_id:
-          description: 'Polymarket: neg-risk market ID'
+          description: Polymarket neg-risk market id; `null` on Kalshi.
           type:
           - string
           - 'null'
         numeric_id:
-          description: Polymarket's numeric DB id (e.g. "1031769"). Exposed for callers that need to build UI deep-links or
-            cross-reference Polymarket's REST-only numeric surface. Not used for trading or subscription.
+          description: Polymarket numeric DB id used for REST deep-links (e.g. `"1031769"`); `null` on Kalshi.
           type:
           - string
           - 'null'
         open_time:
-          description: Market open time
+          description: Market open time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         openpx_id:
-          description: 'Primary key: {exchange}:{ticker}'
+          description: OpenPX primary key in `<exchange>:<ticker>` form (e.g. `"kalshi:KXBTCD-25APR1517"`).
           type: string
         outcomes:
           default: []
-          description: Ordered list of outcomes. Each entry carries label, price, and (if exposed) token id. Polymarket categorical
-            markets have N entries; Kalshi binary markets always have 2 ("Yes" / "No").
+          description: Ordered outcomes; binary markets have two (`"Yes"`, `"No"`), categorical have N.
           items:
             $ref: '#/components/schemas/Outcome'
           type: array
         result:
-          description: 'Resolution result. Kalshi: enum string from upstream. Polymarket: derived winning-outcome label (the
-            `outcomes[i]` whose `outcomePrices[i]` is 1.0 after settlement). None for unresolved markets.'
+          description: Winning outcome label after settlement (e.g. `"Yes"`); `null` until resolved.
           type:
           - string
           - 'null'
         rules:
-          description: 'Resolution rules. Kalshi: `{rules_primary} | {rules_secondary}`. Polymarket: `description`.'
+          description: Resolution rules in plain text; `null` when upstream omits them.
           type:
           - string
           - 'null'
         settlement_time:
-          description: 'Settlement / resolution time. Kalshi: `settlement_ts`. Polymarket: `closedTime` (populated only after
-            on-chain settlement).'
+          description: Settlement time in UTC; `null` until the market resolves on-chain.
           format: date-time
           type:
           - string
@@ -1287,27 +1244,25 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/MarketStatus'
-          description: 'Normalized status: Active, Closed, Resolved'
+          description: 'Lifecycle state. Options: `active`, `closed`, `resolved`.'
         tick_size:
-          description: "Minimum price increment in dollars. Polymarket: `orderPriceMinTickSize` directly. Kalshi: the smallest\
-            \ `step` across the tiered `price_ranges` array (the finest precision the market accepts anywhere on its price\
-            \ curve \u2014 orders in coarser tiers must still round to that tier's step)."
+          description: Minimum price increment in dollars (e.g. `0.01`).
           format: double
           type:
           - number
           - 'null'
         ticker:
-          description: 'Native exchange ticker. Kalshi: `ticker`. Polymarket: `slug`.'
+          description: "Native ticker \u2014 Kalshi market ticker or Polymarket slug (e.g. `\"KXBTCD-25APR1517\"`)."
           type: string
         title:
-          description: Market title
+          description: Human-readable market title (e.g. `"Will BTC close above $100k on Apr 15?"`).
           type: string
         volume:
-          description: Total volume (USD)
+          description: Lifetime trading volume in USD (e.g. `12345.67`).
           format: double
           type: number
         volume_24h:
-          description: 24-hour trading volume (USD)
+          description: 24-hour trading volume in USD; `null` when upstream omits it.
           format: double
           type:
           - number
@@ -1322,38 +1277,35 @@ components:
       - volume
       type: object
     MarketLineage:
-      description: "A market plus the parent event and series that contextualize it.\n\n`event` and `series` are `Option`\
-        \ because: - some markets have no parent event surface (Kalshi standalone markets); - the upstream lookup for the\
-        \ parent may legitimately 404 on a dangling reference. A dangling parent should not fail the whole call \u2014 the\
-        \ caller still gets the `Market`."
+      description: A market plus its parent event and series.
       properties:
         event:
           anyOf:
           - $ref: '#/components/schemas/Event'
           - type: 'null'
+          description: Parent event; `null` if the market is standalone or the parent is missing upstream.
         market:
-          $ref: '#/components/schemas/Market'
+          allOf:
+          - $ref: '#/components/schemas/Market'
+          description: The market itself.
         series:
           anyOf:
           - $ref: '#/components/schemas/Series'
           - type: 'null'
+          description: Parent series; `null` if the event is standalone or the parent is missing upstream.
       required:
       - market
       title: MarketLineage
       type: object
     MarketStatus:
-      description: Normalized market status across all exchanges.
+      description: 'Market lifecycle state. Options: `active`, `closed`, `resolved`.'
       enum:
       - active
       - closed
       - resolved
       type: string
     MarketStatusFilter:
-      description: 'Filter for market status in fetch queries.
-
-
-        Unlike `MarketStatus` (which represents a market''s actual status), this enum includes an `All` variant for fetching
-        markets regardless of status.'
+      description: 'Market status filter for `fetch_markets`. Options: `active`, `closed`, `resolved`, `all`.'
       enum:
       - active
       - closed
@@ -1361,43 +1313,50 @@ components:
       - all
       type: string
     MarketTrade:
-      description: "Normalized public market trade, suitable for \"tape\" UIs.\n\n- `price` is normalized to [0.0, 1.0]; anchored\
-        \ to the Yes side on binary markets \u2014 use `no_price` for the No-side reference. - `aggressor_side` is \"buy\"\
-        \ / \"sell\" relative to the Yes side on binary markets \u2014 \"buy\" means upward pressure on Yes, \"sell\" downward.\
-        \ - `exchange_ts` is the upstream-provided trade timestamp. - `openpx_ts` is wall-clock when OpenPX served the response."
+      description: A public trade off the market tape.
       properties:
         aggressor_side:
+          description: 'Direction of the taker relative to YES. Options: `buy`, `sell`; `null` when unknown.'
           type:
           - string
           - 'null'
         exchange_ts:
+          description: Upstream trade time in UTC (e.g. `"2026-04-25T12:00:00Z"`).
           format: date-time
           type: string
         id:
+          description: Globally-unique exchange trade id (e.g. `"t-9c2..."`).
           type: string
         no_price:
+          description: NO-side reference price for binary markets (e.g. `0.38`).
           format: double
           type:
           - number
           - 'null'
         openpx_ts:
+          description: Wall-clock time OpenPX served the trade (UTC).
           format: date-time
           type: string
         outcome:
+          description: Outcome label (e.g. `"Yes"`, `"No"`); `null` when not exposed.
           type:
           - string
           - 'null'
         price:
+          description: Trade price as YES probability in `[0, 1]` (e.g. `0.62`).
           format: double
           type: number
         size:
+          description: Filled size in contracts (e.g. `25.0`).
           format: double
           type: number
         taker_address:
+          description: Polymarket taker wallet address (e.g. `"0x..."`); `null` on Kalshi.
           type:
           - string
           - 'null'
         yes_price:
+          description: YES-side reference price for binary markets (e.g. `0.62`).
           format: double
           type:
           - number
@@ -1411,20 +1370,23 @@ components:
       title: MarketTrade
       type: object
     MarketType:
-      description: Market type classification.
+      description: 'Shape of a market''s outcomes. Options: `binary`, `categorical`, `scalar`.'
       enum:
       - binary
       - categorical
       - scalar
       type: string
     MaxGap:
+      description: Largest consecutive-level price gap per side.
       properties:
         ask_gap_bps:
+          description: Max ask-side gap in basis points (e.g. `25.0`).
           format: double
           type:
           - number
           - 'null'
         bid_gap_bps:
+          description: Max bid-side gap in basis points (e.g. `25.0`).
           format: double
           type:
           - number
@@ -1432,40 +1394,51 @@ components:
       title: MaxGap
       type: object
     Order:
+      description: An order on the unified surface.
       properties:
         created_at:
+          description: Order creation time (UTC) (e.g. `"2026-04-25T12:00:00Z"`).
           format: date-time
           type: string
         fee:
           default: null
-          description: Volume-weighted per-contract fee paid for fills resulting from this order, in quote-currency dollars.
-            Kalshi reports it on `create_order` when fills occur immediately; Polymarket charges fees at trade settlement,
-            so this stays `None` on initial create response.
+          description: Volume-weighted per-contract fee in quote dollars; `null` on Polymarket and on unfilled orders.
           format: double
           type:
           - number
           - 'null'
         filled:
+          description: Cumulative filled size in contracts (e.g. `25.0`).
           format: double
           type: number
         id:
+          description: Globally-unique exchange order id (e.g. `"a1b2c3d4-..."`).
           type: string
         market_ticker:
+          description: Unified market ticker the order belongs to (e.g. `"KXBTCD-25APR1517"`).
           type: string
         outcome:
+          description: Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`, or a categorical label).
           type: string
         price:
+          description: Limit price as YES probability in `(0, 1)` (e.g. `0.62`).
           format: double
           type: number
         side:
-          $ref: '#/components/schemas/OrderSide'
+          allOf:
+          - $ref: '#/components/schemas/OrderSide'
+          description: 'Order direction. Options: `buy`, `sell`.'
         size:
+          description: Order size in contracts (e.g. `100.0`).
           format: double
           type: number
         status:
-          $ref: '#/components/schemas/OrderStatus'
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          description: 'Order lifecycle state. Options: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`.'
         updated_at:
           default: null
+          description: Last update time (UTC); `null` if untouched since creation.
           format: date-time
           type:
           - string
@@ -1483,21 +1456,13 @@ components:
       title: Order
       type: object
     OrderOutcome:
-      description: "Which outcome an order targets.\n\nOn Kalshi the value is load-bearing \u2014 `Yes` / `No` drives YES-frame\
-        \ bid/ask side selection and price mirroring at the V2 wire. Anything other than `Yes` / `No` is rejected with `InvalidInput`.\n\
-        \nOn Polymarket the order's outcome is encoded in `CreateOrderRequest.asset_id` (the per-outcome CTF token id), so\
-        \ this field is a response-label hint only \u2014 it shows up on `Order.outcome` but does not route the trade."
+      description: 'Outcome targeted by an order. Options: `yes`, `no`, or `label: "<name>"` for categorical Polymarket markets.'
       oneOf:
-      - description: Binary YES outcome.
-        enum:
+      - enum:
         - 'yes'
-        type: string
-      - description: Binary NO outcome.
-        enum:
         - 'no'
         type: string
       - additionalProperties: false
-        description: Multi-outcome categorical label (Polymarket only; Kalshi rejects).
         properties:
           label:
             type: string
@@ -1506,11 +1471,13 @@ components:
         type: object
       title: OrderOutcome
     OrderSide:
+      description: 'Order direction. Options: `buy`, `sell`.'
       enum:
       - buy
       - sell
       type: string
     OrderStatus:
+      description: 'Order lifecycle state. Options: `pending`, `open`, `filled`, `partially_filled`, `cancelled`, `rejected`.'
       enum:
       - pending
       - open
@@ -1521,39 +1488,43 @@ components:
       title: OrderStatus
       type: string
     OrderType:
-      description: "Order time-in-force / execution type.\n\nNormalized across all exchanges: - `Gtc` (good-til-cancelled)\
-        \ \u2014 rests on the book until filled or cancelled. - `Ioc` (immediate-or-cancel) \u2014 fills what it can immediately,\
-        \ cancels the rest. - `Fok` (fill-or-kill) \u2014 must fill entirely in one shot or is cancelled."
+      description: 'Time-in-force. Options: `gtc` (rests on book), `ioc` (fill-now-or-cancel-rest), `fok` (all-or-nothing).'
       enum:
       - gtc
       - ioc
       - fok
       type: string
     Orderbook:
+      description: Full-depth L2 orderbook for one asset.
       properties:
         asks:
+          description: Ask levels, sorted ascending by price.
           items:
             $ref: '#/components/schemas/PriceLevel'
           type: array
         asset_id:
+          description: "The orderable asset \u2014 Kalshi market ticker or Polymarket CTF token id (e.g. `\"KXBTCD-25APR1517\"\
+            `)."
           type: string
         bids:
+          description: Bid levels, sorted descending by price.
           items:
             $ref: '#/components/schemas/PriceLevel'
           type: array
         hash:
-          description: 'Exchange-provided hash for verifying book state integrity during replay. Polymarket: present on `book`
-            snapshot events.'
+          description: Polymarket book-state hash for replay integrity; `null` on Kalshi.
           type:
           - string
           - 'null'
         last_update_id:
+          description: Monotonic sequence id from upstream; `null` when not provided.
           format: uint64
           minimum: 0.0
           type:
           - integer
           - 'null'
         timestamp:
+          description: Upstream snapshot time in UTC (e.g. `"2026-04-25T12:00:00Z"`).
           format: date-time
           type:
           - string
@@ -1564,49 +1535,61 @@ components:
       - bids
       type: object
     OrderbookImpact:
+      description: Slippage curve at one requested size.
       properties:
         asset_id:
+          description: Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
           type: string
         buy_avg_price:
+          description: Average fill price hitting asks (e.g. `0.625`).
           format: double
           type:
           - number
           - 'null'
         buy_fill_pct:
+          description: Buy-side fill percentage in `[0, 100]` (e.g. `100.0`).
           format: double
           type: number
         buy_slippage_bps:
+          description: Buy-side slippage vs mid in basis points (e.g. `80.0`).
           format: double
           type:
           - number
           - 'null'
         exchange_ts:
+          description: Upstream snapshot time in UTC; `null` when not provided.
           format: date-time
           type:
           - string
           - 'null'
         mid:
+          description: Mid price as YES probability (e.g. `0.62`).
           format: double
           type:
           - number
           - 'null'
         openpx_ts:
+          description: Wall-clock time OpenPX served the response (UTC).
           format: date-time
           type: string
         sell_avg_price:
+          description: Average fill price hitting bids (e.g. `0.615`).
           format: double
           type:
           - number
           - 'null'
         sell_fill_pct:
+          description: Sell-side fill percentage in `[0, 100]` (e.g. `100.0`).
           format: double
           type: number
         sell_slippage_bps:
+          description: Sell-side slippage vs mid in basis points (e.g. `80.0`).
           format: double
           type:
           - number
           - 'null'
         size:
+          description: Requested order size in contracts (e.g. `100.0`).
           format: double
           type: number
       required:
@@ -1618,31 +1601,43 @@ components:
       title: OrderbookImpact
       type: object
     OrderbookMicrostructure:
+      description: Microstructure signals for one orderbook.
       properties:
         ask_slope:
+          description: OLS slope of cumulative ask size vs distance-from-mid (e.g. `12.5`).
           format: double
           type:
           - number
           - 'null'
         asset_id:
+          description: Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
           type: string
         bid_slope:
+          description: OLS slope of cumulative bid size vs distance-from-mid (e.g. `12.5`).
           format: double
           type:
           - number
           - 'null'
         depth_buckets:
-          $ref: '#/components/schemas/DepthBuckets'
+          allOf:
+          - $ref: '#/components/schemas/DepthBuckets'
+          description: Cumulative depth at 10/50/100 bps from mid.
         exchange_ts:
+          description: Upstream snapshot time in UTC; `null` when not provided.
           format: date-time
           type:
           - string
           - 'null'
         level_count:
-          $ref: '#/components/schemas/LevelCount'
+          allOf:
+          - $ref: '#/components/schemas/LevelCount'
+          description: Number of levels per side.
         max_gap:
-          $ref: '#/components/schemas/MaxGap'
+          allOf:
+          - $ref: '#/components/schemas/MaxGap'
+          description: Largest consecutive-level price gap on each side, in basis points.
         openpx_ts:
+          description: Wall-clock time OpenPX served the response (UTC).
           format: date-time
           type: string
       required:
@@ -1654,49 +1649,61 @@ components:
       title: OrderbookMicrostructure
       type: object
     OrderbookStats:
+      description: Top-of-book snapshot stats for one asset.
       properties:
         ask_depth:
+          description: Total resting ask size in contracts (e.g. `1000.0`).
           format: double
           type: number
         asset_id:
+          description: Orderable asset id (e.g. `"KXBTCD-25APR1517"`).
           type: string
         best_ask:
+          description: Best ask as YES probability (e.g. `0.63`).
           format: double
           type:
           - number
           - 'null'
         best_bid:
+          description: Best bid as YES probability (e.g. `0.61`).
           format: double
           type:
           - number
           - 'null'
         bid_depth:
+          description: Total resting bid size in contracts (e.g. `1000.0`).
           format: double
           type: number
         exchange_ts:
+          description: Upstream snapshot time in UTC; `null` when not provided.
           format: date-time
           type:
           - string
           - 'null'
         imbalance:
+          description: Top-10 imbalance in `[-1, 1]` (positive = bid-heavy) (e.g. `0.12`).
           format: double
           type:
           - number
           - 'null'
         mid:
+          description: Mid price as YES probability (e.g. `0.62`).
           format: double
           type:
           - number
           - 'null'
         openpx_ts:
+          description: Wall-clock time OpenPX served the response (UTC).
           format: date-time
           type: string
         spread_bps:
+          description: Spread in basis points relative to mid (e.g. `400.0`).
           format: double
           type:
           - number
           - 'null'
         weighted_mid:
+          description: Size-weighted mid using the top-10 levels (e.g. `0.62`).
           format: double
           type:
           - number
@@ -1709,22 +1716,19 @@ components:
       title: OrderbookStats
       type: object
     Outcome:
-      description: "One outcome of a prediction market \u2014 label, current price, and (where the exchange exposes one) the\
-        \ on-chain token id needed to subscribe to its orderbook stream. Replaces the previous trio of `outcome_prices` map\
-        \ + `outcome_tokens` vec + binary-only `token_id_yes`/`token_id_no` with a single ordered list keyed by index."
+      description: One outcome of a prediction market.
       properties:
         label:
-          description: Outcome label (e.g. "Yes", "No", or a categorical option name).
+          description: Outcome label (e.g. `"Yes"`, `"No"`, or a categorical option name).
           type: string
         price:
-          description: Current outcome price in [0.0, 1.0]. None when not exposed (e.g. Kalshi markets pre-fill, or Polymarket
-            categorical markets without a price).
+          description: Current price as YES probability in `[0, 1]` (e.g. `0.62`); `null` when not yet quoted.
           format: double
           type:
           - number
           - 'null'
         token_id:
-          description: CTF token id (Polymarket only). Used to subscribe to per-outcome orderbook streams. None on Kalshi.
+          description: Polymarket CTF token id used for per-outcome orderbook subscriptions; `null` on Kalshi.
           type:
           - string
           - 'null'
@@ -1732,18 +1736,24 @@ components:
       - label
       type: object
     Position:
+      description: An open position held by the caller.
       properties:
         average_price:
+          description: Volume-weighted average entry price as YES probability in `[0, 1]` (e.g. `0.55`).
           format: double
           type: number
         current_price:
+          description: Current mark price as YES probability in `[0, 1]` (e.g. `0.62`).
           format: double
           type: number
         market_ticker:
+          description: Unified market ticker the position is held on (e.g. `"KXBTCD-25APR1517"`).
           type: string
         outcome:
+          description: Outcome label as published by the exchange (e.g. `"Yes"`, `"No"`).
           type: string
         size:
+          description: Number of contracts held (e.g. `100.0`).
           format: double
           type: number
       required:
@@ -1755,10 +1765,14 @@ components:
       title: Position
       type: object
     PriceLevel:
+      description: A single resting orderbook level.
       properties:
         price:
-          $ref: '#/components/schemas/number'
+          allOf:
+          - $ref: '#/components/schemas/number'
+          description: Price as YES probability in `[0, 1]` (e.g. `0.62`).
         size:
+          description: Resting size at this price in contracts (e.g. `100.0`).
           format: double
           type: number
       required:
@@ -1766,14 +1780,18 @@ components:
       - size
       type: object
     PriceLevelChange:
-      description: 'A single price level change. Absolute replacement semantics: size > 0 = set level to this size, size ==
-        0 = remove level.'
+      description: One price-level update; `size > 0` sets the level, `size == 0` removes it.
       properties:
         price:
-          $ref: '#/components/schemas/number'
+          allOf:
+          - $ref: '#/components/schemas/number'
+          description: Price as YES probability in `[0, 1]` (e.g. `0.62`).
         side:
-          $ref: '#/components/schemas/PriceLevelSide'
+          allOf:
+          - $ref: '#/components/schemas/PriceLevelSide'
+          description: 'Which side. Options: `bid`, `ask`.'
         size:
+          description: New size at this price in contracts; `0` removes the level.
           format: double
           type: number
       required:
@@ -1782,56 +1800,61 @@ components:
       - size
       type: object
     PriceLevelSide:
-      description: Bid or ask side. Serializes as "bid"/"ask" on the wire.
+      description: 'Side of an orderbook level. Options: `bid`, `ask`.'
       enum:
       - bid
       - ask
       type: string
     Series:
-      description: 'A recurring family of events. Examples: a weekly inflation reading, a monthly nonfarm payrolls release,
-        a regular sports season. On Kalshi, a Series is identified by `series_ticker` (e.g. `KXPRES`). On Polymarket, a Series
-        wraps multiple Events with shared metadata.'
+      description: A recurring family of events (e.g. a weekly inflation reading or sports season).
       properties:
         category:
+          description: Topical category (e.g. `"Politics"`); `null` when upstream omits it.
           type:
           - string
           - 'null'
         fee_type:
+          description: Fee schedule label (e.g. `"flat"`); `null` when upstream omits it.
           type:
           - string
           - 'null'
         frequency:
+          description: Cadence string (e.g. `"weekly"`); `null` when upstream omits it.
           type:
           - string
           - 'null'
         last_updated_ts:
+          description: Last upstream update time in UTC.
           format: date-time
           type:
           - string
           - 'null'
         numeric_id:
-          description: Polymarket's numeric REST id for the series (e.g. `"10345"`). None on Kalshi (no separate numeric series
-            surface).
+          description: Polymarket numeric series id (e.g. `"10345"`); `null` on Kalshi.
           type:
           - string
           - 'null'
         settlement_sources:
           default: []
+          description: 'Resolution sources used by the exchange (e.g. `[{"name": "BLS", "url": "..."}]`).'
           items:
             $ref: '#/components/schemas/SettlementSource'
           type: array
         tags:
           default: []
+          description: Free-form tags (e.g. `["macro", "fed"]`).
           items:
             type: string
           type: array
         ticker:
-          description: 'Native series identifier. Kalshi: `ticker` (e.g. `"KXPRES"`). Polymarket: the series''s `ticker` field,
-            falling back to `slug` when `ticker` is null upstream.'
+          description: "Native series identifier \u2014 Kalshi series ticker or Polymarket series ticker/slug (e.g. `\"KXPRES\"\
+            `)."
           type: string
         title:
+          description: Human-readable series title (e.g. `"US Presidential Election"`).
           type: string
         volume:
+          description: Lifetime trading volume in USD across the series (e.g. `123456.78`).
           format: double
           type:
           - number
@@ -1923,12 +1946,15 @@ components:
         type: object
       title: SessionEvent
     SettlementSource:
+      description: Reference used by the exchange to settle a series.
       properties:
         name:
+          description: Display name of the source (e.g. `"Bureau of Labor Statistics"`).
           type:
           - string
           - 'null'
         url:
+          description: Source URL (e.g. `"https://www.bls.gov/cpi/"`).
           type:
           - string
           - 'null'
@@ -1988,32 +2014,32 @@ components:
       title: SportResult
       type: object
     TradesRequest:
-      description: "Request for fetching recent public trades (\"tape\") for a market.\n\n`asset_id` is the market identifier\
-        \ \u2014 Kalshi market ticker or Polymarket Gamma slug. Both Yes and No outcomes' trades are returned interleaved;\
-        \ use `MarketTrade.outcome` to distinguish."
+      description: "Request for `fetch_trades` \u2014 recent public trades (\"tape\") for one market."
       properties:
         asset_id:
+          description: "Market identifier \u2014 Kalshi market ticker or Polymarket Gamma slug (e.g. `\"KXBTCD-25APR1517\"\
+            `)."
           type: string
         cursor:
-          description: Opaque cursor from a prior response.
+          description: Opaque cursor returned by a prior page (e.g. `"eyJvIjoxMDB9"`).
           type:
           - string
           - 'null'
         end_ts:
-          description: Unix seconds (inclusive upper bound).
+          description: Inclusive upper bound, unix seconds (e.g. `1714608000`).
           format: int64
           type:
           - integer
           - 'null'
         limit:
-          description: Max trades to return. Capped per exchange (Kalshi 1000, Polymarket 500).
+          description: Max trades to return; capped at 1000 (Kalshi) / 500 (Polymarket) (e.g. `100`).
           format: uint
           minimum: 0.0
           type:
           - integer
           - 'null'
         start_ts:
-          description: Unix seconds (inclusive lower bound).
+          description: Inclusive lower bound, unix seconds (e.g. `1714521600`).
           format: int64
           type:
           - integer

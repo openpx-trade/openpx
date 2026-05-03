@@ -1,0 +1,38 @@
+# Source of truth for docs/setup/polymarket-credentials.mdx.
+# Regenerate the MDX with `just setup-docs` after editing this file.
+# CI fails if the committed MDX drifts from this YAML.
+
+exchange_id: polymarket
+title: Polymarket
+description: Authenticate to Polymarket.
+
+sections:
+  - heading: MetaMask wallet
+    intro: Put your credentials in `.env`.
+    env:
+      POLYMARKET_PRIVATE_KEY: "0x... # MetaMask EOA private key"
+      POLYMARKET_FUNDER: "0x... # Polymarket Safe address"
+    note: |
+      (Find your Safe address at [polymarket.com/settings](https://polymarket.com/settings).)
+    code:
+      private_key: POLYMARKET_PRIVATE_KEY
+      funder:      POLYMARKET_FUNDER
+
+  - heading: Plain EOA (no Safe)
+    text_only: |
+      Drop `POLYMARKET_FUNDER` — that's it.
+
+  - heading: If you get a Cloudflare WAF error
+    intro: |
+      Polymarket blocks `POST /auth/api-key` from VPN / datacenter IPs.
+      Generate keys once at [polymarket.com/settings](https://polymarket.com/settings) → API Keys, then add:
+    env:
+      POLYMARKET_API_KEY:        "..."
+      POLYMARKET_API_SECRET:     "..."
+      POLYMARKET_API_PASSPHRASE: "..."
+    code:
+      private_key:    POLYMARKET_PRIVATE_KEY
+      funder:         POLYMARKET_FUNDER
+      api_key:        POLYMARKET_API_KEY
+      api_secret:     POLYMARKET_API_SECRET
+      api_passphrase: POLYMARKET_API_PASSPHRASE
