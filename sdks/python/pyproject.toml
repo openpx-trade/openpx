@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "openpx"
-version = "0.2.6"
+version = "0.3.0"
 description = "Python SDK for OpenPX prediction markets"
 requires-python = ">=3.9"
 license = { text = "MIT" }
