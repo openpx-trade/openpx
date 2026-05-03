@@ -1,0 +1,103 @@
+mapping_kind: channel
+unified_channel: orderbook
+# WsUpdate variants and SessionEvent variants surfaced on this channel.
+unified_schema: schema/openpx.schema.json#/definitions/WsUpdate
+upstream_specs:
+  kalshi: schema/upstream/kalshi.asyncapi.yaml
+  polymarket: schema/upstream/polymarket.asyncapi.json
+
+# What a caller passes when subscribing on the unified surface.
+subscribe_payload:
+  - name: market_id
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/subscribeCommand"
+        note: "Kalshi `params.market_ticker` (single) or `params.market_tickers` (batch). OpenPX issues one ticker per `subscribe()` call; multi-market is emulated by repeated subscribes."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/subscriptionRequest"
+        note: "Polymarket `assets_ids[*]` (token id). Companion-pair flow internally subscribes both YES and NO tokens of a binary outcome."
+  - name: outcome
+    sources:
+      kalshi:
+        type: omitted
+        note: "Kalshi binary markets are keyed by ticker only; outcome is implicit (`yes_dollars_fp` vs `no_dollars_fp` in book frames)."
+      polymarket:
+        type: synthetic
+        note: "Inferred from `register_outcomes(yes_token, no_token)` at construction time; not part of the upstream subscribe payload."
+
+# What the caller receives back as `WsUpdate` variants.
+receive_messages:
+  - variant: Snapshot
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/orderbookSnapshot"
+        note: "First frame on subscribe; full bid/ask map keyed by `yes_dollars_fp`/`no_dollars_fp`."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/book"
+        note: "First frame on subscribe; arrays of `{price,size}` levels per side."
+  - variant: Delta
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/orderbookDelta"
+        note: "Per-level deltas; OpenPX reconstructs the book from snapshot + deltas."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/priceChange"
+        note: "Batched per-asset price changes; one delta frame can carry multiple assets."
+  - variant: Clear
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Emitted by OpenPX on reconnect or sequence gap; no upstream Kalshi message."
+      polymarket:
+        type: synthetic
+        note: "Emitted by OpenPX on reconnect or sequence gap; no upstream Polymarket message."
+
+# Connection-level signals on the parallel `session_events()` stream.
+session_events:
+  - variant: Connected
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Local-only signal once the websocket handshake completes."
+      polymarket:
+        type: synthetic
+        note: "Local-only signal once the websocket handshake completes."
+  - variant: Reconnected
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Emitted after the auto-reconnect loop re-establishes the socket. Followed by `BookInvalidated` for every market that was subscribed."
+      polymarket:
+        type: synthetic
+        note: "Emitted after the auto-reconnect loop re-establishes the socket. Followed by `BookInvalidated` for every asset that was subscribed."
+  - variant: Lagged
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Emitted when the consumer cannot keep up and the dispatcher drops messages. Carries dropped count + first/last sequence."
+      polymarket:
+        type: synthetic
+        note: "Emitted when the consumer cannot keep up and the dispatcher drops messages. Carries dropped count + first/last sequence."
+  - variant: BookInvalidated
+    sources:
+      kalshi:
+        type: synthetic
+        note: "Sequence gap, reconnect, or upstream error invalidates the local book; consumer should re-snapshot."
+      polymarket:
+        type: synthetic
+        note: "Sequence gap, reconnect, or upstream error invalidates the local book; consumer should re-snapshot."
+  - variant: Error
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/errorResponse"
+        note: "Kalshi-side error frame (subscribe rejected, auth failure, etc.) surfaces as `SessionEvent::Error`."
+      polymarket:
+        type: synthetic
+        note: "Polymarket has no typed error frame — connection errors and JSON-parse failures surface as `SessionEvent::Error` constructed locally."

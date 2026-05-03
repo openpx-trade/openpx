@@ -1,0 +1,65 @@
+mapping_kind: channel
+unified_channel: trades
+unified_schema: schema/openpx.schema.json#/definitions/ActivityTrade
+upstream_specs:
+  kalshi: schema/upstream/kalshi.asyncapi.yaml
+  polymarket: schema/upstream/polymarket.asyncapi.json
+
+subscribe_payload:
+  - name: market_id
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/subscribeCommand"
+        note: "Kalshi auto-subscribes the `trade` channel alongside `orderbook_delta` on every `subscribe(market_ticker)` call."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/subscriptionRequest"
+        note: "Polymarket `assets_ids[*]`. The market channel emits `last_trade_price` for the asset; trades on the *user* channel surface as fills, not trades."
+  - name: outcome
+    sources:
+      kalshi:
+        type: omitted
+        note: "Trade frames carry `side` and `taker_side`; outcome (YES/NO) is implicit per Kalshi binary market."
+      polymarket:
+        type: synthetic
+        note: "Populated only when `register_outcomes(yes_token, no_token)` was called. Otherwise `ActivityTrade.outcome` is `None`."
+
+receive_messages:
+  - variant: Trade
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/trade"
+        note: "Public Kalshi trade frame — exchange-side fills (any maker/taker pair). Mapped to `ActivityTrade { source_channel: \"kalshi_public_trade\" }`."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/lastTradePrice"
+        note: "Polymarket `last_trade_price` carries the most recent trade for an asset. Mapped to `ActivityTrade { source_channel: \"polymarket_last_trade_price\" }`."
+
+session_events:
+  - variant: Connected
+    sources:
+      kalshi:
+        type: synthetic
+      polymarket:
+        type: synthetic
+  - variant: Reconnected
+    sources:
+      kalshi:
+        type: synthetic
+      polymarket:
+        type: synthetic
+  - variant: Lagged
+    sources:
+      kalshi:
+        type: synthetic
+      polymarket:
+        type: synthetic
+  - variant: Error
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/errorResponse"
+      polymarket:
+        type: synthetic

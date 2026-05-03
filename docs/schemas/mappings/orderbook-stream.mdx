@@ -1,0 +1,48 @@
+---
+title: "Orderbook stream mapping"
+description: "How each upstream WebSocket channel maps to the unified OpenPX `orderbook` stream."
+---
+
+Subscribe inputs and receive frames for the unified **orderbook** WebSocket channel,
+crosswalked against the upstream AsyncAPI specs cached under `schema/upstream/`.
+
+Every source entry is one of three types — **direct** (taken from upstream), **synthetic** (constructed by OpenPX), or **omitted** (not exposed upstream).
+
+## Coverage
+
+| Exchange | Direct | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 4 | 5 | 1 |
+| polymarket | 3 | 7 | 0 |
+
+## Subscribe payload
+
+| Field | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `market_id` | `#/components/messages/subscribeCommand` | `#/components/messages/subscriptionRequest` | **kalshi:** Kalshi `params.market_ticker` (single) or `params.market_tickers` (batch). OpenPX issues one ticker per `subscribe()` call; multi-market is emulated by repeated subscribes. **polymarket:** Polymarket `assets_ids[*]` (token id). Companion-pair flow internally subscribes both YES and NO tokens of a binary outcome. |
+| `outcome` | _omitted_ | _synthetic_ | **kalshi:** Kalshi binary markets are keyed by ticker only; outcome is implicit (`yes_dollars_fp` vs `no_dollars_fp` in book frames). **polymarket:** Inferred from `register_outcomes(yes_token, no_token)` at construction time; not part of the upstream subscribe payload. |
+
+## Receive messages
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Snapshot` | `#/components/messages/orderbookSnapshot` | `#/components/messages/book` | **kalshi:** First frame on subscribe; full bid/ask map keyed by `yes_dollars_fp`/`no_dollars_fp`. **polymarket:** First frame on subscribe; arrays of `\{price,size\}` levels per side. |
+| `Delta` | `#/components/messages/orderbookDelta` | `#/components/messages/priceChange` | **kalshi:** Per-level deltas; OpenPX reconstructs the book from snapshot + deltas. **polymarket:** Batched per-asset price changes; one delta frame can carry multiple assets. |
+| `Clear` | _synthetic_ | _synthetic_ | **kalshi:** Emitted by OpenPX on reconnect or sequence gap; no upstream Kalshi message. **polymarket:** Emitted by OpenPX on reconnect or sequence gap; no upstream Polymarket message. |
+
+## Session events
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Connected` | _synthetic_ | _synthetic_ | **kalshi:** Local-only signal once the websocket handshake completes. **polymarket:** Local-only signal once the websocket handshake completes. |
+| `Reconnected` | _synthetic_ | _synthetic_ | **kalshi:** Emitted after the auto-reconnect loop re-establishes the socket. Followed by `BookInvalidated` for every market that was subscribed. **polymarket:** Emitted after the auto-reconnect loop re-establishes the socket. Followed by `BookInvalidated` for every asset that was subscribed. |
+| `Lagged` | _synthetic_ | _synthetic_ | **kalshi:** Emitted when the consumer cannot keep up and the dispatcher drops messages. Carries dropped count + first/last sequence. **polymarket:** Emitted when the consumer cannot keep up and the dispatcher drops messages. Carries dropped count + first/last sequence. |
+| `BookInvalidated` | _synthetic_ | _synthetic_ | **kalshi:** Sequence gap, reconnect, or upstream error invalidates the local book; consumer should re-snapshot. **polymarket:** Sequence gap, reconnect, or upstream error invalidates the local book; consumer should re-snapshot. |
+| `Error` | `#/components/messages/errorResponse` | _synthetic_ | **kalshi:** Kalshi-side error frame (subscribe rejected, auth failure, etc.) surfaces as `SessionEvent::Error`. **polymarket:** Polymarket has no typed error frame — connection errors and JSON-parse failures surface as `SessionEvent::Error` constructed locally. |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.asyncapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.asyncapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket.asyncapi.json`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket.asyncapi.json)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream AsyncAPI spec; the daily upstream-refresh PR surfaces drift here.

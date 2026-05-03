@@ -1,0 +1,44 @@
+---
+title: "Fills stream mapping"
+description: "How each upstream WebSocket channel maps to the unified OpenPX `fills` stream."
+---
+
+Subscribe inputs and receive frames for the unified **fills** WebSocket channel,
+crosswalked against the upstream AsyncAPI specs cached under `schema/upstream/`.
+
+Every source entry is one of three types — **direct** (taken from upstream), **synthetic** (constructed by OpenPX), or **omitted** (not exposed upstream).
+
+## Coverage
+
+| Exchange | Direct | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 3 | 2 | 1 |
+| polymarket | 2 | 4 | 0 |
+
+## Subscribe payload
+
+| Field | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `market_id` | `#/components/messages/subscribeCommand` | `#/components/messages/userSubscriptionRequest` | **kalshi:** Requires `enable_user_fills=true` on the Kalshi WS constructor (private fill channel auto-attaches to every `subscribe(market_ticker)`). **polymarket:** Polymarket `markets[*]` (condition_id) on the *user* channel. Auth is required: API key + secret + passphrase derived from the L1-signed CLOB credentials. |
+| `outcome` | _omitted_ | _synthetic_ | **kalshi:** Fill frames carry `side` and the matched `outcome`; OpenPX reads it directly into `ActivityFill.outcome`. **polymarket:** Populated only when `register_outcomes` was called; otherwise `None`. |
+
+## Receive messages
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Fill` | `#/components/messages/fill` | `#/components/messages/trade` | **kalshi:** Authenticated Kalshi fill — mapped to `ActivityFill \{ source_channel: "kalshi_user_fill", liquidity_role: Maker\|Taker \}`. **polymarket:** Polymarket *user-channel* trade event = a fill from the user's perspective. Mapped to `ActivityFill \{ source_channel: "polymarket_user_trade" \}` with `liquidity_role` derived from `trader_side`. |
+
+## Session events
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Connected` | _synthetic_ | _synthetic_ |  |
+| `Reconnected` | _synthetic_ | _synthetic_ |  |
+| `Error` | `#/components/messages/errorResponse` | _synthetic_ |  |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.asyncapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.asyncapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket-user.asyncapi.json`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket-user.asyncapi.json)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream AsyncAPI spec; the daily upstream-refresh PR surfaces drift here.
