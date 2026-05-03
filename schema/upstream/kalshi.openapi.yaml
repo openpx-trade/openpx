@@ -1989,8 +1989,17 @@ paths:
         - name: creator_user_id
           in: query
           description: Filter RFQs by creator user ID
+          deprecated: true
           schema:
             type: string
+        - name: user_filter
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UserFilter'
+            x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            validate: "omitempty,oneof=self"
       responses:
         '200':
           description: RFQs retrieved successfully
@@ -2117,12 +2126,22 @@ paths:
         - name: quote_creator_user_id
           in: query
           description: Filter quotes by quote creator user ID
+          deprecated: true
           schema:
             type: string
             x-go-type-skip-optional-pointer: true
+        - name: user_filter
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UserFilter'
+            x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            validate: "omitempty,oneof=self"
         - name: rfq_creator_user_id
           in: query
           description: Filter quotes by RFQ creator user ID
+          deprecated: true
           schema:
             type: string
             x-go-type-skip-optional-pointer: true
@@ -3951,6 +3970,12 @@ components:
       type: string
       enum: ['event_contract', 'margined']
       description: The exchange instance type
+
+    UserFilter:
+      type: string
+      enum: ['self']
+      x-enum-varnames: ['UserFilterSelf']
+      description: Omit or leave empty to return all results. Use `self` to filter by the authenticated user.
 
     ApiKey:
       type: object
@@ -7301,6 +7326,10 @@ components:
           type: boolean
         fractional_trading_enabled:
           type: boolean
+          deprecated: true
+          description: >-
+            Deprecated. This flag is always `true` and carries no information. Will be removed
+            after a pre-announcement with the removal date.
         open_interest_fp:
           $ref: '#/components/schemas/FixedPointCount'
           description: String representation of the number of contracts bought on this market disconsidering netting

@@ -1369,8 +1369,7 @@ components:
       title: Market Lifecycle V2
       summary: >-
         Market lifecycle events (created, activated, deactivated,
-        close_date_updated, determined, settled, fractional_trading_updated,
-        price_level_structure_updated)
+        close_date_updated, determined, settled, price_level_structure_updated)
       contentType: application/json
       payload:
         $ref: '#/components/schemas/marketLifecycleV2Payload'
@@ -1385,7 +1384,6 @@ components:
               event_type: created
               open_ts: 1694635200
               close_ts: 1694721600
-              fractional_trading_enabled: false
               price_level_structure: linear_cent
               additional_metadata:
                 name: S&P 500 daily return on Sep 14
@@ -2458,9 +2456,6 @@ components:
 
                 - `settled` - Market settled
 
-                - `fractional_trading_updated` - Market fractional trading
-                setting changed
-
                 - `price_level_structure_updated` - Market price level structure
                 changed
               enum:
@@ -2470,7 +2465,6 @@ components:
                 - close_date_updated
                 - determined
                 - settled
-                - fractional_trading_updated
                 - price_level_structure_updated
             market_ticker:
               $ref: '#/components/schemas/marketTicker'
@@ -2522,12 +2516,6 @@ components:
                 paused/unpaused. Boolean flag to indicate if trading is paused
                 on an open market. This should only be interpreted for an open
                 market
-            fractional_trading_enabled:
-              type: boolean
-              description: >-
-                Optional - This key will exist when the market is created or
-                when fractional trading is updated. Whether fractional trading
-                is enabled for the market
             price_level_structure:
               type: string
               description: >-
