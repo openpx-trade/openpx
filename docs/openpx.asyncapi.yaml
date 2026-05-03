@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: OpenPX WebSocket
-  version: 0.2.6
+  version: 0.3.0
   description: "Unified WebSocket streams over prediction-market exchanges. OpenPX is an in-process Rust library; this AsyncAPI\
     \ document models message shapes for documentation only \u2014 there is no hosted endpoint. The Rust engine translates\
     \ these messages into each exchange's underlying WS protocol behind the trait."

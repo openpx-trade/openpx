@@ -6,7 +6,7 @@ info:
     \ from `engine/core/src/exchange/traits.rs` and `schema/openpx.schema.json`. Edit the trait or the schema, then regenerate\
     \ via `just openapi`. The spec models trait methods as REST operations for documentation rendering only \u2014 OpenPX\
     \ is an in-process Rust library, not a REST service."
-  version: 0.2.6
+  version: 0.3.0
   license:
     name: MIT
 servers:
