@@ -1,0 +1,45 @@
+---
+title: "Trades stream mapping"
+description: "How each upstream WebSocket channel maps to the unified OpenPX `trades` stream."
+---
+
+Subscribe inputs and receive frames for the unified **trades** WebSocket channel,
+crosswalked against the upstream AsyncAPI specs cached under `schema/upstream/`.
+
+Every source entry is one of three types — **direct** (taken from upstream), **synthetic** (constructed by OpenPX), or **omitted** (not exposed upstream).
+
+## Coverage
+
+| Exchange | Direct | Synthetic | Omitted |
+|---|---|---|---|
+| kalshi | 3 | 3 | 1 |
+| polymarket | 2 | 5 | 0 |
+
+## Subscribe payload
+
+| Field | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `market_id` | `#/components/messages/subscribeCommand` | `#/components/messages/subscriptionRequest` | **kalshi:** Kalshi auto-subscribes the `trade` channel alongside `orderbook_delta` on every `subscribe(market_ticker)` call. **polymarket:** Polymarket `assets_ids[*]`. The market channel emits `last_trade_price` for the asset; trades on the *user* channel surface as fills, not trades. |
+| `outcome` | _omitted_ | _synthetic_ | **kalshi:** Trade frames carry `side` and `taker_side`; outcome (YES/NO) is implicit per Kalshi binary market. **polymarket:** Populated only when `register_outcomes(yes_token, no_token)` was called. Otherwise `ActivityTrade.outcome` is `None`. |
+
+## Receive messages
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Trade` | `#/components/messages/trade` | `#/components/messages/lastTradePrice` | **kalshi:** Public Kalshi trade frame — exchange-side fills (any maker/taker pair). Mapped to `ActivityTrade \{ source_channel: "kalshi_public_trade" \}`. **polymarket:** Polymarket `last_trade_price` carries the most recent trade for an asset. Mapped to `ActivityTrade \{ source_channel: "polymarket_last_trade_price" \}`. |
+
+## Session events
+
+| Variant | kalshi source | polymarket source | Notes |
+|---|---|---|---|
+| `Connected` | _synthetic_ | _synthetic_ |  |
+| `Reconnected` | _synthetic_ | _synthetic_ |  |
+| `Lagged` | _synthetic_ | _synthetic_ |  |
+| `Error` | `#/components/messages/errorResponse` | _synthetic_ |  |
+
+## Source specs
+
+- **kalshi** &middot; [`schema/upstream/kalshi.asyncapi.yaml`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/kalshi.asyncapi.yaml)
+- **polymarket** &middot; [`schema/upstream/polymarket.asyncapi.json`](https://github.com/openpx-trade/openpx/blob/main/schema/upstream/polymarket.asyncapi.json)
+
+> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream AsyncAPI spec; the daily upstream-refresh PR surfaces drift here.

@@ -122,7 +122,10 @@
               "schemas/mappings/trade",
               "schemas/mappings/order",
               "schemas/mappings/position",
-              "schemas/mappings/fill"
+              "schemas/mappings/fill",
+              "schemas/mappings/orderbook-stream",
+              "schemas/mappings/trades-stream",
+              "schemas/mappings/fills-stream"
             ]
           }
         ]

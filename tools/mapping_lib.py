@@ -53,3 +53,37 @@ def normalize_type(t: Any) -> set[str]:
     if isinstance(t, str):
         return {t} if t != "null" else set()
     return set()
+
+
+# Per-`mapping_kind` schema. Channel mappings describe a WebSocket channel
+# (subscribe payload + receive variants + session events) instead of a single
+# REST model with a flat `fields:` list.
+CHANNEL_SECTIONS = ("subscribe_payload", "receive_messages", "session_events")
+
+
+def mapping_kind(mapping: dict[str, Any]) -> str:
+    """Return the discriminator. Defaults to `model` for backwards-compat with
+    the original mapping files (market.yaml, order.yaml, …)."""
+    return mapping.get("mapping_kind", "model")
+
+
+def iter_sources(mapping: dict[str, Any]):
+    """Yield `(section, entry_name, exchange, source_dict)` tuples for every
+    declared per-exchange source in the mapping, regardless of `mapping_kind`.
+    Used by both the validator and the renderer so they share traversal."""
+    kind = mapping_kind(mapping)
+    if kind == "model":
+        for f in mapping.get("fields", []) or []:
+            name = f.get("name")
+            if not name:
+                continue
+            for ex, src in (f.get("sources") or {}).items():
+                yield ("fields", name, ex, src or {})
+    elif kind == "channel":
+        for section in CHANNEL_SECTIONS:
+            for entry in mapping.get(section, []) or []:
+                name = entry.get("name") or entry.get("variant")
+                if not name:
+                    continue
+                for ex, src in (entry.get("sources") or {}).items():
+                    yield (section, name, ex, src or {})

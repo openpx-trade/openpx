@@ -21,7 +21,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mapping_lib import load_schema_definitions, load_yaml, resolve_ref
+from mapping_lib import (
+    CHANNEL_SECTIONS,
+    iter_sources,
+    load_schema_definitions,
+    load_yaml,
+    mapping_kind,
+    resolve_ref,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
@@ -52,18 +59,19 @@ class Validator:
         self.errors.append(f"[{self.mapping_path.name}] {msg}")
 
     def run(self) -> bool:
-        type_name = self.mapping.get("unified_type")
-        if not type_name:
-            self.err("missing top-level `unified_type:` key")
-            return False
+        kind = mapping_kind(self.mapping)
+        if kind == "model":
+            return self._run_model()
+        if kind == "channel":
+            return self._run_channel()
+        self.err(f"unknown `mapping_kind`: {kind!r}")
+        return False
 
-        unified = load_openpx_unified(type_name)
-        unified_props = unified.get("properties", {})
-
+    def _load_upstream_specs(self) -> tuple[dict[str, str], dict[str, dict[str, Any]]] | None:
         upstream_paths = self.mapping.get("upstream_specs", {})
         if not upstream_paths:
             self.err("missing top-level `upstream_specs:` map")
-            return False
+            return None
         upstream_specs: dict[str, dict[str, Any]] = {}
         for ex, rel in upstream_paths.items():
             p = ROOT / rel
@@ -74,6 +82,69 @@ class Validator:
                 upstream_specs[ex] = load_yaml(p)
             except Exception as e:
                 self.err(f"upstream_specs.{ex} failed to parse: {e}")
+        for ex in upstream_specs:
+            self.coverage[ex] = {"direct": 0, "synthetic": 0, "omitted": 0}
+        return upstream_paths, upstream_specs
+
+    def _check_source(
+        self,
+        section: str,
+        name: str,
+        ex: str,
+        src: dict[str, Any],
+        upstream_specs: dict[str, dict[str, Any]],
+        upstream_paths: dict[str, str],
+    ) -> None:
+        t = src.get("type")
+        if t not in VALID_TYPES:
+            self.err(
+                f"{section} `{name}` exchange `{ex}` has type={t!r}; "
+                f"must be one of {sorted(VALID_TYPES)}"
+            )
+            return
+        if ex in self.coverage:
+            self.coverage[ex][t] += 1
+        if t != "direct":
+            return
+        ref = src.get("ref")
+        if not ref:
+            self.err(
+                f"{section} `{name}` exchange `{ex}` is type=direct but has no `ref:`"
+            )
+            return
+        if is_pointer(ref):
+            spec = upstream_specs.get(ex)
+            if spec is None:
+                return
+            if resolve_ref(spec, ref) is None:
+                self.err(
+                    f"{section} `{name}` exchange `{ex}` ref does not "
+                    f"resolve in {upstream_paths[ex]}: {ref}"
+                )
+        fb = src.get("fallback_ref")
+        if fb and is_pointer(fb):
+            spec = upstream_specs.get(ex)
+            if spec is None:
+                return
+            if resolve_ref(spec, fb) is None:
+                self.err(
+                    f"{section} `{name}` exchange `{ex}` fallback_ref does "
+                    f"not resolve: {fb}"
+                )
+
+    def _run_model(self) -> bool:
+        type_name = self.mapping.get("unified_type")
+        if not type_name:
+            self.err("missing top-level `unified_type:` key")
+            return False
+
+        unified = load_openpx_unified(type_name)
+        unified_props = unified.get("properties", {})
+
+        loaded = self._load_upstream_specs()
+        if loaded is None:
+            return False
+        upstream_paths, upstream_specs = loaded
 
         declared_fields = {f["name"] for f in self.mapping.get("fields", []) if "name" in f}
         unified_field_names = set(unified_props.keys())
@@ -91,16 +162,11 @@ class Validator:
                 + ", ".join(sorted(extra))
             )
 
-        for ex in upstream_specs:
-            self.coverage[ex] = {"direct": 0, "synthetic": 0, "omitted": 0}
-
         for field in self.mapping.get("fields", []):
             name = field.get("name")
             if not name or name not in unified_props:
                 continue
-
             sources = field.get("sources", {}) or {}
-
             for ex in upstream_specs:
                 src = sources.get(ex)
                 if not src:
@@ -109,44 +175,49 @@ class Validator:
                         "(declare `type: direct|synthetic|omitted`)"
                     )
                     continue
+                self._check_source("field", name, ex, src, upstream_specs, upstream_paths)
 
-                t = src.get("type")
-                if t not in VALID_TYPES:
+        return not self.errors
+
+    def _run_channel(self) -> bool:
+        if not self.mapping.get("unified_channel"):
+            self.err("missing top-level `unified_channel:` key")
+            return False
+        loaded = self._load_upstream_specs()
+        if loaded is None:
+            return False
+        upstream_paths, upstream_specs = loaded
+
+        declared_sections = [s for s in CHANNEL_SECTIONS if s in self.mapping]
+        if not declared_sections:
+            self.err(
+                f"channel mapping declares no sections — expected at least one of {CHANNEL_SECTIONS}"
+            )
+            return False
+
+        for section, name, ex, src in iter_sources(self.mapping):
+            if ex not in upstream_specs:
+                self.err(
+                    f"{section} `{name}` references unknown exchange `{ex}` "
+                    f"(not in upstream_specs)"
+                )
+                continue
+            self._check_source(section, name, ex, src, upstream_specs, upstream_paths)
+
+        # Every entry must declare every exchange exactly like model mappings.
+        exchanges = set(upstream_specs.keys())
+        for section in declared_sections:
+            for entry in self.mapping.get(section, []) or []:
+                name = entry.get("name") or entry.get("variant")
+                if not name:
+                    self.err(f"{section} entry missing `name:`/`variant:`")
+                    continue
+                missing_ex = exchanges - set((entry.get("sources") or {}).keys())
+                if missing_ex:
                     self.err(
-                        f"field `{name}` exchange `{ex}` has type={t!r}; "
-                        f"must be one of {sorted(VALID_TYPES)}"
+                        f"{section} `{name}` missing source for exchange(s): "
+                        + ", ".join(sorted(missing_ex))
                     )
-                    continue
-
-                self.coverage[ex][t] += 1
-
-                if t != "direct":
-                    continue
-
-                ref = src.get("ref")
-                if not ref:
-                    self.err(
-                        f"field `{name}` exchange `{ex}` is type=direct "
-                        "but has no `ref:`"
-                    )
-                    continue
-
-                if is_pointer(ref):
-                    resolved = resolve_ref(upstream_specs[ex], ref)
-                    if resolved is None:
-                        self.err(
-                            f"field `{name}` exchange `{ex}` ref does not "
-                            f"resolve in {upstream_paths[ex]}: {ref}"
-                        )
-
-                fb = src.get("fallback_ref")
-                if fb and is_pointer(fb):
-                    resolved = resolve_ref(upstream_specs[ex], fb)
-                    if resolved is None:
-                        self.err(
-                            f"field `{name}` exchange `{ex}` fallback_ref does "
-                            f"not resolve: {fb}"
-                        )
 
         return not self.errors
 

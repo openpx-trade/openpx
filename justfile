@@ -150,10 +150,44 @@ publish-node: node-build
 # Publish everything
 publish-all: publish-crates publish-python publish-node
 
-# Run live integration tests against real exchange APIs
-# Usage: just live-test [exchange]
+# ---------------------------------------------------------------------------
+# End-to-end test suites (live APIs — require .env credentials)
+# ---------------------------------------------------------------------------
+# Layout: e2e_tests/{markets,orderbooks,trading,websockets,live}/{rust,python,typescript,cli}
+#
+# All Rust suites are integration tests of the `px-e2e-tests` workspace
+# crate. Python/TS/CLI parity scripts live alongside under each suite dir.
+
+# Run a single Rust e2e suite by name. Suites: markets, orderbooks, trading, websockets, live
 # Examples:
-#   just live-test              # all exchanges
-#   just live-test kalshi       # single exchange
+#   just e2e-rust websockets
+#   just e2e-rust trading kalshi
+e2e-rust SUITE *FILTER:
+    OPENPX_LIVE_TESTS=1 cargo test -p px-e2e-tests --test test_{{SUITE}} {{FILTER}} -- --nocapture
+
+# Run every Rust e2e suite
+e2e-rust-all:
+    OPENPX_LIVE_TESTS=1 cargo test -p px-e2e-tests -- --test-threads=1 --nocapture
+
+# Run a single Python e2e suite. Suites: orderbooks, trading, websockets
+e2e-python SUITE:
+    sdks/python/.venv/bin/python e2e_tests/{{SUITE}}/python/test_{{SUITE}}.py
+
+# Run a single TypeScript e2e suite. Suites: orderbooks, trading, websockets
+e2e-typescript SUITE:
+    node e2e_tests/{{SUITE}}/typescript/test_{{SUITE}}.mjs
+
+# Run a single CLI e2e suite. Suites: orderbooks, trading, websockets
+e2e-cli SUITE:
+    bash e2e_tests/{{SUITE}}/cli/run.sh
+
+# Convenience: full WebSocket matrix across all SDKs
+e2e-websockets:
+    OPENPX_LIVE_TESTS=1 cargo test -p px-e2e-tests --test test_websockets -- --test-threads=1 --nocapture
+    sdks/python/.venv/bin/python e2e_tests/websockets/python/test_websockets.py
+    node e2e_tests/websockets/typescript/test_websockets.mjs
+    bash e2e_tests/websockets/cli/run.sh
+
+# Backwards-compatible alias for the old `live-test` target
 live-test *FILTER:
-    OPENPX_LIVE_TESTS=1 cargo test -p openpx --test live {{FILTER}} -- --nocapture
+    OPENPX_LIVE_TESTS=1 cargo test -p px-e2e-tests --test test_live {{FILTER}} -- --nocapture

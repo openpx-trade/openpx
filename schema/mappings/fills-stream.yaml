@@ -1,0 +1,59 @@
+mapping_kind: channel
+unified_channel: fills
+unified_schema: schema/openpx.schema.json#/definitions/ActivityFill
+upstream_specs:
+  kalshi: schema/upstream/kalshi.asyncapi.yaml
+  polymarket: schema/upstream/polymarket-user.asyncapi.json
+
+subscribe_payload:
+  - name: market_id
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/subscribeCommand"
+        note: "Requires `enable_user_fills=true` on the Kalshi WS constructor (private fill channel auto-attaches to every `subscribe(market_ticker)`)."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/userSubscriptionRequest"
+        note: "Polymarket `markets[*]` (condition_id) on the *user* channel. Auth is required: API key + secret + passphrase derived from the L1-signed CLOB credentials."
+  - name: outcome
+    sources:
+      kalshi:
+        type: omitted
+        note: "Fill frames carry `side` and the matched `outcome`; OpenPX reads it directly into `ActivityFill.outcome`."
+      polymarket:
+        type: synthetic
+        note: "Populated only when `register_outcomes` was called; otherwise `None`."
+
+receive_messages:
+  - variant: Fill
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/fill"
+        note: "Authenticated Kalshi fill — mapped to `ActivityFill { source_channel: \"kalshi_user_fill\", liquidity_role: Maker|Taker }`."
+      polymarket:
+        type: direct
+        ref: "#/components/messages/trade"
+        note: "Polymarket *user-channel* trade event = a fill from the user's perspective. Mapped to `ActivityFill { source_channel: \"polymarket_user_trade\" }` with `liquidity_role` derived from `trader_side`."
+
+session_events:
+  - variant: Connected
+    sources:
+      kalshi:
+        type: synthetic
+      polymarket:
+        type: synthetic
+  - variant: Reconnected
+    sources:
+      kalshi:
+        type: synthetic
+      polymarket:
+        type: synthetic
+  - variant: Error
+    sources:
+      kalshi:
+        type: direct
+        ref: "#/components/messages/errorResponse"
+      polymarket:
+        type: synthetic

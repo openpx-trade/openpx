@@ -15,7 +15,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mapping_lib import load_schema_definitions, load_yaml, resolve_ref
+from mapping_lib import (
+    CHANNEL_SECTIONS,
+    load_schema_definitions,
+    load_yaml,
+    mapping_kind,
+    resolve_ref,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "openpx.schema.json"
@@ -181,6 +187,117 @@ def render_table(mapping: dict[str, Any], unified: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------
+# Channel-mapping renderer (mapping_kind: channel)
+# --------------------------------------------------------------------------
+# Channel mappings document a WebSocket channel rather than a REST model:
+# how the unified subscribe payload, the unified receive variants, and the
+# unified session-event variants map to each exchange's upstream message.
+# The output is a Mintlify MDX page with one table per section.
+
+# Pretty title labels per section. Keys mirror mapping_lib.CHANNEL_SECTIONS.
+SECTION_TITLES = {
+    "subscribe_payload": "Subscribe payload",
+    "receive_messages": "Receive messages",
+    "session_events": "Session events",
+}
+
+
+def _channel_count(mapping: dict[str, Any], exchange: str) -> dict[str, int]:
+    counts = {"direct": 0, "synthetic": 0, "omitted": 0}
+    for section in CHANNEL_SECTIONS:
+        for entry in mapping.get(section, []) or []:
+            src = (entry.get("sources") or {}).get(exchange) or {}
+            t = src.get("type")
+            if t in counts:
+                counts[t] += 1
+    return counts
+
+
+def render_channel_section(
+    mapping: dict[str, Any],
+    section: str,
+    specs: dict[str, dict[str, Any]],
+) -> list[str]:
+    entries = mapping.get(section, []) or []
+    if not entries:
+        return []
+    exchanges = list(mapping.get("upstream_specs", {}).keys())
+    name_header = "Variant" if section != "subscribe_payload" else "Field"
+    header = [name_header] + [f"{ex} source" for ex in exchanges] + ["Notes"]
+    out: list[str] = []
+    out.append(f"## {SECTION_TITLES[section]}")
+    out.append("")
+    out.append("| " + " | ".join(header) + " |")
+    out.append("|" + "|".join(["---"] * len(header)) + "|")
+    for entry in entries:
+        name = entry.get("name") or entry.get("variant") or "?"
+        srcs = entry.get("sources") or {}
+        cells = [f"`{name}`"]
+        notes: list[str] = []
+        for ex in exchanges:
+            src = srcs.get(ex) or {}
+            cells.append(render_source_cell(src, specs.get(ex, {})))
+            n = src.get("note")
+            if n:
+                notes.append(f"**{ex}:** {n.strip()}")
+        cells.append(_safe_prose(" ".join(notes)))
+        out.append("| " + " | ".join(cells) + " |")
+    out.append("")
+    return out
+
+
+def render_channel(mapping: dict[str, Any]) -> str:
+    channel = mapping["unified_channel"]
+    upstream = mapping.get("upstream_specs", {})
+    exchanges = list(upstream.keys())
+    specs: dict[str, dict[str, Any]] = {}
+    for ex, rel in upstream.items():
+        p = ROOT / rel
+        specs[ex] = load_yaml(p) if p.is_file() else {}
+
+    title = f"{channel.title()} stream mapping"
+    lines: list[str] = []
+    lines.append("---")
+    lines.append(f'title: "{title}"')
+    lines.append(
+        f'description: "How each upstream WebSocket channel maps to the unified OpenPX `{channel}` stream."'
+    )
+    lines.append("---")
+    lines.append("")
+    lines.append(
+        f"Subscribe inputs and receive frames for the unified **{channel}** WebSocket channel,"
+    )
+    lines.append(
+        "crosswalked against the upstream AsyncAPI specs cached under `schema/upstream/`."
+    )
+    lines.append("")
+    lines.append("Every source entry is one of three types — **direct** (taken from upstream), **synthetic** (constructed by OpenPX), or **omitted** (not exposed upstream).")
+    lines.append("")
+    lines.append("## Coverage")
+    lines.append("")
+    lines.append("| Exchange | Direct | Synthetic | Omitted |")
+    lines.append("|---|---|---|---|")
+    for ex in exchanges:
+        c = _channel_count(mapping, ex)
+        lines.append(f"| {ex} | {c['direct']} | {c['synthetic']} | {c['omitted']} |")
+    lines.append("")
+    for section in CHANNEL_SECTIONS:
+        lines.extend(render_channel_section(mapping, section, specs))
+    lines.append("## Source specs")
+    lines.append("")
+    for ex, rel in upstream.items():
+        lines.append(
+            f"- **{ex}** &middot; [`{rel}`](https://github.com/openpx-trade/openpx/blob/main/{rel})"
+        )
+    lines.append("")
+    lines.append(
+        "> Tables are auto-generated from `schema/mappings/`. CI fails if any `direct` ref no longer resolves in the cached upstream AsyncAPI spec; the daily upstream-refresh PR surfaces drift here."
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> int:
     defs = load_schema_definitions(SCHEMA)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -192,13 +309,18 @@ def main() -> int:
     written = 0
     for p in files:
         mapping = load_yaml(p)
-        type_name = mapping.get("unified_type")
-        if type_name not in defs:
-            print(f"skip {p.name}: openpx schema has no `{type_name}`", file=sys.stderr)
-            continue
-        out_name = p.stem + ".mdx"
-        out_path = OUTPUT_DIR / out_name
-        text = render_table(mapping, defs[type_name])
+        kind = mapping_kind(mapping)
+        out_path = OUTPUT_DIR / (p.stem + ".mdx")
+
+        if kind == "channel":
+            text = render_channel(mapping)
+        else:
+            type_name = mapping.get("unified_type")
+            if type_name not in defs:
+                print(f"skip {p.name}: openpx schema has no `{type_name}`", file=sys.stderr)
+                continue
+            text = render_table(mapping, defs[type_name])
+
         out_path.write_text(text)
         rel = out_path.relative_to(ROOT)
         print(f"wrote {rel} ({len(text):,} bytes)")

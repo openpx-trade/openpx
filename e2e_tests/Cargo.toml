@@ -1,0 +1,44 @@
+[package]
+name = "px-e2e-tests"
+description = "End-to-end test suite for the unified OpenPX surface — Rust integration tests live here, with multi-SDK parity (Python/TS/CLI) under sibling subdirs."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Empty lib stub — the crate exists to host integration tests below.
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+openpx = { workspace = true }
+px-core = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+futures = { workspace = true }
+rustls = { version = "0.23", features = ["ring"] }
+dotenvy = "0.15"
+
+[[test]]
+name = "test_markets"
+path = "markets/rust/test_markets.rs"
+
+[[test]]
+name = "test_orderbooks"
+path = "orderbooks/rust/test_orderbooks.rs"
+
+[[test]]
+name = "test_trading"
+path = "trading/rust/test_trading.rs"
+
+[[test]]
+name = "test_live"
+path = "live/rust/test_live.rs"
+
+[[test]]
+name = "test_websockets"
+path = "websockets/rust/test_websockets.rs"

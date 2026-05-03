@@ -12,6 +12,7 @@ members = [
     "engine/recorder",
     "sdks/python",
     "sdks/typescript",
+    "e2e_tests",
 ]
 default-members = [
     "engine/core",
