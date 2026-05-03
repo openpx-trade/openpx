@@ -1293,7 +1293,7 @@ sys.stdout.write(json.dumps(out, default=str))
         }
 
         // 4. Node
-        if let Some(_) = node_entry() {
+        if node_entry().is_some() {
             let ts_dir = project_root().join("sdks/typescript");
             let script = r#"
 const { Exchange } = require('./index.js');

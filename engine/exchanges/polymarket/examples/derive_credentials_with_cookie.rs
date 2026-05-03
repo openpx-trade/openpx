@@ -90,12 +90,13 @@ async fn main() -> anyhow::Result<()> {
     eprintln!("timestamp: {timestamp}");
     eprintln!("nonce:     {nonce}");
     eprintln!("UA:        {user_agent}");
-    eprintln!("cookie:    cf_clearance={}...", &cf_clearance[..cf_clearance.len().min(20)]);
+    eprintln!(
+        "cookie:    cf_clearance={}...",
+        &cf_clearance[..cf_clearance.len().min(20)]
+    );
     eprintln!();
 
-    let client = reqwest::Client::builder()
-        .user_agent(&user_agent)
-        .build()?;
+    let client = reqwest::Client::builder().user_agent(&user_agent).build()?;
 
     let resp = client
         .post(format!("{HOST}/auth/api-key"))

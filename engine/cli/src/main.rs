@@ -396,9 +396,9 @@ async fn run_rest_command(exchange: &ExchangeInner, cmd: Command) {
                         )));
                     }
                 };
-                let order_type_enum = order_type.parse::<px_core::OrderType>().map_err(|e| {
-                    px_core::error::OpenPxError::InvalidInput(e)
-                })?;
+                let order_type_enum = order_type
+                    .parse::<px_core::OrderType>()
+                    .map_err(px_core::error::OpenPxError::InvalidInput)?;
                 let req = px_core::CreateOrderRequest {
                     asset_id,
                     outcome: order_outcome,

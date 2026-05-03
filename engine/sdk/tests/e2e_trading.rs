@@ -111,10 +111,7 @@ fn is_polymarket_auth_unavailable(e: &OpenPxError) -> bool {
 }
 
 fn is_market_not_found(e: &OpenPxError) -> bool {
-    matches!(
-        e,
-        OpenPxError::Exchange(ExchangeError::MarketNotFound(_))
-    )
+    matches!(e, OpenPxError::Exchange(ExchangeError::MarketNotFound(_)))
 }
 
 // ---------------------------------------------------------------------------
@@ -166,9 +163,7 @@ async fn polymarket_btc_market(ex: &ExchangeInner) -> Option<Market> {
 ///     stay strictly under the book even on dollar-priced markets.
 ///   * Honour Kalshi's 1-cent ($0.01) tick and Polymarket's 1-cent tick.
 fn safe_resting_buy_price(best_bid: Option<f64>, tick: f64) -> f64 {
-    let candidate = best_bid
-        .map(|b| (b - tick * 5.0).min(0.05))
-        .unwrap_or(0.05);
+    let candidate = best_bid.map(|b| (b - tick * 5.0).min(0.05)).unwrap_or(0.05);
     // Round down to the nearest tick and clamp into (0, 1).
     let snapped = (candidate / tick).floor() * tick;
     snapped.clamp(tick, 1.0 - tick)
@@ -829,8 +824,10 @@ async fn unified_trading_shape_across_exchanges() {
     };
 
     // Both balances must round-trip through HashMap<String, f64>.
-    if let (Ok(k_bal), Ok(p_bal)) = (kalshi.fetch_balance().await, polymarket.fetch_balance().await)
-    {
+    if let (Ok(k_bal), Ok(p_bal)) = (
+        kalshi.fetch_balance().await,
+        polymarket.fetch_balance().await,
+    ) {
         assert!(
             k_bal.contains_key("USD"),
             "kalshi balance missing USD: {k_bal:?}"

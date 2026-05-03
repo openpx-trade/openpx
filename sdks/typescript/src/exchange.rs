@@ -170,10 +170,7 @@ impl Exchange {
     }
 
     #[napi]
-    pub async fn cancel_all_orders(
-        &self,
-        asset_id: Option<String>,
-    ) -> Result<serde_json::Value> {
+    pub async fn cancel_all_orders(&self, asset_id: Option<String>) -> Result<serde_json::Value> {
         let inner = self.inner.clone();
         let rt = get_runtime();
         let result = rt

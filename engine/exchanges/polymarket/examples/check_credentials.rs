@@ -28,8 +28,8 @@ async fn main() -> anyhow::Result<()> {
         .expect("install rustls provider");
     let _ = dotenvy::dotenv();
 
-    let host = std::env::var("CLOB_API_URL")
-        .unwrap_or_else(|_| "https://clob.polymarket.com".into());
+    let host =
+        std::env::var("CLOB_API_URL").unwrap_or_else(|_| "https://clob.polymarket.com".into());
 
     let private_key = std::env::var(PRIVATE_KEY_VAR)?;
     let key_hex = if private_key.starts_with("0x") {
