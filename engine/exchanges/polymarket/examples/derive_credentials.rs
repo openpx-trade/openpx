@@ -1,10 +1,8 @@
 //! Derive Polymarket CLOB credentials from POLYMARKET_PRIVATE_KEY against the
 //! V2 host (`https://clob.polymarket.com`).
 //!
-//! Mirrors the upstream `examples/clob/keys/create_or_derive_api_key.rs` from
-//! https://github.com/Polymarket/rs-clob-client-v2: build an unauthenticated
-//! `Client`, then attempt POST /auth/api-key (create) and fall back to
-//! GET /auth/derive-api-key (derive existing) on any failure.
+//! Order: GET /auth/derive-api-key first (returns existing key, not WAF-blocked),
+//! falling back to POST /auth/api-key only if no key exists yet for this EOA.
 //!
 //! Run from repo root:
 //!   cargo run -p px-exchange-polymarket --example derive_credentials
@@ -37,17 +35,15 @@ async fn main() -> anyhow::Result<()> {
 
     let client = Client::new(&host, Config::default())?;
 
-    // Try POST /auth/api-key directly so we can see its real failure mode if it's
-    // not a "key already exists" case. Fall back to DERIVE on any error.
-    let creds = match client.create_api_key(&signer, None).await {
+    let creds = match client.derive_api_key(&signer, None).await {
         Ok(c) => {
-            eprintln!("created new API key");
+            eprintln!("derived existing API key");
             c
         }
         Err(e) => {
-            eprintln!("create_api_key failed: {e}");
-            eprintln!("falling back to derive_api_key...");
-            client.derive_api_key(&signer, None).await?
+            eprintln!("derive_api_key failed: {e}");
+            eprintln!("no existing key — falling back to create_api_key...");
+            client.create_api_key(&signer, None).await?
         }
     };
 

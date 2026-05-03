@@ -90,55 +90,21 @@ struct SdkState {
 ///
 /// The SDK's `create_or_derive_api_key` collapses every failure into "the
 /// DERIVE error", which hides the upstream cause when POST is what actually
-/// went wrong. We run POST and DERIVE separately so we can recognize the
-/// four real failure shapes and return a remediation hint:
+/// went wrong. We run DERIVE and CREATE separately so we can recognize the
+/// real failure shapes and return a remediation hint.
 ///
-///  • Cloudflare WAF block on POST  → suggest VPN swap or pre-derived keys
-///  • L1 signature rejected         → suggest checking the private key
-///  • POST + DERIVE both fail       → suggest pre-derived keys
-///  • Unknown                       → surface both errors verbatim
-///
-/// If POST succeeds we return immediately (newly created). If POST fails
-/// with anything other than a Cloudflare block we still try DERIVE — the
-/// most common case is "key already exists" → POST 4xx → DERIVE 200.
+/// Order: DERIVE first, CREATE on fall-through. Two reasons:
+///   1. If a key already exists for this EOA, GET /auth/derive-api-key
+///      returns it without ever touching POST /auth/api-key — which is the
+///      endpoint Cloudflare's WAF blocks from datacenter IPs.
+///   2. CREATE consumes a nonce; running it when a key already exists
+///      yields NONCE_ALREADY_USED. Derive-first avoids that.
 async fn derive_credentials_with_diagnostics(
     unauth_client: &polymarket_client_sdk_v2::clob::Client<Unauthenticated>,
     signer: &PrivateKeySigner,
 ) -> Result<Credentials, PolymarketError> {
-    // First try POST /auth/api-key (creates a new key).
-    let post_err = match unauth_client.create_api_key(signer, None).await {
-        Ok(creds) => return Ok(creds),
-        Err(e) => e,
-    };
-
-    let post_msg = format!("{post_err}");
-    let lower = post_msg.to_ascii_lowercase();
-
-    // Cloudflare's WAF returns an HTML "Sorry, you have been blocked" page
-    // wrapped inside a 403/503 status — the body is the only signal that
-    // tells us the rejection wasn't from Polymarket's app layer. If POST is
-    // WAF-blocked, DERIVE is unhelpful (it can only return existing keys
-    // and we just established none exist for this address from this IP).
-    if lower.contains("cloudflare")
-        || lower.contains("sorry, you have been blocked")
-        || lower.contains("attention required")
-    {
-        return Err(PolymarketError::Auth(
-            "Polymarket's Cloudflare WAF blocks POST /auth/api-key from \
-             datacenter/VPN IPs (path-scoped anti-abuse rule — only this \
-             endpoint is affected). Workarounds: (1) create the key once via \
-             the Polymarket web app (Settings → API Keys), then set \
-             POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE \
-             in your environment — OpenPX will use stored keys and never call \
-             /auth/api-key again; (2) run the one-time create from a residential \
-             IP (home connection or a residential-IP VPN), then resume normal \
-             usage."
-                .into(),
-        ));
-    }
-
-    // POST failed for some other reason. Try DERIVE to see if a key
-    // already exists (the SDK's normal happy-path fallback).
+    // First try GET /auth/derive-api-key — returns existing key for this EOA
+    // (any nonce). Not Cloudflare-blocked.
     let derive_err = match unauth_client.derive_api_key(signer, None).await {
         Ok(creds) => return Ok(creds),
         Err(e) => e,
@@ -147,8 +113,9 @@ async fn derive_credentials_with_diagnostics(
     let derive_msg = format!("{derive_err}");
     let dlower = derive_msg.to_ascii_lowercase();
 
-    // 401 Invalid L1 Request headers — the EIP-712 signer-recovery failed,
-    // which means POLYMARKET_PRIVATE_KEY is malformed or chain id is wrong.
+    // 401 Invalid L1 Request headers — EIP-712 signer-recovery failed,
+    // meaning POLYMARKET_PRIVATE_KEY is malformed or chain id is wrong.
+    // No point trying CREATE; it will fail the same way.
     if dlower.contains("invalid l1 request headers") {
         return Err(PolymarketError::Auth(
             "Polymarket rejected the L1 EIP-712 signature. Check that \
@@ -158,25 +125,40 @@ async fn derive_credentials_with_diagnostics(
         ));
     }
 
-    // 400 Could not derive api key — derive worked syntactically but found
-    // no keys for this EOA. Combined with a non-Cloudflare POST failure,
-    // the EOA is in a state where automated key derivation is impossible
-    // (rare; usually means the upstream `create_api_key` was blocked for
-    // a non-Cloudflare reason like rate limiting or temporary 5xx).
-    if dlower.contains("could not derive api key") {
-        return Err(PolymarketError::Auth(format!(
-            "Polymarket cannot derive an API key for this EOA. \
-             Both POST /auth/api-key and GET /auth/derive-api-key failed. \
-             POST: {post_msg}. DERIVE: {derive_msg}. \
-             Workaround: generate API credentials via the Polymarket web app \
-             and set POLYMARKET_API_KEY, POLYMARKET_API_SECRET, \
-             POLYMARKET_API_PASSPHRASE to bypass the derive flow."
-        )));
+    // 400 "could not derive api key" — no key exists for this EOA yet.
+    // Fall through to CREATE.
+    let post_err = match unauth_client.create_api_key(signer, None).await {
+        Ok(creds) => return Ok(creds),
+        Err(e) => e,
+    };
+
+    let post_msg = format!("{post_err}");
+    let plower = post_msg.to_ascii_lowercase();
+
+    // Cloudflare's WAF returns an HTML "Sorry, you have been blocked" page
+    // wrapped in a 403/503. The body is the only signal that the rejection
+    // is infrastructure, not Polymarket's app layer.
+    if plower.contains("cloudflare")
+        || plower.contains("sorry, you have been blocked")
+        || plower.contains("attention required")
+    {
+        return Err(PolymarketError::Auth(
+            "Polymarket's Cloudflare WAF blocks POST /auth/api-key from \
+             datacenter/VPN IPs (path-scoped anti-abuse rule — only this \
+             endpoint is affected; GET /auth/derive-api-key works fine). \
+             No CLOB key exists for this EOA yet, so DERIVE alone can't \
+             bootstrap. Workaround: run the one-time CREATE from a residential \
+             IP (home connection or residential-IP VPN). Once the key exists, \
+             DERIVE works from any IP — set POLYMARKET_API_KEY, \
+             POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE in your \
+             environment to skip key bootstrap entirely on subsequent runs."
+                .into(),
+        ));
     }
 
     // Anything else — surface both errors so the user has the full picture.
     Err(PolymarketError::Auth(format!(
-        "Polymarket auth failed. POST: {post_msg}. DERIVE: {derive_msg}"
+        "Polymarket auth failed. DERIVE: {derive_msg}. CREATE: {post_msg}"
     )))
 }
 
