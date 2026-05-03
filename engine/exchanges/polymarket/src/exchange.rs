@@ -1585,6 +1585,7 @@ impl Exchange for Polymarket {
         let next_or_none = |c: Option<String>| c.filter(|s| !s.is_empty());
 
         let mut markets = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         let mut absorb = |envelope: serde_json::Value, bucket: &mut Option<String>| {
             let events: Vec<serde_json::Value> = envelope
                 .get("events")
@@ -1617,6 +1618,9 @@ impl Exchange for Polymarket {
                         }
                         if parsed.event_ticker.is_none() {
                             parsed.event_ticker = Some(native_event_slug.clone());
+                        }
+                        if !seen.insert(parsed.ticker.clone()) {
+                            continue;
                         }
                         markets.push(parsed);
                     }
