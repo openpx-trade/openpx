@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
 
     let host = std::env::var("CLOB_API_URL")
-        .unwrap_or_else(|_| "https://clob-v2.polymarket.com".into());
+        .unwrap_or_else(|_| "https://clob.polymarket.com".into());
 
     let private_key = std::env::var(PRIVATE_KEY_VAR)?;
     let key_hex = if private_key.starts_with("0x") {
@@ -115,9 +115,9 @@ fn collect_candidates() -> Vec<(String, String, String, String)> {
     let mut out = Vec::new();
     // Primary slot — read the standard openpx env var names if set.
     if let (Ok(k), Ok(s), Ok(p)) = (
-        std::env::var("POLYMARKET_CLOB_API_KEY"),
-        std::env::var("POLYMARKET_CLOB_API_SECRET"),
-        std::env::var("POLYMARKET_CLOB_API_PASSPHRASE"),
+        std::env::var("POLYMARKET_API_KEY"),
+        std::env::var("POLYMARKET_API_SECRET"),
+        std::env::var("POLYMARKET_API_PASSPHRASE"),
     ) {
         out.push(("env".to_string(), k, s, p));
     }
