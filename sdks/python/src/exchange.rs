@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::PyDict;
 use pythonize::pythonize;
 
@@ -13,6 +14,7 @@ use crate::get_runtime;
 #[pyclass]
 pub struct NativeExchange {
     inner: Arc<ExchangeInner>,
+    described: PyOnceLock<Py<PyAny>>,
 }
 
 #[pymethods]
@@ -24,6 +26,7 @@ impl NativeExchange {
         let inner = ExchangeInner::new(id, config_json).map_err(|e| to_py_err(e.to_string()))?;
         Ok(Self {
             inner: Arc::new(inner),
+            described: PyOnceLock::new(),
         })
     }
 
@@ -38,8 +41,12 @@ impl NativeExchange {
     }
 
     fn describe<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let info = self.inner.describe();
-        pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))
+        let cached = self.described.get_or_try_init(py, || {
+            let info = self.inner.describe();
+            let dict = pythonize(py, &info).map_err(|e| to_py_err(e.to_string()))?;
+            Ok::<_, PyErr>(dict.unbind())
+        })?;
+        Ok(cached.bind(py).clone())
     }
 
     #[pyo3(signature = (status=None, cursor=None, market_tickers=None, series_ticker=None, event_ticker=None, limit=None))]
