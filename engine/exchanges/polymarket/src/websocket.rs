@@ -10,7 +10,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use chrono::{DateTime, Utc};
 use px_core::{
-    insert_ask, insert_bid, now_pair, stall_watchdog, ActivityFill, ActivityTrade,
+    apply_ask_level, apply_bid_level, now_pair, stall_watchdog, ActivityFill, ActivityTrade,
     AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
     OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent,
     SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig,
@@ -525,25 +525,15 @@ impl PolymarketWebSocket {
                         let is_bid = side.eq_ignore_ascii_case("BUY");
                         let levels = if is_bid { &mut ob.bids } else { &mut ob.asks };
 
-                        // Apply to internal book
-                        if let Some(existing) = levels.iter_mut().find(|l| l.price == fp) {
-                            if size > 0.0 {
-                                existing.size = size;
-                            } else {
-                                // Remove will happen via retain below
-                            }
-                        }
-                        if size > 0.0 {
-                            if !levels.iter().any(|l| l.price == fp) {
-                                let level = PriceLevel::with_fixed(fp, size);
-                                if is_bid {
-                                    insert_bid(levels, level);
-                                } else {
-                                    insert_ask(levels, level);
-                                }
-                            }
+                        // Single binary-search-based apply via the shared
+                        // px-core primitive — replaces the previous 3-pass
+                        // (find / iter().any() / retain) on every change.
+                        // size > 0 replaces or inserts; size == 0 removes.
+                        let level = PriceLevel::with_fixed(fp, size);
+                        if is_bid {
+                            apply_bid_level(levels, level);
                         } else {
-                            levels.retain(|l| l.price != fp);
+                            apply_ask_level(levels, level);
                         }
 
                         // Collect the change

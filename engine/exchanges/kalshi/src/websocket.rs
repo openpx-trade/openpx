@@ -14,12 +14,12 @@ use tokio_tungstenite::{
 };
 
 use px_core::{
-    now_pair, sort_asks, sort_bids, stall_watchdog, ActivityFill, ActivityTrade,
-    AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
-    OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent,
-    SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig,
-    WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
-    WS_RECONNECT_MAX_DELAY,
+    apply_ask_delta, apply_bid_delta, now_pair, sort_asks, sort_bids, stall_watchdog,
+    ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason,
+    LiquidityRole, OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide,
+    SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher,
+    WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
+    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
@@ -266,41 +266,20 @@ impl KalshiWebSocket {
     }
 
     /// Apply a Kalshi delta to a sorted level vec and return the resulting
-    /// absolute size at `fp`. `0.0` means the level is no longer present
-    /// (either removed by the delta or never existed). Binary search keeps
-    /// the lookup at O(log n) on the typical 20-50 level book; the previous
-    /// `iter().position(...)` was O(n) and was followed by another full
-    /// scan in the caller to read the post-apply size.
+    /// absolute size at `fp`. Thin wrapper around the shared
+    /// `apply_bid_delta` / `apply_ask_delta` primitives in px-core so both
+    /// exchanges go through the same binary-search-based apply.
+    #[inline]
     fn update_levels(
         levels: &mut Vec<PriceLevel>,
         fp: FixedPrice,
         delta: f64,
         descending: bool,
     ) -> f64 {
-        let search = if descending {
-            levels.binary_search_by(|l| fp.cmp(&l.price))
+        if descending {
+            apply_bid_delta(levels, fp, delta)
         } else {
-            levels.binary_search_by(|l| l.price.cmp(&fp))
-        };
-        match search {
-            Ok(idx) => {
-                let new_size = levels[idx].size + delta;
-                if new_size <= 0.0 {
-                    levels.remove(idx);
-                    0.0
-                } else {
-                    levels[idx].size = new_size;
-                    new_size
-                }
-            }
-            Err(idx) => {
-                if delta > 0.0 {
-                    levels.insert(idx, PriceLevel::with_fixed(fp, delta));
-                    delta
-                } else {
-                    0.0
-                }
-            }
+            apply_ask_delta(levels, fp, delta)
         }
     }
 
