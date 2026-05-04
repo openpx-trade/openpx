@@ -31,17 +31,6 @@ const WS_PATH: &str = "/trade-api/ws/v2";
 type SeqMap = Arc<RwLock<HashMap<String, Arc<AtomicU64>>>>;
 
 #[derive(Debug, Deserialize)]
-struct SnapshotPayload {
-    market_ticker: String,
-    #[allow(dead_code)]
-    market_id: String,
-    #[serde(default)]
-    yes_dollars_fp: Option<Vec<[String; 2]>>,
-    #[serde(default)]
-    no_dollars_fp: Option<Vec<[String; 2]>>,
-}
-
-#[derive(Debug, Deserialize)]
 struct ErrorPayload {
     code: i64,
     msg: String,
@@ -258,14 +247,22 @@ impl KalshiWebSocket {
         Ok(())
     }
 
-    fn parse_levels(levels: Option<Vec<[String; 2]>>) -> Vec<PriceLevel> {
-        // px_core::parse_level skips the f64 round-trip — scans decimal
-        // strings directly into u32/i64 ticks.
-        levels
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|[price_str, size_str]| px_core::parse_level(&price_str, &size_str))
-            .collect()
+    /// Parse a `[price, size]` array straight off the already-parsed Value,
+    /// skipping the `serde_json::from_value` re-walk that previously cloned
+    /// every String pair into an intermediate `Vec<[String; 2]>`. The result
+    /// Vec is pre-sized to the level count so it never reallocates.
+    fn parse_levels(levels: Option<&serde_json::Value>) -> Vec<PriceLevel> {
+        let Some(arr) = levels.and_then(|v| v.as_array()) else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(arr.len());
+        out.extend(arr.iter().filter_map(|pair| {
+            let pair = pair.as_array()?;
+            let price = pair.first()?.as_str()?;
+            let size = pair.get(1)?.as_str()?;
+            px_core::parse_level(price, size)
+        }));
+        out
     }
 
     /// Apply a Kalshi delta to a sorted level vec and return the resulting
@@ -380,16 +377,19 @@ impl KalshiWebSocket {
         local_ts: Instant,
         local_ts_ms: u64,
     ) {
-        let payload: SnapshotPayload = match value.get("msg") {
-            Some(msg) => match serde_json::from_value(msg.clone()) {
-                Ok(parsed) => parsed,
-                Err(_) => return,
-            },
-            None => return,
+        // Direct Value access skips the `serde_json::from_value(msg.clone())`
+        // double-parse — at ~50-200 levels per side the clone alone is a
+        // sizable heap copy because every String inside the level pairs is
+        // owned. parse_levels reads straight off the same Value.
+        let Some(msg) = value.get("msg") else {
+            return;
+        };
+        let Some(market_ticker) = msg.get("market_ticker").and_then(|v| v.as_str()) else {
+            return;
         };
 
-        let mut bids = Self::parse_levels(payload.yes_dollars_fp);
-        let mut asks: Vec<PriceLevel> = Self::parse_levels(payload.no_dollars_fp)
+        let mut bids = Self::parse_levels(msg.get("yes_dollars_fp"));
+        let mut asks: Vec<PriceLevel> = Self::parse_levels(msg.get("no_dollars_fp"))
             .into_iter()
             .map(|level| PriceLevel::with_fixed(level.price.complement(), level.size))
             .collect();
@@ -397,8 +397,9 @@ impl KalshiWebSocket {
         sort_bids(&mut bids);
         sort_asks(&mut asks);
 
+        let market_ticker = market_ticker.to_string();
         let orderbook = Orderbook {
-            asset_id: payload.market_ticker.clone(),
+            asset_id: market_ticker.clone(),
             bids,
             asks,
             last_update_id: value.get("seq").and_then(|v| v.as_u64()),
@@ -408,20 +409,20 @@ impl KalshiWebSocket {
 
         {
             let mut obs = self.orderbooks.write().await;
-            obs.insert(payload.market_ticker.clone(), orderbook.clone());
+            obs.insert(market_ticker.clone(), orderbook.clone());
         }
 
         let exchange_time = orderbook.timestamp;
 
         let seq = self
-            .dispatcher_seq(&payload.market_ticker)
+            .dispatcher_seq(&market_ticker)
             .await
             .fetch_add(1, Ordering::Relaxed);
         // Kalshi markets are binary, keyed by a single ticker; market_id and
         // asset_id are the same string.
         self.dispatch(WsUpdate::Snapshot {
-            market_id: payload.market_ticker.clone(),
-            asset_id: payload.market_ticker,
+            market_id: market_ticker.clone(),
+            asset_id: market_ticker,
             book: Arc::new(orderbook),
             exchange_ts: exchange_time.map(|t| t.timestamp_millis() as u64),
             local_ts,
