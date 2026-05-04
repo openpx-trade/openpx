@@ -1460,7 +1460,10 @@ impl Exchange for Polymarket {
                         })
                     })
                 }) {
-                    let now_iso = chrono::Utc::now().to_rfc3339();
+                    // Gamma rejects RFC3339 strings with sub-second precision
+                    // ("end_date_min has a wrong value"). Whole-second Z form only.
+                    let now_iso = chrono::Utc::now()
+                        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                     let limit = params.limit.unwrap_or(5).clamp(1, 50);
                     let events_endpoint = format!(
                         "/events?series_id={series_id}&closed=false&end_date_min={now_iso}\
