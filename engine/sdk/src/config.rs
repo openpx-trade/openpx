@@ -27,6 +27,11 @@ fn get_bool(obj: &serde_json::Map<String, Value>, key: &str) -> Option<bool> {
     obj.get(key).and_then(Value::as_bool)
 }
 
+#[inline]
+fn get_u32(obj: &serde_json::Map<String, Value>, key: &str) -> Option<u32> {
+    obj.get(key).and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok())
+}
+
 pub fn parse_kalshi(config: &Value) -> Result<KalshiConfig, OpenPxError> {
     let obj = match config.as_object() {
         Some(o) => o,
@@ -53,6 +58,9 @@ pub fn parse_kalshi(config: &Value) -> Result<KalshiConfig, OpenPxError> {
     }
     if let Some(v) = get_bool(obj, "verbose") {
         cfg = cfg.with_verbose(v);
+    }
+    if let Some(v) = get_u32(obj, "rate_limit_per_second") {
+        cfg.base.rate_limit_per_second = v;
     }
     Ok(cfg)
 }
@@ -119,6 +127,9 @@ pub fn parse_polymarket(config: &Value) -> Result<PolymarketConfig, OpenPxError>
     }
     if let Some(v) = get_bool(obj, "verbose") {
         cfg = cfg.with_verbose(v);
+    }
+    if let Some(v) = get_u32(obj, "rate_limit_per_second") {
+        cfg.base.rate_limit_per_second = v;
     }
     Ok(cfg)
 }
