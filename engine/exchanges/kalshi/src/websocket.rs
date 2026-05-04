@@ -42,18 +42,6 @@ struct SnapshotPayload {
 }
 
 #[derive(Debug, Deserialize)]
-struct DeltaPayload {
-    market_ticker: String,
-    #[allow(dead_code)]
-    market_id: String,
-    price_dollars: String,
-    delta_fp: String,
-    side: String,
-    #[serde(default)]
-    ts: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct ErrorPayload {
     code: i64,
     msg: String,
@@ -444,27 +432,37 @@ impl KalshiWebSocket {
     }
 
     async fn handle_delta(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
-        let payload: DeltaPayload = match value.get("msg") {
-            Some(msg) => match serde_json::from_value(msg.clone()) {
-                Ok(parsed) => parsed,
-                Err(_) => return,
-            },
-            None => return,
+        // Direct Value field access — `serde_json::from_value(msg.clone())`
+        // re-walks the tree as a Deserializer and copies every owned field
+        // (~3-5 µs on a typical delta). The message fields are simple strings
+        // and easy to read straight off `Value`.
+        let Some(msg) = value.get("msg") else {
+            return;
+        };
+        let Some(market_ticker) = msg.get("market_ticker").and_then(|v| v.as_str()) else {
+            return;
+        };
+        let Some(price_str) = msg.get("price_dollars").and_then(|v| v.as_str()) else {
+            return;
+        };
+        let Some(delta_str) = msg.get("delta_fp").and_then(|v| v.as_str()) else {
+            return;
+        };
+        let Some(side_str) = msg.get("side").and_then(|v| v.as_str()) else {
+            return;
         };
 
-        let price: f64 = match payload.price_dollars.parse() {
-            Ok(v) => v,
-            Err(_) => return,
+        let Ok(price) = price_str.parse::<f64>() else {
+            return;
         };
-        let delta: f64 = match payload.delta_fp.parse() {
-            Ok(v) => v,
-            Err(_) => return,
+        let Ok(delta) = delta_str.parse::<f64>() else {
+            return;
         };
         let fp = FixedPrice::from_f64(price);
-        let is_yes = payload.side.eq_ignore_ascii_case("yes");
+        let is_yes = side_str.eq_ignore_ascii_case("yes");
 
         let mut obs = self.orderbooks.write().await;
-        if let Some(ob) = obs.get_mut(&payload.market_ticker) {
+        if let Some(ob) = obs.get_mut(market_ticker) {
             let (plc_side, plc_fp) = if is_yes {
                 (PriceLevelSide::Bid, fp)
             } else {
@@ -484,9 +482,9 @@ impl KalshiWebSocket {
             };
 
             ob.last_update_id = value.get("seq").and_then(|v| v.as_u64());
-            let ts = payload
-                .ts
-                .as_deref()
+            let ts = msg
+                .get("ts")
+                .and_then(|v| v.as_str())
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc));
             ob.timestamp = ts.or(ob.timestamp);
@@ -499,12 +497,13 @@ impl KalshiWebSocket {
             changes.push(change);
 
             let dispatch_seq = self
-                .dispatcher_seq(&payload.market_ticker)
+                .dispatcher_seq(market_ticker)
                 .await
                 .fetch_add(1, Ordering::Relaxed);
+            let market_ticker = market_ticker.to_string();
             self.dispatch(WsUpdate::Delta {
-                market_id: payload.market_ticker.clone(),
-                asset_id: payload.market_ticker,
+                market_id: market_ticker.clone(),
+                asset_id: market_ticker,
                 changes,
                 exchange_ts,
                 local_ts,
