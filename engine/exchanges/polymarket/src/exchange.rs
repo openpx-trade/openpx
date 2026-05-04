@@ -26,7 +26,7 @@ use px_core::{
 
 use crate::approvals::{AllowanceStatus, ApprovalRequest, ApprovalResponse, TokenApprover};
 use crate::client::HttpClient;
-use crate::clob::{ApiCredentials, CLOB_URL};
+use crate::clob::ApiCredentials;
 use crate::config::PolymarketConfig;
 use crate::error::PolymarketError;
 
@@ -322,7 +322,7 @@ impl Polymarket {
             .as_ref()
             .ok_or_else(|| PolymarketError::Auth("private key required for trading".into()))?;
 
-        let unauth_client = SdkClient::new(CLOB_URL, SdkConfig::builder().build())
+        let unauth_client = SdkClient::new(&self.config.clob_url, SdkConfig::builder().build())
             .map_err(PolymarketError::from)?;
 
         // Use pre-set API credentials if available, otherwise derive from Polymarket
@@ -424,7 +424,7 @@ impl Polymarket {
             chain_id: Some(POLYGON),
         };
 
-        let unauth_client = SdkClient::new(CLOB_URL, SdkConfig::builder().build())
+        let unauth_client = SdkClient::new(&self.config.clob_url, SdkConfig::builder().build())
             .map_err(PolymarketError::from)?;
 
         let mut builder = unauth_client
@@ -588,7 +588,7 @@ impl Polymarket {
     pub async fn get_orderbook(&self, token_id: &str) -> Result<Orderbook, PolymarketError> {
         self.rate_limit().await;
 
-        let url = format!("{}/book?token_id={}", CLOB_URL, token_id);
+        let url = format!("{}/book?token_id={}", self.config.clob_url, token_id);
         let response = reqwest::get(&url)
             .await
             .map_err(|e| PolymarketError::Network(e.to_string()))?;
@@ -719,7 +719,7 @@ impl Polymarket {
     ) -> Result<Vec<String>, PolymarketError> {
         self.rate_limit().await;
 
-        let url = format!("{}/simplified-markets", CLOB_URL);
+        let url = format!("{}/simplified-markets", self.config.clob_url);
         let response = reqwest::get(&url)
             .await
             .map_err(|e| PolymarketError::Network(e.to_string()))?;
