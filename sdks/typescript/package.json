@@ -26,11 +26,13 @@
   ],
   "scripts": {
     "build": "napi build --release",
-    "build:debug": "napi build"
+    "build:debug": "napi build",
+    "bench": "node benches/sdk_roundtrip.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
     "json-schema-to-typescript": "^15.0.0",
+    "tinybench": "^3.1.0",
     "typescript": "^5.6.0"
   },
   "napi": {

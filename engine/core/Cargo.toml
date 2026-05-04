@@ -55,3 +55,10 @@ harness = false
 [[bench]]
 name = "price_utils"
 harness = false
+
+[[bench]]
+name = "ws_decode"
+harness = false
+# Bench targets the SIMD crossover behaviour. Always-on simd-json keeps the
+# numbers comparable across runs (the autoresearch oracle pins this on).
+required-features = ["simd-json"]
