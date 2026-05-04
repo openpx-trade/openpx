@@ -21,10 +21,10 @@ use chrono::{DateTime, Utc};
 /// market — i.e. the one a trader should be subscribed to). Markets
 /// without a `close_time` are treated as still open (Polymarket events
 /// occasionally omit it).
-pub fn pick_active_market<'a>(
-    markets: &'a [Market],
+pub fn pick_active_market(
+    markets: &[Market],
     now: DateTime<Utc>,
-) -> Option<&'a Market> {
+) -> Option<&Market> {
     markets
         .iter()
         .filter(|m| {
@@ -37,10 +37,10 @@ pub fn pick_active_market<'a>(
 /// Active market plus the next one queued behind it, sorted by ascending
 /// close time. Useful for zero-downtime rollover: subscribe to both,
 /// drop the front one when its `close_time` passes.
-pub fn pick_active_and_next<'a>(
-    markets: &'a [Market],
+pub fn pick_active_and_next(
+    markets: &[Market],
     now: DateTime<Utc>,
-) -> (Option<&'a Market>, Option<&'a Market>) {
+) -> (Option<&Market>, Option<&Market>) {
     let mut active: Vec<&Market> = markets
         .iter()
         .filter(|m| {
