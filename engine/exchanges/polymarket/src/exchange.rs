@@ -1424,6 +1424,85 @@ impl Exchange for Polymarket {
             return Ok((markets, None));
         }
 
+        // ── series_ticker short-circuit: rolling series → next active markets ──
+        // Resolves the unified `series_ticker` filter on Polymarket via the
+        // gamma API:
+        //
+        //   1. /series?slug={slug}&exclude_events=true&limit=1 → numeric id
+        //      (the events nested array would otherwise pull thousands of
+        //      historical events on long-running 5-min rollers).
+        //   2. /events?series_id={id}&closed=false&end_date_min={now}
+        //      &order=endDate&ascending=true&limit={N} → next-to-resolve
+        //      events in the series (one per cadence tick — for the BTC
+        //      5-min series this is the open one plus a few queued behind).
+        //   3. Flatten markets[] from each event and apply the status filter.
+        //
+        // Pairs with `pick_active_market` in px-core so consumers can call
+        // `ExchangeInner::next_active_market_in_series(series_slug)` and get
+        // back a live market regardless of which exchange is behind it.
+        //
+        // Falls through to the catalog code below when the series slug
+        // doesn't resolve — matches the old "silently ignored" behaviour
+        // for slugs that only Kalshi knows about.
+        if let Some(ref series_slug) = params.series_ticker {
+            self.rate_limit().await;
+            let series_lookup =
+                format!("/series?slug={series_slug}&exclude_events=true&limit=1");
+            let series_resp: Result<Vec<serde_json::Value>, _> =
+                self.client.get_gamma(&series_lookup).await;
+            if let Ok(series_arr) = series_resp {
+                if let Some(series_id) = series_arr.first().and_then(|s| {
+                    s.get("id").and_then(|v| {
+                        v.as_str().map(String::from).or_else(|| {
+                            v.as_i64()
+                                .map(|i| i.to_string())
+                                .or_else(|| v.as_u64().map(|u| u.to_string()))
+                        })
+                    })
+                }) {
+                    let now_iso = chrono::Utc::now().to_rfc3339();
+                    let limit = params.limit.unwrap_or(5).clamp(1, 50);
+                    let events_endpoint = format!(
+                        "/events?series_id={series_id}&closed=false&end_date_min={now_iso}\
+                         &order=endDate&ascending=true&limit={limit}"
+                    );
+                    self.rate_limit().await;
+                    let events: Vec<serde_json::Value> = self
+                        .client
+                        .get_gamma(&events_endpoint)
+                        .await
+                        .map_err(|e| OpenPxError::Exchange(e.into()))?;
+
+                    let filter = params.status.unwrap_or(MarketStatusFilter::Active);
+                    let mut markets = Vec::new();
+                    for event in events {
+                        let event_slug = event
+                            .get("slug")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+                        if let Some(market_array) =
+                            event.get("markets").and_then(|v| v.as_array())
+                        {
+                            for market_raw in market_array {
+                                let raw = market_raw.clone();
+                                if let Some(mut parsed) = self.parse_market(raw) {
+                                    if !status_match(filter, parsed.status) {
+                                        continue;
+                                    }
+                                    if parsed.event_ticker.is_none() {
+                                        parsed.event_ticker = event_slug.clone();
+                                    }
+                                    markets.push(parsed);
+                                }
+                            }
+                        }
+                    }
+                    return Ok((markets, None));
+                }
+            }
+            // Slug didn't resolve to a Polymarket series — fall through.
+        }
+
         // ── event_ticker short-circuit: fetch a single event's nested markets ──
         // event_ticker is the Polymarket event slug. Numeric event ids are
         // intentionally not accepted here — a future `event_numeric_id` field
