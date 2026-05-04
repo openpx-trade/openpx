@@ -9,6 +9,12 @@ readme = "README.md"
 keywords = ["prediction-market", "trading", "sdk", "exchange"]
 categories = ["api-bindings", "finance"]
 
+[lib]
+# `cargo bench` otherwise launches the lib's unit-test binary (libtest) with
+# `--output-format bencher`, which libtest doesn't understand. The lib has
+# no `#[bench]` functions, so disabling is purely additive.
+bench = false
+
 [features]
 default = []
 schema = ["dep:schemars"]
