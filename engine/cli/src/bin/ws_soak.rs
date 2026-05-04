@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use hdrhistogram::Histogram;
-use openpx::WebSocketInner;
+use openpx::{ExchangeInner, WebSocketInner};
 use px_core::websocket::OrderBookWebSocket;
 use serde::Serialize;
 
@@ -95,6 +95,54 @@ async fn main() {
     }
 
     let config = make_exchange_config(&cli.exchange);
+
+    // Resolve each input via `ExchangeInner::next_active_market_in_series` —
+    // for Kalshi rolling series like `KXBTC15M` this picks the
+    // currently-active market_ticker; for Polymarket event slugs
+    // (`btc-updown-5m-<unix-ts>`) it returns the live event's outcome
+    // token_ids. Anything that doesn't resolve is treated as a direct
+    // ticker / asset_id and passed through unchanged (so existing
+    // hand-picked markets in targets.toml still work).
+    let exchange = ExchangeInner::new(&cli.exchange, config.clone()).unwrap_or_else(|e| {
+        eprintln!("error: failed to create {} exchange: {e}", cli.exchange);
+        std::process::exit(1);
+    });
+    let mut subscribe_ids: Vec<String> = Vec::new();
+    for input in &cli.markets {
+        let resolved = match exchange.next_active_market_in_series(input).await {
+            Ok(Some(m)) => match cli.exchange.as_str() {
+                "kalshi" => vec![m.ticker],
+                "polymarket" => m
+                    .outcomes
+                    .iter()
+                    .filter_map(|o| o.token_id.clone())
+                    .collect(),
+                _ => vec![input.clone()],
+            },
+            Ok(None) => {
+                eprintln!(
+                    "ws_soak: '{input}' has no active market right now; using as-is"
+                );
+                vec![input.clone()]
+            }
+            Err(e) => {
+                eprintln!(
+                    "ws_soak: resolve('{input}') failed: {e}; using as-is"
+                );
+                vec![input.clone()]
+            }
+        };
+        for id in resolved {
+            if !subscribe_ids.contains(&id) {
+                subscribe_ids.push(id);
+            }
+        }
+    }
+    if subscribe_ids.is_empty() {
+        eprintln!("error: no markets resolved from {:?}", cli.markets);
+        std::process::exit(1);
+    }
+
     let mut ws = WebSocketInner::new(&cli.exchange, config).unwrap_or_else(|e| {
         eprintln!("error: failed to create {} websocket: {e}", cli.exchange);
         std::process::exit(1);
@@ -107,7 +155,7 @@ async fn main() {
         std::process::exit(1);
     });
 
-    for ticker in &cli.markets {
+    for ticker in &subscribe_ids {
         ws.subscribe(ticker).await.unwrap_or_else(|e| {
             eprintln!("error: failed to subscribe to {ticker}: {e}");
             std::process::exit(1);
@@ -115,8 +163,8 @@ async fn main() {
     }
 
     eprintln!(
-        "ws_soak: exchange={} markets={:?} duration={}s — soaking…",
-        cli.exchange, cli.markets, cli.duration_secs
+        "ws_soak: exchange={} inputs={:?} subscribed={:?} duration={}s — soaking…",
+        cli.exchange, cli.markets, subscribe_ids, cli.duration_secs
     );
 
     let mut hist = new_histogram();

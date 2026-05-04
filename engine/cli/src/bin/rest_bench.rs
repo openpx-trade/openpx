@@ -141,13 +141,35 @@ async fn main() {
     let _ = dotenvy::dotenv();
 
     let cli = Cli::parse();
-    let asset_id = cli.asset_id.clone().unwrap_or_else(|| cli.ticker.clone());
 
     let exchange = ExchangeInner::new(&cli.exchange, make_exchange_config(&cli.exchange))
         .unwrap_or_else(|e| {
             eprintln!("error: failed to create {} exchange: {e}", cli.exchange);
             std::process::exit(1);
         });
+
+    // Resolve --ticker via `next_active_market_in_series` so a Kalshi series
+    // ticker (e.g. "KXBTC15M") or a Polymarket event slug
+    // (e.g. "btc-updown-5m-1777931700") both end up pointing at a concrete
+    // currently-open market. Falls through unchanged when the input is
+    // already a specific market_ticker / asset_id.
+    let (ticker, asset_id) = match exchange.next_active_market_in_series(&cli.ticker).await {
+        Ok(Some(market)) => {
+            let resolved_asset = match cli.exchange.as_str() {
+                "polymarket" => market
+                    .outcomes
+                    .iter()
+                    .find_map(|o| o.token_id.clone())
+                    .unwrap_or_else(|| cli.asset_id.clone().unwrap_or_else(|| market.ticker.clone())),
+                _ => cli.asset_id.clone().unwrap_or_else(|| market.ticker.clone()),
+            };
+            (market.ticker, resolved_asset)
+        }
+        _ => (
+            cli.ticker.clone(),
+            cli.asset_id.clone().unwrap_or_else(|| cli.ticker.clone()),
+        ),
+    };
 
     let mut h_fetch_market = new_histogram();
     let mut h_fetch_orderbook = new_histogram();
@@ -162,8 +184,8 @@ async fn main() {
     let total = cli.warmup + cli.iterations;
 
     eprintln!(
-        "rest_bench: exchange={} ticker={} asset_id={} iterations={} warmup={} trading={}",
-        cli.exchange, cli.ticker, asset_id, cli.iterations, cli.warmup, cli.with_trading
+        "rest_bench: exchange={} input={} ticker={} asset_id={} iterations={} warmup={} trading={}",
+        cli.exchange, cli.ticker, ticker, asset_id, cli.iterations, cli.warmup, cli.with_trading
     );
 
     for i in 0..total {
@@ -179,7 +201,7 @@ async fn main() {
             (&mut throwaway_h, &mut throwaway_e)
         };
         let params = FetchMarketsParams {
-            market_tickers: vec![cli.ticker.clone()],
+            market_tickers: vec![ticker.clone()],
             status: Some(MarketStatusFilter::All),
             ..Default::default()
         };
@@ -268,7 +290,9 @@ async fn main() {
 
     let report = serde_json::json!({
         "exchange": cli.exchange,
-        "ticker": cli.ticker,
+        "input": cli.ticker,
+        "ticker": ticker,
+        "asset_id": asset_id,
         "iterations": cli.iterations,
         "warmup": cli.warmup,
         "ops": ops,
