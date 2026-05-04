@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/openpx-trade/openpx/compare/v0.3.0...v0.3.1) (2026-05-04)
+
+
+### Features
+
+* **e2e:** unified WebSocket e2e + e2e_tests reorg + WS mapping docs ([a49c915](https://github.com/openpx-trade/openpx/commit/a49c915c3c9cddba56acafd70e1d22531f3680ab))
+* **e2e:** unified WebSocket e2e + WS mapping docs ([d49f952](https://github.com/openpx-trade/openpx/commit/d49f95205086930fb0e693a8c03e5f611227ac92))
+* **sdk:** expose rate_limit_per_second in Exchange config dict ([a5181d2](https://github.com/openpx-trade/openpx/commit/a5181d2c504fae13f6d837c2361fc374930d4786))
+* **sdk:** expose rate_limit_per_second in Exchange config dict ([a6fdeb9](https://github.com/openpx-trade/openpx/commit/a6fdeb9e0ea2bb8ff8dad4eef1053f09d43af7d7))
+
+
+### Bug Fixes
+
+* **polymarket:** respect config.clob_url in get_orderbook + fetch_token_ids + SDK init ([db1bd25](https://github.com/openpx-trade/openpx/commit/db1bd2510bcc1eafeccd55ac564a37ce18b0390e))
+* **polymarket:** respect config.clob_url in get_orderbook + fetch_token_ids + SDK init ([14413e5](https://github.com/openpx-trade/openpx/commit/14413e5d9fcf0398b080bc43bd078d4a36c1585c))
+
+
+### Performance Improvements
+
+* autoresearch session — ws_decoder buffers, describe() caching, simd-json 0.17 ([094b864](https://github.com/openpx-trade/openpx/commit/094b86427cfb9387e68175b559a63abccd9fa682))
+* **deps:** upgrade simd-json 0.13.11 → 0.17 in px-core ([c772342](https://github.com/openpx-trade/openpx/commit/c7723423a52ac74238b560a1cec33cf6cf4d8f38))
+* **orderbook:** add #[inline] to apply_bid_level / apply_ask_level ([eebdcd9](https://github.com/openpx-trade/openpx/commit/eebdcd9a110e053fc90659ceb8791877052fd055))
+* **python-sdk:** cache pythonized describe() output via PyOnceLock ([918f77e](https://github.com/openpx-trade/openpx/commit/918f77e706266eb7e63e7d280a7e2435828b7841))
+* **typescript-sdk:** cache describe() as bytes; deserialize per call ([6fdc2aa](https://github.com/openpx-trade/openpx/commit/6fdc2aacf233695929c84bcf320892f393f2ebbb))
+* **typescript-sdk:** cache describe() output via OnceLock ([4f21aac](https://github.com/openpx-trade/openpx/commit/4f21aacbcce26b1bf060eccfada10baaa14a4c7d))
+* **ws_decoder:** thread-local Buffers + Vec scratch for simd-json path ([e47b9e4](https://github.com/openpx-trade/openpx/commit/e47b9e411c2805ab0e638d9dbbb218b72fdfb696))
+
 ## [0.3.0](https://github.com/openpx-trade/openpx/compare/v0.2.6...v0.3.0) (2026-05-03)
 
 
