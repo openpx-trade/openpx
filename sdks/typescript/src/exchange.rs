@@ -28,7 +28,7 @@ pub fn get_runtime_ref() -> &'static tokio::runtime::Runtime {
 pub struct Exchange {
     inner: Arc<ExchangeInner>,
     config: serde_json::Value,
-    described: std::sync::OnceLock<serde_json::Value>,
+    described_bytes: std::sync::OnceLock<Vec<u8>>,
 }
 
 #[napi]
@@ -39,7 +39,7 @@ impl Exchange {
         Ok(Self {
             inner: Arc::new(inner),
             config,
-            described: std::sync::OnceLock::new(),
+            described_bytes: std::sync::OnceLock::new(),
         })
     }
 
@@ -61,11 +61,11 @@ impl Exchange {
 
     #[napi]
     pub fn describe(&self) -> Result<serde_json::Value> {
-        let cached = self.described.get_or_init(|| {
+        let bytes = self.described_bytes.get_or_init(|| {
             let info = self.inner.describe();
-            serde_json::to_value(&info).expect("describe serialization is infallible")
+            serde_json::to_vec(&info).expect("manifest serialization is infallible")
         });
-        Ok(cached.clone())
+        serde_json::from_slice(bytes).map_err(to_napi_err)
     }
 
     #[napi]
