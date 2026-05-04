@@ -29,7 +29,9 @@ fn get_bool(obj: &serde_json::Map<String, Value>, key: &str) -> Option<bool> {
 
 #[inline]
 fn get_u32(obj: &serde_json::Map<String, Value>, key: &str) -> Option<u32> {
-    obj.get(key).and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok())
+    obj.get(key)
+        .and_then(Value::as_u64)
+        .and_then(|v| u32::try_from(v).ok())
 }
 
 pub fn parse_kalshi(config: &Value) -> Result<KalshiConfig, OpenPxError> {
