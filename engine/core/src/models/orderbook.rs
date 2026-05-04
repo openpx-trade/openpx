@@ -300,6 +300,7 @@ pub fn insert_ask(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
 ///   - `size > 0.0` and price exists: replace in place (O(log n)).
 ///   - `size > 0.0` and price is new: insert at sorted position (O(log n + n)).
 ///   - `size == 0.0`: remove the level if present (no-op otherwise).
+#[inline]
 pub fn apply_bid_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
     match levels.binary_search_by(|l| level.price.cmp(&l.price)) {
         Ok(idx) => {
@@ -318,6 +319,7 @@ pub fn apply_bid_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
 }
 
 /// See `apply_bid_level`. Same semantics, ascending ordering.
+#[inline]
 pub fn apply_ask_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
     match levels.binary_search_by(|l| l.price.cmp(&level.price)) {
         Ok(idx) => {
