@@ -71,3 +71,8 @@ openapi-ts-error-*.log
 
 # Misc
 Plans
+
+# Autoresearch — proprietary, local-only iterative latency framework.
+# The framework itself is intentionally untracked; agent-produced
+# optimizations land on engine/* + sdks/*/src/* which ARE tracked.
+autoresearch/

@@ -11,6 +11,15 @@
 //! otherwise dominate the parse.
 
 use serde::de::DeserializeOwned;
+#[cfg(feature = "simd-json")]
+use std::cell::RefCell;
+
+#[cfg(feature = "simd-json")]
+thread_local! {
+    static SIMD_BUFFERS: RefCell<simd_json::Buffers> =
+        RefCell::new(simd_json::Buffers::new(8 * 1024));
+    static FRAME_BYTES: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
 
 /// A parsed WebSocket frame — either a single object or an array-of-objects.
 ///
@@ -59,17 +68,24 @@ pub const SIMD_CROSSOVER_BYTES: usize = 512;
 pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
     #[cfg(feature = "simd-json")]
     if text.len() >= SIMD_CROSSOVER_BYTES {
-        let mut bytes = text.as_bytes().to_vec();
-        let head = bytes.iter().find(|&&b| !b.is_ascii_whitespace()).copied()?;
-        return if head == b'[' {
-            simd_json::serde::from_slice::<Vec<T>>(&mut bytes)
-                .ok()
-                .map(WsFrame::Array)
-        } else {
-            simd_json::serde::from_slice::<T>(&mut bytes)
-                .ok()
-                .map(WsFrame::Single)
-        };
+        return FRAME_BYTES.with(|cell_bytes| {
+            SIMD_BUFFERS.with(|cell_buf| {
+                let mut bytes = cell_bytes.borrow_mut();
+                let mut buffers = cell_buf.borrow_mut();
+                bytes.clear();
+                bytes.extend_from_slice(text.as_bytes());
+                let head = bytes.iter().find(|&&b| !b.is_ascii_whitespace()).copied()?;
+                if head == b'[' {
+                    simd_json::serde::from_slice_with_buffers::<Vec<T>>(&mut bytes, &mut buffers)
+                        .ok()
+                        .map(WsFrame::Array)
+                } else {
+                    simd_json::serde::from_slice_with_buffers::<T>(&mut bytes, &mut buffers)
+                        .ok()
+                        .map(WsFrame::Single)
+                }
+            })
+        });
     }
 
     let trimmed = text.trim_start();
@@ -89,8 +105,19 @@ pub fn decode_frame<T: DeserializeOwned>(text: &str) -> Option<WsFrame<T>> {
 pub fn decode_value(text: &str) -> Option<serde_json::Value> {
     #[cfg(feature = "simd-json")]
     if text.len() >= SIMD_CROSSOVER_BYTES {
-        let mut bytes = text.as_bytes().to_vec();
-        return simd_json::serde::from_slice::<serde_json::Value>(&mut bytes).ok();
+        return FRAME_BYTES.with(|cell_bytes| {
+            SIMD_BUFFERS.with(|cell_buf| {
+                let mut bytes = cell_bytes.borrow_mut();
+                let mut buffers = cell_buf.borrow_mut();
+                bytes.clear();
+                bytes.extend_from_slice(text.as_bytes());
+                simd_json::serde::from_slice_with_buffers::<serde_json::Value>(
+                    &mut bytes,
+                    &mut buffers,
+                )
+                .ok()
+            })
+        });
     }
     serde_json::from_str::<serde_json::Value>(text).ok()
 }
