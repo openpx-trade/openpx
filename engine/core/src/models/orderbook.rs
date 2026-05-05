@@ -337,6 +337,61 @@ pub fn apply_ask_level(levels: &mut Vec<PriceLevel>, level: PriceLevel) {
     }
 }
 
+/// Apply a *signed delta* at price `fp` to a bid-sorted list. Returns the
+/// resulting absolute size at `fp` (`0.0` when removed or never present).
+/// Used by exchanges whose WS payloads carry deltas rather than absolute
+/// sizes (Kalshi `orderbook_delta`); Polymarket-style absolute updates
+/// keep using `apply_bid_level` / `apply_ask_level`. Binary-search-based,
+/// O(log n) lookup + O(n) shift on insert/remove.
+#[inline]
+pub fn apply_bid_delta(levels: &mut Vec<PriceLevel>, fp: FixedPrice, delta: f64) -> f64 {
+    match levels.binary_search_by(|l| fp.cmp(&l.price)) {
+        Ok(idx) => {
+            let new_size = levels[idx].size + delta;
+            if new_size <= 0.0 {
+                levels.remove(idx);
+                0.0
+            } else {
+                levels[idx].size = new_size;
+                new_size
+            }
+        }
+        Err(idx) => {
+            if delta > 0.0 {
+                levels.insert(idx, PriceLevel::with_fixed(fp, delta));
+                delta
+            } else {
+                0.0
+            }
+        }
+    }
+}
+
+/// See `apply_bid_delta`. Same semantics, ascending ordering.
+#[inline]
+pub fn apply_ask_delta(levels: &mut Vec<PriceLevel>, fp: FixedPrice, delta: f64) -> f64 {
+    match levels.binary_search_by(|l| l.price.cmp(&fp)) {
+        Ok(idx) => {
+            let new_size = levels[idx].size + delta;
+            if new_size <= 0.0 {
+                levels.remove(idx);
+                0.0
+            } else {
+                levels[idx].size = new_size;
+                new_size
+            }
+        }
+        Err(idx) => {
+            if delta > 0.0 {
+                levels.insert(idx, PriceLevel::with_fixed(fp, delta));
+                delta
+            } else {
+                0.0
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RestPriceLevel {
     pub price: String,

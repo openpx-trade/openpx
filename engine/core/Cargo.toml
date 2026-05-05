@@ -9,6 +9,12 @@ readme = "README.md"
 keywords = ["prediction-market", "trading", "sdk", "exchange"]
 categories = ["api-bindings", "finance"]
 
+[lib]
+# `cargo bench` otherwise launches the lib's unit-test binary (libtest) with
+# `--output-format bencher`, which libtest doesn't understand. The lib has
+# no `#[bench]` functions, so disabling is purely additive.
+bench = false
+
 [features]
 default = []
 schema = ["dep:schemars"]
@@ -26,6 +32,7 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 async-channel = { workspace = true }
+flume = "0.11"
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 simd-json = { version = "0.17", optional = true }
@@ -55,3 +62,10 @@ harness = false
 [[bench]]
 name = "price_utils"
 harness = false
+
+[[bench]]
+name = "ws_decode"
+harness = false
+# Bench targets the SIMD crossover behaviour. Always-on simd-json keeps the
+# numbers comparable across runs (the autoresearch oracle pins this on).
+required-features = ["simd-json"]
