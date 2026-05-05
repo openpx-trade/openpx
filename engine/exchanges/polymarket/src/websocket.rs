@@ -442,7 +442,10 @@ impl PolymarketWebSocket {
             .as_ref()
             .map(|b| {
                 let mut out = Vec::with_capacity(b.len());
-                out.extend(b.iter().filter_map(|l| px_core::parse_level(&l.price, &l.size)));
+                out.extend(
+                    b.iter()
+                        .filter_map(|l| px_core::parse_level(&l.price, &l.size)),
+                );
                 out
             })
             .unwrap_or_default();
@@ -452,7 +455,10 @@ impl PolymarketWebSocket {
             .as_ref()
             .map(|a| {
                 let mut out = Vec::with_capacity(a.len());
-                out.extend(a.iter().filter_map(|l| px_core::parse_level(&l.price, &l.size)));
+                out.extend(
+                    a.iter()
+                        .filter_map(|l| px_core::parse_level(&l.price, &l.size)),
+                );
                 out
             })
             .unwrap_or_default();
@@ -565,10 +571,7 @@ impl PolymarketWebSocket {
                         }
                     }
                 } else {
-                    tracing::trace!(
-                        "price_change: no orderbook found for asset_id={}",
-                        asset_id
-                    );
+                    tracing::trace!("price_change: no orderbook found for asset_id={}", asset_id);
                 }
             }
 

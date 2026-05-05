@@ -26,7 +26,10 @@ use px_core::{
 use serde::Serialize;
 
 #[derive(Parser)]
-#[command(name = "rest_bench", about = "Live REST latency harness for OpenPX autoresearch")]
+#[command(
+    name = "rest_bench",
+    about = "Live REST latency harness for OpenPX autoresearch"
+)]
 struct Cli {
     /// Which exchange to drive (`kalshi` or `polymarket`).
     #[arg(long)]
@@ -160,8 +163,15 @@ async fn main() {
                     .outcomes
                     .iter()
                     .find_map(|o| o.token_id.clone())
-                    .unwrap_or_else(|| cli.asset_id.clone().unwrap_or_else(|| market.ticker.clone())),
-                _ => cli.asset_id.clone().unwrap_or_else(|| market.ticker.clone()),
+                    .unwrap_or_else(|| {
+                        cli.asset_id
+                            .clone()
+                            .unwrap_or_else(|| market.ticker.clone())
+                    }),
+                _ => cli
+                    .asset_id
+                    .clone()
+                    .unwrap_or_else(|| market.ticker.clone()),
             };
             (market.ticker, resolved_asset)
         }
@@ -297,5 +307,8 @@ async fn main() {
         "warmup": cli.warmup,
         "ops": ops,
     });
-    println!("{}", serde_json::to_string(&report).expect("serialize report"));
+    println!(
+        "{}",
+        serde_json::to_string(&report).expect("serialize report")
+    );
 }

@@ -21,15 +21,11 @@ use chrono::{DateTime, Utc};
 /// market — i.e. the one a trader should be subscribed to). Markets
 /// without a `close_time` are treated as still open (Polymarket events
 /// occasionally omit it).
-pub fn pick_active_market(
-    markets: &[Market],
-    now: DateTime<Utc>,
-) -> Option<&Market> {
+pub fn pick_active_market(markets: &[Market], now: DateTime<Utc>) -> Option<&Market> {
     markets
         .iter()
         .filter(|m| {
-            matches!(m.status, MarketStatus::Active)
-                && m.close_time.is_none_or(|t| t > now)
+            matches!(m.status, MarketStatus::Active) && m.close_time.is_none_or(|t| t > now)
         })
         .min_by_key(|m| m.close_time.unwrap_or(DateTime::<Utc>::MAX_UTC))
 }
@@ -44,8 +40,7 @@ pub fn pick_active_and_next(
     let mut active: Vec<&Market> = markets
         .iter()
         .filter(|m| {
-            matches!(m.status, MarketStatus::Active)
-                && m.close_time.is_none_or(|t| t > now)
+            matches!(m.status, MarketStatus::Active) && m.close_time.is_none_or(|t| t > now)
         })
         .collect();
     active.sort_by_key(|m| m.close_time.unwrap_or(DateTime::<Utc>::MAX_UTC));

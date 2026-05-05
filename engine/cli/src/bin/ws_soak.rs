@@ -19,7 +19,10 @@ use px_core::websocket::OrderBookWebSocket;
 use serde::Serialize;
 
 #[derive(Parser)]
-#[command(name = "ws_soak", about = "Live WebSocket latency soak for OpenPX autoresearch")]
+#[command(
+    name = "ws_soak",
+    about = "Live WebSocket latency soak for OpenPX autoresearch"
+)]
 struct Cli {
     /// Which exchange (`kalshi` or `polymarket`).
     #[arg(long)]
@@ -120,15 +123,11 @@ async fn main() {
                 _ => vec![input.clone()],
             },
             Ok(None) => {
-                eprintln!(
-                    "ws_soak: '{input}' has no active market right now; using as-is"
-                );
+                eprintln!("ws_soak: '{input}' has no active market right now; using as-is");
                 vec![input.clone()]
             }
             Err(e) => {
-                eprintln!(
-                    "ws_soak: resolve('{input}') failed: {e}; using as-is"
-                );
+                eprintln!("ws_soak: resolve('{input}') failed: {e}; using as-is");
                 vec![input.clone()]
             }
         };

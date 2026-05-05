@@ -1446,8 +1446,7 @@ impl Exchange for Polymarket {
         // for slugs that only Kalshi knows about.
         if let Some(ref series_slug) = params.series_ticker {
             self.rate_limit().await;
-            let series_lookup =
-                format!("/series?slug={series_slug}&exclude_events=true&limit=1");
+            let series_lookup = format!("/series?slug={series_slug}&exclude_events=true&limit=1");
             let series_resp: Result<Vec<serde_json::Value>, _> =
                 self.client.get_gamma(&series_lookup).await;
             if let Ok(series_arr) = series_resp {
@@ -1462,8 +1461,8 @@ impl Exchange for Polymarket {
                 }) {
                     // Gamma rejects RFC3339 strings with sub-second precision
                     // ("end_date_min has a wrong value"). Whole-second Z form only.
-                    let now_iso = chrono::Utc::now()
-                        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                    let now_iso =
+                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                     let limit = params.limit.unwrap_or(5).clamp(1, 50);
                     let events_endpoint = format!(
                         "/events?series_id={series_id}&closed=false&end_date_min={now_iso}\
@@ -1479,12 +1478,9 @@ impl Exchange for Polymarket {
                     let filter = params.status.unwrap_or(MarketStatusFilter::Active);
                     let mut markets = Vec::new();
                     for event in events {
-                        let event_slug = event
-                            .get("slug")
-                            .and_then(|v| v.as_str())
-                            .map(String::from);
-                        if let Some(market_array) =
-                            event.get("markets").and_then(|v| v.as_array())
+                        let event_slug =
+                            event.get("slug").and_then(|v| v.as_str()).map(String::from);
+                        if let Some(market_array) = event.get("markets").and_then(|v| v.as_array())
                         {
                             for market_raw in market_array {
                                 let raw = market_raw.clone();
