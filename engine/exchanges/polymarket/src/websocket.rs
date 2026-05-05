@@ -9,9 +9,10 @@ use tokio::time::{interval, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use chrono::{DateTime, Utc};
+use parking_lot::RwLock as PlRwLock;
 use px_core::{
     apply_ask_level, apply_bid_level, now_pair, stall_watchdog, ActivityFill, ActivityTrade,
-    AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason, LiquidityRole,
+    AtomicWebSocketState, ChangeVec, FastHashMap, FixedPrice, InvalidationReason, LiquidityRole,
     OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide, SessionEvent,
     SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher, WsDispatcherConfig,
     WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY,
@@ -107,13 +108,16 @@ struct WsMakerOrder {
 /// Per-asset dispatch entry: (asset_id, exchange_ts, changes).
 type DispatchEntry = (String, Option<DateTime<Utc>>, ChangeVec);
 
-/// Per-asset monotonic sequence counter map.
-type SeqMap = Arc<RwLock<HashMap<String, Arc<AtomicU64>>>>;
+/// Per-asset monotonic sequence counter map. parking_lot + ahash keep
+/// the per-message read at ~10-30 ns vs ~150-300 ns on async RwLock.
+type SeqMap = Arc<PlRwLock<FastHashMap<String, Arc<AtomicU64>>>>;
 
 pub struct PolymarketWebSocket {
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashMap<String, Vec<String>>>>,
-    orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
+    /// Per-asset book state. parking_lot + FastHashMap keep the per-delta
+    /// write critical section in nanoseconds; guard never spans an `.await`.
+    orderbooks: Arc<PlRwLock<FastHashMap<String, Orderbook>>>,
     /// Multiplexed dispatch handle.
     dispatcher: Arc<WsDispatcher>,
     /// Per-asset monotonic sequence counters.
@@ -179,9 +183,9 @@ impl PolymarketWebSocket {
         Self {
             state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            orderbooks: Arc::new(RwLock::new(HashMap::new())),
+            orderbooks: Arc::new(PlRwLock::new(FastHashMap::default())),
             dispatcher: Arc::new(WsDispatcher::new(WsDispatcherConfig::default())),
-            seqs: Arc::new(RwLock::new(HashMap::new())),
+            seqs: Arc::new(PlRwLock::new(FastHashMap::default())),
             last_message_at: Arc::new(RwLock::new(None)),
             asset_to_market: Arc::new(RwLock::new(HashMap::new())),
             market_to_assets: Arc::new(RwLock::new(HashMap::new())),
@@ -200,16 +204,16 @@ impl PolymarketWebSocket {
     }
 
     /// Allocate-or-fetch the per-asset sequence counter for the 0.2 dispatch
-    /// path. Lazy on first emit.
-    async fn dispatcher_seq(&self, asset_id: &str) -> Arc<AtomicU64> {
-        {
-            let map = self.seqs.read().await;
-            if let Some(s) = map.get(asset_id) {
-                return s.clone();
-            }
+    /// path. Lazy on first emit. Sync (parking_lot + ahash) — read path is
+    /// uncontended in steady state, ~10-30 ns vs ~150-300 ns on async RwLock.
+    #[inline]
+    fn dispatcher_seq(&self, asset_id: &str) -> Arc<AtomicU64> {
+        if let Some(s) = self.seqs.read().get(asset_id) {
+            return s.clone();
         }
-        let mut map = self.seqs.write().await;
-        map.entry(asset_id.to_string())
+        self.seqs
+            .write()
+            .entry(asset_id.to_string())
             .or_insert_with(|| Arc::new(AtomicU64::new(0)))
             .clone()
     }
@@ -240,7 +244,6 @@ impl PolymarketWebSocket {
                 // (tokens are the unit of book ordering here).
                 let seq = self
                     .dispatcher_seq(&asset_id)
-                    .await
                     .fetch_add(1, Ordering::Relaxed);
                 let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
                     market_id,
@@ -430,14 +433,17 @@ impl PolymarketWebSocket {
         let server_timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
 
         // px_core::parse_level scans bytes → integer ticks directly,
-        // skipping the f64 round-trip (~30ns/call → ~5ns/call).
+        // skipping the f64 round-trip (~30ns/call → ~5ns/call). Pre-size
+        // the result vec to the source length so a 200-level book never
+        // reallocates while filling — saves ~5-7 grow-and-memcpy cycles
+        // on every snapshot, which lands directly in the p99 tail.
         let bids: Vec<PriceLevel> = msg
             .bids
             .as_ref()
             .map(|b| {
-                b.iter()
-                    .filter_map(|l| px_core::parse_level(&l.price, &l.size))
-                    .collect()
+                let mut out = Vec::with_capacity(b.len());
+                out.extend(b.iter().filter_map(|l| px_core::parse_level(&l.price, &l.size)));
+                out
             })
             .unwrap_or_default();
 
@@ -445,9 +451,9 @@ impl PolymarketWebSocket {
             .asks
             .as_ref()
             .map(|a| {
-                a.iter()
-                    .filter_map(|l| px_core::parse_level(&l.price, &l.size))
-                    .collect()
+                let mut out = Vec::with_capacity(a.len());
+                out.extend(a.iter().filter_map(|l| px_core::parse_level(&l.price, &l.size)));
+                out
             })
             .unwrap_or_default();
 
@@ -460,10 +466,9 @@ impl PolymarketWebSocket {
             hash: msg.hash.clone(),
         };
 
-        {
-            let mut obs = self.orderbooks.write().await;
-            obs.insert(asset_id.clone(), orderbook.clone());
-        }
+        self.orderbooks
+            .write()
+            .insert(asset_id.clone(), orderbook.clone());
 
         if !market_id.is_empty() {
             {
@@ -483,7 +488,6 @@ impl PolymarketWebSocket {
 
         let seq = self
             .dispatcher_seq(&asset_id)
-            .await
             .fetch_add(1, Ordering::Relaxed);
         // Polymarket WS book events always carry `market` (the condition_id),
         // which matches openpx `Market.id`. No translation needed.
@@ -506,75 +510,77 @@ impl PolymarketWebSocket {
         };
         let server_timestamp = Self::parse_timestamp(msg.timestamp.as_ref());
 
-        let mut obs = self.orderbooks.write().await;
-        // Group changes by asset_id
-        let mut asset_changes: SmallVec<[(String, ChangeVec); 2]> = SmallVec::new();
+        // Apply all changes under a single parking_lot write lock and
+        // collect the dispatch list. The guard is `!Send`, so block-scope
+        // it so the drop happens before any `.await` and the future stays
+        // `Send`.
+        let to_dispatch: SmallVec<[DispatchEntry; 2]> = {
+            let mut obs = self.orderbooks.write();
+            let mut asset_changes: SmallVec<[(String, ChangeVec); 2]> = SmallVec::new();
 
-        for change in raw_changes {
-            let asset_id = &change.asset_id;
-            if let Some(ob) = obs.get_mut(asset_id) {
-                if let (Some(price_str), Some(size_str), Some(side)) =
-                    (&change.price, &change.size, &change.side)
-                {
-                    if let (Some(price_raw), Some(size_raw)) = (
-                        px_core::parse_price_str(price_str),
-                        px_core::parse_qty_str(size_str),
-                    ) {
-                        let size = size_raw as f64 / px_core::SCALE_FACTOR as f64;
-                        let fp = FixedPrice::from_raw(price_raw as u64);
-                        let is_bid = side.eq_ignore_ascii_case("BUY");
-                        let levels = if is_bid { &mut ob.bids } else { &mut ob.asks };
+            for change in raw_changes {
+                let asset_id = &change.asset_id;
+                if let Some(ob) = obs.get_mut(asset_id) {
+                    if let (Some(price_str), Some(size_str), Some(side)) =
+                        (&change.price, &change.size, &change.side)
+                    {
+                        if let (Some(price_raw), Some(size_raw)) = (
+                            px_core::parse_price_str(price_str),
+                            px_core::parse_qty_str(size_str),
+                        ) {
+                            let size = size_raw as f64 / px_core::SCALE_FACTOR as f64;
+                            let fp = FixedPrice::from_raw(price_raw as u64);
+                            let is_bid = side.eq_ignore_ascii_case("BUY");
+                            let levels = if is_bid { &mut ob.bids } else { &mut ob.asks };
 
-                        // Single binary-search-based apply via the shared
-                        // px-core primitive — replaces the previous 3-pass
-                        // (find / iter().any() / retain) on every change.
-                        // size > 0 replaces or inserts; size == 0 removes.
-                        let level = PriceLevel::with_fixed(fp, size);
-                        if is_bid {
-                            apply_bid_level(levels, level);
-                        } else {
-                            apply_ask_level(levels, level);
-                        }
-
-                        // Collect the change
-                        let plc = PriceLevelChange {
-                            side: if is_bid {
-                                PriceLevelSide::Bid
+                            // Single binary-search-based apply via the shared
+                            // px-core primitive. size > 0 replaces or inserts;
+                            // size == 0 removes.
+                            let level = PriceLevel::with_fixed(fp, size);
+                            if is_bid {
+                                apply_bid_level(levels, level);
                             } else {
-                                PriceLevelSide::Ask
-                            },
-                            price: fp,
-                            size,
-                        };
+                                apply_ask_level(levels, level);
+                            }
 
-                        if let Some(entry) = asset_changes.iter_mut().find(|(id, _)| id == asset_id)
-                        {
-                            entry.1.push(plc);
-                        } else {
-                            let mut cv = ChangeVec::new();
-                            cv.push(plc);
-                            asset_changes.push((asset_id.clone(), cv));
+                            let plc = PriceLevelChange {
+                                side: if is_bid {
+                                    PriceLevelSide::Bid
+                                } else {
+                                    PriceLevelSide::Ask
+                                },
+                                price: fp,
+                                size,
+                            };
+
+                            if let Some(entry) =
+                                asset_changes.iter_mut().find(|(id, _)| id == asset_id)
+                            {
+                                entry.1.push(plc);
+                            } else {
+                                let mut cv = ChangeVec::new();
+                                cv.push(plc);
+                                asset_changes.push((asset_id.clone(), cv));
+                            }
                         }
                     }
+                } else {
+                    tracing::trace!(
+                        "price_change: no orderbook found for asset_id={}",
+                        asset_id
+                    );
                 }
-            } else {
-                // Expected for brief window before book snapshot arrives,
-                // or for tokens we haven't subscribed to.
-                tracing::trace!("price_change: no orderbook found for asset_id={}", asset_id);
             }
-        }
 
-        // Collect dispatch data BEFORE dropping the lock
-        let mut to_dispatch: SmallVec<[DispatchEntry; 2]> = SmallVec::new();
-        for (asset_id, changes) in asset_changes {
-            if let Some(ob) = obs.get_mut(&asset_id) {
-                ob.timestamp = server_timestamp.or(Some(Utc::now()));
-                to_dispatch.push((asset_id, ob.timestamp, changes));
+            let mut to_dispatch: SmallVec<[DispatchEntry; 2]> = SmallVec::new();
+            for (asset_id, changes) in asset_changes {
+                if let Some(ob) = obs.get_mut(&asset_id) {
+                    ob.timestamp = server_timestamp.or(Some(Utc::now()));
+                    to_dispatch.push((asset_id, ob.timestamp, changes));
+                }
             }
-        }
-
-        // CRITICAL: Drop orderbooks write lock BEFORE dispatching.
-        drop(obs);
+            to_dispatch
+        };
 
         // price_change always carries `market` (condition_id) at the top level,
         // shared by every change in the event — use it directly. No map lookup
@@ -583,10 +589,7 @@ impl PolymarketWebSocket {
         for (asset_id, timestamp, changes) in to_dispatch {
             let dispatch_seq = self
                 .dispatcher_seq(&asset_id)
-                .await
                 .fetch_add(1, Ordering::Relaxed);
-            // Fallback only if the payload lacked `market` (never observed in
-            // practice, but keeps the field non-empty).
             let market_id = if market_id_hex.is_empty() {
                 asset_id.clone()
             } else {
@@ -1168,7 +1171,7 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                     .send_session(SessionEvent::reconnected(gap))
                                     .await;
                                 let asset_ids: Vec<String> =
-                                    ws_self.orderbooks.read().await.keys().cloned().collect();
+                                    ws_self.orderbooks.read().keys().cloned().collect();
                                 let market_map = ws_self.asset_to_market.read().await.clone();
                                 for asset_id in asset_ids {
                                     let market_id = market_map
@@ -1185,7 +1188,6 @@ impl OrderBookWebSocket for PolymarketWebSocket {
                                     let (ts_mono, ts_ms) = now_pair();
                                     let seq = ws_self
                                         .dispatcher_seq(&asset_id)
-                                        .await
                                         .fetch_add(1, Ordering::Relaxed);
                                     let _ = ws_self.dispatcher.try_send_update(WsUpdate::Clear {
                                         market_id,
@@ -1361,9 +1363,8 @@ impl OrderBookWebSocket for PolymarketWebSocket {
     }
 }
 
-pub async fn get_orderbook_snapshot(ws: &PolymarketWebSocket, asset_id: &str) -> Option<Orderbook> {
-    let obs = ws.orderbooks.read().await;
-    obs.get(asset_id).cloned()
+pub fn get_orderbook_snapshot(ws: &PolymarketWebSocket, asset_id: &str) -> Option<Orderbook> {
+    ws.orderbooks.read().get(asset_id).cloned()
 }
 
 #[cfg(test)]

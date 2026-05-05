@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
+use parking_lot::RwLock as PlRwLock;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -15,11 +16,11 @@ use tokio_tungstenite::{
 
 use px_core::{
     apply_ask_delta, apply_bid_delta, now_pair, sort_asks, sort_bids, stall_watchdog,
-    ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec, FixedPrice, InvalidationReason,
-    LiquidityRole, OrderBookWebSocket, Orderbook, PriceLevel, PriceLevelChange, PriceLevelSide,
-    SessionEvent, SessionStream, UpdateStream, WebSocketError, WebSocketState, WsDispatcher,
-    WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS, WS_PING_INTERVAL,
-    WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
+    ActivityFill, ActivityTrade, AtomicWebSocketState, ChangeVec, FastHashMap, FixedPrice,
+    InvalidationReason, LiquidityRole, OrderBookWebSocket, Orderbook, PriceLevel,
+    PriceLevelChange, PriceLevelSide, SessionEvent, SessionStream, UpdateStream, WebSocketError,
+    WebSocketState, WsDispatcher, WsDispatcherConfig, WsUpdate, WS_MAX_RECONNECT_ATTEMPTS,
+    WS_PING_INTERVAL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY,
 };
 
 use crate::{auth::KalshiAuth, KalshiConfig, KalshiError};
@@ -28,7 +29,9 @@ const WS_PATH: &str = "/trade-api/ws/v2";
 
 /// Per-market monotonic sequence counter map. The dispatcher multiplexes all
 /// markets onto one channel; sequencing stays scoped to the emitting market.
-type SeqMap = Arc<RwLock<HashMap<String, Arc<AtomicU64>>>>;
+/// `parking_lot` keeps the per-message read out of Tokio's scheduler;
+/// `FastHashMap` (ahash) cuts string-keyed lookups vs std SipHash.
+type SeqMap = Arc<PlRwLock<FastHashMap<String, Arc<AtomicU64>>>>;
 
 #[derive(Debug, Deserialize)]
 struct ErrorPayload {
@@ -43,7 +46,9 @@ pub struct KalshiWebSocket {
     state: Arc<AtomicWebSocketState>,
     subscriptions: Arc<RwLock<HashMap<String, Option<u64>>>>,
     pending: Arc<RwLock<HashMap<u64, String>>>,
-    orderbooks: Arc<RwLock<HashMap<String, Orderbook>>>,
+    /// Per-market book state. parking_lot + FastHashMap keep the per-delta
+    /// write critical section in nanoseconds; guard never spans an `.await`.
+    orderbooks: Arc<PlRwLock<FastHashMap<String, Orderbook>>>,
     /// Multiplexed dispatch handle. Owns both halves of the bounded channels
     /// backing `updates()` / `session_events()`.
     dispatcher: Arc<WsDispatcher>,
@@ -94,9 +99,9 @@ impl KalshiWebSocket {
             state: Arc::new(AtomicWebSocketState::new(WebSocketState::Disconnected)),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             pending: Arc::new(RwLock::new(HashMap::new())),
-            orderbooks: Arc::new(RwLock::new(HashMap::new())),
+            orderbooks: Arc::new(PlRwLock::new(FastHashMap::default())),
             dispatcher: Arc::new(WsDispatcher::new(WsDispatcherConfig::default())),
-            seqs: Arc::new(RwLock::new(HashMap::new())),
+            seqs: Arc::new(PlRwLock::new(FastHashMap::default())),
             last_message_at: Arc::new(RwLock::new(None)),
             write_tx: Arc::new(Mutex::new(None)),
             shutdown_tx: Arc::new(Mutex::new(None)),
@@ -108,16 +113,16 @@ impl KalshiWebSocket {
     }
 
     /// Allocate-or-fetch the per-market sequence counter for the 0.2 dispatch
-    /// path. Lazy: created on first emit so subscribe stays a pure protocol op.
-    async fn dispatcher_seq(&self, market_id: &str) -> Arc<AtomicU64> {
-        {
-            let map = self.seqs.read().await;
-            if let Some(s) = map.get(market_id) {
-                return s.clone();
-            }
+    /// path. Lazy on first emit. Sync (parking_lot + ahash) — read path is
+    /// uncontended in steady state, ~10-30 ns vs ~150-300 ns on async RwLock.
+    #[inline]
+    fn dispatcher_seq(&self, market_id: &str) -> Arc<AtomicU64> {
+        if let Some(s) = self.seqs.read().get(market_id) {
+            return s.clone();
         }
-        let mut map = self.seqs.write().await;
-        map.entry(market_id.to_string())
+        self.seqs
+            .write()
+            .entry(market_id.to_string())
             .or_insert_with(|| Arc::new(AtomicU64::new(0)))
             .clone()
     }
@@ -148,7 +153,6 @@ impl KalshiWebSocket {
                 let (local_ts, local_ts_ms) = now_pair();
                 let seq = self
                     .dispatcher_seq(&market_id)
-                    .await
                     .fetch_add(1, Ordering::Relaxed);
                 // Best-effort: channel may still be full. If it drops, the
                 // session `BookInvalidated` already signaled the invalidation.
@@ -386,16 +390,14 @@ impl KalshiWebSocket {
             hash: None,
         };
 
-        {
-            let mut obs = self.orderbooks.write().await;
-            obs.insert(market_ticker.clone(), orderbook.clone());
-        }
+        self.orderbooks
+            .write()
+            .insert(market_ticker.clone(), orderbook.clone());
 
         let exchange_time = orderbook.timestamp;
 
         let seq = self
             .dispatcher_seq(&market_ticker)
-            .await
             .fetch_add(1, Ordering::Relaxed);
         // Kalshi markets are binary, keyed by a single ticker; market_id and
         // asset_id are the same string.
@@ -441,26 +443,29 @@ impl KalshiWebSocket {
         let fp = FixedPrice::from_f64(price);
         let is_yes = side_str.eq_ignore_ascii_case("yes");
 
-        let mut obs = self.orderbooks.write().await;
-        if let Some(ob) = obs.get_mut(market_ticker) {
+        // Apply under the parking_lot write lock then immediately release —
+        // the guard is `!Send` so it cannot survive an `.await`. Block-scope
+        // makes the drop visible to the compiler so the future stays `Send`.
+        let prepared = {
+            let mut obs = self.orderbooks.write();
+            let Some(ob) = obs.get_mut(market_ticker) else {
+                return;
+            };
             let (plc_side, plc_fp) = if is_yes {
                 (PriceLevelSide::Bid, fp)
             } else {
                 (PriceLevelSide::Ask, fp.complement())
             };
-
             let abs_size = if is_yes {
                 Self::update_levels(&mut ob.bids, fp, delta, true)
             } else {
                 Self::update_levels(&mut ob.asks, fp.complement(), delta, false)
             };
-
             let change = PriceLevelChange {
                 side: plc_side,
                 price: plc_fp,
                 size: abs_size,
             };
-
             ob.last_update_id = value.get("seq").and_then(|v| v.as_u64());
             let ts = msg
                 .get("ts")
@@ -471,27 +476,27 @@ impl KalshiWebSocket {
             let exchange_ts = ob
                 .timestamp
                 .and_then(|t| u64::try_from(t.timestamp_millis()).ok());
-            drop(obs);
+            (change, exchange_ts)
+        };
+        let (change, exchange_ts) = prepared;
 
-            let mut changes = ChangeVec::new();
-            changes.push(change);
+        let mut changes = ChangeVec::new();
+        changes.push(change);
 
-            let dispatch_seq = self
-                .dispatcher_seq(market_ticker)
-                .await
-                .fetch_add(1, Ordering::Relaxed);
-            let market_ticker = market_ticker.to_string();
-            self.dispatch(WsUpdate::Delta {
-                market_id: market_ticker.clone(),
-                asset_id: market_ticker,
-                changes,
-                exchange_ts,
-                local_ts,
-                local_ts_ms,
-                seq: dispatch_seq,
-            })
-            .await;
-        }
+        let dispatch_seq = self
+            .dispatcher_seq(market_ticker)
+            .fetch_add(1, Ordering::Relaxed);
+        let market_ticker = market_ticker.to_string();
+        self.dispatch(WsUpdate::Delta {
+            market_id: market_ticker.clone(),
+            asset_id: market_ticker,
+            changes,
+            exchange_ts,
+            local_ts,
+            local_ts_ms,
+            seq: dispatch_seq,
+        })
+        .await;
     }
 
     async fn handle_trade(&self, value: &serde_json::Value, local_ts: Instant, local_ts_ms: u64) {
@@ -671,7 +676,6 @@ impl KalshiWebSocket {
                 let (local_ts, local_ts_ms) = now_pair();
                 let seq = self
                     .dispatcher_seq(&market_id)
-                    .await
                     .fetch_add(1, Ordering::Relaxed);
                 let _ = self.dispatcher.try_send_update(WsUpdate::Clear {
                     market_id: market_id.clone(),
@@ -947,7 +951,6 @@ impl OrderBookWebSocket for KalshiWebSocket {
                                     let (ts_mono, ts_ms) = now_pair();
                                     let seq = ws_self
                                         .dispatcher_seq(market_id)
-                                        .await
                                         .fetch_add(1, Ordering::Relaxed);
                                     let _ = ws_self.dispatcher.try_send_update(WsUpdate::Clear {
                                         market_id: market_id.clone(),
@@ -1099,10 +1102,7 @@ impl OrderBookWebSocket for KalshiWebSocket {
             let _ = self.send_unsubscribe(sid).await;
         }
 
-        {
-            let mut obs = self.orderbooks.write().await;
-            obs.remove(&market_id);
-        }
+        self.orderbooks.write().remove(&market_id);
 
         Ok(())
     }
