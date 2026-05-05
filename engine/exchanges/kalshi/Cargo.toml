@@ -13,6 +13,7 @@ categories = ["api-bindings", "finance"]
 metrics = { workspace = true }
 px-core = { workspace = true, features = ["http", "simd-json"] }
 tokio = { workspace = true }
+parking_lot = "0.12"
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }

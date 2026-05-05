@@ -7,7 +7,7 @@
 
 use std::sync::Mutex;
 
-use async_channel::{Receiver, TryRecvError};
+use flume::{Receiver, Sender, TryRecvError};
 
 use crate::websocket::events::{SessionEvent, WsUpdate};
 
@@ -22,7 +22,11 @@ use crate::websocket::events::{SessionEvent, WsUpdate};
 /// stream. Take-once turns that footgun into a compile-checked None at the
 /// call site.
 ///
-/// The channel is bounded; when full the producer raises
+/// Backed by `flume`, an MPMC channel with lighter-weight wakers than
+/// `async-channel`'s; the per-message recv on the consumer side is a
+/// significant fraction of the WS pipeline p99, and flume's atomic-only
+/// fast path stays out of the parking_lot machinery on uncontended
+/// recv. The channel is bounded; when full the producer raises
 /// `SessionEvent::Lagged` + `SessionEvent::BookInvalidated` rather than
 /// dropping deltas silently.
 pub struct UpdateStream {
@@ -38,7 +42,7 @@ impl UpdateStream {
     /// Await the next update. `None` once the producer has been dropped.
     #[inline]
     pub async fn next(&self) -> Option<WsUpdate> {
-        self.rx.recv().await.ok()
+        self.rx.recv_async().await.ok()
     }
 
     /// Non-blocking peek. Returns `Ok(Some)` if an update is ready,
@@ -48,7 +52,7 @@ impl UpdateStream {
         match self.rx.try_recv() {
             Ok(v) => Ok(Some(v)),
             Err(TryRecvError::Empty) => Ok(None),
-            Err(e @ TryRecvError::Closed) => Err(e),
+            Err(e @ TryRecvError::Disconnected) => Err(e),
         }
     }
 
@@ -64,7 +68,7 @@ impl UpdateStream {
 
     #[inline]
     pub fn is_closed(&self) -> bool {
-        self.rx.is_closed()
+        self.rx.is_disconnected()
     }
 }
 
@@ -82,7 +86,7 @@ impl SessionStream {
 
     #[inline]
     pub async fn next(&self) -> Option<SessionEvent> {
-        self.rx.recv().await.ok()
+        self.rx.recv_async().await.ok()
     }
 
     #[inline]
@@ -90,13 +94,13 @@ impl SessionStream {
         match self.rx.try_recv() {
             Ok(v) => Ok(Some(v)),
             Err(TryRecvError::Empty) => Ok(None),
-            Err(e @ TryRecvError::Closed) => Err(e),
+            Err(e @ TryRecvError::Disconnected) => Err(e),
         }
     }
 
     #[inline]
     pub fn is_closed(&self) -> bool {
-        self.rx.is_closed()
+        self.rx.is_disconnected()
     }
 }
 
@@ -108,9 +112,9 @@ impl SessionStream {
 /// exactly once via `take_updates()` / `take_session_events()`. This
 /// enforces the take-once contract on the consumer side.
 pub struct WsDispatcher {
-    updates_tx: async_channel::Sender<WsUpdate>,
+    updates_tx: Sender<WsUpdate>,
     updates_rx: Mutex<Option<Receiver<WsUpdate>>>,
-    session_tx: async_channel::Sender<SessionEvent>,
+    session_tx: Sender<SessionEvent>,
     session_rx: Mutex<Option<Receiver<SessionEvent>>>,
 }
 
@@ -140,8 +144,8 @@ impl WsDispatcher {
     /// of both channels and the (one-shot) receive halves; consumers fetch
     /// streams exactly once via `take_updates()` / `take_session_events()`.
     pub fn new(config: WsDispatcherConfig) -> Self {
-        let (updates_tx, updates_rx) = async_channel::bounded(config.updates_capacity);
-        let (session_tx, session_rx) = async_channel::bounded(config.session_capacity);
+        let (updates_tx, updates_rx) = flume::bounded(config.updates_capacity);
+        let (session_tx, session_rx) = flume::bounded(config.session_capacity);
         Self {
             updates_tx,
             updates_rx: Mutex::new(Some(updates_rx)),
@@ -187,7 +191,7 @@ impl WsDispatcher {
     /// event (e.g. a missed `Reconnected`) is worse than a brief await.
     #[inline]
     pub async fn send_session(&self, event: SessionEvent) {
-        let _ = self.session_tx.send(event).await;
+        let _ = self.session_tx.send_async(event).await;
     }
 
     #[inline]

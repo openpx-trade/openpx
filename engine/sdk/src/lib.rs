@@ -80,6 +80,32 @@ impl ExchangeInner {
         dispatch!(self, fetch_markets, params)
     }
 
+    /// Resolve a rolling-series identifier to the currently-active market.
+    ///
+    /// Both exchanges accept a series ticker (Kalshi: `"KXBTC15M"`,
+    /// Polymarket: `"btc-up-or-down-5m"`). The unified `fetch_markets`
+    /// `series_ticker` filter routes per-exchange — Kalshi to its native
+    /// series query, Polymarket to its gamma `/series → /events` lookup —
+    /// and `pick_active_market` selects the open market with the soonest
+    /// close. Returns `None` when no market in the series is open right now.
+    ///
+    /// The user-facing rollover loop (pre-fetching the next event in the
+    /// series and resubscribing before the current one resolves with
+    /// zero-downtime WS handoff) is the natural follow-up; this method is
+    /// the primitive it'll layer on top of.
+    pub async fn next_active_market_in_series(
+        &self,
+        series_ticker: &str,
+    ) -> Result<Option<Market>, OpenPxError> {
+        let params = FetchMarketsParams {
+            series_ticker: Some(series_ticker.into()),
+            status: Some(MarketStatusFilter::Active),
+            ..Default::default()
+        };
+        let (markets, _) = self.fetch_markets(&params).await?;
+        Ok(pick_active_market(&markets, Utc::now()).cloned())
+    }
+
     pub async fn create_order(&self, req: CreateOrderRequest) -> Result<Order, OpenPxError> {
         dispatch!(self, create_order, req)
     }

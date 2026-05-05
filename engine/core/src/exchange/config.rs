@@ -109,6 +109,10 @@ pub struct FetchMarketsParams {
     /// Fetch only these market tickers — Kalshi tickers or Polymarket slugs (e.g. `["KXBTCD-25APR1517"]`).
     #[serde(default)]
     pub market_tickers: Vec<String>,
+    // 2026-05: Polymarket also honors `series_ticker` now (slug-style, e.g.
+    // `btc-up-or-down-5m`) via gamma `/series → /events`; the doc string
+    // below stays unchanged for SDK schema stability and gets refreshed on
+    // the next contract version bump.
     /// Fetch only markets in this Kalshi series ticker (e.g. `"KXBTC"`); ignored on Polymarket today.
     #[serde(default)]
     pub series_ticker: Option<String>,
