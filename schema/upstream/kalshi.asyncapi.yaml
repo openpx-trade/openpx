@@ -94,10 +94,10 @@ info:
       description: Private/authenticated data channels
 servers:
   production:
-    host: api.elections.kalshi.com
+    host: external-api-ws.kalshi.com
     pathname: /trade-api/ws/v2
     protocol: wss
-    description: Production WebSocket server (encrypted connection only)
+    description: Production Trade API WebSocket server (encrypted connection only)
     security:
       - $ref: '#/components/securitySchemes/apiKey'
 defaultContentType: application/json
@@ -313,8 +313,8 @@ channels:
 
 
       **Use case:** Tracking market lifecycle including creation,
-      de(activation), close date changes, determination, settlement, fractional
-      trading updates, and price level structure changes
+      de(activation), close date changes, determination, settlement, price level
+      structure changes, and metadata updates
     messages:
       marketLifecycleV2:
         $ref: '#/components/messages/marketLifecycleV2'
@@ -1369,7 +1369,8 @@ components:
       title: Market Lifecycle V2
       summary: >-
         Market lifecycle events (created, activated, deactivated,
-        close_date_updated, determined, settled, price_level_structure_updated)
+        close_date_updated, determined, settled, price_level_structure_updated,
+        metadata_updated)
       contentType: application/json
       payload:
         $ref: '#/components/schemas/marketLifecycleV2Payload'
@@ -1406,6 +1407,15 @@ components:
               market_ticker: INXD-23SEP14-B4487
               event_type: price_level_structure_updated
               price_level_structure: deci_cent
+        - name: metadataUpdated
+          summary: Market metadata updated event
+          payload:
+            type: market_lifecycle_v2
+            sid: 13
+            msg:
+              market_ticker: KXBTC-25APR30-T0915-B95000
+              event_type: metadata_updated
+              floor_strike: 95000
     multivariateMarketLifecycle:
       name: multivariate_market_lifecycle
       title: Multivariate Market Lifecycle
@@ -1719,6 +1729,14 @@ components:
       enum:
         - 'yes'
         - 'no'
+    bookSide:
+      type: string
+      description: >-
+        Side of the book for an order or trade. 'bid' is equivalent to
+        outcome_side 'yes'; 'ask' is equivalent to outcome_side 'no'.
+      enum:
+        - bid
+        - ask
     orderAction:
       type: string
       description: Order action type
@@ -1800,6 +1818,37 @@ components:
               description: >-
                 If true, OK responses omit the market_tickers/market_ids lists
                 for this subscription
+              default: false
+            use_yes_price:
+              type: boolean
+              description: >
+                Orderbook channel only. When true, no-side `orderbook_delta` and
+                `orderbook_snapshot` updates
+
+                are reported in yes-leg pricing instead of no-leg pricing — so a
+                single `price_dollars` scale
+
+                applies to both sides. Default false (no-side reported in no-leg
+                pricing, the existing
+
+                long-standing behavior). See [Order
+                direction](/getting_started/order_direction).
+
+
+                **Migration plan.** The default will be flipped to `true` in a
+                future release, and the flag
+
+                will then be removed entirely in a subsequent release — at which
+                point unified yes-leg
+
+                pricing becomes the only supported behavior and `use_yes_price:
+                false` will no longer toggle
+
+                the legacy no-leg pricing. Integrations relying on the legacy
+                behavior should migrate before
+
+                the default flip; concrete dates will be announced before each
+                step.
               default: false
             shard_factor:
               type: integer
@@ -2303,6 +2352,8 @@ components:
             - no_price_dollars
             - count_fp
             - taker_side
+            - taker_outcome_side
+            - taker_book_side
             - ts
             - ts_ms
           properties:
@@ -2323,6 +2374,42 @@ components:
               description: Fixed-point contracts traded (2 decimals)
             taker_side:
               $ref: '#/components/schemas/marketSide'
+              deprecated: true
+              description: >
+                Deprecated. Use `taker_outcome_side` (or `taker_book_side`)
+                instead. See [Order
+                direction](/getting_started/order_direction). This field will
+                not be removed before May 14, 2026.
+            taker_outcome_side:
+              $ref: '#/components/schemas/marketSide'
+              description: >
+                The outcome side the taker is positioned for. buy-yes and
+                sell-no produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+                `taker_outcome_side` describes directional exposure only; it
+                does not change the trade's price. A trade at price `p` with
+                `taker_outcome_side=no` is matched against the maker at the same
+                price `p` with the opposite direction — both parties trade at
+                the same price.
+
+
+                `taker_outcome_side` and `taker_book_side` will become the
+                canonical way to determine trade direction. The legacy
+                `taker_side` field will be deprecated in a future release —
+                please migrate to these new fields.
+            taker_book_side:
+              $ref: '#/components/schemas/bookSide'
+              description: >
+                Same directional bit as taker_outcome_side in book vocabulary.
+                'bid' is equivalent to taker_outcome_side 'yes'; 'ask' is
+                equivalent to taker_outcome_side 'no'.
+
+
+                `taker_outcome_side` and `taker_book_side` will become the
+                canonical way to determine trade direction. The legacy
+                `taker_side` field will be deprecated in a future release —
+                please migrate to these new fields.
             ts:
               type: integer
               deprecated: true
@@ -2356,6 +2443,8 @@ components:
             - count_fp
             - fee_cost
             - action
+            - outcome_side
+            - book_side
             - ts
             - ts_ms
             - post_position_fp
@@ -2383,7 +2472,11 @@ components:
               description: If you were a taker on this fill
             side:
               $ref: '#/components/schemas/marketSide'
-              description: Side of your fill. Either "yes" or "no"
+              deprecated: true
+              description: >
+                Deprecated. Use `outcome_side` (or `book_side`) instead. See
+                [Order direction](/getting_started/order_direction). This field
+                will not be removed before May 14, 2026.
             yes_price_dollars:
               type: string
               description: Price for the yes side of the fill in dollars
@@ -2395,7 +2488,11 @@ components:
               description: Exchange fee paid for this fill in fixed-point dollars
             action:
               $ref: '#/components/schemas/orderAction'
-              description: Action that initiated the fill. Either "buy" or "sell"
+              deprecated: true
+              description: >
+                Deprecated. Use `outcome_side` (or `book_side`) instead. See
+                [Order direction](/getting_started/order_direction). This field
+                will not be removed before May 14, 2026.
             ts:
               type: integer
               deprecated: true
@@ -2415,9 +2512,41 @@ components:
               description: Fixed-point position after the fill (2 decimals)
             purchased_side:
               $ref: '#/components/schemas/marketSide'
-              description: >-
-                Side of the purchased contracts. If user submitted a sell NO,
-                this field will be yes
+              deprecated: true
+              description: >
+                Deprecated. Use `outcome_side` (or `book_side`) instead. See
+                [Order direction](/getting_started/order_direction). This field
+                will not be removed before May 14, 2026.
+            outcome_side:
+              $ref: '#/components/schemas/marketSide'
+              description: >
+                The outcome side this fill positioned the user for. buy-yes and
+                sell-no produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+                `outcome_side` describes directional exposure only; it does not
+                change the fill's price. A fill at price `p` with
+                `outcome_side=no` is matched against an order at the same price
+                `p` with `outcome_side=yes` — both parties trade at the same
+                price, just on opposite directions.
+
+
+                `outcome_side` and `book_side` will become the canonical way to
+                determine fill direction. The legacy `action` and `side` fields
+                will be deprecated in a future release — please migrate to these
+                new fields.
+            book_side:
+              $ref: '#/components/schemas/bookSide'
+              description: >
+                Same directional bit as outcome_side in book vocabulary. 'bid'
+                is equivalent to outcome_side 'yes'; 'ask' is equivalent to
+                outcome_side 'no'.
+
+
+                `outcome_side` and `book_side` will become the canonical way to
+                determine fill direction. The legacy `action` and `side` fields
+                will be deprecated in a future release — please migrate to these
+                new fields.
             subaccount:
               type: integer
               description: Optional subaccount number for the fill
@@ -2458,6 +2587,9 @@ components:
 
                 - `price_level_structure_updated` - Market price level structure
                 changed
+
+                - `metadata_updated` - Market metadata updated (initially floor
+                strike only, may expand to more fields)
               enum:
                 - created
                 - deactivated
@@ -2466,6 +2598,7 @@ components:
                 - determined
                 - settled
                 - price_level_structure_updated
+                - metadata_updated
             market_ticker:
               $ref: '#/components/schemas/marketTicker'
               description: >-
@@ -2526,11 +2659,14 @@ components:
                 - linear_cent
                 - deci_cent
                 - tapered_deci_cent
+            floor_strike:
+              type: number
+              description: >-
+                Optional - This key will ONLY exist for metadata_updated events.
+                The updated floor strike value for the market
             additional_metadata:
               type: object
-              description: >-
-                Optional - This key will only be emitted when the market is
-                created
+              description: Optional - This key will be emitted when the market is created
               properties:
                 name:
                   type: string
@@ -2734,6 +2870,7 @@ components:
           required:
             - event_type
             - order_group_id
+            - ts_ms
           properties:
             event_type:
               type: string
@@ -2752,6 +2889,12 @@ components:
               description: >-
                 Updated contracts limit in fixed-point (2 decimals). Present for
                 "created" and "limit_updated" events only.
+            ts_ms:
+              type: integer
+              format: int64
+              description: >-
+                Matching engine timestamp at which the event was processed, as
+                Unix epoch milliseconds.
     userOrderPayload:
       type: object
       required:
@@ -2773,6 +2916,8 @@ components:
             - status
             - side
             - is_yes
+            - outcome_side
+            - book_side
             - yes_price_dollars
             - fill_count_fp
             - remaining_count_fp
@@ -2805,12 +2950,48 @@ components:
                 - executed
             side:
               $ref: '#/components/schemas/marketSide'
-              description: Side of the order ("yes" or "no")
+              deprecated: true
+              description: >
+                Deprecated. Use `outcome_side` (or `book_side`) instead. See
+                [Order direction](/getting_started/order_direction). This field
+                will not be removed before May 14, 2026.
             is_yes:
               type: boolean
-              description: >-
-                Whether the order is on the yes side. Equivalent to side ==
-                "yes"
+              deprecated: true
+              description: >
+                Deprecated. Use `outcome_side` (or `book_side`) instead. See
+                [Order direction](/getting_started/order_direction). This field
+                will not be removed before May 14, 2026.
+            outcome_side:
+              $ref: '#/components/schemas/marketSide'
+              description: >
+                The outcome side this order is positioned for. buy-yes and
+                sell-no produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+                `outcome_side` describes directional exposure only; it does not
+                change the order's price. An order at price `p` with
+                `outcome_side=no` is matched by an order at the same price `p`
+                with `outcome_side=yes` — both parties trade at the same price,
+                just on opposite directions.
+
+
+                `outcome_side` and `book_side` will become the canonical way to
+                determine order direction. The legacy `action`, `side`, and
+                `is_yes` fields will be deprecated in a future release — please
+                migrate to these new fields.
+            book_side:
+              $ref: '#/components/schemas/bookSide'
+              description: >
+                Same directional bit as outcome_side in book vocabulary. 'bid'
+                is equivalent to outcome_side 'yes'; 'ask' is equivalent to
+                outcome_side 'no'.
+
+
+                `outcome_side` and `book_side` will become the canonical way to
+                determine order direction. The legacy `action`, `side`, and
+                `is_yes` fields will be deprecated in a future release — please
+                migrate to these new fields.
             yes_price_dollars:
               type: string
               description: Yes price in fixed-point dollars (4 decimals)
