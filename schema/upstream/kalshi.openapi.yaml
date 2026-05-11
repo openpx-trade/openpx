@@ -1,13 +1,19 @@
 openapi: 3.0.0
 info:
   title: Kalshi Trade API Manual Endpoints
-  version: 3.15.0
+  version: 3.16.0
   description: >-
     Manually defined OpenAPI spec for endpoints being migrated to spec-first
     approach
 servers:
+  - url: https://external-api.kalshi.com/trade-api/v2
+    description: Production Trade API server
   - url: https://api.elections.kalshi.com/trade-api/v2
-    description: Production server
+    description: Production shared API server, also supported
+  - url: https://external-api.demo.kalshi.co/trade-api/v2
+    description: Demo Trade API server
+  - url: https://demo-api.kalshi.co/trade-api/v2
+    description: Demo shared API server, also supported
 paths:
   /exchange/status:
     get:
@@ -131,7 +137,7 @@ paths:
         Candlesticks for markets that settled before the historical cutoff are
         only available via `GET /historical/markets/{ticker}/candlesticks`. See
         [Historical
-        Data](https://kalshi.com/docs/getting_started/historical_data) for
+        Data](https://docs.kalshi.com/getting_started/historical_data) for
         details.
       tags:
         - market
@@ -439,7 +445,7 @@ paths:
          | min_settled_ts, max_settled_ts | `settled`, *empty* | |
          | min_updated_ts | *empty* | Incompatible with all filters besides `mve_filter=exclude` |
 
-         Markets that settled before the historical cutoff are only available via `GET /historical/markets`. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.
+         Markets that settled before the historical cutoff are only available via `GET /historical/markets`. See [Historical Data](https://docs.kalshi.com/getting_started/historical_data) for details.
       tags:
         - market
       parameters:
@@ -969,7 +975,7 @@ paths:
         Orders that have been canceled or fully executed before the historical
         cutoff are only available via `GET /historical/orders`. Resting orders
         will always be available through this endpoint. See [Historical
-        Data](https://kalshi.com/docs/getting_started/historical_data) for
+        Data](https://docs.kalshi.com/getting_started/historical_data) for
         details.
       tags:
         - orders
@@ -1485,8 +1491,11 @@ paths:
       operationId: AmendOrderV2
       summary: Amend Order (V2)
       description: >-
-        Endpoint for amending the price and/or remaining count of an existing
-        event-market order using the V2 request/response shape.
+        Endpoint for amending the price and/or max fillable count of an existing
+        event-market order using the V2 request/response shape. The request
+        `count` is the updated total/max fillable count, equal to already filled
+        count plus desired resting remaining count. This behavior matches the v1
+        amend endpoints; only the request/response shape differs.
       tags:
         - orders
       security:
@@ -1793,8 +1802,10 @@ paths:
       operationId: CreateSubaccount
       summary: Create Subaccount
       description: >-
-        Creates a new subaccount for the authenticated user. Subaccounts are
-        numbered sequentially starting from 1. Maximum 32 subaccounts per user.
+        Creates a new subaccount for the authenticated user. This endpoint is
+        currently only available to institutions and market makers. Subaccounts
+        are numbered sequentially starting from 1. Maximum 32 subaccounts per
+        user.
       tags:
         - portfolio
       security:
@@ -2010,6 +2021,60 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  /portfolio/deposits:
+    get:
+      operationId: GetDeposits
+      summary: Get Deposits
+      description: Endpoint for getting the member's deposit history.
+      tags:
+        - portfolio
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - $ref: '#/components/parameters/WithdrawalLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: Deposits retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDepositsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /portfolio/withdrawals:
+    get:
+      operationId: GetWithdrawals
+      summary: Get Withdrawals
+      description: Endpoint for getting the member's withdrawal history.
+      tags:
+        - portfolio
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - $ref: '#/components/parameters/WithdrawalLimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: Withdrawals retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWithdrawalsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /portfolio/summary/total_resting_order_value:
     get:
       operationId: GetPortfolioRestingOrderTotalValue
@@ -2043,7 +2108,7 @@ paths:
 
         Fills that occurred before the historical cutoff are only available via
         `GET /historical/fills`. See [Historical
-        Data](https://kalshi.com/docs/getting_started/historical_data) for
+        Data](https://docs.kalshi.com/getting_started/historical_data) for
         details.
       tags:
         - portfolio
@@ -2271,6 +2336,18 @@ paths:
         - name: user_filter
           in: query
           required: false
+          description: Filter for quotes created by the authenticated user.
+          schema:
+            $ref: '#/components/schemas/UserFilter'
+            x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            validate: omitempty,oneof=self
+        - name: rfq_user_filter
+          in: query
+          required: false
+          description: >-
+            Filter for quotes responding to RFQs created by the authenticated
+            user.
           schema:
             $ref: '#/components/schemas/UserFilter'
             x-go-type-skip-optional-pointer: true
@@ -3648,7 +3725,7 @@ paths:
     get:
       operationId: GetTradesHistorical
       summary: Get Historical Trades
-      description: ' Endpoint for getting all historical trades for all markets. Trades that were filled before the historical cutoff are available via this endpoint. See [Historical Data](https://kalshi.com/docs/getting_started/historical_data) for details.'
+      description: ' Endpoint for getting all historical trades for all markets. Trades that were filled before the historical cutoff are available via this endpoint. See [Historical Data](https://docs.kalshi.com/getting_started/historical_data) for details.'
       tags:
         - historical
       parameters:
@@ -3793,6 +3870,18 @@ components:
         default: 100
         x-oapi-codegen-extra-tags:
           validate: omitempty,min=1,max=1000
+    WithdrawalLimitQuery:
+      name: limit
+      in: query
+      description: Number of results per page. Defaults to 100. Maximum value is 500.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 500
+        default: 100
+        x-oapi-codegen-extra-tags:
+          validate: omitempty,min=1,max=500
     MarketLimitQuery:
       name: limit
       in: query
@@ -4068,6 +4157,10 @@ components:
         contract count fields are legacy and will be deprecated; when both
         integer and fp fields are provided, they must match.
       example: '10.00'
+    ExchangeIndex:
+      type: integer
+      description: 'Defaults to 0. Note: currently only 0 supported.'
+      example: 0
     GetMarketCandlesticksHistoricalResponse:
       type: object
       required:
@@ -4226,8 +4319,7 @@ components:
         taker order when it would trade against another order from the same
         user; execution stops and any partial fills already matched are
         executed. `maker` cancels the resting maker order and continues
-        matching; after execution, any remaining taker quantity is canceled and
-        any fills are executed.
+        matching.
     BookSide:
       type: string
       enum:
@@ -4932,6 +5024,16 @@ components:
                 items:
                   type: object
                   additionalProperties: true
+    IndexedBalance:
+      type: object
+      required:
+        - exchange_index
+        - balance
+      properties:
+        exchange_index:
+          $ref: '#/components/schemas/ExchangeIndex'
+        balance:
+          $ref: '#/components/schemas/FixedPointDollars'
     GetBalanceResponse:
       type: object
       required:
@@ -4955,6 +5057,11 @@ components:
           type: integer
           format: int64
           description: Unix timestamp of the last update to the balance.
+        balance_breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexedBalance'
+          description: Balance broken down per exchange index.
     CreateSubaccountResponse:
       type: object
       required:
@@ -5175,6 +5282,130 @@ components:
         total_resting_order_value:
           type: integer
           description: Total value of resting orders in cents
+    GetDepositsResponse:
+      type: object
+      required:
+        - deposits
+      properties:
+        deposits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deposit'
+        cursor:
+          type: string
+    Deposit:
+      type: object
+      required:
+        - id
+        - status
+        - type
+        - amount_cents
+        - fee_cents
+        - created_ts
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the deposit.
+        status:
+          type: string
+          enum:
+            - pending
+            - applied
+            - failed
+            - returned
+          description: >-
+            Current status of the deposit. 'applied' means funds are reflected
+            in balance.
+        type:
+          type: string
+          enum:
+            - ach
+            - wire
+            - crypto
+            - debit
+            - apm
+          description: Payment method used for the deposit.
+        amount_cents:
+          type: integer
+          format: int64
+          description: Deposit amount in cents.
+        fee_cents:
+          type: integer
+          format: int64
+          description: Fee charged for the deposit in cents.
+        created_ts:
+          type: integer
+          format: int64
+          description: Unix timestamp of when the deposit was created.
+        finalized_ts:
+          type: integer
+          format: int64
+          nullable: true
+          description: >-
+            Unix timestamp of when the deposit was finalized (applied, failed,
+            or returned).
+    GetWithdrawalsResponse:
+      type: object
+      required:
+        - withdrawals
+      properties:
+        withdrawals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Withdrawal'
+        cursor:
+          type: string
+    Withdrawal:
+      type: object
+      required:
+        - id
+        - status
+        - type
+        - amount_cents
+        - fee_cents
+        - created_ts
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the withdrawal.
+        status:
+          type: string
+          enum:
+            - pending
+            - applied
+            - failed
+            - returned
+          description: >-
+            Current status of the withdrawal. 'applied' means funds have been
+            deducted from balance.
+        type:
+          type: string
+          enum:
+            - ach
+            - wire
+            - crypto
+            - debit
+            - apm
+          description: Payment type used for the withdrawal.
+        amount_cents:
+          type: integer
+          format: int64
+          description: Withdrawal amount in cents.
+        fee_cents:
+          type: integer
+          format: int64
+          description: Fee charged for the withdrawal in cents.
+        created_ts:
+          type: integer
+          format: int64
+          description: Unix timestamp of when the withdrawal was created.
+        finalized_ts:
+          type: integer
+          format: int64
+          nullable: true
+          description: >-
+            Unix timestamp of when the withdrawal was finalized (applied,
+            failed, or returned).
     Order:
       type: object
       required:
@@ -5184,6 +5415,8 @@ components:
         - ticker
         - side
         - action
+        - outcome_side
+        - book_side
         - type
         - status
         - yes_price_dollars
@@ -5210,11 +5443,54 @@ components:
           enum:
             - 'yes'
             - 'no'
+          deprecated: true
+          description: >
+            Deprecated. Use `outcome_side` (or `book_side`) instead. See [Order
+            direction](/getting_started/order_direction). This field will not be
+            removed before May 14, 2026.
         action:
           type: string
           enum:
             - buy
             - sell
+          deprecated: true
+          description: >
+            Deprecated. Use `outcome_side` (or `book_side`) instead. See [Order
+            direction](/getting_started/order_direction). This field will not be
+            removed before May 14, 2026.
+        outcome_side:
+          type: string
+          enum:
+            - 'yes'
+            - 'no'
+          description: >
+            The outcome side this order is positioned for. buy-yes and sell-no
+            produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+            `outcome_side` describes directional exposure only; it does not
+            change the order's price. An order at price `p` with
+            `outcome_side=no` is matched by an order at the same price `p` with
+            `outcome_side=yes` — both parties trade at the same price, just on
+            opposite directions.
+
+
+            `outcome_side` and `book_side` will become the canonical way to
+            determine order direction. The legacy `action`, `side`, and `is_yes`
+            fields will be deprecated in a future release — please migrate to
+            these new fields.
+        book_side:
+          $ref: '#/components/schemas/BookSide'
+          description: >
+            Same directional bit as outcome_side in book vocabulary. 'bid' is
+            equivalent to outcome_side 'yes'; 'ask' is equivalent to
+            outcome_side 'no'.
+
+
+            `outcome_side` and `book_side` will become the canonical way to
+            determine order direction. The legacy `action`, `side`, and `is_yes`
+            fields will be deprecated in a future release — please migrate to
+            these new fields.
         type:
           type: string
           enum:
@@ -5530,6 +5806,8 @@ components:
         - yes_price_dollars
         - no_price_dollars
         - taker_side
+        - taker_outcome_side
+        - taker_book_side
         - created_time
       properties:
         trade_id:
@@ -5557,7 +5835,47 @@ components:
           x-enum-varnames:
             - TradeTakerSideYes
             - TradeTakerSideNo
-          description: Side for the taker of this trade
+          deprecated: true
+          description: >
+            Deprecated. Use `taker_outcome_side` (or `taker_book_side`) instead.
+            See [Order direction](/getting_started/order_direction). This field
+            will not be removed before May 14, 2026.
+        taker_outcome_side:
+          type: string
+          enum:
+            - 'yes'
+            - 'no'
+          x-enum-varnames:
+            - TradeTakerOutcomeSideYes
+            - TradeTakerOutcomeSideNo
+          description: >
+            The outcome side the taker is positioned for. buy-yes and sell-no
+            produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+            `taker_outcome_side` describes directional exposure only; it does
+            not change the trade's price. A trade at price `p` with
+            `taker_outcome_side=no` is matched against the maker at the same
+            price `p` with the opposite direction — both parties trade at the
+            same price.
+
+
+            `taker_outcome_side` and `taker_book_side` will become the canonical
+            way to determine trade direction. The legacy `taker_side` field will
+            be deprecated in a future release — please migrate to these new
+            fields.
+        taker_book_side:
+          $ref: '#/components/schemas/BookSide'
+          description: >
+            Same directional bit as taker_outcome_side in book vocabulary. 'bid'
+            is equivalent to taker_outcome_side 'yes'; 'ask' is equivalent to
+            taker_outcome_side 'no'.
+
+
+            `taker_outcome_side` and `taker_book_side` will become the canonical
+            way to determine trade direction. The legacy `taker_side` field will
+            be deprecated in a future release — please migrate to these new
+            fields.
         created_time:
           type: string
           format: date-time
@@ -5657,6 +5975,8 @@ components:
         - market_ticker
         - side
         - action
+        - outcome_side
+        - book_side
         - count_fp
         - yes_price_dollars
         - no_price_dollars
@@ -5683,13 +6003,54 @@ components:
           enum:
             - 'yes'
             - 'no'
-          description: Specifies if this is a 'yes' or 'no' fill
+          deprecated: true
+          description: >
+            Deprecated. Use `outcome_side` (or `book_side`) instead. See [Order
+            direction](/getting_started/order_direction). This field will not be
+            removed before May 14, 2026.
         action:
           type: string
           enum:
             - buy
             - sell
-          description: Specifies if this is a buy or sell order
+          deprecated: true
+          description: >
+            Deprecated. Use `outcome_side` (or `book_side`) instead. See [Order
+            direction](/getting_started/order_direction). This field will not be
+            removed before May 14, 2026.
+        outcome_side:
+          type: string
+          enum:
+            - 'yes'
+            - 'no'
+          description: >
+            The outcome side this fill positioned the user for. buy-yes and
+            sell-no produce 'yes'; buy-no and sell-yes produce 'no'.
+
+
+            `outcome_side` describes directional exposure only; it does not
+            change the fill's price. A fill at price `p` with `outcome_side=no`
+            is matched against an order at the same price `p` with
+            `outcome_side=yes` — both parties trade at the same price, just on
+            opposite directions.
+
+
+            `outcome_side` and `book_side` will become the canonical way to
+            determine fill direction. The legacy `action` and `side` fields will
+            be deprecated in a future release — please migrate to these new
+            fields.
+        book_side:
+          $ref: '#/components/schemas/BookSide'
+          description: >
+            Same directional bit as outcome_side in book vocabulary. 'bid' is
+            equivalent to outcome_side 'yes'; 'ask' is equivalent to
+            outcome_side 'no'.
+
+
+            `outcome_side` and `book_side` will become the canonical way to
+            determine fill direction. The legacy `action` and `side` fields will
+            be deprecated in a future release — please migrate to these new
+            fields.
         count_fp:
           $ref: '#/components/schemas/FixedPointCount'
           description: >-
@@ -5804,6 +6165,16 @@ components:
           type: integer
           format: int64
           description: The amount to transfer in centicents
+        source_exchange_shard:
+          type: integer
+          default: 0
+          x-go-type-skip-optional-pointer: true
+          description: Source exchange shard index (default 0)
+        destination_exchange_shard:
+          type: integer
+          default: 0
+          x-go-type-skip-optional-pointer: true
+          description: Destination exchange shard index (default 0)
     IntraExchangeInstanceTransferResponse:
       type: object
       required:
@@ -5919,10 +6290,18 @@ components:
       type: object
       required:
         - order_group_id
+        - subaccount
       properties:
         order_group_id:
           type: string
           description: The unique identifier for the created order group
+        subaccount:
+          type: integer
+          minimum: 0
+          description: >-
+            Subaccount number that owns the created order group (0 for primary,
+            1-32 for subaccounts).
+          x-go-type-skip-optional-pointer: true
     GetCommunicationsIDResponse:
       type: object
       required:
@@ -6168,6 +6547,11 @@ components:
         rest_remainder:
           type: boolean
           description: Whether to rest the remainder of the quote after execution
+        post_only:
+          type: boolean
+          description: >-
+            Whether the quote creator's order is post-only (visible when the
+            caller is the quote creator)
         cancellation_reason:
           type: string
           description: Reason for quote cancellation if cancelled
@@ -6251,6 +6635,11 @@ components:
         rest_remainder:
           type: boolean
           description: Whether to rest the remainder of the quote after execution
+        post_only:
+          type: boolean
+          description: >-
+            If true, the quote creator's resting order will be cancelled rather
+            than crossed if it would take liquidity. Defaults to false.
         subaccount:
           type: integer
           description: >-
@@ -6389,6 +6778,11 @@ components:
           description: >-
             The subaccount number to use for this order. 0 is the primary
             subaccount.
+          x-go-type-skip-optional-pointer: true
+        exchange_index:
+          allOf:
+            - $ref: '#/components/schemas/ExchangeIndex'
+          default: 0
           x-go-type-skip-optional-pointer: true
     CreateOrderResponse:
       type: object
@@ -6716,12 +7110,18 @@ components:
           type: string
           description: The order group this order is part of
           x-go-type-skip-optional-pointer: true
+        exchange_index:
+          allOf:
+            - $ref: '#/components/schemas/ExchangeIndex'
+          default: 0
+          x-go-type-skip-optional-pointer: true
     CreateOrderV2Response:
       type: object
       required:
         - order_id
         - fill_count
         - remaining_count
+        - ts_ms
       properties:
         order_id:
           type: string
@@ -6745,11 +7145,18 @@ components:
           description: >-
             Volume-weighted average fee paid per contract for fills resulting
             from this request. Only present when fill_count > 0.
+        ts_ms:
+          type: integer
+          format: int64
+          description: >-
+            Matching engine timestamp at which the order was processed, as Unix
+            epoch milliseconds.
     CancelOrderV2Response:
       type: object
       required:
         - order_id
         - reduced_by
+        - ts_ms
       properties:
         order_id:
           type: string
@@ -6760,6 +7167,12 @@ components:
           description: >-
             Number of contracts that were canceled (i.e. the remaining count at
             time of cancellation).
+        ts_ms:
+          type: integer
+          format: int64
+          description: >-
+            Matching engine timestamp at which the cancellation was processed,
+            as Unix epoch milliseconds.
     DecreaseOrderV2Request:
       type: object
       required:
@@ -6773,6 +7186,7 @@ components:
       required:
         - order_id
         - remaining_count
+        - ts_ms
       properties:
         order_id:
           type: string
@@ -6781,6 +7195,12 @@ components:
         remaining_count:
           $ref: '#/components/schemas/FixedPointCount'
           description: Number of contracts remaining after the decrease.
+        ts_ms:
+          type: integer
+          format: int64
+          description: >-
+            Matching engine timestamp at which the decrease was processed, as
+            Unix epoch milliseconds.
     AmendOrderV2Request:
       type: object
       required:
@@ -6805,7 +7225,10 @@ components:
           x-go-type-skip-optional-pointer: true
         count:
           $ref: '#/components/schemas/FixedPointCount'
-          description: String representation of the updated quantity for the order.
+          description: >-
+            Updated total/max fillable count for the order. Set this to the
+            order's already filled count plus the desired resting remaining
+            count after the amend.
           x-go-type-skip-optional-pointer: true
         client_order_id:
           type: string
@@ -6819,6 +7242,7 @@ components:
       type: object
       required:
         - order_id
+        - ts_ms
       properties:
         order_id:
           type: string
@@ -6829,8 +7253,10 @@ components:
           nullable: true
           x-omitempty: false
           description: >-
-            Number of contracts remaining after the amend. Only present when the
-            amend caused a fill or changed the resting size.
+            Number of resting contracts remaining after the amend. This is the
+            actual post-amend resting quantity, not the request's total/max
+            fillable count. Only present when the amend caused a fill or changed
+            the resting size.
         fill_count:
           $ref: '#/components/schemas/FixedPointCount'
           nullable: true
@@ -6852,6 +7278,12 @@ components:
           description: >-
             Volume-weighted average fee paid per contract for fills resulting
             from the amend. Only present when fills occurred.
+        ts_ms:
+          type: integer
+          format: int64
+          description: >-
+            Matching engine timestamp at which the amend was processed, as Unix
+            epoch milliseconds.
     BatchCreateOrdersV2Request:
       type: object
       required:
@@ -6902,6 +7334,14 @@ components:
                 description: >-
                   Volume-weighted average fee paid per contract. Only present
                   when fill_count > 0.
+              ts_ms:
+                type: integer
+                format: int64
+                nullable: true
+                x-omitempty: false
+                description: >-
+                  Matching engine timestamp at which the order was processed, as
+                  Unix epoch milliseconds. Absent when the request errored.
               error:
                 allOf:
                   - $ref: '#/components/schemas/ErrorResponse'
@@ -6960,6 +7400,15 @@ components:
                 description: >-
                   Number of contracts that were canceled (i.e. the remaining
                   count at time of cancellation). Zero if the cancel errored.
+              ts_ms:
+                type: integer
+                format: int64
+                nullable: true
+                x-omitempty: false
+                description: >-
+                  Matching engine timestamp at which the cancellation was
+                  processed, as Unix epoch milliseconds. Absent when the cancel
+                  errored.
               error:
                 allOf:
                   - $ref: '#/components/schemas/ErrorResponse'
