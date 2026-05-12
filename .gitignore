@@ -44,6 +44,13 @@ output/
 !maintenance/snapshots/polymarket-contracts.snapshot.json
 !*.asyncapi.json
 !engine/exchanges/*/tests/fixtures/*.json
+# Comparative benchmark suite — captured fixtures, harness output, and
+# TS package configs are all committed so the bench is reproducible
+# end-to-end (`just bench-compare`) without an extra setup step.
+!benches/comparative/fixtures/*.json
+!benches/comparative/results/*.json
+!benches/comparative/typescript/package.json
+!benches/comparative/typescript/package-lock.json
 
 # Python
 __pycache__

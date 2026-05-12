@@ -1,0 +1,19 @@
+{
+  "name": "px-bench-comparative-ts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenPX TypeScript SDK vs official native clients. Not published.",
+  "scripts": {
+    "bench:polymarket": "node bench_polymarket.mjs",
+    "bench:kalshi": "node bench_kalshi.mjs"
+  },
+  "devDependencies": {
+    "@codspeed/tinybench-plugin": "^5",
+    "tinybench": "^4"
+  },
+  "optionalDependencies": {
+    "@polymarket/clob-client": "*",
+    "kalshi-typescript": "*"
+  }
+}
