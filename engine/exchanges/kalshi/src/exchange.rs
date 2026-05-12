@@ -842,7 +842,13 @@ impl Kalshi {
         &self,
         ticker: &str,
     ) -> Result<(Vec<PriceLevel>, Vec<PriceLevel>), KalshiError> {
-        self.ensure_auth()?;
+        // `/markets/{ticker}/orderbook` is a public, unauthenticated
+        // endpoint per Kalshi's REST surface — read-only market data
+        // with no `security:` block in the OpenAPI spec. No
+        // `ensure_auth()` here so callers without API keys (CLI
+        // probes, public dashboards, comparative benchmarks) still
+        // get a book. Authenticated callers continue to attach API
+        // headers via `self.get(...)` when credentials are present.
 
         #[derive(serde::Deserialize)]
         struct OrderbookResponse {
