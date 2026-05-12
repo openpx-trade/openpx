@@ -114,6 +114,26 @@ class Exchange:
         except (ImportError, Exception):
             return raw
 
+    def next_active_market_in_series(self, series_ticker: str) -> Any:
+        """Resolve the soonest-closing currently-active market in a series.
+
+        Used for revolving markets (5-min / 15-min BTC up-or-down etc.) to
+        get the live ``Market`` to subscribe to right now. Returns ``None``
+        if the series resolves but has no active market at this instant.
+
+        ``series_ticker`` is exchange-namespaced — Kalshi takes its native
+        ticker (e.g. ``"KXBTC15M"``); Polymarket takes its series slug
+        (e.g. ``"btc-up-or-down-5m"``).
+        """
+        raw = self._native.next_active_market_in_series(series_ticker)
+        if raw is None:
+            return None
+        try:
+            from openpx._models import Market
+            return Market(**raw)
+        except (ImportError, Exception):
+            return raw
+
     def create_order(
         self,
         asset_id: str,

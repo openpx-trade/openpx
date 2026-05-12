@@ -97,6 +97,32 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
     git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/schemas/mappings/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml
 
 # ---------------------------------------------------------------------------
+# Benchmarks (head-to-head vs official native SDKs)
+# ---------------------------------------------------------------------------
+
+# Refresh the captured 5/15-min BTC fixtures from live exchanges, then
+# run all three comparative suites (Rust + Python + TS) and rewrite the
+# `<!-- BENCH:START -->` block in README.md with the latest numbers.
+# Per-language Codspeed instruments engage automatically when run via
+# `cargo codspeed run` / `pytest --codspeed` / Codspeed-wrapped node;
+# this recipe runs the vanilla harness for local refresh.
+bench-compare:
+    mkdir -p benches/comparative/results
+    {{venv}}/bin/python tools/capture_bench_fixtures.py
+    cargo bench -p px-bench-comparative
+    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_polymarket.json -q
+    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_kalshi.json -q
+    -cd benches/comparative/typescript && npm install --silent && \
+        node bench_polymarket.mjs > ../results/typescript_polymarket.json
+    -cd benches/comparative/typescript && \
+        node bench_kalshi.mjs > ../results/typescript_kalshi.json
+    python3 tools/render_bench_readme.py
+
+# ---------------------------------------------------------------------------
 # Versioning
 # ---------------------------------------------------------------------------
 

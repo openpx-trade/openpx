@@ -589,9 +589,7 @@ impl Polymarket {
         self.rate_limit().await;
 
         let url = format!("{}/book?token_id={}", self.config.clob_url, token_id);
-        let response = reqwest::get(&url)
-            .await
-            .map_err(|e| PolymarketError::Network(e.to_string()))?;
+        let response = self.client.get_response(&url).await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -720,9 +718,7 @@ impl Polymarket {
         self.rate_limit().await;
 
         let url = format!("{}/simplified-markets", self.config.clob_url);
-        let response = reqwest::get(&url)
-            .await
-            .map_err(|e| PolymarketError::Network(e.to_string()))?;
+        let response = self.client.get_response(&url).await?;
 
         if !response.status().is_success() {
             return Err(PolymarketError::Api("failed to fetch markets".into()));
@@ -831,9 +827,7 @@ impl Polymarket {
                 url.push_str(&format!("&side={s}"));
             }
 
-            let response = reqwest::get(&url)
-                .await
-                .map_err(|e| PolymarketError::Network(e.to_string()))?;
+            let response = self.client.get_response(&url).await?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -1004,9 +998,11 @@ impl Polymarket {
         let data_api_url = &self.config.data_api_url;
 
         let url = format!("{data_api_url}/positions?user={user}&sizeThreshold=0.01&limit=500");
-        let response = reqwest::get(&url)
+        let response = self
+            .client
+            .get_response(&url)
             .await
-            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -2212,7 +2208,7 @@ impl Exchange for Polymarket {
             let data_api_url = &self.config.data_api_url;
             let url =
                 format!("{data_api_url}/positions?user={owner}&market={cid}&sizeThreshold=0.01");
-            if let Ok(response) = reqwest::get(&url).await {
+            if let Ok(response) = self.client.get_response(&url).await {
                 if response.status().is_success() {
                     if let Ok(data) = response.json::<Vec<serde_json::Value>>().await {
                         let positions: Vec<Position> = data
@@ -2427,9 +2423,11 @@ impl Exchange for Polymarket {
         // CLOB exposes a public `GET /time` endpoint returning Unix seconds
         // (clob-openapi.yaml /time). Public, no auth.
         let url = format!("{}/time", self.config.clob_url);
-        let response = reqwest::get(&url)
+        let response = self
+            .client
+            .get_response(&url)
             .await
-            .map_err(|e| OpenPxError::Network(px_core::NetworkError::Http(e.to_string())))?;
+            .map_err(|e| OpenPxError::Exchange(e.into()))?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();

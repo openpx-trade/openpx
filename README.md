@@ -22,6 +22,44 @@ Rust engine with Python & TypeScript SDKs.
 
 ---
 
+<!-- BENCH:START -->
+## Performance
+
+OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials, refreshes on every push to `main`.
+
+[![CodSpeed](https://img.shields.io/endpoint?url=https%3A%2F%2Fcodspeed.io%2Fbadge.json)](https://codspeed.io/openpx-trade/openpx) — Rust benches also tracked under Codspeed CPU-simulation and memory-allocation instruments. Click the badge for the full per-metric history and PR-level regression alerts.
+
+### Rust core
+
+_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it._
+
+| Operation | OpenPX | polymarket_client_sdk_v2 | Speedup |
+|---|---:|---:|---:|
+| Parse Polymarket book (5-min BTC fixture) | 4.38 µs | 5.84 µs | **1.33×** |
+
+### Python SDK
+
+| Operation | OpenPX | py-clob-client | Speedup |
+|---|---:|---:|---:|
+| Polymarket fetch_orderbook (5-min BTC, live) | 276.21 ms | 362.99 ms | **1.31×** |
+
+| Operation | OpenPX | kalshi-python | Speedup |
+|---|---:|---:|---:|
+| Kalshi fetch_orderbook (15-min BTC, live) | 363.96 ms | 366.15 ms | **1.01×** |
+
+### TypeScript SDK
+
+| Operation | OpenPX | @polymarket/clob-client | Speedup |
+|---|---:|---:|---:|
+| Polymarket fetch_orderbook (5-min BTC, live) | 261.89 ms | 278.14 ms | **1.06×** |
+
+| Operation | OpenPX | kalshi-typescript | Speedup |
+|---|---:|---:|---:|
+| Kalshi fetch_orderbook (15-min BTC, live) | 370.13 ms | 385.13 ms | **1.04×** |
+
+<sub>Last updated: 2026-05-05 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Raw data: [benches/comparative/results/](benches/comparative/results/)</sub>
+<!-- BENCH:END -->
+
 ## Quick Start
 
 ### Install

@@ -112,6 +112,23 @@ impl Exchange {
         serde_json::to_value(&result).map_err(to_napi_err)
     }
 
+    /// Resolve the soonest-closing currently-active market in `seriesTicker`.
+    /// Returns `null` if the series resolves but has no active market right now.
+    #[napi]
+    pub async fn next_active_market_in_series(
+        &self,
+        series_ticker: String,
+    ) -> Result<serde_json::Value> {
+        let inner = self.inner.clone();
+        let rt = get_runtime();
+        let result = rt
+            .spawn(async move { inner.next_active_market_in_series(&series_ticker).await })
+            .await
+            .map_err(to_napi_err)?
+            .map_err(to_napi_err)?;
+        serde_json::to_value(&result).map_err(to_napi_err)
+    }
+
     #[napi]
     pub async fn create_order(
         &self,

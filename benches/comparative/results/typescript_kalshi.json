@@ -1,0 +1,20 @@
+{
+  "tasks": [
+    {
+      "name": "openpx::kalshi::fetch_orderbook",
+      "samples": 64,
+      "p50_ns": null,
+      "p99_ns": 626586031,
+      "mean_ns": 370134184,
+      "hz": 2.8260592792860013
+    },
+    {
+      "name": "kalshi-typescript::kalshi::fetch_orderbook",
+      "samples": 64,
+      "p50_ns": null,
+      "p99_ns": 718119828,
+      "mean_ns": 385127674,
+      "hz": 2.7478390068735927
+    }
+  ]
+}

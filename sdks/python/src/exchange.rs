@@ -93,6 +93,21 @@ impl NativeExchange {
         pythonize(py, &lineage).map_err(|e| to_py_err(e.to_string()))
     }
 
+    /// Resolve the soonest-closing currently-active market in `series_ticker`.
+    /// Returns `None` if the series resolves but has no active market right now.
+    fn next_active_market_in_series<'py>(
+        &self,
+        py: Python<'py>,
+        series_ticker: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let series_ticker = series_ticker.to_string();
+        let rt = get_runtime();
+        let result = py.detach(|| rt.block_on(inner.next_active_market_in_series(&series_ticker)));
+        let market = result.map_err(|e| to_py_err(e.to_string()))?;
+        pythonize(py, &market).map_err(|e| to_py_err(e.to_string()))
+    }
+
     #[pyo3(signature = (asset_id, outcome, side, price, size, order_type="gtc"))]
     #[allow(clippy::too_many_arguments)]
     fn create_order<'py>(
