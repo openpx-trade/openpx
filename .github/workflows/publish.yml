@@ -192,3 +192,25 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # 6. Notify openpx-mcp that a new release is out so it can refresh its
+  # pinned openpx dependencies and re-publish in lockstep.
+  #
+  # Fires `repository_dispatch` (event type `openpx-release`) into
+  # `openpx-trade/openpx-mcp`. Cross-repo dispatch needs a token with
+  # write access on the target — store a fine-grained PAT (or GitHub App
+  # token) as `MCP_DISPATCH_TOKEN` on this repo. The default
+  # `GITHUB_TOKEN` is scoped to this repo only and can't fire here.
+  # ---------------------------------------------------------------------------
+  notify-mcp:
+    name: Notify openpx-mcp
+    needs: [publish-crates, publish-python, publish-node]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.MCP_DISPATCH_TOKEN }}
+          repository: openpx-trade/openpx-mcp
+          event-type: openpx-release
+          client-payload: '{"tag": "${{ github.event.release.tag_name }}"}'
