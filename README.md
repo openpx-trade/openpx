@@ -31,33 +31,37 @@ OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC marke
 
 ### Rust core
 
-_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it._
+_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it. Walltime from criterion; CPU instructions and heap allocations from valgrind via iai-callgrind (deterministic, hardware-agnostic — same instruments Codspeed uses)._
 
-| Operation | OpenPX | polymarket_client_sdk_v2 | Speedup |
-|---|---:|---:|---:|
-| Parse Polymarket book (5-min BTC fixture) | 4.38 µs | 5.84 µs | **1.33×** |
+| Operation | Metric | OpenPX | polymarket_client_sdk_v2 | Speedup |
+|---|---|---:|---:|---:|
+| Parse Polymarket book (5-min BTC fixture) | Walltime | 4.38 µs | 5.84 µs | **1.33×** |
 
 ### Python SDK
 
-| Operation | OpenPX | py-clob-client | Speedup |
-|---|---:|---:|---:|
-| Polymarket fetch_orderbook (5-min BTC, live) | 276.21 ms | 362.99 ms | **1.31×** |
+_Walltime over real, unauthenticated HTTP round-trips. CPU instructions and heap allocations aren't reported per-language in the README — Codspeed only exposes those instruments for compiled-language harnesses (see Rust above and the dashboard for trends)._
 
-| Operation | OpenPX | kalshi-python | Speedup |
-|---|---:|---:|---:|
-| Kalshi fetch_orderbook (15-min BTC, live) | 363.96 ms | 366.15 ms | **1.01×** |
+| Operation | Metric | OpenPX | py-clob-client | Speedup |
+|---|---|---:|---:|---:|
+| Polymarket fetch_orderbook (5-min BTC, live) | Walltime | 276.21 ms | 362.99 ms | **1.31×** |
+
+| Operation | Metric | OpenPX | kalshi-python | Speedup |
+|---|---|---:|---:|---:|
+| Kalshi fetch_orderbook (15-min BTC, live) | Walltime | 363.96 ms | 366.15 ms | **1.01×** |
 
 ### TypeScript SDK
 
-| Operation | OpenPX | @polymarket/clob-client | Speedup |
-|---|---:|---:|---:|
-| Polymarket fetch_orderbook (5-min BTC, live) | 261.89 ms | 278.14 ms | **1.06×** |
+_Walltime over real, unauthenticated HTTP round-trips._
 
-| Operation | OpenPX | kalshi-typescript | Speedup |
-|---|---:|---:|---:|
-| Kalshi fetch_orderbook (15-min BTC, live) | 370.13 ms | 385.13 ms | **1.04×** |
+| Operation | Metric | OpenPX | @polymarket/clob-client | Speedup |
+|---|---|---:|---:|---:|
+| Polymarket fetch_orderbook (5-min BTC, live) | Walltime | 261.89 ms | 278.14 ms | **1.06×** |
 
-<sub>Last updated: 2026-05-05 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Raw data: [benches/comparative/results/](benches/comparative/results/)</sub>
+| Operation | Metric | OpenPX | kalshi-typescript | Speedup |
+|---|---|---:|---:|---:|
+| Kalshi fetch_orderbook (15-min BTC, live) | Walltime | 370.13 ms | 385.13 ms | **1.04×** |
+
+<sub>Last updated: 2026-05-12 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Raw data: [benches/comparative/results/](benches/comparative/results/)</sub>
 <!-- BENCH:END -->
 
 ## Quick Start

@@ -56,7 +56,7 @@ jobs:
 
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-codspeed
+          tool: just,cargo-codspeed,iai-callgrind-runner@0.14
 
       - name: Set up .venv with build + bench tooling
         run: |
@@ -134,6 +134,16 @@ jobs:
       # build above; only the harness re-runs.
       - name: Refresh local criterion JSON for README render
         run: cargo bench -p px-bench-comparative -- --warm-up-time 1 --measurement-time 2
+
+      # iai-callgrind drives valgrind (cachegrind + DHAT) and writes
+      # per-bench JSON summaries to `target/iai/...` that the render
+      # step turns into the CPU-instructions and heap-allocation rows of
+      # the Rust comparison table. The `iai` feature gate keeps this
+      # bench out of plain `cargo bench` so non-Linux dev (macOS) keeps
+      # working with just the criterion walltime harness.
+      - name: Codspeed-equivalent Rust CPU + memory via iai-callgrind
+        run: cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
+        continue-on-error: true
 
       - name: Codspeed — Python walltime (Polymarket)
         uses: CodSpeedHQ/action@v3

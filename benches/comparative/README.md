@@ -64,10 +64,22 @@ CPU simulation and memory are Linux-only (Valgrind / eBPF); they run
 under Codspeed's `codspeed-macro` runner. Walltime runs everywhere
 including local laptops via `cargo bench` / `pytest` / `node bench.mjs`.
 
-The README block surfaces the walltime numbers from each harness's
-local JSON output (criterion / pytest-benchmark / tinybench); the
-Codspeed dashboard surfaces CPU instructions, allocations, and per-PR
-deltas across all three modes.
+The README block surfaces all three Rust modes plus walltime for the
+SDK harnesses:
+
+- **Rust walltime** — `cargo bench` (criterion local JSON)
+- **Rust CPU instructions** — `cargo bench --features iai` runs
+  `parse_polymarket_book_iai.rs` under valgrind/cachegrind; the
+  `Ir` cost lands in `target/iai/.../summary.json`.
+- **Rust heap allocations** — same iai-callgrind run, with DHAT
+  attached as a second valgrind tool; `total_bytes` lands in the same
+  summary file.
+- **Python / TS walltime** — pytest-benchmark / tinybench local JSON.
+
+The Codspeed dashboard surfaces the same three Rust modes plus per-PR
+deltas. Numbers should agree to within a few percent between the iai
+local JSON and Codspeed's simulation/memory reports — both use the
+same valgrind tools.
 
 ### Why the workflow runs each harness twice
 
@@ -109,6 +121,11 @@ cargo codspeed run -p px-bench-comparative --measurement-mode simulation
 cargo codspeed run -p px-bench-comparative --measurement-mode memory
 cargo codspeed run -p px-bench-comparative --measurement-mode walltime
 pytest --codspeed benches/comparative/python/
+
+# Or produce the Rust CPU-instruction + heap-allocation summaries that
+# feed the README (Linux only — requires valgrind + iai-callgrind-runner):
+cargo install iai-callgrind-runner@0.14
+cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
 ```
 
 ## Methodology details
