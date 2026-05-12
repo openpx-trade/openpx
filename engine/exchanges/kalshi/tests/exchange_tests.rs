@@ -548,24 +548,12 @@ async fn test_http_500_returns_api_error() {
 // Auth-required endpoints: return AuthRequired when not authenticated
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn test_fetch_orderbook_requires_auth() {
-    // #given
-    let config = KalshiConfig::new().with_verbose(false);
-    let exchange = Kalshi::new(config).unwrap();
-    assert!(!exchange.describe().has_create_order); // confirms not authed
-
-    // #when
-    let result = exchange.fetch_orderbook("TEST-TICKER").await;
-
-    // #then
-    assert!(result.is_err());
-    let err_str = result.unwrap_err().to_string();
-    assert!(
-        err_str.to_lowercase().contains("auth"),
-        "expected auth required error, got: {err_str}"
-    );
-}
+// `fetch_orderbook` was previously gated behind `ensure_auth` even though
+// Kalshi's `/markets/{ticker}/orderbook` endpoint is public per their
+// OpenAPI spec; the old `test_fetch_orderbook_requires_auth` validated
+// that bug-shaped behavior. Removed alongside the auth check itself in
+// the fix(kalshi) commit. The test below still covers the auth pattern
+// for genuinely-private endpoints like `fetch_balance`.
 
 #[tokio::test]
 async fn test_fetch_balance_requires_auth() {
