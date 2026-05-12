@@ -1416,6 +1416,15 @@ components:
               market_ticker: KXBTC-25APR30-T0915-B95000
               event_type: metadata_updated
               floor_strike: 95000
+        - name: metadataUpdatedSubtitle
+          summary: Market metadata updated event (subtitle)
+          payload:
+            type: market_lifecycle_v2
+            sid: 13
+            msg:
+              market_ticker: KXBTC15M-26APR160100-00
+              event_type: metadata_updated
+              yes_sub_title: above $95,000
     multivariateMarketLifecycle:
       name: multivariate_market_lifecycle
       title: Multivariate Market Lifecycle
@@ -2588,8 +2597,8 @@ components:
                 - `price_level_structure_updated` - Market price level structure
                 changed
 
-                - `metadata_updated` - Market metadata updated (initially floor
-                strike only, may expand to more fields)
+                - `metadata_updated` - Market metadata updated (e.g. floor
+                strike, yes_sub_title)
               enum:
                 - created
                 - deactivated
@@ -2664,6 +2673,11 @@ components:
               description: >-
                 Optional - This key will ONLY exist for metadata_updated events.
                 The updated floor strike value for the market
+            yes_sub_title:
+              type: string
+              description: >-
+                Optional - This key will ONLY exist for metadata_updated events.
+                The updated yes subtitle for the market
             additional_metadata:
               type: object
               description: Optional - This key will be emitted when the market is created
