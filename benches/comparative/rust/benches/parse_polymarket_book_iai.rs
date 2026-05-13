@@ -3,8 +3,8 @@
 //! orderbook fixture used by `parse_polymarket_book.rs`.
 //!
 //! Sibling to the criterion bench: same fixture, same two contestants,
-//! different instruments. Criterion measures wall-clock. This harness
-//! runs under valgrind and produces deterministic
+//! different instruments. Criterion measures wall-clock time. This
+//! harness runs under valgrind and produces two deterministic counters:
 //!
 //!  - **CPU instructions** (`Ir`) — cachegrind's executed-instruction
 //!    count. Hardware-agnostic, <1% variance. Mirrors Codspeed's
