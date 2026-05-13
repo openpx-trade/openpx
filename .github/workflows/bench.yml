@@ -74,6 +74,12 @@ jobs:
           .venv/bin/pip install py-clob-client || true
           .venv/bin/pip install kalshi-python cryptography || true
 
+      # `just node-build` runs `npm run build` which invokes `napi build`
+      # via @napi-rs/cli — a devDependency of sdks/typescript. Install
+      # node_modules first so the binary is on PATH; otherwise the recipe
+      # fails with `sh: 1: napi: not found`.
+      - run: cd sdks/typescript && npm install
+
       - name: Build OpenPX SDKs against current Rust core
         run: just venv="$(pwd)/.venv" python-build node-build
 
