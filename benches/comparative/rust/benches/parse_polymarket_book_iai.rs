@@ -72,8 +72,7 @@ fn openpx() -> (usize, usize) {
 #[library_benchmark]
 fn polymarket_sdk() -> (usize, usize) {
     let bytes = fixture_bytes();
-    let book: OrderBookSummaryResponse =
-        serde_json::from_slice(black_box(&bytes)).expect("decode");
+    let book: OrderBookSummaryResponse = serde_json::from_slice(black_box(&bytes)).expect("decode");
     black_box((book.bids.len(), book.asks.len()))
 }
 
