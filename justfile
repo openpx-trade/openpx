@@ -110,6 +110,11 @@ bench-compare:
     mkdir -p benches/comparative/results
     {{venv}}/bin/python tools/capture_bench_fixtures.py
     cargo bench -p px-bench-comparative
+    # iai-callgrind drives valgrind (Linux-only) for CPU instructions +
+    # DHAT heap allocations. The `-` prefix swallows failures so macOS
+    # devs still get the rest of the suite; CI re-runs this under Linux
+    # and the README populates with real numbers there.
+    -cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
     -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
         --benchmark-only \
         --benchmark-json=benches/comparative/results/python_polymarket.json -q

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Render comparative-benchmark JSON into the README's BENCH block.
 
-The bench suite runs three harnesses, each producing a different
-JSON shape that we read here:
+The bench suite runs four harnesses, each producing a different JSON
+shape that we read here:
 
-  - Rust (criterion / codspeed-criterion-compat):
+  - Rust walltime (criterion / codspeed-criterion-compat):
       target/criterion/<group>/<id>/new/estimates.json
+  - Rust CPU + memory (iai-callgrind, valgrind + DHAT):
+      target/iai/px-bench-comparative/parse_polymarket_book_iai/
+        parse_polymarket_book/<id>/summary.json
   - Python (pytest-benchmark / pytest-codspeed):
       benches/comparative/results/python_polymarket.json
       benches/comparative/results/python_kalshi.json
@@ -31,11 +34,15 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 RESULTS_DIR = ROOT / "benches" / "comparative" / "results"
 CRITERION_DIR = ROOT / "target" / "criterion"
+IAI_DIR = (
+    ROOT / "target" / "iai" / "px-bench-comparative" / "parse_polymarket_book_iai"
+)
 
 START_MARKER = "<!-- BENCH:START -->"
 END_MARKER = "<!-- BENCH:END -->"
@@ -60,10 +67,38 @@ def fmt_ns(ns: float | None) -> str:
     return f"{ns / 1_000_000_000:.2f} s"
 
 
-def fmt_speedup(openpx_ns: float | None, other_ns: float | None) -> str:
-    if openpx_ns is None or other_ns is None or openpx_ns <= 0:
+def fmt_count(n: float | None) -> str:
+    """Integer-ish count: instruction counts, allocation counts."""
+    if n is None:
         return "—"
-    ratio = other_ns / openpx_ns
+    if n < 1_000:
+        return f"{n:,.0f}"
+    if n < 1_000_000:
+        return f"{n / 1_000:.2f}k"
+    if n < 1_000_000_000:
+        return f"{n / 1_000_000:.2f}M"
+    return f"{n / 1_000_000_000:.2f}B"
+
+
+def fmt_bytes(b: float | None) -> str:
+    if b is None:
+        return "—"
+    if b < 1024:
+        return f"{b:,.0f} B"
+    if b < 1024**2:
+        return f"{b / 1024:.2f} KiB"
+    if b < 1024**3:
+        return f"{b / 1024**2:.2f} MiB"
+    return f"{b / 1024**3:.2f} GiB"
+
+
+def fmt_speedup(openpx_v: float | None, other_v: float | None) -> str:
+    """Speedup ratio. Works for any metric where lower-is-better
+    (walltime, instructions, bytes allocated). Ratio = other / openpx;
+    >1 means OpenPX is faster/leaner. Bolded when OpenPX wins."""
+    if openpx_v is None or other_v is None or openpx_v <= 0:
+        return "—"
+    ratio = other_v / openpx_v
     return f"**{ratio:.2f}×**" if ratio >= 1.0 else f"{ratio:.2f}×"
 
 
@@ -81,6 +116,57 @@ def _criterion_estimate(group: str, function_id: str) -> float | None:
         return float(json.loads(path.read_text())["mean"]["point_estimate"])
     except (KeyError, json.JSONDecodeError, ValueError):
         return None
+
+
+def _walk_for_key(node: Any, key: str) -> Any:
+    """Depth-first walk through a JSON tree returning the first value
+    found under `key`. iai-callgrind's summary schema has shifted across
+    minor versions; this tree walker is intentionally schema-agnostic so
+    a version bump won't silently zero out the README rows. Returns the
+    raw value (int / float / str / dict) — callers narrow further."""
+    if isinstance(node, dict):
+        if key in node:
+            return node[key]
+        for v in node.values():
+            found = _walk_for_key(v, key)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for v in node:
+            found = _walk_for_key(v, key)
+            if found is not None:
+                return found
+    return None
+
+
+def _iai_metric(function_id: str, metric: str) -> float | None:
+    """Read one metric from iai-callgrind's per-bench summary.json.
+
+    Supported metrics:
+      - "Ir"          → cachegrind instruction count (CPU simulation)
+      - "total_bytes" → DHAT cumulative bytes allocated (memory)
+
+    iai-callgrind nests the actual count under various keys depending on
+    the version (`new`, `count`, raw int). We accept any of those so the
+    parser survives runner upgrades."""
+    path = IAI_DIR / "parse_polymarket_book" / function_id / "summary.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return None
+    raw = _walk_for_key(payload, metric)
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, dict):
+        for k in ("new", "count", "value", "total"):
+            v = raw.get(k)
+            if isinstance(v, (int, float)):
+                return float(v)
+    return None
 
 
 def _pytest_benchmarks(filename: str) -> dict[str, float]:
@@ -127,37 +213,58 @@ def _tinybench_results(filename: str) -> dict[str, float]:
 @dataclass(frozen=True)
 class Row:
     operation: str
-    openpx_ns: float | None
-    other_ns: float | None
+    metric: str
+    openpx: float | None
+    other: float | None
+    formatter: Any  # callable: float | None -> str
 
 
 def render_table(other_label: str, rows: list[Row]) -> str:
-    """Three-column table: Operation | OpenPX | <other> | Speedup.
+    """Five-column table: Operation | Metric | OpenPX | <other> | Speedup.
 
-    Drops rows where both sides are missing so an empty section
-    collapses cleanly (the section header is added by the caller).
+    Each row picks its own formatter (ns / instruction count / bytes)
+    so the Rust table can mix walltime, CPU instructions, and heap
+    allocations under one header. Drops rows where both sides are
+    missing so an empty section collapses cleanly.
     """
-    rows = [r for r in rows if r.openpx_ns is not None or r.other_ns is not None]
+    rows = [r for r in rows if r.openpx is not None or r.other is not None]
     if not rows:
         return ""
     out = [
-        f"| Operation | OpenPX | {other_label} | Speedup |",
-        "|---|---:|---:|---:|",
+        f"| Operation | Metric | OpenPX | {other_label} | Speedup |",
+        "|---|---|---:|---:|---:|",
     ]
     for r in rows:
         out.append(
-            f"| {r.operation} | {fmt_ns(r.openpx_ns)} | {fmt_ns(r.other_ns)} | "
-            f"{fmt_speedup(r.openpx_ns, r.other_ns)} |"
+            f"| {r.operation} | {r.metric} | {r.formatter(r.openpx)} | "
+            f"{r.formatter(r.other)} | {fmt_speedup(r.openpx, r.other)} |"
         )
     return "\n".join(out)
 
 
 def render_rust_section() -> str:
+    op = "Parse Polymarket book (5-min BTC fixture)"
     rows = [
         Row(
-            "Parse Polymarket book (5-min BTC fixture)",
+            op,
+            "Walltime",
             _criterion_estimate("parse_polymarket_book", "openpx"),
             _criterion_estimate("parse_polymarket_book", "polymarket_sdk"),
+            fmt_ns,
+        ),
+        Row(
+            op,
+            "CPU instructions (cachegrind)",
+            _iai_metric("openpx", "Ir"),
+            _iai_metric("polymarket_sdk", "Ir"),
+            fmt_count,
+        ),
+        Row(
+            op,
+            "Heap allocations (DHAT)",
+            _iai_metric("openpx", "total_bytes"),
+            _iai_metric("polymarket_sdk", "total_bytes"),
+            fmt_bytes,
         ),
     ]
     table = render_table("polymarket_client_sdk_v2", rows)
@@ -166,7 +273,9 @@ def render_rust_section() -> str:
     return (
         "### Rust core\n\n"
         "_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client "
-        "that supports it._\n\n" + table
+        "that supports it. Walltime from criterion; CPU instructions and "
+        "heap allocations from valgrind via iai-callgrind (deterministic, "
+        "hardware-agnostic — same instruments Codspeed uses)._\n\n" + table
     )
 
 
@@ -181,8 +290,10 @@ def render_python_section() -> str:
         [
             Row(
                 "Polymarket fetch_orderbook (5-min BTC, live)",
+                "Walltime",
                 poly.get("test_openpx_fetch_polymarket_book"),
                 poly.get("test_pyclob_fetch_polymarket_book"),
+                fmt_ns,
             ),
         ],
     )
@@ -194,8 +305,10 @@ def render_python_section() -> str:
         [
             Row(
                 "Kalshi fetch_orderbook (15-min BTC, live)",
+                "Walltime",
                 kalshi.get("test_openpx_fetch_kalshi_book"),
                 kalshi.get("test_kalshi_python_fetch_kalshi_book"),
+                fmt_ns,
             ),
         ],
     )
@@ -204,7 +317,14 @@ def render_python_section() -> str:
 
     if not sections:
         return ""
-    return "### Python SDK\n\n" + "\n\n".join(sections)
+    return (
+        "### Python SDK\n\n"
+        "_Walltime over real, unauthenticated HTTP round-trips. CPU "
+        "instructions and heap allocations aren't reported per-language "
+        "in the README — Codspeed only exposes those instruments for "
+        "compiled-language harnesses (see Rust above and the dashboard "
+        "for trends)._\n\n" + "\n\n".join(sections)
+    )
 
 
 def render_typescript_section() -> str:
@@ -218,8 +338,10 @@ def render_typescript_section() -> str:
         [
             Row(
                 "Polymarket fetch_orderbook (5-min BTC, live)",
+                "Walltime",
                 poly.get("openpx::polymarket::fetch_orderbook"),
                 poly.get("polymarket-clob-client::fetch_orderbook"),
+                fmt_ns,
             ),
         ],
     )
@@ -243,8 +365,10 @@ def render_typescript_section() -> str:
         [
             Row(
                 "Kalshi fetch_orderbook (15-min BTC, live)",
+                "Walltime",
                 kalshi.get("openpx::kalshi::fetch_orderbook"),
                 kalshi_other,
+                fmt_ns,
             ),
         ],
     )
@@ -253,7 +377,11 @@ def render_typescript_section() -> str:
 
     if not sections:
         return ""
-    return "### TypeScript SDK\n\n" + "\n\n".join(sections)
+    return (
+        "### TypeScript SDK\n\n"
+        "_Walltime over real, unauthenticated HTTP round-trips._\n\n"
+        + "\n\n".join(sections)
+    )
 
 
 # ---------------------------------------------------------------------------
