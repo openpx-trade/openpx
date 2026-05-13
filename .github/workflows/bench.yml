@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: bench-${{ github.ref }}
@@ -95,40 +96,40 @@ jobs:
           done
 
       # ---------------------------------------------------------------
-      # Codspeed: build then run under each instrument. Every harness is
-      # wrapped in `CodSpeedHQ/action@v3` so all three modes (CPU sim,
+      # CodSpeed: build then run under each instrument. Every harness is
+      # wrapped in `CodSpeedHQ/action@v4` so all three modes (CPU sim,
       # memory, walltime) feed the dashboard with PR-level regression
       # alerts. The plugins simultaneously emit local JSON
       # (criterion/pytest-benchmark/tinybench) which the render step
       # turns into the README matrix.
       # ---------------------------------------------------------------
 
-      - name: Build Rust bench under Codspeed
+      - name: Build Rust bench under CodSpeed
         run: cargo codspeed build -p px-bench-comparative
 
-      - name: Codspeed — Rust CPU simulation
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — Rust CPU simulation
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
-          run: cargo codspeed run -p px-bench-comparative --measurement-mode simulation
+          mode: simulation
+          run: cargo codspeed run -p px-bench-comparative
         continue-on-error: true
 
-      - name: Codspeed — Rust memory
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — Rust memory
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
-          run: cargo codspeed run -p px-bench-comparative --measurement-mode memory
+          mode: memory
+          run: cargo codspeed run -p px-bench-comparative
         continue-on-error: true
 
-      - name: Codspeed — Rust walltime
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — Rust walltime
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
-          run: cargo codspeed run -p px-bench-comparative --measurement-mode walltime
+          mode: walltime
+          run: cargo codspeed run -p px-bench-comparative
 
       # `cargo codspeed run` doesn't emit `target/criterion` JSON in
       # instrumented mode — it pipes measurements straight to the
-      # Codspeed protocol. Run vanilla `cargo bench` once afterwards to
+      # CodSpeed protocol. Run vanilla `cargo bench` once afterwards to
       # produce the local criterion JSON the render step reads. Cheap
       # because the bench profile is already cached from the codspeed
       # build above; only the harness re-runs.
@@ -141,20 +142,20 @@ jobs:
       # the Rust comparison table. The `iai` feature gate keeps this
       # bench out of plain `cargo bench` so non-Linux dev (macOS) keeps
       # working with just the criterion walltime harness.
-      - name: Codspeed-equivalent Rust CPU + memory via iai-callgrind
+      - name: CodSpeed-equivalent Rust CPU + memory via iai-callgrind
         run: cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
         continue-on-error: true
 
-      - name: Codspeed — Python walltime (Polymarket)
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — Python walltime (Polymarket)
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          mode: simulation
           run: .venv/bin/pytest benches/comparative/python/bench_polymarket.py --codspeed -q
 
-      - name: Codspeed — Python walltime (Kalshi)
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — Python walltime (Kalshi)
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          mode: simulation
           run: .venv/bin/pytest benches/comparative/python/bench_kalshi.py --codspeed -q
 
       # Second pass to populate the local pytest-benchmark JSON for the
@@ -171,18 +172,18 @@ jobs:
             --benchmark-only \
             --benchmark-json=benches/comparative/results/python_kalshi.json -q || true
 
-      - name: Codspeed — TypeScript walltime (Polymarket)
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — TypeScript walltime (Polymarket)
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          mode: simulation
           run: |
             cd benches/comparative/typescript
             node bench_polymarket.mjs > ../results/typescript_polymarket.json
 
-      - name: Codspeed — TypeScript walltime (Kalshi)
-        uses: CodSpeedHQ/action@v3
+      - name: CodSpeed — TypeScript walltime (Kalshi)
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          mode: simulation
           run: |
             cd benches/comparative/typescript
             node bench_kalshi.mjs > ../results/typescript_kalshi.json

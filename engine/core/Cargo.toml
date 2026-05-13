@@ -48,7 +48,7 @@ serde_yaml = { version = "0.9", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "2", package = "codspeed-criterion-compat" }
 syn = { version = "2", features = ["full", "visit"] }
 
 [[bench]]
