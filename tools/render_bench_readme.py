@@ -217,6 +217,11 @@ class Row:
     openpx: float | None
     other: float | None
     formatter: Any  # callable: float | None -> str
+    # When True, keep the row even if both sides are missing — used for
+    # planned metrics whose data source hasn't run yet (e.g. iai-callgrind
+    # locally on macOS). The row renders with "—" placeholders so the
+    # README makes the metric structure explicit at all times.
+    always_show: bool = False
 
 
 def render_table(other_label: str, rows: list[Row]) -> str:
@@ -224,10 +229,14 @@ def render_table(other_label: str, rows: list[Row]) -> str:
 
     Each row picks its own formatter (ns / instruction count / bytes)
     so the Rust table can mix walltime, CPU instructions, and heap
-    allocations under one header. Drops rows where both sides are
-    missing so an empty section collapses cleanly.
+    allocations under one header. Rows with `always_show=True` survive
+    even when both sides are missing; others drop so a fully-empty
+    section collapses cleanly.
     """
-    rows = [r for r in rows if r.openpx is not None or r.other is not None]
+    rows = [
+        r for r in rows
+        if r.always_show or r.openpx is not None or r.other is not None
+    ]
     if not rows:
         return ""
     out = [
@@ -252,12 +261,17 @@ def render_rust_section() -> str:
             _criterion_estimate("parse_polymarket_book", "polymarket_sdk"),
             fmt_ns,
         ),
+        # CPU + memory rows always render — even before iai-callgrind has
+        # produced data on a Linux runner — so the README never hides the
+        # metric structure. Empty cells show "—" until the next bench
+        # workflow run on main fills them in.
         Row(
             op,
             "CPU instructions (cachegrind)",
             _iai_metric("openpx", "Ir"),
             _iai_metric("polymarket_sdk", "Ir"),
             fmt_count,
+            always_show=True,
         ),
         Row(
             op,
@@ -265,6 +279,7 @@ def render_rust_section() -> str:
             _iai_metric("openpx", "total_bytes"),
             _iai_metric("polymarket_sdk", "total_bytes"),
             fmt_bytes,
+            always_show=True,
         ),
     ]
     table = render_table("polymarket_client_sdk_v2", rows)

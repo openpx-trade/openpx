@@ -36,6 +36,8 @@ _Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that support
 | Operation | Metric | OpenPX | polymarket_client_sdk_v2 | Speedup |
 |---|---|---:|---:|---:|
 | Parse Polymarket book (5-min BTC fixture) | Walltime | 4.38 µs | 5.84 µs | **1.33×** |
+| Parse Polymarket book (5-min BTC fixture) | CPU instructions (cachegrind) | — | — | — |
+| Parse Polymarket book (5-min BTC fixture) | Heap allocations (DHAT) | — | — | — |
 
 ### Python SDK
 
