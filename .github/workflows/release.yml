@@ -44,6 +44,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install Python deps for doc generators
+        run: pip install pyyaml
       - name: Regenerate openapi + asyncapi
         run: |
           python3 tools/gen_openapi.py
