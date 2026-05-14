@@ -30,7 +30,7 @@ polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob"] }
 # the harness emits cycle-count / memory / walltime measurements; under
 # plain `cargo bench` it falls through to vanilla criterion timings, so
 # local runs still work without the Codspeed CLI installed.
-codspeed-criterion-compat = "2"
+codspeed-criterion-compat = "4"
 # iai-callgrind drives valgrind (cachegrind + DHAT) and writes per-bench
 # JSON summaries to `target/iai/...`. The render step reads `Ir`
 # (instruction count) and `total_bytes` (heap allocations) into the

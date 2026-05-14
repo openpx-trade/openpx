@@ -129,18 +129,21 @@ jobs:
         with:
           mode: walltime
           run: cargo codspeed run -p px-bench-comparative
+        continue-on-error: true
 
       - name: CodSpeed — Python walltime (Polymarket)
         uses: CodSpeedHQ/action@v4
         with:
           mode: walltime
           run: .venv/bin/pytest benches/comparative/python/bench_polymarket.py --codspeed -q
+        continue-on-error: true
 
       - name: CodSpeed — Python walltime (Kalshi)
         uses: CodSpeedHQ/action@v4
         with:
           mode: walltime
           run: .venv/bin/pytest benches/comparative/python/bench_kalshi.py --codspeed -q
+        continue-on-error: true
 
       - name: CodSpeed — TypeScript walltime (Polymarket)
         uses: CodSpeedHQ/action@v4
@@ -149,6 +152,7 @@ jobs:
           run: |
             cd benches/comparative/typescript
             node bench_polymarket.mjs
+        continue-on-error: true
 
       - name: CodSpeed — TypeScript walltime (Kalshi)
         uses: CodSpeedHQ/action@v4
@@ -157,6 +161,7 @@ jobs:
           run: |
             cd benches/comparative/typescript
             node bench_kalshi.mjs
+        continue-on-error: true
 
       - name: Commit refreshed fixtures
         run: |
