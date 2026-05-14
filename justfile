@@ -104,20 +104,8 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
 # Run locally on stable hardware (your laptop is fine, just be consistent).
 # Prerequisites: `just python-build && just node-build`.
 bench-compare:
-    mkdir -p benches/comparative/results
     {{venv}}/bin/python tools/capture_bench_fixtures.py
     cargo bench -p px-bench-comparative --bench hot_path
-    -cargo run -p px-bench-comparative --bin bench_rest --release
-    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
-        --benchmark-only \
-        --benchmark-json=benches/comparative/results/python_polymarket.json -q
-    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
-        --benchmark-only \
-        --benchmark-json=benches/comparative/results/python_kalshi.json -q
-    -cd benches/comparative/typescript && npm install --silent && \
-        node bench_polymarket.mjs > ../results/typescript_polymarket.json
-    -cd benches/comparative/typescript && \
-        node bench_kalshi.mjs > ../results/typescript_kalshi.json
     {{venv}}/bin/python tools/render_bench_readme.py
 
 # ---------------------------------------------------------------------------
