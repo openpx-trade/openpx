@@ -38,6 +38,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 CRITERION = ROOT / "target" / "criterion"
+RESULTS = ROOT / "benches" / "comparative" / "results"
 
 START = "<!-- BENCH:START -->"
 END = "<!-- BENCH:END -->"
@@ -77,39 +78,74 @@ def fmt_pm(mean: Optional[float], sd: Optional[float]) -> str:
     return f"{fmt_time(mean)} ± {fmt_time(sd)}"
 
 
+def pytest_stat(filename: str, test_name: str) -> tuple[Optional[float], Optional[float]]:
+    path = RESULTS / filename
+    if not path.exists():
+        return None, None
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return None, None
+    for entry in payload.get("benchmarks", []):
+        if entry.get("name") == test_name:
+            stats = entry.get("stats", {})
+            mean = stats.get("mean")
+            sd = stats.get("stddev")
+            return (
+                mean * 1e9 if mean is not None else None,
+                sd * 1e9 if sd is not None else None,
+            )
+    return None, None
+
+
 def build_block() -> str:
     today = _dt.date.today().isoformat()
 
     # --- 1. Real-World WS table -------------------------------------------------
     op_mean, op_sd = criterion_estimate("ws_decode_apply", "openpx")
-    sd_mean, sd_sd = criterion_estimate("ws_decode_apply", "polymarket_sdk")
+    op_kal_mean, op_kal_sd = criterion_estimate("ws_decode_apply_kalshi", "openpx")
+    sdk_mean, sdk_sd = criterion_estimate("ws_decode_apply", "polymarket_sdk")
+    diy_poly_mean, diy_poly_sd = pytest_stat("python_ws_diy.json", "test_diy_python_polymarket")
+    diy_kal_mean, diy_kal_sd = pytest_stat("python_ws_diy.json", "test_diy_python_kalshi")
 
-    ratio = sd_mean / op_mean if (op_mean and sd_mean and op_mean > 0) else None
-    pct_faster = (ratio - 1.0) * 100 if ratio else None
+    ratio_sdk = sdk_mean / op_mean if (op_mean and sdk_mean and op_mean > 0) else None
+    ratio_py = diy_poly_mean / op_mean if (op_mean and diy_poly_mean and op_mean > 0) else None
+    ratio_kal = diy_kal_mean / op_mean if (op_mean and diy_kal_mean and op_mean > 0) else None
 
     # Coefficient of variation as a "consistency" proxy.
     op_cv = (op_sd / op_mean) if (op_mean and op_sd) else None
-    sd_cv = (sd_sd / sd_mean) if (sd_mean and sd_sd) else None
+    sdk_cv = (sdk_sd / sdk_mean) if (sdk_mean and sdk_sd) else None
     consistency_pct = (
-        (1.0 - op_cv / sd_cv) * 100 if (op_cv and sd_cv and sd_cv > 0) else None
+        (1.0 - op_cv / sdk_cv) * 100 if (op_cv and sdk_cv and sdk_cv > 0) else None
     )
 
+    def py_time_cell(mean: Optional[float], sd: Optional[float]) -> str:
+        if mean is None:
+            return "_(no fixture — run skipped)_"
+        return fmt_pm(mean, sd)
+
     real_world_table = [
-        "| Operation | OpenPX | polymarket_client_sdk_v2 |",
-        "|---|---|---|",
-        f"| **Decode + apply 999 WS book frames** | **{fmt_pm(op_mean, op_sd)}** | "
-        f"{fmt_pm(sd_mean, sd_sd)} |",
+        "| Client | Frames | Decode + apply (999 frames) |",
+        "|---|---|---:|",
+        f"| **OpenPX (Rust)** | Polymarket | **{fmt_pm(op_mean, op_sd)}** |",
+        f"| **OpenPX (Rust)** | Kalshi | **{fmt_pm(op_kal_mean, op_kal_sd)}** |",
+        f"| `polymarket_client_sdk_v2` (Rust) | Polymarket | {fmt_pm(sdk_mean, sdk_sd)} |",
+        f"| `py-clob-client` _(no WS — DIY ~30 lines)_ | Polymarket | {py_time_cell(diy_poly_mean, diy_poly_sd)} |",
+        f"| `kalshi-python` _(no WS — DIY ~30 lines)_ | Kalshi | {py_time_cell(diy_kal_mean, diy_kal_sd)} |",
     ]
 
     bullets: list[str] = []
-    if pct_faster is not None:
-        bullets.append(f"- **{pct_faster:.1f}% faster**")
+    if ratio_sdk:
+        bullets.append(f"- **{(ratio_sdk - 1.0) * 100:.1f}% faster** than `polymarket_client_sdk_v2` (Rust head-to-head)")
+    if ratio_py:
+        bullets.append(f"- **{ratio_py:.2f}× faster** than hand-rolled Python (`py-clob-client` doesn't ship WebSocket)")
+    if ratio_kal:
+        bullets.append(f"- **{ratio_kal:.2f}× faster** than hand-rolled Python (`kalshi-python` doesn't ship WebSocket)")
     if consistency_pct is not None and consistency_pct > 0:
-        bullets.append(f"- **{consistency_pct:.1f}% more consistent** (lower coefficient of variation)")
+        bullets.append(f"- **{consistency_pct:.1f}% more consistent** than the Rust SDK (lower coefficient of variation)")
     bullets.append(
-        "- **Only client** that ships typed WebSocket support across Polymarket *and* "
-        "Kalshi in all three languages (Rust + Python + TypeScript); the official "
-        "Python and TypeScript SDKs don't ship WebSocket at all."
+        "- **Only client** shipping typed WebSocket support across Polymarket *and* "
+        "Kalshi in all three languages (Rust + Python + TypeScript via FFI)."
     )
 
     # --- 2. Computational Performance ------------------------------------------
@@ -140,7 +176,9 @@ def build_block() -> str:
     ]
 
     # --- 3. Prose sections ------------------------------------------------------
-    pct_str = f"{pct_faster:.1f}%" if pct_faster else "double-digit %"
+    pct_str = (
+        f"{(ratio_sdk - 1.0) * 100:.1f}%" if ratio_sdk else "double-digit %"
+    )
     optimizations_para = (
         f"The {pct_str} WebSocket speedup comes from a single-shape `decode_frame` "
         "fast path (one `serde::Deserialize` target covers `book`, `price_change`, "
@@ -176,15 +214,15 @@ def build_block() -> str:
         "",
         "**Real-World WebSocket Performance (live captured frames)**",
         "",
-        "End-to-end decode + apply over 999 real Polymarket book frames captured from a live 5-min BTC market — measures the cost of turning wire bytes into typed orderbook updates, the operation that dominates an HFT loop once you're subscribed:",
+        "End-to-end decode + apply over 999 real WebSocket book frames captured from live 5-min BTC markets — measures the cost of turning wire bytes into typed orderbook updates, the operation that dominates an HFT loop once you're subscribed. `py-clob-client` and `kalshi-python` don't ship WebSocket at all, so the Python rows measure what a user pays rolling their own pipeline (the obvious ~30-line `json.loads` + dict apply, on the same captured frames):",
         "",
         *real_world_table,
         "",
-        "**Performance vs `polymarket_client_sdk_v2`:**",
+        "**Performance vs the alternatives:**",
         "",
         *bullets,
         "",
-        "**Benchmark Methodology:** All benchmarks run side-by-side on the same machine using criterion, decoding the same captured JSONL frames byte-for-byte. Both libraries deserialize identical inputs into their respective typed message shapes; the ratio reflects pure decoder + orderbook-apply overhead with no network jitter. See [`benches/comparative/rust/benches/hot_path.rs`](benches/comparative/rust/benches/hot_path.rs) for the complete implementation.",
+        "**Benchmark Methodology:** Rust benches use criterion; Python uses `pytest-benchmark` with `pedantic(rounds=5)`. All four clients replay the same captured JSONL frames byte-for-byte — no network, no jitter. Ratios reflect pure decoder + orderbook-apply overhead. See [`benches/comparative/rust/benches/hot_path.rs`](benches/comparative/rust/benches/hot_path.rs) and [`benches/comparative/python/bench_ws_diy.py`](benches/comparative/python/bench_ws_diy.py) for the full implementations.",
         "",
         "**Computational Performance (pure CPU, no I/O)**",
         "",

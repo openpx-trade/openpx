@@ -128,6 +128,50 @@ fn bench_ws_decode(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. ws_decode_apply_kalshi — OpenPX-only (no upstream Rust SDK for Kalshi)
+// ---------------------------------------------------------------------------
+
+fn load_kalshi_ws_frames() -> Vec<Vec<u8>> {
+    let raw = load_fixture("kalshi_ws_book.jsonl");
+    raw.split(|&b| b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_vec())
+        .collect()
+}
+
+fn bench_ws_decode_kalshi(c: &mut Criterion) {
+    let frames = load_kalshi_ws_frames();
+    if frames.is_empty() {
+        // Kalshi fixture is auth-gated; skip cleanly if unavailable so the
+        // rest of the suite still runs.
+        return;
+    }
+
+    let mut group = c.benchmark_group("ws_decode_apply_kalshi");
+    group.throughput(Throughput::Elements(frames.len() as u64));
+
+    // OpenPX's Kalshi WS path: `decode_value` to a generic JSON `Value`,
+    // then dispatch on the `type` field — mirrors `handle_message` in
+    // `engine/exchanges/kalshi/src/websocket.rs`.
+    let openpx_input = frames.clone();
+    group.bench_function("openpx", |b| {
+        b.iter(|| {
+            let mut decoded = 0usize;
+            for frame in &openpx_input {
+                let s = std::str::from_utf8(frame).unwrap();
+                if let Some(value) = px_core::decode_value(s) {
+                    let _msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    decoded += 1;
+                }
+            }
+            black_box(decoded)
+        })
+    });
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
 // 2. apply_book_updates — 1k-message WS replay, OpenPX-only throughput
 // ---------------------------------------------------------------------------
 
@@ -198,5 +242,11 @@ fn bench_orderbook_ops(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_ws_decode, bench_apply_updates, bench_orderbook_ops);
+criterion_group!(
+    benches,
+    bench_ws_decode,
+    bench_ws_decode_kalshi,
+    bench_apply_updates,
+    bench_orderbook_ops
+);
 criterion_main!(benches);

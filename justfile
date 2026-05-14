@@ -104,8 +104,12 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
 # Run locally on stable hardware (your laptop is fine, just be consistent).
 # Prerequisites: `just python-build && just node-build`.
 bench-compare:
+    mkdir -p benches/comparative/results
     {{venv}}/bin/python tools/capture_bench_fixtures.py
     cargo bench -p px-bench-comparative --bench hot_path
+    -{{venv}}/bin/pytest benches/comparative/python/bench_ws_diy.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_ws_diy.json -q
     {{venv}}/bin/python tools/render_bench_readme.py
 
 # ---------------------------------------------------------------------------

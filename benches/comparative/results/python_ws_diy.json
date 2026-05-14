@@ -1,0 +1,127 @@
+{
+    "machine_info": {
+        "node": "Milinds-MacBook-Pro.local",
+        "processor": "arm",
+        "machine": "arm64",
+        "python_compiler": "Clang 16.0.0 (clang-1600.0.26.6)",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.14.3",
+        "python_version": "3.14.3",
+        "python_build": [
+            "v3.14.3:323c59a5e34",
+            "Feb  3 2026 11:41:37"
+        ],
+        "release": "25.2.0",
+        "system": "Darwin",
+        "cpu": {
+            "python_version": "3.14.3.final.0 (64 bit)",
+            "cpuinfo_version": [
+                9,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "9.0.0",
+            "arch": "ARM_8",
+            "bits": 64,
+            "count": 14,
+            "arch_string_raw": "arm64",
+            "brand_raw": "Apple M4 Pro"
+        }
+    },
+    "commit_info": {
+        "id": "cd978a2ed9a261e0d69d0beb75ad318b046a5b4b",
+        "time": "2026-05-14T14:54:57-07:00",
+        "author_time": "2026-05-14T14:54:57-07:00",
+        "dirty": true,
+        "project": "openpx",
+        "branch": "chore/bench-refresh-2026-05-14"
+    },
+    "benchmarks": [
+        {
+            "group": null,
+            "name": "test_diy_python_polymarket",
+            "fullname": "benches/comparative/python/bench_ws_diy.py::test_diy_python_polymarket",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.002535749925300479,
+                "max": 0.0025981671642512083,
+                "mean": 0.0025650500785559414,
+                "stddev": 2.4281986641236315e-05,
+                "rounds": 5,
+                "median": 0.002560208085924387,
+                "iqr": 3.62599384970963e-05,
+                "q1": 0.0025477816234342754,
+                "q3": 0.0025840415619313717,
+                "iqr_outliers": 0,
+                "stddev_outliers": 2,
+                "outliers": "2;0",
+                "ld15iqr": 0.002535749925300479,
+                "hd15iqr": 0.0025981671642512083,
+                "ops": 389.85593628759665,
+                "total": 0.012825250392779708,
+                "data": [
+                    0.0025793330278247595,
+                    0.002560208085924387,
+                    0.002551792189478874,
+                    0.002535749925300479,
+                    0.0025981671642512083
+                ],
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_diy_python_kalshi",
+            "fullname": "benches/comparative/python/bench_ws_diy.py::test_diy_python_kalshi",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.0014738328754901886,
+                "max": 0.001496999990195036,
+                "mean": 0.0014893332030624152,
+                "stddev": 9.144888733750925e-06,
+                "rounds": 5,
+                "median": 0.0014929999597370625,
+                "iqr": 9.66718653216958e-06,
+                "q1": 0.001485082961153239,
+                "q3": 0.0014947501476854086,
+                "iqr_outliers": 0,
+                "stddev_outliers": 1,
+                "outliers": "1;0",
+                "ld15iqr": 0.0014738328754901886,
+                "hd15iqr": 0.001496999990195036,
+                "ops": 671.4414195183238,
+                "total": 0.007446666015312076,
+                "data": [
+                    0.001496999990195036,
+                    0.0014888329897075891,
+                    0.0014929999597370625,
+                    0.0014738328754901886,
+                    0.0014940002001821995
+                ],
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2026-05-14T22:10:22.536320+00:00",
+    "version": "5.2.3"
+}
