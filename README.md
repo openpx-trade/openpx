@@ -27,34 +27,39 @@ Rust engine with Python & TypeScript SDKs.
 
 **Real-World WebSocket Performance (live captured frames)**
 
-End-to-end decode + apply over 999 real Polymarket book frames captured from a live 5-min BTC market — measures the cost of turning wire bytes into typed orderbook updates, the operation that dominates an HFT loop once you're subscribed:
+End-to-end decode + apply over 999 real WebSocket book frames captured from live 5-min BTC markets — measures the cost of turning wire bytes into typed orderbook updates, the operation that dominates an HFT loop once you're subscribed. `py-clob-client` and `kalshi-python` don't ship WebSocket at all, so the Python rows measure what a user pays rolling their own pipeline (the obvious ~30-line `json.loads` + dict apply, on the same captured frames):
 
-| Operation | OpenPX | polymarket_client_sdk_v2 |
-|---|---|---|
-| **Decode + apply 999 WS book frames** | **760.71 µs ± 8.03 µs** | 1.18 ms ± 13.86 µs |
+| Client | Frames | Decode + apply (999 frames) |
+|---|---|---:|
+| **OpenPX (Rust)** | Polymarket | **727.85 µs ± 9.30 µs** |
+| **OpenPX (Rust)** | Kalshi | **563.90 µs ± 6.93 µs** |
+| `polymarket_client_sdk_v2` (Rust) | Polymarket | 1.14 ms ± 7.91 µs |
+| `py-clob-client` _(no WS — DIY ~30 lines)_ | Polymarket | 2.57 ms ± 24.28 µs |
+| `kalshi-python` _(no WS — DIY ~30 lines)_ | Kalshi | 1.49 ms ± 9.14 µs |
 
-**Performance vs `polymarket_client_sdk_v2`:**
+**Performance vs the alternatives:**
 
-- **55.3% faster**
-- **9.9% more consistent** (lower coefficient of variation)
-- **Only client** that ships typed WebSocket support across Polymarket *and* Kalshi in all three languages (Rust + Python + TypeScript); the official Python and TypeScript SDKs don't ship WebSocket at all.
+- **57.1% faster** than `polymarket_client_sdk_v2` (Rust head-to-head)
+- **3.52× faster** than hand-rolled Python (`py-clob-client` doesn't ship WebSocket)
+- **2.05× faster** than hand-rolled Python (`kalshi-python` doesn't ship WebSocket)
+- **Only client** shipping typed WebSocket support across Polymarket *and* Kalshi in all three languages (Rust + Python + TypeScript via FFI).
 
-**Benchmark Methodology:** All benchmarks run side-by-side on the same machine using criterion, decoding the same captured JSONL frames byte-for-byte. Both libraries deserialize identical inputs into their respective typed message shapes; the ratio reflects pure decoder + orderbook-apply overhead with no network jitter. See [`benches/comparative/rust/benches/hot_path.rs`](benches/comparative/rust/benches/hot_path.rs) for the complete implementation.
+**Benchmark Methodology:** Rust benches use criterion; Python uses `pytest-benchmark` with `pedantic(rounds=5)`. All four clients replay the same captured JSONL frames byte-for-byte — no network, no jitter. Ratios reflect pure decoder + orderbook-apply overhead. See [`benches/comparative/rust/benches/hot_path.rs`](benches/comparative/rust/benches/hot_path.rs) and [`benches/comparative/python/bench_ws_diy.py`](benches/comparative/python/bench_ws_diy.py) for the full implementations.
 
 **Computational Performance (pure CPU, no I/O)**
 
 | Operation | Performance | Notes |
 |---|---|---|
-| **WS decode + apply (999 frames)** | 760.71 µs | ~761 ns / frame, ~1.3M frames/sec, zero-allocation |
+| **WS decode + apply (999 frames)** | 727.85 µs | ~729 ns / frame, ~1.4M frames/sec, zero-allocation |
 | **`Orderbook::best_bid`** | 0.63 ns | ~1.6B ops/sec, sorted-vec O(1) |
-| **`Orderbook::spread`** | 0.62 ns | ~1.6B ops/sec, branchless |
+| **`Orderbook::spread`** | 0.63 ns | ~1.6B ops/sec, branchless |
 | **`Orderbook::mid_price`** | 0.63 ns | ~1.6B ops/sec, branchless |
 
 Run the WS hot-path benchmark locally with `cargo bench -p px-bench-comparative --bench hot_path`.
 
 **Key Performance Optimizations:**
 
-The 55.3% WebSocket speedup comes from a single-shape `decode_frame` fast path (one `serde::Deserialize` target covers `book`, `price_change`, `last_trade_price`, and `tick_size_change` — no tagged-enum dispatch), a sorted-`Vec` orderbook that keeps both sides in contiguous, cache-friendly arrays, and a zero-allocation apply pipeline that reuses level buffers instead of churning the heap.
+The 57.1% WebSocket speedup comes from a single-shape `decode_frame` fast path (one `serde::Deserialize` target covers `book`, `price_change`, `last_trade_price`, and `tick_size_change` — no tagged-enum dispatch), a sorted-`Vec` orderbook that keeps both sides in contiguous, cache-friendly arrays, and a zero-allocation apply pipeline that reuses level buffers instead of churning the heap.
 
 **Memory Architecture**
 
