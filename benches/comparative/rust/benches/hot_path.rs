@@ -185,12 +185,8 @@ fn bench_apply_updates(c: &mut Criterion) {
 fn bench_orderbook_ops(c: &mut Criterion) {
     let book = make_book_from_fixture();
     let mut group = c.benchmark_group("orderbook_ops");
-    group.bench_function("openpx_best_bid", |b| {
-        b.iter(|| black_box(book.best_bid()))
-    });
-    group.bench_function("openpx_best_ask", |b| {
-        b.iter(|| black_box(book.best_ask()))
-    });
+    group.bench_function("openpx_best_bid", |b| b.iter(|| black_box(book.best_bid())));
+    group.bench_function("openpx_best_ask", |b| b.iter(|| black_box(book.best_ask())));
     group.bench_function("openpx_spread", |b| b.iter(|| black_box(book.spread())));
     group.bench_function("openpx_mid_price", |b| {
         b.iter(|| black_box(book.mid_price()))
@@ -198,5 +194,10 @@ fn bench_orderbook_ops(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_ws_decode, bench_apply_updates, bench_orderbook_ops);
+criterion_group!(
+    benches,
+    bench_ws_decode,
+    bench_apply_updates,
+    bench_orderbook_ops
+);
 criterion_main!(benches);
