@@ -35,15 +35,15 @@ _Pure CPU, no network. Same byte buffer in, same op._
 
 | Decode + apply 999 WS frames | OpenPX | polymarket_client_sdk_v2 | Speedup |
 |---|---:|---:|---:|
-| Polymarket book channel | 1.21 ms | 1.79 ms | **1.49×** |
+| Polymarket book channel | 760.71 µs | 1.18 ms | **1.55×** |
 
 **OpenPX-only — architectural primitives the SDKs don't expose:**
 
 | Operation | OpenPX | Note |
 |---|---:|---|
-| Apply 1024 book updates (sustained) | 26.69 µs | ≈ 38.4 M ops/sec |
-| `Orderbook::best_bid` (sorted-vec) | 0.62 ns | constant-time |
-| `Orderbook::spread` | 0.63 ns | constant-time |
+| Apply 1024 book updates (sustained) | 27.77 µs | ≈ 36.9 M ops/sec |
+| `Orderbook::best_bid` (sorted-vec) | 0.63 ns | constant-time |
+| `Orderbook::spread` | 0.62 ns | constant-time |
 | `Orderbook::mid_price` | 0.63 ns | constant-time |
 
 ### REST `fetch_orderbook` — head-to-head
@@ -52,9 +52,9 @@ _20 iterations × 100 ms gap, same machine, same minute. Live unauthenticated en
 
 | Lang | Exchange | OpenPX | Official SDK | Speedup |
 |---|---|---:|---:|---:|
-| Python | Polymarket | 278.32 ms ± 31.35 ms | py-clob-client 271.64 ms ± 26.99 ms | 0.98× |
-| Python | Kalshi | 196.44 ms ± 48.31 ms | kalshi-python 224.09 ms ± 50.21 ms | **1.14×** |
-| TypeScript | Polymarket | 268.30 ms ± 25.53 ms | @polymarket/clob-client 268.09 ms ± 25.53 ms | 1.00× |
+| Python | Polymarket | 274.08 ms ± 30.76 ms | py-clob-client 289.54 ms ± 38.36 ms | **1.06×** |
+| Python | Kalshi | 219.57 ms ± 50.64 ms | kalshi-python 222.69 ms ± 44.33 ms | **1.01×** |
+| TypeScript | Polymarket | 269.74 ms ± 26.01 ms | @polymarket/clob-client 267.75 ms ± 16.90 ms | 0.99× |
 
 ### WebSocket — typed, unified, OpenPX-exclusive
 
@@ -71,9 +71,9 @@ _None of the official Python or TypeScript SDKs ship WebSocket support. Users re
 
 | Path | Time for 999 frames | per-message | Note |
 |---|---:|---:|---|
-| **OpenPX (Rust hot path)** | 1.21 ms | 1.21 µs | what runs under the FFI for Python/TS users |
-| DIY Python (`json.loads` + `dict`) | 3.72 ms ± 50.18 µs | 3.72 µs | hand-rolled, ~30 lines |
-| DIY TypeScript (`JSON.parse` + `Map`) | 2.16 ms ± 52.32 µs | 2.16 µs | hand-rolled, ~30 lines |
+| **OpenPX (Rust hot path)** | 760.71 µs | 761.5 ns | what runs under the FFI for Python/TS users |
+| DIY Python (`json.loads` + `dict`) | 2.62 ms ± 25.14 µs | 2.62 µs | hand-rolled, ~30 lines |
+| DIY TypeScript (`JSON.parse` + `Map`) | 1.21 ms ± 25.12 µs | 1.21 µs | hand-rolled, ~30 lines |
 
 <sub>Last updated: 2026-05-14 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Reproduce: `just bench-compare`</sub>
 <!-- BENCH:END -->

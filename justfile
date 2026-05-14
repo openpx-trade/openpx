@@ -113,10 +113,15 @@ bench-compare:
     -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
         --benchmark-only \
         --benchmark-json=benches/comparative/results/python_kalshi.json -q
+    -{{venv}}/bin/pytest benches/comparative/python/bench_ws_diy.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_ws_diy.json -q
     -cd benches/comparative/typescript && npm install --silent && \
         node bench_polymarket.mjs > ../results/typescript_polymarket.json
     -cd benches/comparative/typescript && \
         node bench_kalshi.mjs > ../results/typescript_kalshi.json
+    -cd benches/comparative/typescript && \
+        node bench_ws_diy.mjs > ../results/typescript_ws_diy.json
     {{venv}}/bin/python tools/render_bench_readme.py
 
 # ---------------------------------------------------------------------------
