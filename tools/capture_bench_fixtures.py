@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Capture live 5/15-min BTC orderbook fixtures for the comparative bench.
+"""Capture live Polymarket BTC fixtures for the comparative WebSocket bench.
 
-The bench fixtures aren't synthetic. We dogfood OpenPX's own
+The fixtures aren't synthetic. We dogfood OpenPX's own
 `next_active_market_in_series` SeriesRoller primitive to resolve the
-*currently-live* market in each exchange's revolving series, then write
-the raw orderbook bytes alongside a small `.meta.json` that the
-benches read for the asset_id / ticker / condition_id.
+*currently-live* 5-min BTC up/down market, then capture:
 
-- Polymarket: `btc-up-or-down-5m` → live 5-min BTC up/down market
-- Kalshi:     `KXBTC15M`          → live 15-min BTC up/down market
+  - `polymarket_book.json`     — the REST orderbook snapshot used to
+    seed the orderbook for `apply_book_updates` and `orderbook_ops`.
+  - `polymarket_ws_book.jsonl` — 1000 real WS book + price_change +
+    last_trade_price frames the `ws_decode_apply` head-to-head replays.
 
 Run from the repo root:
 
     python3 tools/capture_bench_fixtures.py
 
-Requires the OpenPX Python SDK to be built locally
-(`just python-build`).
+Requires the OpenPX Python SDK to be built locally (`just python-build`).
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ import json
 import os
 import sys
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 
 from openpx import Exchange
@@ -43,21 +41,10 @@ FIXTURES = ROOT / "benches" / "comparative" / "fixtures"
 FIXTURES.mkdir(parents=True, exist_ok=True)
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _write(name: str, body: bytes) -> None:
     path = FIXTURES / name
     path.write_bytes(body)
     print(f"  wrote {path.relative_to(ROOT)} ({len(body):,} bytes)")
-
-
-def _write_meta(name: str, meta: dict) -> None:
-    path = FIXTURES / name
-    meta["captured_at"] = _now()
-    path.write_text(json.dumps(meta, indent=2) + "\n")
-    print(f"  wrote {path.relative_to(ROOT)}")
 
 
 def capture_polymarket_ws(asset_id: str, target_msgs: int = 1000, timeout_s: int = 90) -> None:
@@ -103,7 +90,6 @@ def capture_polymarket() -> None:
     # Polymarket markets are binary — pick the YES outcome's token_id.
     yes = next((o for o in market.outcomes if o.label.lower() in ("up", "yes")), market.outcomes[0])
     asset_id = yes.token_id
-    condition_id = market.condition_id
     print(f"  market: {market.title!r}")
     print(f"  asset_id: {asset_id}")
 
@@ -111,43 +97,10 @@ def capture_polymarket() -> None:
     url = f"https://clob.polymarket.com/book?token_id={asset_id}"
     body = _fetch_bytes(url)
     _write("polymarket_book.json", body)
-    _write_meta(
-        "polymarket_book.meta.json",
-        {
-            "asset_id": asset_id,
-            "condition_id": condition_id,
-            "series": "btc-up-or-down-5m",
-            "endpoint": url,
-        },
-    )
     # WS capture is opt-in via env (slow + needs network); skip when
     # OPENPX_BENCH_WS=0 to keep local iteration fast.
     if os.environ.get("OPENPX_BENCH_WS", "1") != "0":
         capture_polymarket_ws(asset_id)
-
-
-def capture_kalshi() -> None:
-    print("kalshi: resolving live 15-min BTC market via SeriesRoller...")
-    ex = Exchange("kalshi")
-    market = ex.next_active_market_in_series("KXBTC15M")
-    ticker = market.ticker
-    event_ticker = market.event_ticker or ""
-    print(f"  market: {market.title!r}")
-    print(f"  ticker: {ticker}")
-
-    # Public orderbook endpoint — no auth needed.
-    url = f"https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}/orderbook"
-    body = _fetch_bytes(url)
-    _write("kalshi_orderbook.json", body)
-    _write_meta(
-        "kalshi_orderbook.meta.json",
-        {
-            "ticker": ticker,
-            "event_ticker": event_ticker,
-            "series": "KXBTC15M",
-            "endpoint": url,
-        },
-    )
 
 
 def main() -> int:
@@ -156,11 +109,6 @@ def main() -> int:
         capture_polymarket()
     except Exception as e:  # pragma: no cover
         print(f"  polymarket capture failed: {e}", file=sys.stderr)
-        return 1
-    try:
-        capture_kalshi()
-    except Exception as e:  # pragma: no cover
-        print(f"  kalshi capture failed: {e}", file=sys.stderr)
         return 1
     print("done.")
     return 0

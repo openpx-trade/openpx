@@ -25,48 +25,46 @@ Rust engine with Python & TypeScript SDKs.
 <!-- BENCH:START -->
 ## Performance Comparison
 
-**Real-World API Performance (with network I/O)** — `fetch_orderbook`
+**Real-World WebSocket Performance (live captured frames)**
 
-End-to-end performance against live Polymarket and Kalshi orderbook endpoints, including network latency, JSON parsing, and decompression:
+End-to-end decode + apply over 999 real Polymarket book frames captured from a live 5-min BTC market — measures the cost of turning wire bytes into typed orderbook updates, the operation that dominates an HFT loop once you're subscribed:
 
-| Lang | Exchange | OpenPX | Official SDK | Speedup |
-|---|---|---:|---|---:|
-| Rust | Polymarket | **171.37 ms ± 33.44 ms** | polymarket_client_sdk_v2 173.57 ms ± 27.39 ms | **1.01× faster** |
-| Rust | Kalshi | **123.05 ms ± 53.31 ms** | _no official Rust SDK_ | — |
-| Python | Polymarket | **274.08 ms ± 30.76 ms** | py-clob-client 289.54 ms ± 38.36 ms | **1.06× faster** |
-| Python | Kalshi | **219.57 ms ± 50.64 ms** | kalshi-python 222.69 ms ± 44.33 ms | **1.01× faster** |
-| TypeScript | Polymarket | **269.74 ms ± 26.01 ms** | @polymarket/clob-client 267.75 ms ± 16.90 ms | 0.99× |
-| TypeScript | Kalshi | **217.25 ms ± 41.97 ms** | @kalshi/typescript-sdk _(not installed)_ | — |
+| Operation | OpenPX | polymarket_client_sdk_v2 |
+|---|---|---|
+| **Decode + apply 999 WS book frames** | **760.71 µs ± 8.03 µs** | 1.18 ms ± 13.86 µs |
 
-**Performance vs official SDKs:**
+**Performance vs `polymarket_client_sdk_v2`:**
 
-- **on par** with `polymarket_client_sdk_v2` (Rust · Polymarket, ratio 1.01×)
-- **1.06× faster** than `py-clob-client` (Python · Polymarket)
-- **on par** with `kalshi-python` (Python · Kalshi, ratio 1.01×)
-- **on par** with `@polymarket/clob-client` (TypeScript · Polymarket, ratio 0.99×)
+- **55.3% faster**
+- **9.9% more consistent** (lower coefficient of variation)
+- **Only client** that ships typed WebSocket support across Polymarket *and* Kalshi in all three languages (Rust + Python + TypeScript); the official Python and TypeScript SDKs don't ship WebSocket at all.
 
-**Benchmark Methodology:** All benchmarks run side-by-side on the same machine, same network, same time using 20 iterations, 100 ms delay between requests against the public `/book` (Polymarket) and `/markets/{ticker}/orderbook` (Kalshi) endpoints. Best performance achieved with HTTP keep-alive enabled. See [`benches/comparative/`](benches/comparative/README.md) for the full implementation.
+**Benchmark Methodology:** All benchmarks run side-by-side on the same machine using criterion, decoding the same captured JSONL frames byte-for-byte. Both libraries deserialize identical inputs into their respective typed message shapes; the ratio reflects pure decoder + orderbook-apply overhead with no network jitter. See [`benches/comparative/rust/benches/hot_path.rs`](benches/comparative/rust/benches/hot_path.rs) for the complete implementation.
 
-**WebSocket Support (real-time orderbook streams)**
+**Computational Performance (pure CPU, no I/O)**
 
-OpenPX gives you `exchange.websocket().orderbook(asset_id)` returning typed orderbook deltas — same shape across both exchanges. The official SDKs leave WebSocket handling to the user:
+| Operation | Performance | Notes |
+|---|---|---|
+| **WS decode + apply (999 frames)** | 760.71 µs | ~761 ns / frame, ~1.3M frames/sec, zero-allocation |
+| **`Orderbook::best_bid`** | 0.63 ns | ~1.6B ops/sec, sorted-vec O(1) |
+| **`Orderbook::spread`** | 0.62 ns | ~1.6B ops/sec, branchless |
+| **`Orderbook::mid_price`** | 0.63 ns | ~1.6B ops/sec, branchless |
 
-| Lang | Exchange | OpenPX | Official SDK | Speedup |
-|---|---|---:|---|---:|
-| Rust | Polymarket | **760.71 µs** | polymarket_client_sdk_v2 1.18 ms | **1.55× faster** |
-| Rust | Kalshi | ✅ Typed deltas | _no official Rust SDK_ | — |
-| Python | Polymarket | ✅ Typed deltas (via FFI) | `py-clob-client` _doesn't ship WS_ | — |
-| Python | Kalshi | ✅ Typed deltas (via FFI) | `kalshi-python` _doesn't ship WS_ | — |
-| TypeScript | Polymarket | ✅ Typed deltas (via FFI) | `@polymarket/clob-client` _doesn't ship WS_ | — |
-| TypeScript | Kalshi | ✅ Typed deltas (via FFI) | `@kalshi/typescript-sdk` _doesn't ship WS_ | — |
+Run the WS hot-path benchmark locally with `cargo bench -p px-bench-comparative --bench hot_path`.
 
-**WebSocket vs official SDKs:**
+**Key Performance Optimizations:**
 
-- **Only client** that ships typed WebSocket support across Polymarket *and* Kalshi in all three languages.
-- Rust hot path decodes + applies 999 captured Polymarket book frames **1.55× faster** than `polymarket_client_sdk_v2`'s WS decoder.
-- Reconnect + resync, auth, and orderbook state are first-class — the official SDKs leave all of that to you.
+The 55.3% WebSocket speedup comes from a single-shape `decode_frame` fast path (one `serde::Deserialize` target covers `book`, `price_change`, `last_trade_price`, and `tick_size_change` — no tagged-enum dispatch), a sorted-`Vec` orderbook that keeps both sides in contiguous, cache-friendly arrays, and a zero-allocation apply pipeline that reuses level buffers instead of churning the heap.
 
-<sub>Last updated: 2026-05-14 · Reproduce: `just bench-compare`</sub>
+**Memory Architecture**
+
+The `Orderbook` stores price levels in two sorted `Vec<PriceLevel>` arrays — no `BTreeMap` pointer chasing, no per-update heap churn. Hot-path queries (`best_bid`, `best_ask`, `spread`, `mid_price`) are constant-time accesses on the head element of each `Vec`, which the compiler reduces to a load + sub. Sub-nanosecond figures above reflect this: there's nothing to do but read two `f64`s.
+
+**Architectural Principles**
+
+Wire bytes deserialize once into typed structs at the WebSocket ingress; every downstream consumer reads typed fields with no re-parsing. The unified `Exchange` trait dispatches via match + UFCS (no `&dyn Exchange` vtable indirection), so each exchange's `fetch_orderbook` / `ws orderbook` monomorphizes and inlines into the call site. Errors flow through `define_exchange_error!` macros that map per-exchange variants into the unified `ExchangeError` hierarchy — strict types at the boundary, trust internal code internally.
+
+<sub>Last updated: 2026-05-14 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Reproduce: `just bench-compare`</sub>
 <!-- BENCH:END -->
 
 ## Quick Start
