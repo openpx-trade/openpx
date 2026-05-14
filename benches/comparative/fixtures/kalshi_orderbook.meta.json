@@ -1,7 +1,7 @@
 {
-  "ticker": "KXBTC15M-26MAY141445-45",
-  "event_ticker": "KXBTC15M-26MAY141445",
+  "ticker": "KXBTC15M-26MAY141515-15",
+  "event_ticker": "KXBTC15M-26MAY141515",
   "series": "KXBTC15M",
-  "endpoint": "https://api.elections.kalshi.com/trade-api/v2/markets/KXBTC15M-26MAY141445-45/orderbook",
-  "captured_at": "2026-05-14T18:43:18.849890+00:00"
+  "endpoint": "https://api.elections.kalshi.com/trade-api/v2/markets/KXBTC15M-26MAY141515-15/orderbook",
+  "captured_at": "2026-05-14T19:01:03.225951+00:00"
 }

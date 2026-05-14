@@ -2,14 +2,14 @@
   "tasks": [
     {
       "name": "openpx::polymarket::fetch_orderbook",
-      "mean_ns": 268301477.1000001,
-      "stddev_ns": 25528212.79830805,
+      "mean_ns": 269742766.6499999,
+      "stddev_ns": 26006267.039524153,
       "samples": 20
     },
     {
       "name": "polymarket-clob-client::fetch_orderbook",
-      "mean_ns": 268090726.9999999,
-      "stddev_ns": 25525557.428017464,
+      "mean_ns": 267748783.3000003,
+      "stddev_ns": 16897629.951164726,
       "samples": 20
     }
   ]
