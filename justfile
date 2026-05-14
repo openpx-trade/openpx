@@ -97,23 +97,6 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
     git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/schemas/mappings/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml
 
 # ---------------------------------------------------------------------------
-# Benchmarks (head-to-head vs official native SDKs)
-# ---------------------------------------------------------------------------
-
-# Refresh the captured 5/15-min BTC fixtures from live exchanges, then
-# run all three comparative suites (Rust + Python + TS) for a local
-# walltime smoke test. CodSpeed dashboard numbers come from CI; the
-# README block is regenerated per release via `/refresh-bench-readme`.
-bench-compare:
-    {{venv}}/bin/python tools/capture_bench_fixtures.py
-    cargo bench -p px-bench-comparative
-    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py -q
-    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py -q
-    -cd benches/comparative/typescript && npm install --silent && \
-        node bench_polymarket.mjs
-    -cd benches/comparative/typescript && node bench_kalshi.mjs
-
-# ---------------------------------------------------------------------------
 # Versioning
 # ---------------------------------------------------------------------------
 
