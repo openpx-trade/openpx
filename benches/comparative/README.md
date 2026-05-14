@@ -96,22 +96,22 @@ just bench-compare
 Or each suite individually:
 
 ```bash
-# Rust hot path (criterion, plain — no CodSpeed)
-cargo bench -p px-bench-comparative
+# Rust hot path (criterion — WS decode + apply, head-to-head)
+cargo bench -p px-bench-comparative --bench hot_path
 
-# Python — fetch_orderbook + WS DIY
+# Rust REST head-to-head (live fetch_orderbook vs polymarket_client_sdk_v2)
+cargo run -p px-bench-comparative --bin bench_rest --release
+
+# Python — fetch_orderbook head-to-head
 pytest benches/comparative/python/bench_polymarket.py --benchmark-only \
     --benchmark-json=benches/comparative/results/python_polymarket.json
 pytest benches/comparative/python/bench_kalshi.py --benchmark-only \
     --benchmark-json=benches/comparative/results/python_kalshi.json
-pytest benches/comparative/python/bench_ws_diy.py --benchmark-only \
-    --benchmark-json=benches/comparative/results/python_ws_diy.json
 
-# TypeScript — fetch_orderbook + WS DIY
+# TypeScript — fetch_orderbook head-to-head
 cd benches/comparative/typescript && npm install --legacy-peer-deps
 node bench_polymarket.mjs > ../results/typescript_polymarket.json
 node bench_kalshi.mjs     > ../results/typescript_kalshi.json
-node bench_ws_diy.mjs     > ../results/typescript_ws_diy.json
 
 # Render the README block
 python3 tools/render_bench_readme.py

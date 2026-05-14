@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "mean_ns": 171370254.2,
+      "name": "openpx::polymarket::fetch_orderbook",
+      "samples": 20,
+      "stddev_ns": 33444211.44517155
+    },
+    {
+      "mean_ns": 173569566.55,
+      "name": "polymarket_client_sdk_v2::polymarket::fetch_orderbook",
+      "samples": 20,
+      "stddev_ns": 27394772.89305686
+    }
+  ]
+}

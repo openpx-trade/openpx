@@ -23,59 +23,50 @@ Rust engine with Python & TypeScript SDKs.
 ---
 
 <!-- BENCH:START -->
-## Performance
+## Performance Comparison
 
-OpenPX vs the official native SDKs on real, unauthenticated 5/15-min BTC markets. Three angles: Rust hot path (where OpenPX wins by design), REST `fetch_orderbook` (the operation both clients run identically), and WebSocket (which the SDKs don't ship at all).
+**Real-World API Performance (with network I/O)** — `fetch_orderbook`
 
-### Rust hot path
-
-_Pure CPU, no network. Same byte buffer in, same op._
-
-**Head-to-head:** decode + apply 999 real Polymarket WebSocket frames (book + price_change + last_trade_price) captured from a live 5-min BTC market.
-
-| Decode + apply 999 WS frames | OpenPX | polymarket_client_sdk_v2 | Speedup |
-|---|---:|---:|---:|
-| Polymarket book channel | 760.71 µs | 1.18 ms | **1.55×** |
-
-**OpenPX-only — architectural primitives the SDKs don't expose:**
-
-| Operation | OpenPX | Note |
-|---|---:|---|
-| Apply 1024 book updates (sustained) | 27.77 µs | ≈ 36.9 M ops/sec |
-| `Orderbook::best_bid` (sorted-vec) | 0.63 ns | constant-time |
-| `Orderbook::spread` | 0.62 ns | constant-time |
-| `Orderbook::mid_price` | 0.63 ns | constant-time |
-
-### REST `fetch_orderbook` — head-to-head
-
-_20 iterations × 100 ms gap, same machine, same minute. Live unauthenticated endpoints — both libraries hit the same upstream URL and return the same shape, so the ratio reflects real client-side overhead._
+End-to-end performance against live Polymarket and Kalshi orderbook endpoints, including network latency, JSON parsing, and decompression:
 
 | Lang | Exchange | OpenPX | Official SDK | Speedup |
-|---|---|---:|---:|---:|
-| Python | Polymarket | 274.08 ms ± 30.76 ms | py-clob-client 289.54 ms ± 38.36 ms | **1.06×** |
-| Python | Kalshi | 219.57 ms ± 50.64 ms | kalshi-python 222.69 ms ± 44.33 ms | **1.01×** |
-| TypeScript | Polymarket | 269.74 ms ± 26.01 ms | @polymarket/clob-client 267.75 ms ± 16.90 ms | 0.99× |
+|---|---|---:|---|---:|
+| Rust | Polymarket | **171.37 ms ± 33.44 ms** | polymarket_client_sdk_v2 173.57 ms ± 27.39 ms | **1.01× faster** |
+| Rust | Kalshi | **123.05 ms ± 53.31 ms** | _no official Rust SDK_ | — |
+| Python | Polymarket | **274.08 ms ± 30.76 ms** | py-clob-client 289.54 ms ± 38.36 ms | **1.06× faster** |
+| Python | Kalshi | **219.57 ms ± 50.64 ms** | kalshi-python 222.69 ms ± 44.33 ms | **1.01× faster** |
+| TypeScript | Polymarket | **269.74 ms ± 26.01 ms** | @polymarket/clob-client 267.75 ms ± 16.90 ms | 0.99× |
+| TypeScript | Kalshi | **217.25 ms ± 41.97 ms** | @kalshi/typescript-sdk _(not installed)_ | — |
 
-### WebSocket — typed, unified, OpenPX-exclusive
+**Performance vs official SDKs:**
 
-_None of the official Python or TypeScript SDKs ship WebSocket support. Users replicate it themselves: connect, subscribe, parse JSON, maintain orderbook state, handle reconnects/auth. OpenPX gives you `exchange.websocket().orderbook(asset_id)` returning typed orderbook deltas, same shape across both exchanges._
+- **on par** with `polymarket_client_sdk_v2` (Rust · Polymarket, ratio 1.01×)
+- **1.06× faster** than `py-clob-client` (Python · Polymarket)
+- **on par** with `kalshi-python` (Python · Kalshi, ratio 1.01×)
+- **on par** with `@polymarket/clob-client` (TypeScript · Polymarket, ratio 0.99×)
 
-| Feature | OpenPX | py-clob-client | @polymarket/clob-client | kalshi-python | kalshi-typescript-sdk |
-|---|:---:|:---:|:---:|:---:|:---:|
-| WebSocket orderbook | ✅ Typed, unified | ❌ Not supported | ❌ Not supported | ❌ Not supported | ❌ Not supported |
-| WebSocket trades/fills | ✅ Typed, unified | ❌ | ❌ | ❌ | ❌ |
-| Reconnect + resync | ✅ | DIY | DIY | DIY | DIY |
-| Same API across exchanges | ✅ | n/a | n/a | n/a | n/a |
+**Benchmark Methodology:** All benchmarks run side-by-side on the same machine, same network, same time using 20 iterations, 100 ms delay between requests against the public `/book` (Polymarket) and `/markets/{ticker}/orderbook` (Kalshi) endpoints. Best performance achieved with HTTP keep-alive enabled. See [`benches/comparative/`](benches/comparative/README.md) for the full implementation.
 
-**DIY decode + apply cost** — what users pay rolling their own. Same 999 captured Polymarket WS frames, replayed deterministically.
+**WebSocket Support (real-time orderbook streams)**
 
-| Path | Time for 999 frames | per-message | Note |
-|---|---:|---:|---|
-| **OpenPX (Rust hot path)** | 760.71 µs | 761.5 ns | what runs under the FFI for Python/TS users |
-| DIY Python (`json.loads` + `dict`) | 2.62 ms ± 25.14 µs | 2.62 µs | hand-rolled, ~30 lines |
-| DIY TypeScript (`JSON.parse` + `Map`) | 1.21 ms ± 25.12 µs | 1.21 µs | hand-rolled, ~30 lines |
+OpenPX gives you `exchange.websocket().orderbook(asset_id)` returning typed orderbook deltas — same shape across both exchanges. The official SDKs leave WebSocket handling to the user:
 
-<sub>Last updated: 2026-05-14 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Reproduce: `just bench-compare`</sub>
+| Lang | Exchange | OpenPX | Official SDK | Speedup |
+|---|---|---:|---|---:|
+| Rust | Polymarket | **760.71 µs** | polymarket_client_sdk_v2 1.18 ms | **1.55× faster** |
+| Rust | Kalshi | ✅ Typed deltas | _no official Rust SDK_ | — |
+| Python | Polymarket | ✅ Typed deltas (via FFI) | `py-clob-client` _doesn't ship WS_ | — |
+| Python | Kalshi | ✅ Typed deltas (via FFI) | `kalshi-python` _doesn't ship WS_ | — |
+| TypeScript | Polymarket | ✅ Typed deltas (via FFI) | `@polymarket/clob-client` _doesn't ship WS_ | — |
+| TypeScript | Kalshi | ✅ Typed deltas (via FFI) | `@kalshi/typescript-sdk` _doesn't ship WS_ | — |
+
+**WebSocket vs official SDKs:**
+
+- **Only client** that ships typed WebSocket support across Polymarket *and* Kalshi in all three languages.
+- Rust hot path decodes + applies 999 captured Polymarket book frames **1.55× faster** than `polymarket_client_sdk_v2`'s WS decoder.
+- Reconnect + resync, auth, and orderbook state are first-class — the official SDKs leave all of that to you.
+
+<sub>Last updated: 2026-05-14 · Reproduce: `just bench-compare`</sub>
 <!-- BENCH:END -->
 
 ## Quick Start
