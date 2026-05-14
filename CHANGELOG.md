@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/openpx-trade/openpx/compare/v0.3.0...v0.3.1) (2026-05-14)
+
+
+### Features
+
+* **bench:** Codspeed comparative suite vs official native SDKs ([540b59d](https://github.com/openpx-trade/openpx/commit/540b59d5fd9e1baf244c4000856f4c3dd2449167))
+* **bench:** comparative bench scaffold — polyfill-style, local-only ([20beeea](https://github.com/openpx-trade/openpx/commit/20beeea757142ad5d5a4211af3501b38db73b8bf))
+* **bench:** first numbers — WS hot path 1.49× faster than polymarket_sdk ([20d863e](https://github.com/openpx-trade/openpx/commit/20d863ed58e5047402f81b65991226246b7be5b5))
+* **bench:** first numbers — WS hot path 1.49× faster than polymarket_sdk ([de453a0](https://github.com/openpx-trade/openpx/commit/de453a0daec9ee6af664aca4053589ebc7e10436))
+* **bench:** surface Rust CPU instructions + heap allocations in README ([9fe7586](https://github.com/openpx-trade/openpx/commit/9fe7586a545e0d63f4fddb1bf6ed14f35c4ff1a6))
+* **bench:** surface Rust CPU instructions + heap allocations in README ([8e8fdd5](https://github.com/openpx-trade/openpx/commit/8e8fdd571460234256aa5db8ffee27dad39e09a2))
+* **core/utils/series:** pick_active_market + next_active_market_in_series ([244007b](https://github.com/openpx-trade/openpx/commit/244007b1a4c76857c0936c26328c5662e3c2d9c4))
+* **e2e:** unified WebSocket e2e + e2e_tests reorg + WS mapping docs ([a49c915](https://github.com/openpx-trade/openpx/commit/a49c915c3c9cddba56acafd70e1d22531f3680ab))
+* **e2e:** unified WebSocket e2e + WS mapping docs ([d49f952](https://github.com/openpx-trade/openpx/commit/d49f95205086930fb0e693a8c03e5f611227ac92))
+* integrate CodSpeed for px-core benchmarks and upgrade to action v4 ([2614ce0](https://github.com/openpx-trade/openpx/commit/2614ce0420f6abede63c484ff9ed507634cf4318))
+* **polymarket:** honor series_ticker via gamma /series → /events ([bd5a5b2](https://github.com/openpx-trade/openpx/commit/bd5a5b20d032d38c06715979f3a11f41a8e62392))
+* **sdk:** expose rate_limit_per_second in Exchange config dict ([a5181d2](https://github.com/openpx-trade/openpx/commit/a5181d2c504fae13f6d837c2361fc374930d4786))
+* **sdk:** expose rate_limit_per_second in Exchange config dict ([a6fdeb9](https://github.com/openpx-trade/openpx/commit/a6fdeb9e0ea2bb8ff8dad4eef1053f09d43af7d7))
+* **sdks:** expose next_active_market_in_series via PyO3 + NAPI ([5d8750e](https://github.com/openpx-trade/openpx/commit/5d8750e4ba126c97dff6ac63ec8a4181f7c9560c))
+
+
+### Bug Fixes
+
+* **bench:** always render iai rows with placeholders pre-data ([5972316](https://github.com/openpx-trade/openpx/commit/5972316f3eb7a6fa61d63fcc3e03cd17b31c9e5f))
+* **bench:** always render iai rows with placeholders pre-data ([75ab0f9](https://github.com/openpx-trade/openpx/commit/75ab0f9985732ccb078c1ba3e5a25c244fe15c7d))
+* **bench:** bump codspeed-criterion-compat to v4, harden CodSpeed steps ([bbc7307](https://github.com/openpx-trade/openpx/commit/bbc730766daae4f0868211d2abd4eed18fe17a0a))
+* **bench:** bump codspeed-criterion-compat to v4, harden CodSpeed steps ([c719d67](https://github.com/openpx-trade/openpx/commit/c719d677b6bc168084e28f3756e2b692d6a15d5c))
+* **core/utils/series:** elide needless lifetimes for clippy ([ed8d655](https://github.com/openpx-trade/openpx/commit/ed8d655a10da78542a968b479086fd87f9941dbe))
+* **kalshi:** drop ensure_auth on public orderbook endpoint ([4007240](https://github.com/openpx-trade/openpx/commit/4007240f06dfe1e6a4bf30bfe18d353c82e15527))
+* **polymarket:** gamma /events end_date_min wants whole-second RFC3339 ([ee36906](https://github.com/openpx-trade/openpx/commit/ee36906553aed6b68ca29e0c30cc2ba5cf09a086))
+* **polymarket:** respect config.clob_url in get_orderbook + fetch_token_ids + SDK init ([db1bd25](https://github.com/openpx-trade/openpx/commit/db1bd2510bcc1eafeccd55ac564a37ce18b0390e))
+* **polymarket:** respect config.clob_url in get_orderbook + fetch_token_ids + SDK init ([14413e5](https://github.com/openpx-trade/openpx/commit/14413e5d9fcf0398b080bc43bd078d4a36c1585c))
+
+
+### Performance Improvements
+
+* autoresearch session — ws_decoder buffers, describe() caching, simd-json 0.17 ([094b864](https://github.com/openpx-trade/openpx/commit/094b86427cfb9387e68175b559a63abccd9fa682))
+* **deps:** upgrade simd-json 0.13.11 → 0.17 in px-core ([c772342](https://github.com/openpx-trade/openpx/commit/c7723423a52ac74238b560a1cec33cf6cf4d8f38))
+* **kalshi-ws:** binary-search delta apply + return resulting size ([d25f32b](https://github.com/openpx-trade/openpx/commit/d25f32b7db8b774dec029ab544277de6305953fd))
+* **kalshi-ws:** drop from_value(msg.clone()) in handle_delta — direct field access ([3842d07](https://github.com/openpx-trade/openpx/commit/3842d07a9cb8538c503a5d25d495cce00bdfda21))
+* **kalshi-ws:** drop from_value(msg.clone()) in handle_snapshot — read levels off Value ([e6b7fb6](https://github.com/openpx-trade/openpx/commit/e6b7fb6d6f67d3984ff2e98bf96474e57fbeeddf))
+* **orderbook:** add #[inline] to apply_bid_level / apply_ask_level ([eebdcd9](https://github.com/openpx-trade/openpx/commit/eebdcd9a110e053fc90659ceb8791877052fd055))
+* **orderbook:** unify per-exchange level-apply behind shared px-core primitives ([c9e6f38](https://github.com/openpx-trade/openpx/commit/c9e6f38898f096fef3d65ea11f68282585a46081))
+* **polymarket:** reuse persistent HttpClient on GET paths ([c181103](https://github.com/openpx-trade/openpx/commit/c181103c6d076ed334e9dd8b82302dce0eaad5ef))
+* **python-sdk:** cache pythonized describe() output via PyOnceLock ([918f77e](https://github.com/openpx-trade/openpx/commit/918f77e706266eb7e63e7d280a7e2435828b7841))
+* **typescript-sdk:** cache describe() as bytes; deserialize per call ([6fdc2aa](https://github.com/openpx-trade/openpx/commit/6fdc2aacf233695929c84bcf320892f393f2ebbb))
+* **typescript-sdk:** cache describe() output via OnceLock ([4f21aac](https://github.com/openpx-trade/openpx/commit/4f21aacbcce26b1bf060eccfada10baaa14a4c7d))
+* **ws_decoder:** thread-local Buffers + Vec scratch for simd-json path ([e47b9e4](https://github.com/openpx-trade/openpx/commit/e47b9e411c2805ab0e638d9dbbb218b72fdfb696))
+* **ws-dispatcher:** swap async-channel for flume in WsDispatcher ([b38caca](https://github.com/openpx-trade/openpx/commit/b38cacabdfba278ce8a15ec6bd6cdb62b4d0c394))
+* **ws:** cross-cutting hot-path tightening + Polymarket rolling-series support ([d407e3d](https://github.com/openpx-trade/openpx/commit/d407e3df2d265fd0b96d9ec440966821c7f19391))
+* **ws:** tighten hot path — parking_lot + ahash + pre-sized snapshot vecs ([ef5f6f0](https://github.com/openpx-trade/openpx/commit/ef5f6f0f8ac2b19f2692a08d0598066c707b6320))
+
 ## [0.3.0](https://github.com/openpx-trade/openpx/compare/v0.2.6...v0.3.0) (2026-05-03)
 
 
