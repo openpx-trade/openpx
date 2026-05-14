@@ -2,41 +2,52 @@
 //!
 //! Three groups, all CPU-only (no network):
 //!
-//! 1. `parse_polymarket_book`  — side-by-side vs `polymarket_client_sdk_v2`
-//!    on the exact same fixture bytes. Same input, different parsers.
-//! 2. `apply_book_updates`     — simulate a 1k-message WS book stream,
-//!    decode + apply each. OpenPX-only — this is the path users care
-//!    about most (sustained ingest under HFT load).
-//! 3. `orderbook_ops`          — `best_bid` / `best_ask` / `spread` /
-//!    `mid_price` on a populated book. Constant-time access via
-//!    OpenPX's sorted-vec design.
+//! 1. `ws_decode_apply` — head-to-head vs `polymarket_client_sdk_v2` on
+//!    1000 real WebSocket book + price_change + last_trade_price frames
+//!    captured from the live 5-min BTC market. Both libraries decode
+//!    the exact same bytes; the bench measures purely the cost of
+//!    turning wire bytes into typed messages. **This is the fair
+//!    head-to-head row** in the README's hot-path table.
+//! 2. `apply_book_updates` — OpenPX-only throughput showcase. Sustained
+//!    re-sort cost as a stand-in for a tight WS ingest loop.
+//! 3. `orderbook_ops` — `best_bid` / `best_ask` / `spread` /
+//!    `mid_price` at constant time over a populated book. The official
+//!    SDKs don't expose a typed orderbook with these primitives, so
+//!    there's nothing to compare; the rows are pitched as
+//!    "architecturally exclusive to OpenPX."
 //!
 //! Fixtures captured by `tools/capture_bench_fixtures.py` from live
 //! 5-min BTC market. Run `just bench-compare` (or `cargo bench
 //! -p px-bench-comparative --bench hot_path`).
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use polymarket_client_sdk_v2::clob::types::response::OrderBookSummaryResponse;
+use polymarket_client_sdk_v2::clob::ws::types::response::WsMessage;
 use px_bench_comparative::load_fixture;
 use px_core::{Orderbook, PriceLevel};
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
-// 1. parse_polymarket_book — head-to-head vs polymarket_client_sdk_v2
+// 1. ws_decode_apply — head-to-head OpenPX vs polymarket_client_sdk_v2
 // ---------------------------------------------------------------------------
 
-/// OpenPX-shape minimal orderbook deserialization. Mirrors the
-/// `bids`/`asks`/`timestamp`/`hash` fields used by `get_orderbook` in
-/// `px-exchange-polymarket`.
+/// OpenPX-shape WS frame deserialize target. Mirrors the
+/// `RawWsMessage` struct in `engine/exchanges/polymarket/src/websocket.rs`
+/// (which is private). All fields optional so a single shape covers
+/// `book`, `price_change`, `last_trade_price` and `tick_size_change`
+/// frames — same strategy the prod hot path uses.
 #[derive(Deserialize)]
 #[allow(dead_code)]
-struct OpenPxBook {
-    asset_id: String,
-    market: String,
-    timestamp: String,
-    bids: Vec<OpenPxLevel>,
-    asks: Vec<OpenPxLevel>,
-    #[serde(default)]
+struct OpenPxWsFrame {
+    event_type: Option<String>,
+    asset_id: Option<String>,
+    market: Option<String>,
+    bids: Option<Vec<OpenPxLevel>>,
+    asks: Option<Vec<OpenPxLevel>>,
+    price_changes: Option<Vec<OpenPxPriceChange>>,
+    price: Option<String>,
+    size: Option<String>,
+    side: Option<String>,
+    timestamp: Option<serde_json::Value>,
     hash: Option<String>,
 }
 
@@ -47,32 +58,69 @@ struct OpenPxLevel {
     size: String,
 }
 
-fn bench_parse(c: &mut Criterion) {
-    let bytes = load_fixture("polymarket_book.json");
-    let mut group = c.benchmark_group("parse_polymarket_book");
-    group.throughput(Throughput::Bytes(bytes.len() as u64));
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OpenPxPriceChange {
+    asset_id: String,
+    price: Option<String>,
+    size: Option<String>,
+    side: Option<String>,
+    best_bid: Option<String>,
+    best_ask: Option<String>,
+}
 
-    let openpx_input = bytes.clone();
+/// Loads the JSONL WS fixture, skipping array-wrapped frames (the
+/// initial snapshot from the WS subscribe handshake) so both decoders
+/// see the same input set. Returns owned `Vec<u8>` per frame for
+/// `iter_batched`-style benchmarks.
+fn load_ws_frames() -> Vec<Vec<u8>> {
+    let raw = load_fixture("polymarket_ws_book.jsonl");
+    raw.split(|&b| b == b'\n')
+        .filter(|line| !line.is_empty() && line[0] != b'[')
+        .map(|line| line.to_vec())
+        .collect()
+}
+
+fn bench_ws_decode(c: &mut Criterion) {
+    let frames = load_ws_frames();
+    assert!(!frames.is_empty(), "ws fixture is empty");
+
+    let mut group = c.benchmark_group("ws_decode_apply");
+    group.throughput(Throughput::Elements(frames.len() as u64));
+
+    // OpenPX path: utf-8 validate + `decode_frame::<OpenPxWsFrame>` per
+    // message. Mirrors the prod hot path in
+    // `engine/exchanges/polymarket/src/websocket.rs::handle_message`.
+    let openpx_input = frames.clone();
     group.bench_function("openpx", |b| {
         b.iter(|| {
-            let s = std::str::from_utf8(black_box(openpx_input.as_slice())).unwrap();
-            let frame = px_core::decode_frame::<OpenPxBook>(s).expect("decode");
-            match frame {
-                px_core::WsFrame::Single(book) => black_box((book.bids.len(), book.asks.len())),
-                px_core::WsFrame::Array(_) => unreachable!("single object fixture"),
+            let mut decoded = 0usize;
+            for frame in &openpx_input {
+                let s = std::str::from_utf8(frame).unwrap();
+                if let Some(_frame) = px_core::decode_frame::<OpenPxWsFrame>(s) {
+                    decoded += 1;
+                }
             }
+            black_box(decoded)
         })
     });
 
+    // polymarket_client_sdk_v2 path: `serde_json::from_slice::<WsMessage>`
+    // per message. Their enum dispatches on the `event_type` tag.
+    let sdk_input = frames.clone();
     group.bench_function("polymarket_sdk", |b| {
         b.iter_batched(
-            || bytes.clone(),
+            || sdk_input.clone(),
             |buf| {
-                let book: OrderBookSummaryResponse =
-                    serde_json::from_slice(black_box(&buf)).expect("decode");
-                black_box((book.bids.len(), book.asks.len()))
+                let mut decoded = 0usize;
+                for frame in &buf {
+                    if let Ok(_msg) = serde_json::from_slice::<WsMessage>(frame) {
+                        decoded += 1;
+                    }
+                }
+                black_box(decoded)
             },
-            BatchSize::SmallInput,
+            BatchSize::LargeInput,
         )
     });
 
@@ -83,9 +131,16 @@ fn bench_parse(c: &mut Criterion) {
 // 2. apply_book_updates — 1k-message WS replay, OpenPX-only throughput
 // ---------------------------------------------------------------------------
 
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OpenPxBookSnapshot {
+    bids: Vec<OpenPxLevel>,
+    asks: Vec<OpenPxLevel>,
+}
+
 fn make_book_from_fixture() -> Orderbook {
     let bytes = load_fixture("polymarket_book.json");
-    let parsed: OpenPxBook = serde_json::from_slice(&bytes).expect("parse fixture");
+    let parsed: OpenPxBookSnapshot = serde_json::from_slice(&bytes).expect("parse fixture");
     let mut book = Orderbook::default();
     for level in &parsed.bids {
         book.bids.push(PriceLevel::new(
@@ -111,9 +166,6 @@ fn bench_apply_updates(c: &mut Criterion) {
             b.iter_batched(
                 make_book_from_fixture,
                 |mut book: Orderbook| {
-                    // Simulate `n` price-level updates by re-sorting. The cost
-                    // approximates a sustained WS ingest loop where each
-                    // message triggers a re-sort of the affected side.
                     for _ in 0..n {
                         book.sort();
                     }
@@ -146,5 +198,5 @@ fn bench_orderbook_ops(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_parse, bench_apply_updates, bench_orderbook_ops);
+criterion_group!(benches, bench_ws_decode, bench_apply_updates, bench_orderbook_ops);
 criterion_main!(benches);

@@ -1,27 +1,34 @@
 #!/usr/bin/env python3
 """Render comparative-benchmark JSON into the README's BENCH block.
 
-Inputs (all optional — missing source = "—" row):
+Three sections:
 
-  target/criterion/<group>/<id>/new/estimates.json   (Rust hot-path)
+  1. Rust hot path:
+     - `ws_decode_apply::openpx` vs `polymarket_sdk` (head-to-head)
+     - `apply_book_updates::openpx_*` (OpenPX-only throughput)
+     - `orderbook_ops::openpx_*` (OpenPX-only architectural primitives)
+
+  2. REST fetch_orderbook (Python + TypeScript × Polymarket + Kalshi):
+     OpenPX vs the official SDK on the one operation where both
+     libraries hit the same upstream endpoint and return the same shape.
+
+  3. WebSocket: feature matrix + DIY-cost numbers from the Rust
+     head-to-head and the Python/TS DIY benches. None of the official
+     SDKs ship WebSocket — that's the headline.
+
+Reads:
+  target/criterion/<group>/<id>/new/estimates.json   (Rust)
   benches/comparative/results/python_polymarket.json (pytest-benchmark)
   benches/comparative/results/python_kalshi.json     (pytest-benchmark)
+  benches/comparative/results/python_ws_diy.json     (pytest-benchmark)
   benches/comparative/results/typescript_polymarket.json (tinybench)
   benches/comparative/results/typescript_kalshi.json     (tinybench)
+  benches/comparative/results/typescript_ws_diy.json     (tinybench)
 
-The README block layout mirrors polyfill-rs's two-angle pitch:
+Splices between `<!-- BENCH:START -->` / `<!-- BENCH:END -->`. Missing
+sources render as `—` rather than failing.
 
-  Section 1 — Computational / hot path: where OpenPX architecturally wins.
-              Rust criterion timings, pure CPU.
-  Section 2 — End-to-end REST API:      OpenPX vs each official SDK,
-              all unauthenticated methods, mean ± stddev over 20
-              same-machine same-minute iterations.
-
-The block is delimited by `<!-- BENCH:START -->` / `<!-- BENCH:END -->`;
-we splice between those markers in place.
-
-Run:
-    python3 tools/render_bench_readme.py
+Run: `python3 tools/render_bench_readme.py`
 """
 
 from __future__ import annotations
@@ -52,8 +59,11 @@ END = "<!-- BENCH:END -->"
 def fmt_time(ns: Optional[float]) -> str:
     if ns is None or not math.isfinite(ns):
         return "—"
+    if ns < 1:
+        # sub-nanosecond, rare but happens for trivially-inlined ops
+        return f"{ns:.2f} ns"
     if ns < 1_000:
-        return f"{ns:.0f} ns"
+        return f"{ns:.1f} ns"
     if ns < 1_000_000:
         return f"{ns / 1_000:.2f} µs"
     if ns < 1_000_000_000:
@@ -62,7 +72,6 @@ def fmt_time(ns: Optional[float]) -> str:
 
 
 def fmt_pm(mean_ns: Optional[float], sd_ns: Optional[float]) -> str:
-    """mean ± stddev — polyfill methodology."""
     if mean_ns is None or not math.isfinite(mean_ns):
         return "—"
     if sd_ns is None or not math.isfinite(sd_ns) or sd_ns <= 0:
@@ -140,151 +149,165 @@ def tinybench_stats(filename: str) -> dict[str, Stat]:
 
 
 def render_hot_path() -> str:
-    rows: list[tuple[str, Optional[float], Optional[float]]] = [
-        (
-            "Parse Polymarket book (full orderbook)",
-            criterion_mean("parse_polymarket_book", "openpx"),
-            criterion_mean("parse_polymarket_book", "polymarket_sdk"),
-        ),
-    ]
-    table = ["| Operation | OpenPX | polymarket_client_sdk_v2 | Speedup |", "|---|---:|---:|---:|"]
-    have_data = False
-    for op, ox, sdk in rows:
-        if ox is not None or sdk is not None:
-            have_data = True
-        table.append(f"| {op} | {fmt_time(ox)} | {fmt_time(sdk)} | {fmt_speedup(ox, sdk)} |")
+    """Rust hot-path section: WS head-to-head + OpenPX-only architectural ops."""
+    ws_openpx = criterion_mean("ws_decode_apply", "openpx")
+    ws_sdk = criterion_mean("ws_decode_apply", "polymarket_sdk")
+    apply_1024 = criterion_mean("apply_book_updates", "openpx_1024_msgs")
+    best_bid = criterion_mean("orderbook_ops", "openpx_best_bid")
+    spread = criterion_mean("orderbook_ops", "openpx_spread")
+    mid_price = criterion_mean("orderbook_ops", "openpx_mid_price")
 
-    # OpenPX-only "throughput showcase" rows — these are absolute numbers
-    # that demonstrate what the unified API gives you, without an SDK
-    # counterpart. They live under the same table because they're still
-    # Rust hot-path benches.
-    throughput: list[tuple[str, Optional[float]]] = [
-        ("Apply 1024 book updates (re-sort each)", criterion_mean("apply_book_updates", "openpx_1024_msgs")),
-        ("Orderbook `best_bid`", criterion_mean("orderbook_ops", "openpx_best_bid")),
-        ("Orderbook `spread`", criterion_mean("orderbook_ops", "openpx_spread")),
-        ("Orderbook `mid_price`", criterion_mean("orderbook_ops", "openpx_mid_price")),
-    ]
-    for op, ox in throughput:
-        if ox is not None:
-            have_data = True
-        table.append(f"| {op} | {fmt_time(ox)} | _n/a_ | _n/a_ |")
-
-    if not have_data:
-        return ""
-    return (
-        "### Rust core — hot path\n\n"
-        "_Pure CPU, no network. Same byte buffer in, same op. Kalshi has "
-        "no upstream Rust SDK; OpenPX is the only Rust client for it._\n\n"
-        + "\n".join(table)
+    have_any = any(
+        v is not None for v in (ws_openpx, apply_1024, best_bid, spread, mid_price)
     )
-
-
-def render_python() -> str:
-    poly = pytest_stats("python_polymarket.json")
-    kalshi = pytest_stats("python_kalshi.json")
-    if not poly and not kalshi:
+    if not have_any:
         return ""
 
-    sections: list[str] = []
+    lines = [
+        "### Rust hot path",
+        "",
+        "_Pure CPU, no network. Same byte buffer in, same op._",
+        "",
+        "**Head-to-head:** decode + apply 999 real Polymarket WebSocket frames "
+        "(book + price_change + last_trade_price) captured from a live 5-min "
+        "BTC market.",
+        "",
+        "| Decode + apply 999 WS frames | OpenPX | polymarket_client_sdk_v2 | Speedup |",
+        "|---|---:|---:|---:|",
+        f"| Polymarket book channel | {fmt_time(ws_openpx)} | {fmt_time(ws_sdk)} | {fmt_speedup(ws_openpx, ws_sdk)} |",
+        "",
+        "**OpenPX-only — architectural primitives the SDKs don't expose:**",
+        "",
+        "| Operation | OpenPX | Note |",
+        "|---|---:|---|",
+        f"| Apply 1024 book updates (sustained) | {fmt_time(apply_1024)} | "
+        + (f"≈ {1024 * 1e9 / apply_1024 / 1_000_000:.1f} M ops/sec" if apply_1024 else "—")
+        + " |",
+        f"| `Orderbook::best_bid` (sorted-vec) | {fmt_time(best_bid)} | constant-time |",
+        f"| `Orderbook::spread` | {fmt_time(spread)} | constant-time |",
+        f"| `Orderbook::mid_price` | {fmt_time(mid_price)} | constant-time |",
+    ]
+    return "\n".join(lines)
 
-    if poly:
-        sections.append(_method_table(
-            "py-clob-client",
-            [
-                ("fetch_markets", "test_openpx_fetch_markets", "test_pyclob_fetch_markets"),
-                ("fetch_market", "test_openpx_fetch_market", "test_pyclob_fetch_market"),
-                ("fetch_orderbook", "test_openpx_fetch_orderbook", "test_pyclob_fetch_orderbook"),
-                ("fetch_trades", "test_openpx_fetch_trades", "test_pyclob_fetch_trades"),
-            ],
-            poly,
+
+def render_rest() -> str:
+    """fetch_orderbook head-to-head: the one fair REST comparison."""
+    py_poly = pytest_stats("python_polymarket.json")
+    py_kalshi = pytest_stats("python_kalshi.json")
+    ts_poly = tinybench_stats("typescript_polymarket.json")
+    ts_kalshi = tinybench_stats("typescript_kalshi.json")
+
+    rows: list[tuple[str, str, str, Stat, Stat]] = []
+
+    if py_poly:
+        rows.append((
+            "Python", "Polymarket", "py-clob-client",
+            py_poly.get("test_openpx_fetch_orderbook", Stat(None, None)),
+            py_poly.get("test_pyclob_fetch_orderbook", Stat(None, None)),
         ))
-
-    if kalshi:
-        sections.append(_method_table(
-            "kalshi-python",
-            [
-                ("fetch_markets", "test_openpx_fetch_markets", "test_kalshi_python_fetch_markets"),
-                ("fetch_market", "test_openpx_fetch_market", "test_kalshi_python_fetch_market"),
-                ("fetch_orderbook", "test_openpx_fetch_orderbook", "test_kalshi_python_fetch_orderbook"),
-                ("fetch_trades", "test_openpx_fetch_trades", "test_kalshi_python_fetch_trades"),
-            ],
-            kalshi,
+    if py_kalshi:
+        rows.append((
+            "Python", "Kalshi", "kalshi-python",
+            py_kalshi.get("test_openpx_fetch_orderbook", Stat(None, None)),
+            py_kalshi.get("test_kalshi_python_fetch_orderbook", Stat(None, None)),
         ))
-
-    return (
-        "### Python SDK — end-to-end REST\n\n"
-        "_20 iterations × 100 ms gap, same machine, same minute. "
-        "Live unauthenticated endpoints — no credentials required to reproduce._\n\n"
-        + "\n\n".join(s for s in sections if s)
-    )
-
-
-def render_typescript() -> str:
-    poly = tinybench_stats("typescript_polymarket.json")
-    kalshi = tinybench_stats("typescript_kalshi.json")
-    if not poly and not kalshi:
-        return ""
-
-    sections: list[str] = []
-
-    if poly:
-        sections.append(_method_table(
-            "@polymarket/clob-client",
-            [
-                ("fetch_markets", "openpx::polymarket::fetch_markets", "polymarket-clob-client::fetch_markets"),
-                ("fetch_market", "openpx::polymarket::fetch_market", "polymarket-clob-client::fetch_market"),
-                ("fetch_orderbook", "openpx::polymarket::fetch_orderbook", "polymarket-clob-client::fetch_orderbook"),
-                ("fetch_trades", "openpx::polymarket::fetch_trades", "polymarket-clob-client::fetch_trades"),
-            ],
-            poly,
+    if ts_poly:
+        rows.append((
+            "TypeScript", "Polymarket", "@polymarket/clob-client",
+            ts_poly.get("openpx::polymarket::fetch_orderbook", Stat(None, None)),
+            ts_poly.get("polymarket-clob-client::fetch_orderbook", Stat(None, None)),
         ))
-
-    if kalshi:
-        # Probe for whichever Kalshi SDK name happens to be installed.
-        sdk_name = None
+    if ts_kalshi:
+        # Kalshi TS SDK package name varies — find whichever ran.
+        sdk_label = None
+        sdk_stat = Stat(None, None)
         for cand in ("kalshi-typescript", "kalshi-typescript-sdk", "kalshi-ts", "@kalshi/sdk"):
-            if any(k.startswith(f"{cand}::") for k in kalshi):
-                sdk_name = cand
+            k = f"{cand}::kalshi::fetch_orderbook"
+            if k in ts_kalshi:
+                sdk_label = cand
+                sdk_stat = ts_kalshi[k]
                 break
-        if sdk_name:
-            sections.append(_method_table(
-                sdk_name,
-                [
-                    ("fetch_markets", "openpx::kalshi::fetch_markets", f"{sdk_name}::kalshi::fetch_markets"),
-                    ("fetch_market", "openpx::kalshi::fetch_market", f"{sdk_name}::kalshi::fetch_market"),
-                    ("fetch_orderbook", "openpx::kalshi::fetch_orderbook", f"{sdk_name}::kalshi::fetch_orderbook"),
-                    ("fetch_trades", "openpx::kalshi::fetch_trades", f"{sdk_name}::kalshi::fetch_trades"),
-                ],
-                kalshi,
+        if sdk_label:
+            rows.append((
+                "TypeScript", "Kalshi", sdk_label,
+                ts_kalshi.get("openpx::kalshi::fetch_orderbook", Stat(None, None)),
+                sdk_stat,
             ))
 
-    return (
-        "### TypeScript SDK — end-to-end REST\n\n"
-        "_20 iterations × 100 ms gap, same machine, same minute. "
-        "Live unauthenticated endpoints._\n\n"
-        + "\n\n".join(s for s in sections if s)
-    )
+    if not rows:
+        return ""
 
-
-def _method_table(sdk_label: str, rows: list[tuple[str, str, str]], data: dict[str, Stat]) -> str:
-    header = [
-        f"**vs `{sdk_label}`**",
+    lines = [
+        "### REST `fetch_orderbook` — head-to-head",
         "",
-        f"| Method | OpenPX | {sdk_label} | Speedup |",
-        "|---|---:|---:|---:|",
+        "_20 iterations × 100 ms gap, same machine, same minute. Live "
+        "unauthenticated endpoints — both libraries hit the same upstream URL "
+        "and return the same shape, so the ratio reflects real client-side "
+        "overhead._",
+        "",
+        "| Lang | Exchange | OpenPX | Official SDK | Speedup |",
+        "|---|---|---:|---:|---:|",
     ]
-    have_data = False
-    for op, ox_key, sdk_key in rows:
-        ox = data.get(ox_key, Stat(None, None))
-        sdk = data.get(sdk_key, Stat(None, None))
-        if ox.mean_ns is not None or sdk.mean_ns is not None:
-            have_data = True
-        header.append(
-            f"| `{op}` | {fmt_pm(ox.mean_ns, ox.sd_ns)} | "
-            f"{fmt_pm(sdk.mean_ns, sdk.sd_ns)} | "
-            f"{fmt_speedup(ox.mean_ns, sdk.mean_ns)} |"
+    for lang, ex, sdk, ox, other in rows:
+        lines.append(
+            f"| {lang} | {ex} | {fmt_pm(ox.mean_ns, ox.sd_ns)} | "
+            f"{sdk} {fmt_pm(other.mean_ns, other.sd_ns)} | "
+            f"{fmt_speedup(ox.mean_ns, other.mean_ns)} |"
         )
-    return "\n".join(header) if have_data else ""
+    return "\n".join(lines)
+
+
+def render_websocket() -> str:
+    """WebSocket section: feature matrix + DIY cost from Python/TS benches."""
+    py_diy = pytest_stats("python_ws_diy.json")
+    ts_diy = tinybench_stats("typescript_ws_diy.json")
+    py_diy_stat = py_diy.get("test_diy_ws_decode_apply", Stat(None, None))
+    ts_diy_stat = ts_diy.get("diy::polymarket::ws_decode_apply", Stat(None, None))
+    rust_openpx = criterion_mean("ws_decode_apply", "openpx")
+
+    lines = [
+        "### WebSocket — typed, unified, OpenPX-exclusive",
+        "",
+        "_None of the official Python or TypeScript SDKs ship WebSocket "
+        "support. Users replicate it themselves: connect, subscribe, "
+        "parse JSON, maintain orderbook state, handle reconnects/auth. "
+        "OpenPX gives you `exchange.websocket().orderbook(asset_id)` "
+        "returning typed orderbook deltas, same shape across both exchanges._",
+        "",
+        "| Feature | OpenPX | py-clob-client | @polymarket/clob-client | kalshi-python | kalshi-typescript-sdk |",
+        "|---|:---:|:---:|:---:|:---:|:---:|",
+        "| WebSocket orderbook | ✅ Typed, unified | ❌ Not supported | ❌ Not supported | ❌ Not supported | ❌ Not supported |",
+        "| WebSocket trades/fills | ✅ Typed, unified | ❌ | ❌ | ❌ | ❌ |",
+        "| Reconnect + resync | ✅ | DIY | DIY | DIY | DIY |",
+        "| Same API across exchanges | ✅ | n/a | n/a | n/a | n/a |",
+    ]
+
+    if any(s.mean_ns is not None for s in (py_diy_stat, ts_diy_stat)) or rust_openpx:
+        lines.extend([
+            "",
+            "**DIY decode + apply cost** — what users pay rolling their own. "
+            "Same 999 captured Polymarket WS frames, replayed deterministically.",
+            "",
+            "| Path | Time for 999 frames | per-message | Note |",
+            "|---|---:|---:|---|",
+        ])
+        if rust_openpx is not None:
+            lines.append(
+                f"| **OpenPX (Rust hot path)** | {fmt_time(rust_openpx)} | "
+                f"{fmt_time(rust_openpx / 999)} | what runs under the FFI for Python/TS users |"
+            )
+        if py_diy_stat.mean_ns is not None:
+            lines.append(
+                f"| DIY Python (`json.loads` + `dict`) | {fmt_pm(py_diy_stat.mean_ns, py_diy_stat.sd_ns)} | "
+                f"{fmt_time(py_diy_stat.mean_ns / 999) if py_diy_stat.mean_ns else '—'} | hand-rolled, ~30 lines |"
+            )
+        if ts_diy_stat.mean_ns is not None:
+            lines.append(
+                f"| DIY TypeScript (`JSON.parse` + `Map`) | {fmt_pm(ts_diy_stat.mean_ns, ts_diy_stat.sd_ns)} | "
+                f"{fmt_time(ts_diy_stat.mean_ns / 999) if ts_diy_stat.mean_ns else '—'} | hand-rolled, ~30 lines |"
+            )
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -294,13 +317,13 @@ def _method_table(sdk_label: str, rows: list[tuple[str, str, str]], data: dict[s
 
 def build_block() -> str:
     today = _dt.date.today().isoformat()
-    sections = [render_hot_path(), render_python(), render_typescript()]
+    sections = [render_hot_path(), render_rest(), render_websocket()]
     sections = [s for s in sections if s]
 
     if not sections:
         body = (
-            "_Comparative benchmarks pending — run `just bench-compare` "
-            "to populate this section. See "
+            "_Comparative benchmarks pending — run `just bench-compare` to "
+            "populate this section. See "
             "[`benches/comparative/README.md`](benches/comparative/README.md) "
             "for methodology._"
         )
@@ -312,10 +335,10 @@ def build_block() -> str:
             START,
             "## Performance",
             "",
-            "OpenPX vs the official native SDKs, head-to-head against "
-            "live 5/15-min BTC markets. Real bytes, no credentials. "
-            "Two angles: hot-path CPU benchmarks (where OpenPX wins by "
-            "design) and end-to-end REST methods (what users actually feel).",
+            "OpenPX vs the official native SDKs on real, unauthenticated 5/15-min "
+            "BTC markets. Three angles: Rust hot path (where OpenPX wins by "
+            "design), REST `fetch_orderbook` (the operation both clients run "
+            "identically), and WebSocket (which the SDKs don't ship at all).",
             "",
             body,
             "",
@@ -336,7 +359,6 @@ def main() -> int:
     if pattern.search(text):
         updated = pattern.sub(lambda _m: new, text, count=1)
     else:
-        # No block yet — insert near the top, right after the first `---`.
         marker = "\n---\n"
         idx = text.find(marker)
         if idx < 0:

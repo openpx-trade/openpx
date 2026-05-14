@@ -1,7 +1,9 @@
-// Polymarket REST API head-to-head: OpenPX vs @polymarket/clob-client.
+// Polymarket REST head-to-head: OpenPX vs @polymarket/clob-client.
 //
-// 20 iterations × 100 ms gap, polyfill methodology. Writes a JSON
-// summary to stdout that the README renderer parses.
+// Single fair comparison: `fetch_orderbook`. Both clients hit the
+// same upstream endpoint and return the same shape.
+//
+// 20 iterations × 100 ms gap, polyfill methodology.
 //
 // Run: `node bench_polymarket.mjs > ../results/typescript_polymarket.json`
 
@@ -20,12 +22,10 @@ const META = JSON.parse(
   )
 );
 const ASSET_ID = META.asset_id;
-const CONDITION_ID = META.condition_id;
 const GAP_MS = 100;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Optional comparison target — skip the SDK column gracefully if not installed.
 let ClobClient = null;
 try {
   ({ ClobClient } = await import("@polymarket/clob-client"));
@@ -38,31 +38,6 @@ const sdk = ClobClient ? new ClobClient("https://clob.polymarket.com") : null;
 
 const bench = new Bench({ time: 0, iterations: 20 });
 
-// --- fetch_markets ---------------------------------------------------------
-bench.add("openpx::polymarket::fetch_markets", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchMarkets();
-});
-if (sdk) {
-  bench.add("polymarket-clob-client::fetch_markets", async () => {
-    await sleep(GAP_MS);
-    await sdk.getSamplingMarkets();
-  });
-}
-
-// --- fetch_market ----------------------------------------------------------
-bench.add("openpx::polymarket::fetch_market", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchMarket(CONDITION_ID);
-});
-if (sdk) {
-  bench.add("polymarket-clob-client::fetch_market", async () => {
-    await sleep(GAP_MS);
-    await sdk.getMarket(CONDITION_ID);
-  });
-}
-
-// --- fetch_orderbook -------------------------------------------------------
 bench.add("openpx::polymarket::fetch_orderbook", async () => {
   await sleep(GAP_MS);
   await openpx.fetchOrderbook(ASSET_ID);
@@ -71,19 +46,6 @@ if (sdk) {
   bench.add("polymarket-clob-client::fetch_orderbook", async () => {
     await sleep(GAP_MS);
     await sdk.getOrderBook(ASSET_ID);
-  });
-}
-
-// --- fetch_trades ----------------------------------------------------------
-bench.add("openpx::polymarket::fetch_trades", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchTrades(ASSET_ID);
-});
-if (sdk) {
-  bench.add("polymarket-clob-client::fetch_trades", async () => {
-    await sleep(GAP_MS);
-    // Trade history is exposed via market trades on the SDK
-    await sdk.getMarketTradesEvents(CONDITION_ID);
   });
 }
 

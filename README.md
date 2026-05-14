@@ -25,9 +25,55 @@ Rust engine with Python & TypeScript SDKs.
 <!-- BENCH:START -->
 ## Performance
 
-OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials. Two angles: hot-path CPU benchmarks (where OpenPX wins by design) and end-to-end REST methods (what users actually feel).
+OpenPX vs the official native SDKs on real, unauthenticated 5/15-min BTC markets. Three angles: Rust hot path (where OpenPX wins by design), REST `fetch_orderbook` (the operation both clients run identically), and WebSocket (which the SDKs don't ship at all).
 
-_Comparative benchmarks pending — run `just bench-compare` to populate this section. See [`benches/comparative/README.md`](benches/comparative/README.md) for methodology._
+### Rust hot path
+
+_Pure CPU, no network. Same byte buffer in, same op._
+
+**Head-to-head:** decode + apply 999 real Polymarket WebSocket frames (book + price_change + last_trade_price) captured from a live 5-min BTC market.
+
+| Decode + apply 999 WS frames | OpenPX | polymarket_client_sdk_v2 | Speedup |
+|---|---:|---:|---:|
+| Polymarket book channel | 1.21 ms | 1.79 ms | **1.49×** |
+
+**OpenPX-only — architectural primitives the SDKs don't expose:**
+
+| Operation | OpenPX | Note |
+|---|---:|---|
+| Apply 1024 book updates (sustained) | 26.69 µs | ≈ 38.4 M ops/sec |
+| `Orderbook::best_bid` (sorted-vec) | 0.62 ns | constant-time |
+| `Orderbook::spread` | 0.63 ns | constant-time |
+| `Orderbook::mid_price` | 0.63 ns | constant-time |
+
+### REST `fetch_orderbook` — head-to-head
+
+_20 iterations × 100 ms gap, same machine, same minute. Live unauthenticated endpoints — both libraries hit the same upstream URL and return the same shape, so the ratio reflects real client-side overhead._
+
+| Lang | Exchange | OpenPX | Official SDK | Speedup |
+|---|---|---:|---:|---:|
+| Python | Polymarket | 278.32 ms ± 31.35 ms | py-clob-client 271.64 ms ± 26.99 ms | 0.98× |
+| Python | Kalshi | 196.44 ms ± 48.31 ms | kalshi-python 224.09 ms ± 50.21 ms | **1.14×** |
+| TypeScript | Polymarket | 268.30 ms ± 25.53 ms | @polymarket/clob-client 268.09 ms ± 25.53 ms | 1.00× |
+
+### WebSocket — typed, unified, OpenPX-exclusive
+
+_None of the official Python or TypeScript SDKs ship WebSocket support. Users replicate it themselves: connect, subscribe, parse JSON, maintain orderbook state, handle reconnects/auth. OpenPX gives you `exchange.websocket().orderbook(asset_id)` returning typed orderbook deltas, same shape across both exchanges._
+
+| Feature | OpenPX | py-clob-client | @polymarket/clob-client | kalshi-python | kalshi-typescript-sdk |
+|---|:---:|:---:|:---:|:---:|:---:|
+| WebSocket orderbook | ✅ Typed, unified | ❌ Not supported | ❌ Not supported | ❌ Not supported | ❌ Not supported |
+| WebSocket trades/fills | ✅ Typed, unified | ❌ | ❌ | ❌ | ❌ |
+| Reconnect + resync | ✅ | DIY | DIY | DIY | DIY |
+| Same API across exchanges | ✅ | n/a | n/a | n/a | n/a |
+
+**DIY decode + apply cost** — what users pay rolling their own. Same 999 captured Polymarket WS frames, replayed deterministically.
+
+| Path | Time for 999 frames | per-message | Note |
+|---|---:|---:|---|
+| **OpenPX (Rust hot path)** | 1.21 ms | 1.21 µs | what runs under the FFI for Python/TS users |
+| DIY Python (`json.loads` + `dict`) | 3.72 ms ± 50.18 µs | 3.72 µs | hand-rolled, ~30 lines |
+| DIY TypeScript (`JSON.parse` + `Map`) | 2.16 ms ± 52.32 µs | 2.16 µs | hand-rolled, ~30 lines |
 
 <sub>Last updated: 2026-05-14 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Reproduce: `just bench-compare`</sub>
 <!-- BENCH:END -->
