@@ -97,6 +97,29 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
     git diff --exit-code schema/openpx.schema.json sdks/python/python/openpx/_models.py sdks/typescript/types/models.d.ts docs/llms.txt docs/api/ docs/schemas/mappings/ docs/openpx.openapi.yaml docs/openpx.asyncapi.yaml
 
 # ---------------------------------------------------------------------------
+# Benchmarks (head-to-head vs official native SDKs)
+# ---------------------------------------------------------------------------
+
+# Refresh fixtures + run all three suites + rewrite the README block.
+# Run locally on stable hardware (your laptop is fine, just be consistent).
+# Prerequisites: `just python-build && just node-build`.
+bench-compare:
+    mkdir -p benches/comparative/results
+    {{venv}}/bin/python tools/capture_bench_fixtures.py
+    cargo bench -p px-bench-comparative
+    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_polymarket.json -q
+    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
+        --benchmark-only \
+        --benchmark-json=benches/comparative/results/python_kalshi.json -q
+    -cd benches/comparative/typescript && npm install --silent && \
+        node bench_polymarket.mjs > ../results/typescript_polymarket.json
+    -cd benches/comparative/typescript && \
+        node bench_kalshi.mjs > ../results/typescript_kalshi.json
+    {{venv}}/bin/python tools/render_bench_readme.py
+
+# ---------------------------------------------------------------------------
 # Versioning
 # ---------------------------------------------------------------------------
 

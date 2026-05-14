@@ -1,0 +1,157 @@
+{
+    "machine_info": {
+        "node": "Milinds-MacBook-Pro.local",
+        "processor": "arm",
+        "machine": "arm64",
+        "python_compiler": "Clang 16.0.0 (clang-1600.0.26.6)",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.14.3",
+        "python_version": "3.14.3",
+        "python_build": [
+            "v3.14.3:323c59a5e34",
+            "Feb  3 2026 11:41:37"
+        ],
+        "release": "25.2.0",
+        "system": "Darwin",
+        "cpu": {
+            "python_version": "3.14.3.final.0 (64 bit)",
+            "cpuinfo_version": [
+                9,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "9.0.0",
+            "arch": "ARM_8",
+            "bits": 64,
+            "count": 14,
+            "arch_string_raw": "arm64",
+            "brand_raw": "Apple M4 Pro"
+        }
+    },
+    "commit_info": {
+        "id": "20beeea757142ad5d5a4211af3501b38db73b8bf",
+        "time": "2026-05-14T10:32:46-07:00",
+        "author_time": "2026-05-14T10:32:46-07:00",
+        "dirty": true,
+        "project": "openpx",
+        "branch": "feat/comparative-bench-numbers"
+    },
+    "benchmarks": [
+        {
+            "group": null,
+            "name": "test_openpx_fetch_orderbook",
+            "fullname": "benches/comparative/python/bench_kalshi.py::test_openpx_fetch_orderbook",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.17120412504300475,
+                "max": 0.3416575000155717,
+                "mean": 0.19643506444990635,
+                "stddev": 0.04831489042217807,
+                "rounds": 20,
+                "median": 0.17407645797356963,
+                "iqr": 0.008482061908580363,
+                "q1": 0.17290945851709694,
+                "q3": 0.1813915204256773,
+                "iqr_outliers": 4,
+                "stddev_outliers": 4,
+                "outliers": "4;4",
+                "ld15iqr": 0.17120412504300475,
+                "hd15iqr": 0.2514473330229521,
+                "ops": 5.0907408145301565,
+                "total": 3.928701288998127,
+                "data": [
+                    0.25783695792779326,
+                    0.1733049580361694,
+                    0.17581887496635318,
+                    0.1714185830205679,
+                    0.17120412504300475,
+                    0.18386745802126825,
+                    0.17506762500852346,
+                    0.17342641693539917,
+                    0.17391958297230303,
+                    0.17260737507604063,
+                    0.2885887080337852,
+                    0.17321154195815325,
+                    0.1714282501488924,
+                    0.3416575000155717,
+                    0.17389879189431667,
+                    0.2514473330229521,
+                    0.17259579105302691,
+                    0.17423333297483623,
+                    0.17891558283008635,
+                    0.1742525000590831
+                ],
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_kalshi_python_fetch_orderbook",
+            "fullname": "benches/comparative/python/bench_kalshi.py::test_kalshi_python_fetch_orderbook",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.17295225011184812,
+                "max": 0.33467979193665087,
+                "mean": 0.2240927624516189,
+                "stddev": 0.050212961967727114,
+                "rounds": 20,
+                "median": 0.20737733342684805,
+                "iqr": 0.09144949982874095,
+                "q1": 0.17757604154758155,
+                "q3": 0.2690255413763225,
+                "iqr_outliers": 0,
+                "stddev_outliers": 5,
+                "outliers": "5;0",
+                "ld15iqr": 0.17295225011184812,
+                "hd15iqr": 0.33467979193665087,
+                "ops": 4.462437738103646,
+                "total": 4.481855249032378,
+                "data": [
+                    0.28513829107396305,
+                    0.2712841248139739,
+                    0.27548812492750585,
+                    0.17441704194061458,
+                    0.17295225011184812,
+                    0.2208780839573592,
+                    0.1938765828963369,
+                    0.2632734579965472,
+                    0.1756852080579847,
+                    0.17408649995923042,
+                    0.24578304192982614,
+                    0.17887391708791256,
+                    0.27706520818173885,
+                    0.1763546250294894,
+                    0.1787974580656737,
+                    0.33467979193665087,
+                    0.18621404096484184,
+                    0.24363979208283126,
+                    0.18660075007937849,
+                    0.2667669579386711
+                ],
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2026-05-14T18:48:56.908480+00:00",
+    "version": "5.2.3"
+}

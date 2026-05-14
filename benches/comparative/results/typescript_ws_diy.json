@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {
+      "name": "diy::polymarket::ws_decode_apply",
+      "mean_ns": 2159250.000000003,
+      "stddev_ns": 52315.75238472138,
+      "samples": 20,
+      "msgs_per_run": 999
+    }
+  ]
+}

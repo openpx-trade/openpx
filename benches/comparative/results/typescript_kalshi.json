@@ -1,0 +1,10 @@
+{
+  "tasks": [
+    {
+      "name": "openpx::kalshi::fetch_orderbook",
+      "mean_ns": 188301493.65000007,
+      "stddev_ns": 36525255.98234276,
+      "samples": 20
+    }
+  ]
+}
