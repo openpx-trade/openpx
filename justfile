@@ -101,31 +101,17 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
 # ---------------------------------------------------------------------------
 
 # Refresh the captured 5/15-min BTC fixtures from live exchanges, then
-# run all three comparative suites (Rust + Python + TS) and rewrite the
-# `<!-- BENCH:START -->` block in README.md with the latest numbers.
-# Per-language Codspeed instruments engage automatically when run via
-# `cargo codspeed run` / `pytest --codspeed` / Codspeed-wrapped node;
-# this recipe runs the vanilla harness for local refresh.
+# run all three comparative suites (Rust + Python + TS) for a local
+# walltime smoke test. CodSpeed dashboard numbers come from CI; the
+# README block is regenerated per release via `/refresh-bench-readme`.
 bench-compare:
-    mkdir -p benches/comparative/results
     {{venv}}/bin/python tools/capture_bench_fixtures.py
     cargo bench -p px-bench-comparative
-    # iai-callgrind drives valgrind (Linux-only) for CPU instructions +
-    # DHAT heap allocations. The `-` prefix swallows failures so macOS
-    # devs still get the rest of the suite; CI re-runs this under Linux
-    # and the README populates with real numbers there.
-    -cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
-    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
-        --benchmark-only \
-        --benchmark-json=benches/comparative/results/python_polymarket.json -q
-    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
-        --benchmark-only \
-        --benchmark-json=benches/comparative/results/python_kalshi.json -q
+    -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py -q
+    -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py -q
     -cd benches/comparative/typescript && npm install --silent && \
-        node bench_polymarket.mjs > ../results/typescript_polymarket.json
-    -cd benches/comparative/typescript && \
-        node bench_kalshi.mjs > ../results/typescript_kalshi.json
-    python3 tools/render_bench_readme.py
+        node bench_polymarket.mjs
+    -cd benches/comparative/typescript && node bench_kalshi.mjs
 
 # ---------------------------------------------------------------------------
 # Versioning

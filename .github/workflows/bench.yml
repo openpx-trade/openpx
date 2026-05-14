@@ -1,22 +1,23 @@
 name: Bench
 
 # Comparative benchmark suite — runs on every push to main, refreshes
-# the captured fixtures from live 5/15-min BTC markets, runs Rust /
-# Python / TS comparative benches under Codspeed instruments, then
-# rewrites the `<!-- BENCH:START -->` block in README.md with the
-# latest numbers and pushes the diff back to main.
+# the captured fixtures from live 5/15-min BTC markets, then runs the
+# Rust / Python / TS comparative benches under CodSpeed instruments.
 #
-# README.md and `benches/comparative/{fixtures,results}/**` are excluded
-# from triggers so the auto-commit doesn't loop; the commit message also
-# carries `[skip ci]` as belt-and-suspenders.
+# CodSpeed is the single source of measurement truth. The README's
+# `<!-- BENCH:START -->` block is NOT regenerated here — it's refreshed
+# per release by running `/refresh-bench-readme` against the CodSpeed
+# MCP server (see benches/comparative/README.md).
+#
+# `benches/comparative/fixtures/**` is excluded from triggers so the
+# fixture auto-commit doesn't loop; the commit message also carries
+# `[skip ci]` as belt-and-suspenders.
 
 on:
   push:
     branches: [main]
     paths-ignore:
-      - "README.md"
       - "benches/comparative/fixtures/**"
-      - "benches/comparative/results/**"
   workflow_dispatch:
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Need full history for the auto-commit push to fast-forward main.
+          # Need full history for the fixture auto-commit push to fast-forward main.
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
@@ -57,7 +58,7 @@ jobs:
 
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-codspeed,iai-callgrind-runner@0.14
+          tool: just,cargo-codspeed
 
       - name: Set up .venv with build + bench tooling
         run: |
@@ -65,14 +66,18 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install \
             maturin pydantic datamodel-code-generator \
-            pytest pytest-benchmark pytest-codspeed
+            pytest pytest-codspeed
           # Comparison targets — best-effort install so the suite still
-          # produces a valid (smaller) table when an upstream package is
+          # produces a valid (smaller) CodSpeed run when an upstream package is
           # broken on the runner's platform. `kalshi-python` also requires
           # `cryptography` for its API-key signing path; install it
           # explicitly because the upstream package doesn't pin it.
           .venv/bin/pip install py-clob-client || true
           .venv/bin/pip install kalshi-python cryptography || true
+
+      - name: Install TS bench deps (incl. napi for SDK build)
+        working-directory: sdks/typescript
+        run: npm install
 
       - name: Build OpenPX SDKs against current Rust core
         run: just venv="$(pwd)/.venv" python-build node-build
@@ -80,7 +85,7 @@ jobs:
       - name: Refresh real-data fixtures from live 5/15-min BTC markets
         run: .venv/bin/python tools/capture_bench_fixtures.py
 
-      - name: Install TS bench deps
+      - name: Install TS comparative bench deps
         working-directory: benches/comparative/typescript
         run: |
           npm install
@@ -99,9 +104,7 @@ jobs:
       # CodSpeed: build then run under each instrument. Every harness is
       # wrapped in `CodSpeedHQ/action@v4` so all three modes (CPU sim,
       # memory, walltime) feed the dashboard with PR-level regression
-      # alerts. The plugins simultaneously emit local JSON
-      # (criterion/pytest-benchmark/tinybench) which the render step
-      # turns into the README matrix.
+      # alerts. The dashboard is the only sink — no local JSON.
       # ---------------------------------------------------------------
 
       - name: Build Rust bench under CodSpeed
@@ -127,78 +130,42 @@ jobs:
           mode: walltime
           run: cargo codspeed run -p px-bench-comparative
 
-      # `cargo codspeed run` doesn't emit `target/criterion` JSON in
-      # instrumented mode — it pipes measurements straight to the
-      # CodSpeed protocol. Run vanilla `cargo bench` once afterwards to
-      # produce the local criterion JSON the render step reads. Cheap
-      # because the bench profile is already cached from the codspeed
-      # build above; only the harness re-runs.
-      - name: Refresh local criterion JSON for README render
-        run: cargo bench -p px-bench-comparative -- --warm-up-time 1 --measurement-time 2
-
-      # iai-callgrind drives valgrind (cachegrind + DHAT) and writes
-      # per-bench JSON summaries to `target/iai/...` that the render
-      # step turns into the CPU-instructions and heap-allocation rows of
-      # the Rust comparison table. The `iai` feature gate keeps this
-      # bench out of plain `cargo bench` so non-Linux dev (macOS) keeps
-      # working with just the criterion walltime harness.
-      - name: CodSpeed-equivalent Rust CPU + memory via iai-callgrind
-        run: cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
-        continue-on-error: true
-
       - name: CodSpeed — Python walltime (Polymarket)
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          mode: walltime
           run: .venv/bin/pytest benches/comparative/python/bench_polymarket.py --codspeed -q
 
       - name: CodSpeed — Python walltime (Kalshi)
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          mode: walltime
           run: .venv/bin/pytest benches/comparative/python/bench_kalshi.py --codspeed -q
-
-      # Second pass to populate the local pytest-benchmark JSON for the
-      # README render. `--codspeed` and `--benchmark-only` collect via
-      # different timing plugins; running them in separate passes keeps
-      # both data sources clean.
-      - name: Local pytest-benchmark JSON for README
-        run: |
-          mkdir -p benches/comparative/results
-          .venv/bin/pytest benches/comparative/python/bench_polymarket.py \
-            --benchmark-only \
-            --benchmark-json=benches/comparative/results/python_polymarket.json -q || true
-          .venv/bin/pytest benches/comparative/python/bench_kalshi.py \
-            --benchmark-only \
-            --benchmark-json=benches/comparative/results/python_kalshi.json -q || true
 
       - name: CodSpeed — TypeScript walltime (Polymarket)
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          mode: walltime
           run: |
             cd benches/comparative/typescript
-            node bench_polymarket.mjs > ../results/typescript_polymarket.json
+            node bench_polymarket.mjs
 
       - name: CodSpeed — TypeScript walltime (Kalshi)
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          mode: walltime
           run: |
             cd benches/comparative/typescript
-            node bench_kalshi.mjs > ../results/typescript_kalshi.json
+            node bench_kalshi.mjs
 
-      - name: Render bench results into README.md
-        run: python3 tools/render_bench_readme.py
-
-      - name: Commit updated README + fixtures
+      - name: Commit refreshed fixtures
         run: |
-          if git diff --quiet README.md benches/comparative/fixtures/ benches/comparative/results/; then
-            echo "No bench changes to commit."
+          if git diff --quiet benches/comparative/fixtures/; then
+            echo "No fixture changes to commit."
             exit 0
           fi
           git config user.name "openpx-bench-bot"
           git config user.email "bench-bot@users.noreply.github.com"
-          git add README.md benches/comparative/fixtures/ benches/comparative/results/
-          git commit -m "chore(bench): refresh comparative numbers + fixtures [skip ci]"
+          git add benches/comparative/fixtures/
+          git commit -m "chore(bench): refresh comparative fixtures [skip ci]"
           git push origin HEAD:main

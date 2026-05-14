@@ -25,19 +25,19 @@ Rust engine with Python & TypeScript SDKs.
 <!-- BENCH:START -->
 ## Performance
 
-OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials, refreshes on every push to `main`.
+OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials. Numbers refreshed per release from the CodSpeed dashboard.
 
-[![CodSpeed](https://img.shields.io/endpoint?url=https%3A%2F%2Fcodspeed.io%2Fbadge.json)](https://codspeed.io/openpx-trade/openpx) — Rust benches also tracked under Codspeed CPU-simulation and memory-allocation instruments. Click the badge for the full per-metric history and PR-level regression alerts.
+[![CodSpeed](https://img.shields.io/endpoint?url=https%3A%2F%2Fcodspeed.io%2Fbadge.json)](https://codspeed.io/openpx-trade/openpx) — Click for full per-metric history and PR-level regression alerts.
 
 ### Rust core
 
-_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it. Walltime from criterion; CPU instructions and heap allocations from valgrind via iai-callgrind (deterministic, hardware-agnostic — same instruments Codspeed uses)._
+_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it. Walltime, CPU instructions (cachegrind), and peak heap (eBPF) all from CodSpeed's `codspeed-macro` runner._
 
 | Operation | Metric | OpenPX | polymarket_client_sdk_v2 | Speedup |
 |---|---|---:|---:|---:|
 | Parse Polymarket book (5-min BTC fixture) | Walltime | 4.38 µs | 5.84 µs | **1.33×** |
 | Parse Polymarket book (5-min BTC fixture) | CPU instructions (cachegrind) | — | — | — |
-| Parse Polymarket book (5-min BTC fixture) | Heap allocations (DHAT) | — | — | — |
+| Parse Polymarket book (5-min BTC fixture) | Peak heap (eBPF) | — | — | — |
 
 ### Python SDK
 
@@ -63,7 +63,7 @@ _Walltime over real, unauthenticated HTTP round-trips._
 |---|---|---:|---:|---:|
 | Kalshi fetch_orderbook (15-min BTC, live) | Walltime | 370.13 ms | 385.13 ms | **1.04×** |
 
-<sub>Last updated: 2026-05-12 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Raw data: [benches/comparative/results/](benches/comparative/results/)</sub>
+<sub>Source: [CodSpeed dashboard](https://codspeed.io/openpx-trade/openpx) · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Refreshed per release via `/refresh-bench-readme`</sub>
 <!-- BENCH:END -->
 
 ## Quick Start

@@ -9,9 +9,13 @@ Third-party clients are deliberately excluded — users choose between
 OpenPX and the SDK their exchange actually publishes, so that's the
 only comparison that matters.
 
-Numbers feed the **Performance** block at the top of the root
-[`README.md`](../../README.md) and refresh on every push to `main`
-via [`.github/workflows/bench.yml`](../../.github/workflows/bench.yml).
+Numbers are measured on every push to `main` by
+[`.github/workflows/bench.yml`](../../.github/workflows/bench.yml) and
+land directly on the [CodSpeed dashboard](https://codspeed.io/openpx-trade/openpx).
+The **Performance** block at the top of the root [`README.md`](../../README.md)
+is regenerated from CodSpeed **per release** by the agent-driven
+[`/refresh-bench-readme`](../../.claude/commands/refresh-bench-readme.md)
+command — there is no in-CI rendering and no local JSON.
 
 ## What's measured
 
@@ -35,97 +39,82 @@ The bench fixtures aren't synthetic. The capture pipeline is:
    resolve the *currently-live* market in the revolving series.
    - Polymarket: `btc-up-or-down-5m` → live 5-minute BTC up/down market.
    - Kalshi: `KXBTC15M` → live 15-minute BTC up/down market.
-2. The script then fetches that market's full orderbook from the
-   public REST endpoint and writes the raw bytes to
+2. The script fetches that market's full orderbook from the public
+   REST endpoint and writes the raw bytes to
    `benches/comparative/fixtures/`.
 3. Bench runs read those bytes — same input every iteration, real
    exchange shape, no credentials required to reproduce.
-4. CI re-runs step 1 on every push to `main` so the committed
-   fixture is always fresh — never a stale snapshot.
+4. CI re-runs step 1 on every push to `main` and commits the refreshed
+   fixture back so it's never a stale snapshot.
 
 For Python and TypeScript the bench also makes **live unauthenticated
 HTTP calls** end-to-end (still no credentials), which is what end
 users actually experience.
 
-## Codspeed instrumentation
+## CodSpeed instrumentation
 
 Every harness is wrapped in
 [`CodSpeedHQ/action@v3`](https://github.com/CodSpeedHQ/action) so all
-three modes feed the [Codspeed dashboard](https://codspeed.io/openpx-trade/openpx)
+three modes feed the [CodSpeed dashboard](https://codspeed.io/openpx-trade/openpx)
 with PR-level regression alerts on every push to `main`:
 
 | Mode          | Languages | What it captures |
 |---------------|-----------|------------------|
 | **CPU sim**   | Rust      | Cachegrind instruction counts. Hardware-agnostic, <1% variance. Best for regression detection. |
 | **Memory**    | Rust      | Heap allocations / peak usage via eBPF. Locks in the zero-alloc design. |
-| **Walltime**  | Rust + Python + TS | Real wall-clock time on stable Codspeed runners — what users feel. |
+| **Walltime**  | Rust + Python + TS | Real wall-clock time on stable CodSpeed runners — what users feel. |
 
 CPU simulation and memory are Linux-only (Valgrind / eBPF); they run
-under Codspeed's `codspeed-macro` runner. Walltime runs everywhere
+under CodSpeed's `codspeed-macro` runner. Walltime runs everywhere
 including local laptops via `cargo bench` / `pytest` / `node bench.mjs`.
 
-The README block surfaces all three Rust modes plus walltime for the
-SDK harnesses:
+The dashboard surfaces all three Rust modes plus walltime for the
+Python and TypeScript SDK harnesses, with full per-PR deltas.
 
-- **Rust walltime** — `cargo bench` (criterion local JSON)
-- **Rust CPU instructions** — `cargo bench --features iai` runs
-  `parse_polymarket_book_iai.rs` under valgrind/cachegrind; the
-  `Ir` cost lands in `target/iai/.../summary.json`.
-- **Rust heap allocations** — same iai-callgrind run, with DHAT
-  attached as a second valgrind tool; `total_bytes` lands in the same
-  summary file.
-- **Python / TS walltime** — pytest-benchmark / tinybench local JSON.
+## Refreshing the README block
 
-The Codspeed dashboard surfaces the same three Rust modes plus per-PR
-deltas. Numbers should agree to within a few percent between the iai
-local JSON and Codspeed's simulation/memory reports — both use the
-same valgrind tools.
+The README's `<!-- BENCH:START -->` block is regenerated **per release**,
+not per push. The flow:
 
-### Why the workflow runs each harness twice
+1. release-please opens a release PR.
+2. A maintainer checks out that branch and runs `/refresh-bench-readme`
+   in a Claude Code session.
+3. The agent calls the CodSpeed MCP server, pulls the latest `main` run,
+   maps bench URIs to README cells, and rewrites the block.
+4. The maintainer commits the README change onto the release-please
+   branch before merging.
 
-The dashboard pass (`codspeed run -m walltime` / `pytest --codspeed` /
-Codspeed-wrapped node) feeds Codspeed's collector, which captures
-measurements via its own protocol and *does not* emit local JSON. A
-second non-instrumented pass (`cargo bench` / `pytest --benchmark-only`
-/ raw `node`) writes the local JSON files the README render reads.
-The cost is ~25% extra CI time; the win is one pipeline producing
-both a live dashboard and an in-repo table.
+This is agent-driven because CodSpeed has no public REST API — only
+the OAuth-gated MCP server (`mcp.codspeed.io`), which CI can't use
+but an authenticated session can. See
+[`.claude/commands/refresh-bench-readme.md`](../../.claude/commands/refresh-bench-readme.md)
+for the exact mapping table and rendering rules.
 
 ## Running locally
 
 From the repo root:
 
 ```bash
-# Refresh fixtures + run all three suites + rewrite the README block.
+# Refresh fixtures + run all three suites (vanilla harnesses for
+# walltime; CodSpeed instruments only engage under `cargo codspeed run`
+# / `pytest --codspeed` / CodSpeed-wrapped node).
 just bench-compare
 
 # Or each suite individually:
 python3 tools/capture_bench_fixtures.py
 cargo bench -p px-bench-comparative
-pytest benches/comparative/python/bench_polymarket.py \
-    --benchmark-only \
-    --benchmark-json=benches/comparative/results/python_polymarket.json
-pytest benches/comparative/python/bench_kalshi.py \
-    --benchmark-only \
-    --benchmark-json=benches/comparative/results/python_kalshi.json
-node benches/comparative/typescript/bench_polymarket.mjs \
-    > benches/comparative/results/typescript_polymarket.json
-node benches/comparative/typescript/bench_kalshi.mjs \
-    > benches/comparative/results/typescript_kalshi.json
-python3 tools/render_bench_readme.py
+pytest benches/comparative/python/bench_polymarket.py
+pytest benches/comparative/python/bench_kalshi.py
+node benches/comparative/typescript/bench_polymarket.mjs
+node benches/comparative/typescript/bench_kalshi.mjs
 
-# Run under Codspeed instruments (requires `cargo install cargo-codspeed`
+# Run under CodSpeed instruments (requires `cargo install cargo-codspeed`
 # and a CODSPEED_TOKEN; results upload to codspeed.io):
 cargo codspeed build -p px-bench-comparative
 cargo codspeed run -p px-bench-comparative --measurement-mode simulation
 cargo codspeed run -p px-bench-comparative --measurement-mode memory
 cargo codspeed run -p px-bench-comparative --measurement-mode walltime
 pytest --codspeed benches/comparative/python/
-
-# Or produce the Rust CPU-instruction + heap-allocation summaries that
-# feed the README (Linux only — requires valgrind + iai-callgrind-runner):
-cargo install iai-callgrind-runner@0.14
-cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book_iai
 ```
 
 ## Methodology details
@@ -135,7 +124,7 @@ cargo bench -p px-bench-comparative --features iai --bench parse_polymarket_book
   Python / TS calls. Local laptop numbers will differ; only relative
   speedups carry across.
 - **Iterations**: criterion / codspeed-criterion-compat defaults
-  (warm-up + 100-sample steady state) for Rust; pytest-benchmark
+  (warm-up + 100-sample steady state) for Rust; pytest-codspeed
   auto-rounds for Python; tinybench 2 s budget per task for
   TypeScript.
 - **Variance**: each row reports the mean. Live-network rows carry
