@@ -1,6 +1,10 @@
-// Kalshi REST API head-to-head: OpenPX vs kalshi-typescript-sdk.
+// Kalshi REST head-to-head: OpenPX vs (no official TypeScript SDK).
 //
-// 20 iterations × 100 ms gap. Writes JSON summary to stdout.
+// Kalshi has no published TypeScript SDK on npm — OpenPX is the only
+// TS client. We still emit the OpenPX-side number so the README can
+// show absolute latency and the renderer can call out the absence.
+//
+// 20 iterations × 100 ms gap, polyfill methodology.
 //
 // Run: `node bench_kalshi.mjs > ../results/typescript_kalshi.json`
 
@@ -23,7 +27,6 @@ const GAP_MS = 100;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Try the official Kalshi SDK; fall back to OpenPX-only.
 let sdkClient = null;
 let sdkName = null;
 for (const pkg of [
@@ -48,58 +51,18 @@ if (!sdkClient) {
 const openpx = new Exchange("kalshi", {});
 const bench = new Bench({ time: 0, iterations: 20 });
 
-bench.add("openpx::kalshi::fetch_markets", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchMarkets();
-});
-
-bench.add("openpx::kalshi::fetch_market", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchMarket(TICKER);
-});
-
 bench.add("openpx::kalshi::fetch_orderbook", async () => {
   await sleep(GAP_MS);
   await openpx.fetchOrderbook(TICKER);
 });
 
-bench.add("openpx::kalshi::fetch_trades", async () => {
-  await sleep(GAP_MS);
-  await openpx.fetchTrades(TICKER);
-});
-
-// Kalshi SDK shapes vary across packages; resolve methods defensively.
 if (sdkClient) {
-  const tagged = (op) => `${sdkName}::kalshi::${op}`;
-
-  bench.add(tagged("fetch_markets"), async () => {
-    await sleep(GAP_MS);
-    if (sdkClient.getMarkets) return sdkClient.getMarkets({ limit: 100 });
-    if (sdkClient.markets?.getMarkets)
-      return sdkClient.markets.getMarkets({ limit: 100 });
-  });
-
-  bench.add(tagged("fetch_market"), async () => {
-    await sleep(GAP_MS);
-    if (sdkClient.getMarket) return sdkClient.getMarket({ ticker: TICKER });
-    if (sdkClient.markets?.getMarket)
-      return sdkClient.markets.getMarket({ ticker: TICKER });
-  });
-
-  bench.add(tagged("fetch_orderbook"), async () => {
+  bench.add(`${sdkName}::kalshi::fetch_orderbook`, async () => {
     await sleep(GAP_MS);
     if (sdkClient.getMarketOrderbook)
       return sdkClient.getMarketOrderbook({ ticker: TICKER });
     if (sdkClient.markets?.getMarketOrderbook)
       return sdkClient.markets.getMarketOrderbook({ ticker: TICKER });
-  });
-
-  bench.add(tagged("fetch_trades"), async () => {
-    await sleep(GAP_MS);
-    if (sdkClient.getTrades)
-      return sdkClient.getTrades({ ticker: TICKER, limit: 100 });
-    if (sdkClient.markets?.getTrades)
-      return sdkClient.markets.getTrades({ ticker: TICKER, limit: 100 });
   });
 }
 

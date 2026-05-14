@@ -17,7 +17,7 @@ px-core = { path = "../../../engine/core" }
 # Comparison target — Polymarket's official Rust client. Kalshi has no
 # upstream Rust SDK so the Rust comparison covers Polymarket only;
 # Python and TS suites cover both exchanges.
-polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob"] }
+polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob", "ws"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -8,6 +8,10 @@
   },
   "dependencies": {
     "@openpx/sdk": "file:../../../sdks/typescript",
+    "@polymarket/clob-client": "^5.8.1",
     "tinybench": "^3.0.0"
+  },
+  "devDependencies": {
+    "ws": "^8.20.1"
   }
 }
