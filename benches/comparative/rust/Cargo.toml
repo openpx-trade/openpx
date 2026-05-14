@@ -14,6 +14,9 @@ path = "src/lib.rs"
 [dependencies]
 # Workspace crate under test
 px-core = { path = "../../../engine/core" }
+# Unified facade — used by the live REST bin (`bench_rest`) to exercise the
+# same call path Python/TS users hit through the SDKs.
+openpx = { path = "../../../engine/sdk" }
 # Comparison target — Polymarket's official Rust client. Kalshi has no
 # upstream Rust SDK so the Rust comparison covers Polymarket only;
 # Python and TS suites cover both exchanges.
@@ -21,6 +24,7 @@ polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob", "w
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -28,3 +32,7 @@ criterion = "0.5"
 [[bench]]
 name = "hot_path"
 harness = false
+
+[[bin]]
+name = "bench_rest"
+path = "src/bin/bench_rest.rs"

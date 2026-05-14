@@ -106,22 +106,18 @@ check-sync: schema python-models node-models llms-txt check-mappings render-mapp
 bench-compare:
     mkdir -p benches/comparative/results
     {{venv}}/bin/python tools/capture_bench_fixtures.py
-    cargo bench -p px-bench-comparative
+    cargo bench -p px-bench-comparative --bench hot_path
+    -cargo run -p px-bench-comparative --bin bench_rest --release
     -{{venv}}/bin/pytest benches/comparative/python/bench_polymarket.py \
         --benchmark-only \
         --benchmark-json=benches/comparative/results/python_polymarket.json -q
     -{{venv}}/bin/pytest benches/comparative/python/bench_kalshi.py \
         --benchmark-only \
         --benchmark-json=benches/comparative/results/python_kalshi.json -q
-    -{{venv}}/bin/pytest benches/comparative/python/bench_ws_diy.py \
-        --benchmark-only \
-        --benchmark-json=benches/comparative/results/python_ws_diy.json -q
     -cd benches/comparative/typescript && npm install --silent && \
         node bench_polymarket.mjs > ../results/typescript_polymarket.json
     -cd benches/comparative/typescript && \
         node bench_kalshi.mjs > ../results/typescript_kalshi.json
-    -cd benches/comparative/typescript && \
-        node bench_ws_diy.mjs > ../results/typescript_ws_diy.json
     {{venv}}/bin/python tools/render_bench_readme.py
 
 # ---------------------------------------------------------------------------
