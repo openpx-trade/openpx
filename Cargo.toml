@@ -13,7 +13,6 @@ members = [
     "sdks/python",
     "sdks/typescript",
     "e2e_tests",
-    "benches/comparative/rust",
 ]
 default-members = [
     "engine/core",

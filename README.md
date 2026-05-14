@@ -22,50 +22,6 @@ Rust engine with Python & TypeScript SDKs.
 
 ---
 
-<!-- BENCH:START -->
-## Performance
-
-OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials. Numbers refreshed per release from the CodSpeed dashboard.
-
-[![CodSpeed](https://img.shields.io/endpoint?url=https%3A%2F%2Fcodspeed.io%2Fbadge.json)](https://codspeed.io/openpx-trade/openpx) — Click for full per-metric history and PR-level regression alerts.
-
-### Rust core
-
-_Kalshi has no upstream Rust SDK — OpenPX is the only Rust client that supports it. Walltime, CPU instructions (cachegrind), and peak heap (eBPF) all from CodSpeed's `codspeed-macro` runner._
-
-| Operation | Metric | OpenPX | polymarket_client_sdk_v2 | Speedup |
-|---|---|---:|---:|---:|
-| Parse Polymarket book (5-min BTC fixture) | Walltime | 4.38 µs | 5.84 µs | **1.33×** |
-| Parse Polymarket book (5-min BTC fixture) | CPU instructions (cachegrind) | — | — | — |
-| Parse Polymarket book (5-min BTC fixture) | Peak heap (eBPF) | — | — | — |
-
-### Python SDK
-
-_Walltime over real, unauthenticated HTTP round-trips. CPU instructions and heap allocations aren't reported per-language in the README — Codspeed only exposes those instruments for compiled-language harnesses (see Rust above and the dashboard for trends)._
-
-| Operation | Metric | OpenPX | py-clob-client | Speedup |
-|---|---|---:|---:|---:|
-| Polymarket fetch_orderbook (5-min BTC, live) | Walltime | 276.21 ms | 362.99 ms | **1.31×** |
-
-| Operation | Metric | OpenPX | kalshi-python | Speedup |
-|---|---|---:|---:|---:|
-| Kalshi fetch_orderbook (15-min BTC, live) | Walltime | 363.96 ms | 366.15 ms | **1.01×** |
-
-### TypeScript SDK
-
-_Walltime over real, unauthenticated HTTP round-trips._
-
-| Operation | Metric | OpenPX | @polymarket/clob-client | Speedup |
-|---|---|---:|---:|---:|
-| Polymarket fetch_orderbook (5-min BTC, live) | Walltime | 261.89 ms | 278.14 ms | **1.06×** |
-
-| Operation | Metric | OpenPX | kalshi-typescript | Speedup |
-|---|---|---:|---:|---:|
-| Kalshi fetch_orderbook (15-min BTC, live) | Walltime | 370.13 ms | 385.13 ms | **1.04×** |
-
-<sub>Source: [CodSpeed dashboard](https://codspeed.io/openpx-trade/openpx) · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Refreshed per release via `/refresh-bench-readme`</sub>
-<!-- BENCH:END -->
-
 ## Quick Start
 
 ### Install
