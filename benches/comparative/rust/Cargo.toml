@@ -1,0 +1,30 @@
+[package]
+name = "px-bench-comparative"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# All bench harnesses are pure-criterion (no CodSpeed). Runs locally via
+# `cargo bench -p px-bench-comparative` and writes criterion JSON under
+# `target/criterion/` which the README renderer reads.
+
+[dependencies]
+# Workspace crate under test
+px-core = { path = "../../../engine/core" }
+# Comparison target — Polymarket's official Rust client. Kalshi has no
+# upstream Rust SDK so the Rust comparison covers Polymarket only;
+# Python and TS suites cover both exchanges.
+polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "hot_path"
+harness = false

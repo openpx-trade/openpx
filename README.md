@@ -22,6 +22,16 @@ Rust engine with Python & TypeScript SDKs.
 
 ---
 
+<!-- BENCH:START -->
+## Performance
+
+OpenPX vs the official native SDKs, head-to-head against live 5/15-min BTC markets. Real bytes, no credentials. Two angles: hot-path CPU benchmarks (where OpenPX wins by design) and end-to-end REST methods (what users actually feel).
+
+_Comparative benchmarks pending — run `just bench-compare` to populate this section. See [`benches/comparative/README.md`](benches/comparative/README.md) for methodology._
+
+<sub>Last updated: 2026-05-14 · Methodology: [benches/comparative/README.md](benches/comparative/README.md) · Reproduce: `just bench-compare`</sub>
+<!-- BENCH:END -->
+
 ## Quick Start
 
 ### Install
